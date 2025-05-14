@@ -13,16 +13,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Activate Unity
-        uses: game-ci/unity-activate@v2
+        uses: game-ci/unity-activate@v4
         with:
-          unityVersion: 2023.1.8f1
+          unityVersion: 6000.1.2f1
           personalLicense: ${{ secrets.UNITY_LICENSE }}
 
       - name: Run EditMode Tests
-        uses: game-ci/unity-test-runner@v2
+        uses: game-ci/unity-test-runner@v4
         with:
-          unityVersion: 2023.1.8f1
+          unityVersion: 6000.1.2f1
           testMode: editmode
