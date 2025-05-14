@@ -9,18 +9,20 @@ on:
 
 jobs:
   test:
+    name: Run EditMode Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v3
 
       - name: Activate Unity
         uses: game-ci/unity-activate@v2
         with:
-          unityVersion: 2022.3.42f1
+          unityVersion: 2022.3.11f1
           personalLicense: ${{ secrets.UNITY_LICENSE }}
 
       - name: Run EditMode Tests
         uses: game-ci/unity-test-runner@v2
         with:
-          unityVersion: 2022.3.42f1
+          unityVersion: 2022.3.11f1
           testMode: editmode
