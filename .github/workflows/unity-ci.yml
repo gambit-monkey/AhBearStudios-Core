@@ -12,7 +12,7 @@ jobs:
     name: Run EditMode Tests
     runs-on: ubuntu-latest
     container:
-      image: unityci/editor:windows-6000.1.2f1-windows-il2cpp-3.1.0
+      image: unityci/editor:ubuntu-6000.1.2f1-linux-il2cpp-3.1.0
     steps:
       - name: Checkout
         uses: actions/checkout@v3
