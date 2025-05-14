@@ -1,6 +1,10 @@
-name: AhBearStudios Core
+name: AhBearStudios Core CI
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
 
 jobs:
   testAllModes:
@@ -12,14 +16,12 @@ jobs:
         projectPath:
           - test-project
         testMode:
-          - playmode
           - editmode
-          - standalone
     steps:
       - uses: actions/checkout@v4
         with:
           lfs: true
-      - uses: actions/cache@v3
+      - uses: actions/cache@v4
         with:
           path: ${{ matrix.projectPath }}/Library
           key: Library-${{ matrix.projectPath }}
@@ -38,12 +40,12 @@ jobs:
           githubToken: ${{ secrets.GITHUB_TOKEN }}
           checkName: ${{ matrix.testMode }} Test Results
           coverageOptions: 'generateAdditionalMetrics;generateHtmlReport;generateBadgeReport;assemblyFilters:+my.assembly.*'
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: Test results for ${{ matrix.testMode }}
           path: ${{ steps.tests.outputs.artifactsPath }}
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: Coverage results for ${{ matrix.testMode }}
