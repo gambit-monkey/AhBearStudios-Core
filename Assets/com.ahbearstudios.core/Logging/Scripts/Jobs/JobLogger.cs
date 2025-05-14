@@ -7,8 +7,8 @@ namespace AhBearStudios.Core.Logging.Jobs
 {
     /// <summary>
     /// A Burst-compatible logger that can be used within Job contexts.
-    /// Designed to work with the Unity Jobs system to provide safe,
-    /// thread-friendly logging capabilities.
+    /// This struct is thread-safe and can be safely shared across multiple threads
+    /// and job instances when using the ParallelWriter provided by NativeQueue.
     /// </summary>
     [BurstCompile]
     public readonly struct JobLogger

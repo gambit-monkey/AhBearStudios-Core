@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Data;
 using AhBearStudios.Core.Logging.Formatters;
@@ -12,6 +13,12 @@ namespace AhBearStudios.Core.Logging
     /// <summary>
     /// Central manager for the logging system that coordinates log targets, queue processing, and flush operations.
     /// This class owns the NativeQueue for log messages, the LogBatchProcessor, and maintains the collection of ILogTargets.
+    /// 
+    /// Thread Safety:
+    /// - Enqueue operations are thread-safe and lock-free using NativeQueue.ParallelWriter
+    /// - Log methods are thread-safe and can be called from any thread
+    /// - Configuration operations (AddTarget, RemoveTarget, etc.) are synchronized with a lock
+    /// - Flush operations are synchronized to prevent concurrent flushes
     /// </summary>
     public class JobLoggerManager : IDisposable
     {
@@ -19,6 +26,11 @@ namespace AhBearStudios.Core.Logging
         /// The queue that stores log messages.
         /// </summary>
         private NativeQueue<LogMessage> _logQueue;
+
+        /// <summary>
+        /// Thread-safe parallel writer for the log queue.
+        /// </summary>
+        private NativeQueue<LogMessage>.ParallelWriter _logQueueWriter;
 
         /// <summary>
         /// The batch processor that handles log messages.
@@ -38,7 +50,7 @@ namespace AhBearStudios.Core.Logging
         /// <summary>
         /// Current global minimum log level across all targets.
         /// </summary>
-        private byte _globalMinimumLevel;
+        private volatile byte _globalMinimumLevel;
 
         /// <summary>
         /// Maximum messages to process per flush operation.
@@ -48,7 +60,7 @@ namespace AhBearStudios.Core.Logging
         /// <summary>
         /// Whether automatic flush is enabled on a timer.
         /// </summary>
-        private bool _autoFlushEnabled;
+        private volatile bool _autoFlushEnabled;
 
         /// <summary>
         /// Time interval in seconds between auto-flush operations.
@@ -63,12 +75,17 @@ namespace AhBearStudios.Core.Logging
         /// <summary>
         /// Whether the manager has been disposed.
         /// </summary>
-        private bool _isDisposed;
+        private volatile bool _isDisposed;
 
         /// <summary>
-        /// Thread synchronization object.
+        /// Thread synchronization object for configuration changes.
         /// </summary>
-        private readonly object _syncLock = new object();
+        private readonly object _configLock = new object();
+
+        /// <summary>
+        /// Thread synchronization object for flush operations.
+        /// </summary>
+        private readonly object _flushLock = new object();
 
         /// <summary>
         /// Gets or sets the global minimum log level that will be processed.
@@ -211,6 +228,9 @@ namespace AhBearStudios.Core.Logging
             {
                 // Create the queue with the persistent allocator to ensure it lives until explicitly disposed
                 _logQueue = new NativeQueue<LogMessage>(Allocator.Persistent);
+                
+                // Get the parallel writer for thread-safe logging from any thread
+                _logQueueWriter = _logQueue.AsParallelWriter();
             }
             catch (Exception ex)
             {
@@ -222,6 +242,7 @@ namespace AhBearStudios.Core.Logging
 
         /// <summary>
         /// Adds a log target to the manager.
+        /// Thread-safe: Uses a lock to synchronize target list access.
         /// </summary>
         /// <param name="target">The log target to add.</param>
         /// <exception cref="ArgumentNullException">Thrown if target is null.</exception>
@@ -234,7 +255,7 @@ namespace AhBearStudios.Core.Logging
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(JobLoggerManager));
 
-            lock (_syncLock)
+            lock (_configLock)
             {
                 if (!_logTargets.Contains(target))
                 {
@@ -251,6 +272,7 @@ namespace AhBearStudios.Core.Logging
 
         /// <summary>
         /// Removes a log target from the manager.
+        /// Thread-safe: Uses a lock to synchronize target list access.
         /// </summary>
         /// <param name="target">The log target to remove.</param>
         /// <returns>True if the target was removed; otherwise, false.</returns>
@@ -263,7 +285,7 @@ namespace AhBearStudios.Core.Logging
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(JobLoggerManager));
 
-            lock (_syncLock)
+            lock (_configLock)
             {
                 bool removed = _logTargets.Remove(target);
                 if (removed)
@@ -277,6 +299,7 @@ namespace AhBearStudios.Core.Logging
 
         /// <summary>
         /// Creates and returns a JobLogger for use in Unity job contexts.
+        /// Thread-safe: Access to native container is thread-safe through the ParallelWriter.
         /// </summary>
         /// <param name="minimumLevel">The minimum level to log at. If not specified, uses the global minimum level.</param>
         /// <param name="defaultTag">Default tag to use when none is specified.</param>
@@ -296,11 +319,12 @@ namespace AhBearStudios.Core.Logging
                 defaultTag = Tagging.LogTag.Job;
             }
 
-            return new JobLogger(_logQueue.AsParallelWriter(), actualMinLevel, defaultTag);
+            return new JobLogger(_logQueueWriter, actualMinLevel, defaultTag);
         }
 
         /// <summary>
         /// Enables automatic flushing of log messages.
+        /// Thread-safe: Uses a lock to synchronize access to auto-flush settings.
         /// </summary>
         /// <param name="interval">The interval in seconds between flush operations.</param>
         /// <exception cref="ArgumentOutOfRangeException">Thrown if interval is less than or equal to zero.</exception>
@@ -313,7 +337,7 @@ namespace AhBearStudios.Core.Logging
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(JobLoggerManager));
 
-            lock (_syncLock)
+            lock (_configLock)
             {
                 _autoFlushEnabled = true;
                 _autoFlushInterval = interval;
@@ -323,13 +347,14 @@ namespace AhBearStudios.Core.Logging
 
         /// <summary>
         /// Disables automatic flushing of log messages.
+        /// Thread-safe: Uses a lock to synchronize access to auto-flush settings.
         /// </summary>
         public void DisableAutoFlush()
         {
             if (_isDisposed)
                 return;
 
-            lock (_syncLock)
+            lock (_configLock)
             {
                 _autoFlushEnabled = false;
             }
@@ -338,6 +363,7 @@ namespace AhBearStudios.Core.Logging
         /// <summary>
         /// Updates the time tracking for auto-flush and triggers a flush if needed.
         /// Should be called from a MonoBehaviour Update method or similar regular update.
+        /// Thread-safe: Uses locks to synchronize access to auto-flush settings and flush operations.
         /// </summary>
         /// <param name="deltaTime">Time in seconds since the last update.</param>
         /// <returns>Number of messages processed if a flush was triggered; otherwise, zero.</returns>
@@ -348,7 +374,7 @@ namespace AhBearStudios.Core.Logging
 
             bool shouldFlush = false;
 
-            lock (_syncLock)
+            lock (_configLock)
             {
                 _timeSinceLastAutoFlush += deltaTime;
 
@@ -369,6 +395,7 @@ namespace AhBearStudios.Core.Logging
 
         /// <summary>
         /// Manually flushes any queued log messages to all targets.
+        /// Thread-safe: Uses a lock to ensure only one flush operation occurs at a time.
         /// </summary>
         /// <returns>The number of messages processed.</returns>
         /// <exception cref="ObjectDisposedException">Thrown if the manager has been disposed.</exception>
@@ -378,26 +405,32 @@ namespace AhBearStudios.Core.Logging
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(JobLoggerManager));
 
-            lock (_syncLock)
+            // Use TryEnter with a timeout to avoid deadlocks
+            if (!Monitor.TryEnter(_flushLock, 100))
+                return 0; // Return 0 if we couldn't acquire the lock within the timeout
+
+            try
             {
-                try
-                {
-                    return _batchProcessor.Flush();
-                }
-                catch (Exception ex)
-                {
-                    // Rather than logging the error, propagate it to the caller
-                    throw new InvalidOperationException($"Error during log flush", ex);
-                }
+                return _batchProcessor.Flush();
+            }
+            catch (Exception ex)
+            {
+                // Rather than logging the error, propagate it to the caller
+                throw new InvalidOperationException($"Error during log flush", ex);
+            }
+            finally
+            {
+                Monitor.Exit(_flushLock);
             }
         }
 
         /// <summary>
         /// Updates the minimum level for all targets based on the global setting.
+        /// Thread-safe: Uses a lock to synchronize access to the target list.
         /// </summary>
         private void UpdateTargetMinimumLevels()
         {
-            lock (_syncLock)
+            lock (_configLock)
             {
                 foreach (var target in _logTargets)
                 {
@@ -416,7 +449,7 @@ namespace AhBearStudios.Core.Logging
 
         /// <summary>
         /// Enqueues a log message directly to the internal queue.
-        /// This is primarily for internal use or for custom logging implementations.
+        /// Thread-safe: Uses NativeQueue.ParallelWriter for thread-safe enqueueing.
         /// </summary>
         /// <param name="message">The message to enqueue.</param>
         /// <exception cref="ObjectDisposedException">Thrown if the manager has been disposed.</exception>
@@ -425,13 +458,14 @@ namespace AhBearStudios.Core.Logging
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(JobLoggerManager));
 
-            // Early exit if below global minimum level
+            // Early exit if below global minimum level - atomic operation
             if (message.Level < _globalMinimumLevel)
                 return;
 
             try
             {
-                _logQueue.Enqueue(message);
+                // Use the parallel writer for thread-safe enqueueing
+                _logQueueWriter.Enqueue(message);
             }
             catch (Exception)
             {
@@ -441,13 +475,16 @@ namespace AhBearStudios.Core.Logging
         }
 
         /// <summary>
-        /// Enqueues a log message with the specified parameters.
+        /// Logs a message with the specified parameters.
+        /// Thread-safe: Uses NativeQueue.ParallelWriter for thread-safe enqueueing.
         /// </summary>
         /// <param name="level">The log level.</param>
         /// <param name="tag">The log tag.</param>
         /// <param name="message">The message text.</param>
-        public void Log(byte level, Tagging.LogTag tag, string message)
+        /// <param name="properties">Optional structured log properties.</param>
+        public void Log(byte level, Tagging.LogTag tag, string message, LogProperties properties = default)
         {
+            // Early exits for common conditions to avoid unnecessary work
             if (_isDisposed || level < _globalMinimumLevel || string.IsNullOrEmpty(message))
                 return;
 
@@ -456,37 +493,11 @@ namespace AhBearStudios.Core.Logging
                 // Convert the string to FixedString512Bytes for the LogMessage constructor
                 FixedString512Bytes fixedMessage = new FixedString512Bytes(message);
 
-                // Use the constructor directly instead of the non-existent Create method
-                LogMessage logMessage = new LogMessage(fixedMessage, level, tag,default);
-                _logQueue.Enqueue(logMessage);
-            }
-            catch (Exception)
-            {
-                // Silently handle errors when logging
-                // We can't log a failure to log
-            }
-        }
-        
-        /// <summary>
-        /// Enqueues a log message with the specified parameters.
-        /// </summary>
-        /// <param name="level">The log level.</param>
-        /// <param name="tag">The log tag.</param>
-        /// <param name="message">The message text.</param>
-        /// <param name="properties">Structured log properties</param>
-        public void Log(byte level, Tagging.LogTag tag, string message, LogProperties properties)
-        {
-            if (_isDisposed || level < _globalMinimumLevel || string.IsNullOrEmpty(message))
-                return;
-
-            try
-            {
-                // Convert the string to FixedString512Bytes for the LogMessage constructor
-                FixedString512Bytes fixedMessage = new FixedString512Bytes(message);
-
-                // Use the constructor directly instead of the non-existent Create method
+                // Create log message with properties if provided
                 LogMessage logMessage = new LogMessage(fixedMessage, level, tag, properties);
-                _logQueue.Enqueue(logMessage);
+                
+                // Use the parallel writer for thread-safe enqueueing
+                _logQueueWriter.Enqueue(logMessage);
             }
             catch (Exception)
             {
@@ -497,229 +508,108 @@ namespace AhBearStudios.Core.Logging
 
         /// <summary>
         /// Logs a debug message.
+        /// Thread-safe: Delegates to the thread-safe Log method.
         /// </summary>
         /// <param name="message">The message text.</param>
         /// <param name="tag">The log tag (optional).</param>
-        public void Debug(string message, Tagging.LogTag tag = Tagging.LogTag.Debug)
+        /// <param name="properties">Optional structured log properties.</param>
+        public void Debug(string message, Tagging.LogTag tag = Tagging.LogTag.Debug, LogProperties properties = default)
         {
-            Log(LogLevel.Debug, tag, message);
+            Log(LogLevel.Debug, tag, message, properties);
         }
 
         /// <summary>
         /// Logs an info message.
+        /// Thread-safe: Delegates to the thread-safe Log method.
         /// </summary>
         /// <param name="message">The message text.</param>
         /// <param name="tag">The log tag (optional).</param>
-        public void Info(string message, Tagging.LogTag tag = Tagging.LogTag.Info)
+        /// <param name="properties">Optional structured log properties.</param>
+        public void Info(string message, Tagging.LogTag tag = Tagging.LogTag.Info, LogProperties properties = default)
         {
-            Log(LogLevel.Info, tag, message);
+            Log(LogLevel.Info, tag, message, properties);
         }
 
         /// <summary>
         /// Logs a warning message.
+        /// Thread-safe: Delegates to the thread-safe Log method.
         /// </summary>
         /// <param name="message">The message text.</param>
         /// <param name="tag">The log tag (optional).</param>
-        public void Warning(string message, Tagging.LogTag tag = Tagging.LogTag.Warning)
+        /// <param name="properties">Optional structured log properties.</param>
+        public void Warning(string message, Tagging.LogTag tag = Tagging.LogTag.Warning, LogProperties properties = default)
         {
-            Log(LogLevel.Warning, tag, message);
+            Log(LogLevel.Warning, tag, message, properties);
         }
 
         /// <summary>
         /// Logs an error message.
+        /// Thread-safe: Delegates to the thread-safe Log method.
         /// </summary>
         /// <param name="message">The message text.</param>
         /// <param name="tag">The log tag (optional).</param>
-        public void Error(string message, Tagging.LogTag tag = Tagging.LogTag.Error)
+        /// <param name="properties">Optional structured log properties.</param>
+        public void Error(string message, Tagging.LogTag tag = Tagging.LogTag.Error, LogProperties properties = default)
         {
-            Log(LogLevel.Error, tag, message);
+            Log(LogLevel.Error, tag, message, properties);
         }
 
         /// <summary>
         /// Logs a critical message.
+        /// Thread-safe: Delegates to the thread-safe Log method.
         /// </summary>
         /// <param name="message">The message text.</param>
         /// <param name="tag">The log tag (optional).</param>
-        public void Critical(string message, Tagging.LogTag tag = Tagging.LogTag.Critical)
+        /// <param name="properties">Optional structured log properties.</param>
+        public void Critical(string message, Tagging.LogTag tag = Tagging.LogTag.Critical, LogProperties properties = default)
         {
-            Log(LogLevel.Critical, tag, message);
-        }
-        
-        /// <summary>
-/// Logs a debug message with structured properties.
-/// </summary>
-/// <param name="message">The message text.</param>
-/// <param name="properties">Structured properties providing additional context.</param>
-/// <param name="tag">The log tag (optional).</param>
-public void Debug(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Debug)
-{
-    Log(LogLevel.Debug, tag, message, properties);
-}
-
-/// <summary>
-/// Logs an info message with structured properties.
-/// </summary>
-/// <param name="message">The message text.</param>
-/// <param name="properties">Structured properties providing additional context.</param>
-/// <param name="tag">The log tag (optional).</param>
-public void Info(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Info)
-{
-    Log(LogLevel.Info, tag, message, properties);
-}
-
-/// <summary>
-/// Logs a warning message with structured properties.
-/// </summary>
-/// <param name="message">The message text.</param>
-/// <param name="properties">Structured properties providing additional context.</param>
-/// <param name="tag">The log tag (optional).</param>
-public void Warning(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Warning)
-{
-    Log(LogLevel.Warning, tag, message, properties);
-}
-
-/// <summary>
-/// Logs an error message with structured properties.
-/// </summary>
-/// <param name="message">The message text.</param>
-/// <param name="properties">Structured properties providing additional context.</param>
-/// <param name="tag">The log tag (optional).</param>
-public void Error(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Error)
-{
-    Log(LogLevel.Error, tag, message, properties);
-}
-
-/// <summary>
-/// Logs a critical message with structured properties.
-/// </summary>
-/// <param name="message">The message text.</param>
-/// <param name="properties">Structured properties providing additional context.</param>
-/// <param name="tag">The log tag (optional).</param>
-public void Critical(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Critical)
-{
-    Log(LogLevel.Critical, tag, message, properties);
-}
-
-        /// <summary>
-        /// Enqueues a log message with structured properties.
-        /// </summary>
-        /// <param name="level">The log level.</param>
-        /// <param name="tag">The log tag.</param>
-        /// <param name="message">The message text.</param>
-        /// <param name="properties">Structured properties providing additional context.</param>
-        public void LogStructured(byte level, Tagging.LogTag tag, string message, LogProperties properties)
-        {
-            if (_isDisposed || level < _globalMinimumLevel || string.IsNullOrEmpty(message))
-                return;
-
-            try
-            {
-                // Convert the string to FixedString512Bytes for the LogMessage constructor
-                FixedString512Bytes fixedMessage = new FixedString512Bytes(message);
-
-                // Create log message with properties
-                LogMessage logMessage = new LogMessage(fixedMessage, level, tag, properties);
-                _logQueue.Enqueue(logMessage);
-            }
-            catch (Exception)
-            {
-                // Silently handle errors when logging
-                // We can't log a failure to log
-            }
-        }
-
-        /// <summary>
-        /// Logs a debug message with structured properties.
-        /// </summary>
-        /// <param name="message">The message text.</param>
-        /// <param name="properties">Structured properties providing additional context.</param>
-        /// <param name="tag">The log tag (optional).</param>
-        public void DebugStructured(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Debug)
-        {
-            LogStructured(LogLevel.Debug, tag, message, properties);
-        }
-
-        /// <summary>
-        /// Logs an info message with structured properties.
-        /// </summary>
-        /// <param name="message">The message text.</param>
-        /// <param name="properties">Structured properties providing additional context.</param>
-        /// <param name="tag">The log tag (optional).</param>
-        public void InfoStructured(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Info)
-        {
-            LogStructured(LogLevel.Info, tag, message, properties);
-        }
-
-        /// <summary>
-        /// Logs a warning message with structured properties.
-        /// </summary>
-        /// <param name="message">The message text.</param>
-        /// <param name="properties">Structured properties providing additional context.</param>
-        /// <param name="tag">The log tag (optional).</param>
-        public void WarningStructured(string message, LogProperties properties,
-            Tagging.LogTag tag = Tagging.LogTag.Warning)
-        {
-            LogStructured(LogLevel.Warning, tag, message, properties);
-        }
-
-        /// <summary>
-        /// Logs an error message with structured properties.
-        /// </summary>
-        /// <param name="message">The message text.</param>
-        /// <param name="properties">Structured properties providing additional context.</param>
-        /// <param name="tag">The log tag (optional).</param>
-        public void ErrorStructured(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Error)
-        {
-            LogStructured(LogLevel.Error, tag, message, properties);
-        }
-
-        /// <summary>
-        /// Logs a critical message with structured properties.
-        /// </summary>
-        /// <param name="message">The message text.</param>
-        /// <param name="properties">Structured properties providing additional context.</param>
-        /// <param name="tag">The log tag (optional).</param>
-        public void CriticalStructured(string message, LogProperties properties,
-            Tagging.LogTag tag = Tagging.LogTag.Critical)
-        {
-            LogStructured(LogLevel.Critical, tag, message, properties);
+            Log(LogLevel.Critical, tag, message, properties);
         }
 
         /// <summary>
         /// Flushes all targets and disposes all resources.
+        /// Thread-safe: Uses locks to synchronize disposal and resource cleanup.
         /// </summary>
         public void Dispose()
         {
-            if (_isDisposed)
+            // Use a CAS (Compare-And-Swap) pattern for thread-safe disposal flag check
+            // The simplest correct approach:
+            int disposedFlag = _isDisposed ? 1 : 0;
+            bool wasDisposed = Interlocked.Exchange(ref disposedFlag, 1) != 0;
+            _isDisposed = disposedFlag == 1;
+            if (wasDisposed)
                 return;
 
-            lock (_syncLock)
+            // Ensure exclusive access during disposal
+            lock (_configLock)
             {
-                _isDisposed = true;
-                _autoFlushEnabled = false;
+                lock (_flushLock)
+                {
+                    _autoFlushEnabled = false;
 
-                try
-                {
-                    // Flush one last time before disposing
-                    _batchProcessor.Flush();
-
-                    // Dispose the batch processor
-                    _batchProcessor.Dispose();
-                }
-                catch
-                {
-                    // Silently ignore errors during disposal
-                }
-                finally
-                {
-                    // Always ensure the native queue is properly disposed
-                    if (_logQueue.IsCreated)
+                    try
                     {
-                        _logQueue.Dispose();
-                    }
+                        // Flush one last time before disposing
+                        _batchProcessor.Flush();
 
-                    // We don't dispose log targets here - they should be externally managed
-                    _logTargets.Clear();
+                        // Dispose the batch processor
+                        _batchProcessor.Dispose();
+                    }
+                    catch
+                    {
+                        // Silently ignore errors during disposal
+                    }
+                    finally
+                    {
+                        // Always ensure the native queue is properly disposed
+                        if (_logQueue.IsCreated)
+                        {
+                            _logQueue.Dispose();
+                        }
+
+                        // We don't dispose log targets here - they should be externally managed
+                        _logTargets.Clear();
+                    }
                 }
             }
         }

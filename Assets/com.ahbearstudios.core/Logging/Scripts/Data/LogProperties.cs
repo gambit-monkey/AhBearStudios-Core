@@ -52,6 +52,32 @@ namespace AhBearStudios.Core.Logging.Data
                 _properties.Dispose();
         }
         
+        public LogProperties Copy()
+        {
+            if (!IsCreated)
+                return new LogProperties(0);
+        
+            var copy = new LogProperties(_properties.Count());
+    
+            foreach (var kvp in _properties)
+            {
+                copy.Add(kvp.Key, kvp.Value);
+            }
+    
+            return copy;
+        }
+        
+        public void AddRange(in LogProperties other)
+        {
+            if (!IsCreated || !other.IsCreated)
+                return;
+        
+            foreach (var kvp in other)
+            {
+                Add(kvp.Key, kvp.Value);
+            }
+        }
+        
         public bool Equals(LogProperties other)
         {
             if (!_properties.IsCreated && !other._properties.IsCreated)
