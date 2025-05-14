@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Data;
+using AhBearStudios.Core.Logging.Formatters;
 using AhBearStudios.Core.Logging.Jobs;
 using AhBearStudios.Core.Logging.Tags;
 
@@ -456,7 +457,35 @@ namespace AhBearStudios.Core.Logging
                 FixedString512Bytes fixedMessage = new FixedString512Bytes(message);
 
                 // Use the constructor directly instead of the non-existent Create method
-                LogMessage logMessage = new LogMessage(fixedMessage, level, tag);
+                LogMessage logMessage = new LogMessage(fixedMessage, level, tag,default);
+                _logQueue.Enqueue(logMessage);
+            }
+            catch (Exception)
+            {
+                // Silently handle errors when logging
+                // We can't log a failure to log
+            }
+        }
+        
+        /// <summary>
+        /// Enqueues a log message with the specified parameters.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <param name="tag">The log tag.</param>
+        /// <param name="message">The message text.</param>
+        /// <param name="properties">Structured log properties</param>
+        public void Log(byte level, Tagging.LogTag tag, string message, LogProperties properties)
+        {
+            if (_isDisposed || level < _globalMinimumLevel || string.IsNullOrEmpty(message))
+                return;
+
+            try
+            {
+                // Convert the string to FixedString512Bytes for the LogMessage constructor
+                FixedString512Bytes fixedMessage = new FixedString512Bytes(message);
+
+                // Use the constructor directly instead of the non-existent Create method
+                LogMessage logMessage = new LogMessage(fixedMessage, level, tag, properties);
                 _logQueue.Enqueue(logMessage);
             }
             catch (Exception)
@@ -514,6 +543,146 @@ namespace AhBearStudios.Core.Logging
         public void Critical(string message, Tagging.LogTag tag = Tagging.LogTag.Critical)
         {
             Log(LogLevel.Critical, tag, message);
+        }
+        
+        /// <summary>
+/// Logs a debug message with structured properties.
+/// </summary>
+/// <param name="message">The message text.</param>
+/// <param name="properties">Structured properties providing additional context.</param>
+/// <param name="tag">The log tag (optional).</param>
+public void Debug(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Debug)
+{
+    Log(LogLevel.Debug, tag, message, properties);
+}
+
+/// <summary>
+/// Logs an info message with structured properties.
+/// </summary>
+/// <param name="message">The message text.</param>
+/// <param name="properties">Structured properties providing additional context.</param>
+/// <param name="tag">The log tag (optional).</param>
+public void Info(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Info)
+{
+    Log(LogLevel.Info, tag, message, properties);
+}
+
+/// <summary>
+/// Logs a warning message with structured properties.
+/// </summary>
+/// <param name="message">The message text.</param>
+/// <param name="properties">Structured properties providing additional context.</param>
+/// <param name="tag">The log tag (optional).</param>
+public void Warning(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Warning)
+{
+    Log(LogLevel.Warning, tag, message, properties);
+}
+
+/// <summary>
+/// Logs an error message with structured properties.
+/// </summary>
+/// <param name="message">The message text.</param>
+/// <param name="properties">Structured properties providing additional context.</param>
+/// <param name="tag">The log tag (optional).</param>
+public void Error(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Error)
+{
+    Log(LogLevel.Error, tag, message, properties);
+}
+
+/// <summary>
+/// Logs a critical message with structured properties.
+/// </summary>
+/// <param name="message">The message text.</param>
+/// <param name="properties">Structured properties providing additional context.</param>
+/// <param name="tag">The log tag (optional).</param>
+public void Critical(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Critical)
+{
+    Log(LogLevel.Critical, tag, message, properties);
+}
+
+        /// <summary>
+        /// Enqueues a log message with structured properties.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <param name="tag">The log tag.</param>
+        /// <param name="message">The message text.</param>
+        /// <param name="properties">Structured properties providing additional context.</param>
+        public void LogStructured(byte level, Tagging.LogTag tag, string message, LogProperties properties)
+        {
+            if (_isDisposed || level < _globalMinimumLevel || string.IsNullOrEmpty(message))
+                return;
+
+            try
+            {
+                // Convert the string to FixedString512Bytes for the LogMessage constructor
+                FixedString512Bytes fixedMessage = new FixedString512Bytes(message);
+
+                // Create log message with properties
+                LogMessage logMessage = new LogMessage(fixedMessage, level, tag, properties);
+                _logQueue.Enqueue(logMessage);
+            }
+            catch (Exception)
+            {
+                // Silently handle errors when logging
+                // We can't log a failure to log
+            }
+        }
+
+        /// <summary>
+        /// Logs a debug message with structured properties.
+        /// </summary>
+        /// <param name="message">The message text.</param>
+        /// <param name="properties">Structured properties providing additional context.</param>
+        /// <param name="tag">The log tag (optional).</param>
+        public void DebugStructured(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Debug)
+        {
+            LogStructured(LogLevel.Debug, tag, message, properties);
+        }
+
+        /// <summary>
+        /// Logs an info message with structured properties.
+        /// </summary>
+        /// <param name="message">The message text.</param>
+        /// <param name="properties">Structured properties providing additional context.</param>
+        /// <param name="tag">The log tag (optional).</param>
+        public void InfoStructured(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Info)
+        {
+            LogStructured(LogLevel.Info, tag, message, properties);
+        }
+
+        /// <summary>
+        /// Logs a warning message with structured properties.
+        /// </summary>
+        /// <param name="message">The message text.</param>
+        /// <param name="properties">Structured properties providing additional context.</param>
+        /// <param name="tag">The log tag (optional).</param>
+        public void WarningStructured(string message, LogProperties properties,
+            Tagging.LogTag tag = Tagging.LogTag.Warning)
+        {
+            LogStructured(LogLevel.Warning, tag, message, properties);
+        }
+
+        /// <summary>
+        /// Logs an error message with structured properties.
+        /// </summary>
+        /// <param name="message">The message text.</param>
+        /// <param name="properties">Structured properties providing additional context.</param>
+        /// <param name="tag">The log tag (optional).</param>
+        public void ErrorStructured(string message, LogProperties properties, Tagging.LogTag tag = Tagging.LogTag.Error)
+        {
+            LogStructured(LogLevel.Error, tag, message, properties);
+        }
+
+        /// <summary>
+        /// Logs a critical message with structured properties.
+        /// </summary>
+        /// <param name="message">The message text.</param>
+        /// <param name="properties">Structured properties providing additional context.</param>
+        /// <param name="tag">The log tag (optional).</param>
+        public void CriticalStructured(string message, LogProperties properties,
+            Tagging.LogTag tag = Tagging.LogTag.Critical)
+        {
+            LogStructured(LogLevel.Critical, tag, message, properties);
         }
 
         /// <summary>

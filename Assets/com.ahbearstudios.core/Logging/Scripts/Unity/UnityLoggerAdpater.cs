@@ -117,10 +117,10 @@ namespace AhBearStudios.Core.Logging.Unity
                 {
                     message = $"{message} [Context: {context.name}]";
                 }
-                
-                // Forward to core logger
-                _coreLogger.Log(level, message, tag);
-                
+        
+                // Forward to core logger - convert the tag to a string
+                _coreLogger.Log(level, message, tag.ToString());
+        
                 // If not registered with Unity or in duplicated output mode, pass to original handler too
                 if (!_isRegisteredWithUnity || (_config != null && _config.DuplicateToOriginalHandler))
                 {
@@ -146,16 +146,16 @@ namespace AhBearStudios.Core.Logging.Unity
             {
                 // Build message with stack trace
                 string message = exception.ToString();
-                
+        
                 // Add context information if available
                 if (context != null)
                 {
                     message = $"{message} [Context: {context.name}]";
                 }
-                
-                // Log to core logger
-                _coreLogger.Log(LogLevel.Error, message, Tagging.LogTag.Exception);
-                
+        
+                // Log to core logger - convert the tag to a string
+                _coreLogger.Log(LogLevel.Error, message, Tagging.LogTag.Exception.ToString());
+        
                 // If not registered with Unity or in duplicated output mode, pass to original handler too
                 if (!_isRegisteredWithUnity || (_config != null && _config.DuplicateToOriginalHandler))
                 {

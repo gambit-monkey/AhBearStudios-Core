@@ -36,19 +36,23 @@ namespace AhBearStudios.Core.Logging.Data
         /// </summary>
         public long TimestampTicks;
         
+        // New property for structured data
+        public LogProperties Properties;
+        
         /// <summary>
         /// Creates a new log message with the current timestamp.
         /// </summary>
         /// <param name="message">The message content.</param>
         /// <param name="level">The severity level.</param>
         /// <param name="tag">The log tag.</param>
-        public LogMessage(FixedString512Bytes message, byte level, Tagging.LogTag tag)
+        public LogMessage(FixedString512Bytes message, byte level, Tagging.LogTag tag, LogProperties properties)
         {
             Message = message;
             Level = level;
             Tag = tag;
             CustomTag = default;
             TimestampTicks = DateTime.UtcNow.Ticks;
+            Properties = properties;
         }
         
         /// <summary>
@@ -57,21 +61,24 @@ namespace AhBearStudios.Core.Logging.Data
         /// <param name="message">The message content.</param>
         /// <param name="level">The severity level.</param>
         /// <param name="customTag">A custom tag string.</param>
-        public LogMessage(FixedString512Bytes message, byte level, FixedString32Bytes customTag)
+        /// <param name="properties">Log Properties</param>
+        public LogMessage(FixedString512Bytes message, byte level, FixedString32Bytes customTag, LogProperties properties)
         {
             Message = message;
             Level = level;
             Tag = Tagging.LogTag.Custom;
             CustomTag = customTag;
             TimestampTicks = DateTime.UtcNow.Ticks;
+            Properties = properties;
         }
-        
+
         /// <summary>
         /// Creates a new log message with auto-detection of the appropriate tag.
         /// </summary>
         /// <param name="message">The message content.</param>
         /// <param name="level">The severity level.</param>
-        public LogMessage(FixedString512Bytes message, byte level)
+        /// <param name="properties">Structured Log Properties</param>
+        public LogMessage(FixedString512Bytes message, byte level, LogProperties properties)
         {
             Message = message;
             Level = level;
@@ -87,6 +94,7 @@ namespace AhBearStudios.Core.Logging.Data
             Tag = Tagging.SuggestTagFromContent(in shorterMessage);
             CustomTag = default;
             TimestampTicks = DateTime.UtcNow.Ticks;
+            Properties = properties;
         }
         
         /// <summary>
@@ -161,16 +169,45 @@ namespace AhBearStudios.Core.Logging.Data
             return Tagging.IsWarningOrWorse(Tag);
         }
         
+        // /// <summary>
+        // /// Equality comparison.
+        // /// </summary>
+        // public bool Equals(LogMessage other)
+        // {
+        //     return Tag == other.Tag &&
+        //            CustomTag.Equals(other.CustomTag) &&
+        //            Level == other.Level &&
+        //            Message.Equals(other.Message) &&
+        //            TimestampTicks == other.TimestampTicks;
+        // }
+        
+        // /// <summary>
+        // /// Gets a hash code for the log message.
+        // /// </summary>
+        // public override int GetHashCode()
+        // {
+        //     return HashCode.Combine(
+        //         (int)Tag,
+        //         CustomTag.GetHashCode(),
+        //         Level,
+        //         Message.GetHashCode(),
+        //         TimestampTicks.GetHashCode());
+        // }
+        
         /// <summary>
         /// Equality comparison.
         /// </summary>
         public bool Equals(LogMessage other)
         {
-            return Tag == other.Tag &&
-                   CustomTag.Equals(other.CustomTag) &&
-                   Level == other.Level &&
+            return Level == other.Level && 
+                   Tag.Equals(other.Tag) && 
                    Message.Equals(other.Message) &&
-                   TimestampTicks == other.TimestampTicks;
+                   Properties.Equals(other.Properties);
+        }
+        
+        public override bool Equals(object obj)
+        {
+            return obj is LogMessage other && Equals(other);
         }
         
         /// <summary>
@@ -178,12 +215,15 @@ namespace AhBearStudios.Core.Logging.Data
         /// </summary>
         public override int GetHashCode()
         {
-            return HashCode.Combine(
-                (int)Tag,
-                CustomTag.GetHashCode(),
-                Level,
-                Message.GetHashCode(),
-                TimestampTicks.GetHashCode());
+            unchecked
+            {
+                int hash = 17;
+                hash = hash * 23 + Level.GetHashCode();
+                hash = hash * 23 + Tag.GetHashCode();
+                hash = hash * 23 + Message.GetHashCode();
+                hash = hash * 23 + Properties.GetHashCode();
+                return hash;
+            }
         }
     }
 }

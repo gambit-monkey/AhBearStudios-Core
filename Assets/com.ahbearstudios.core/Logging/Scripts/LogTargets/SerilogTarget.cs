@@ -210,7 +210,70 @@ namespace AhBearStudios.Core.Logging.LogTargets
                 }
             }
         }
+
+        /// <summary>
+        /// Writes a structured log message to Serilog with property context.
+        /// </summary>
+        protected void WriteToSerilog(LogMessage message)
+        {
+            // Skip if below minimum level or message doesn't pass tag filter
+            if (message.Level < MinimumLevel || !ShouldLog(message.Level, message.Tag))
+                return;
+    
+            var level = ConvertLogLevel(message.Level);
+            var messageTemplate = message.Message.ToString();
+
+            try
+            {
+                // Start with a logger that has the tag context
+                var contextLogger = _logger.ForContext("Tag", message.Tag.ToString())
+                    .ForContext("Level", message.Level);
         
+                // Add structured properties if available
+                if (message.Properties.IsCreated)
+                {
+                    // Add each property individually to the logger context
+                    foreach (var property in message.Properties)
+                    {
+                        contextLogger = contextLogger.ForContext(
+                            property.Key.ToString(), 
+                            property.Value.ToString());
+                    }
+                }
+        
+                // Write the log message with the fully enriched context
+                contextLogger.Write(level, messageTemplate);
+            }
+            catch (Exception ex)
+            {
+                // Log error but continue - we don't want logging to cause application failures
+                Console.WriteLine($"Error writing to Serilog: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Converts the internal byte log level to Serilog's LogEventLevel enum.
+        /// </summary>
+        /// <param name="messageLevel">The byte log level from the logging system.</param>
+        /// <returns>The corresponding Serilog LogEventLevel.</returns>
+        private LogEventLevel ConvertLogLevel(byte messageLevel)
+        {
+            // Map our byte-based log levels to Serilog's LogEventLevel
+            if (messageLevel >= LogLevel.Critical)
+                return LogEventLevel.Fatal;
+            if (messageLevel >= LogLevel.Error)
+                return LogEventLevel.Error;
+            if (messageLevel >= LogLevel.Warning)
+                return LogEventLevel.Warning;
+            if (messageLevel >= LogLevel.Info)
+                return LogEventLevel.Information;
+            if (messageLevel >= LogLevel.Debug)
+                return LogEventLevel.Debug;
+    
+            // Default to Verbose for any remaining lower levels
+            return LogEventLevel.Verbose;
+        }
+
         /// <summary>
         /// Writes a single log message to this target.
         /// </summary>

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Burst;
 using AhBearStudios.Core.Logging.Data;
+using AhBearStudios.Core.Logging.Formatters;
 using AhBearStudios.Core.Logging.Tags;
 
 namespace AhBearStudios.Core.Logging
@@ -556,22 +557,6 @@ namespace AhBearStudios.Core.Logging
         ~LogBatchProcessor()
         {
             Dispose();
-        }
-    }
-    
-    /// <summary>
-    /// Default implementation of ILogFormatter that uses LogMessage's built-in formatting.
-    /// </summary>
-    public class DefaultLogFormatter : ILogFormatter
-    {
-        /// <summary>
-        /// Formats a log message using the default formatting from LogMessage.
-        /// </summary>
-        /// <param name="message">The log message to format.</param>
-        /// <returns>A formatted log message string.</returns>
-        public FixedString512Bytes Format(LogMessage message)
-        {
-            return message.FormatMessage();
         }
     }
 }

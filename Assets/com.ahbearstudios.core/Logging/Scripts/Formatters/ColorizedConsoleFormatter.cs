@@ -256,6 +256,8 @@ namespace AhBearStudios.Core.Logging.Formatters
             return formatted;
         }
 
+        public bool SupportsStructuredLogging { get; }
+
         /// <summary>
         /// Gets a color code based on the log level.
         /// </summary>

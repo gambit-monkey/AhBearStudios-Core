@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
 using AhBearStudios.Core.Logging.Config;
+using AhBearStudios.Core.Logging.Data;
 using AhBearStudios.Core.Logging.LogTargets;
 using AhBearStudios.Core.Logging.Unity;
 using AhBearStudios.Core.Logging.Formatters;
@@ -194,6 +195,22 @@ namespace AhBearStudios.Core.Logging
                 {
                     // Fallback to Default tag with the original string in the message
                     _manager.Log(level, Tags.Tagging.LogTag.Default, $"{tag}: {message}");
+                }
+            }
+            public void Log(byte level, string message, string tag, LogProperties properties)
+            {
+                // JobLoggerManager.Log expects (level, tag, message) order
+                // and a Tagging.LogTag type for the tag parameter
+    
+                // Handle the tag conversion - try to parse as LogTag enum first
+                if (System.Enum.TryParse<Tags.Tagging.LogTag>(tag, true, out var logTag))
+                {
+                    _manager.Log(level, logTag, message, properties);
+                }
+                else
+                {
+                    // Fallback to Default tag with the original string in the message
+                    _manager.Log(level, Tags.Tagging.LogTag.Default, $"{tag}: {message}", properties);
                 }
             }
         }
