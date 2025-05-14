@@ -1,0 +1,25 @@
+name: Unity CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    name: Run EditMode Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup Unity
+        uses: game-ci/unity-actions/setup@v2
+        with:
+          unityVersion: 2022.3.12f1
+
+      - name: Run EditMode Tests
+        uses: game-ci/unity-actions/test@v2
+        with:
+          testMode: editmode
