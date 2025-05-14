@@ -1,0 +1,20 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 05dc23cfdd6749338d1583e116356d0b, type: 3}
+  m_Name: ColorizedConsoleFormatter
+  m_EditorClassIdentifier: 
+  _levelColorsJson: '{"Items":[{"Key":"90","Value":"#888888"},{"Key":"91","Value":"#00AAFF"},{"Key":"92","Value":"#FFFF00"},{"Key":"93","Value":"#FF3300"},{"Key":"94","Value":"#FF0000"},{"Key":"0","Value":"#367C95"},{"Key":"1","Value":"#FFFFFF"},{"Key":"2","Value":"#DCFD20"},{"Key":"3","Value":"#FFA625"},{"Key":"4","Value":"#FF0000"}]}'
+  _tagColorsJson: '{"Items":[{"Key":"10","Value":"#4169E1"},{"Key":"11","Value":"#1E90FF"},{"Key":"12","Value":"#00BFFF"},{"Key":"13","Value":"#87CEEB"},{"Key":"14","Value":"#B0E0E6"},{"Key":"15","Value":"#B0C4DE"},{"Key":"16","Value":"#4682B4"},{"Key":"17","Value":"#5F9EA0"},{"Key":"18","Value":"#6495ED"},{"Key":"19","Value":"#7B68EE"},{"Key":"20","Value":"#32CD32"},{"Key":"21","Value":"#3CB371"},{"Key":"22","Value":"#2E8B57"},{"Key":"23","Value":"#00FF7F"},{"Key":"24","Value":"#66CDAA"},{"Key":"25","Value":"#20B2AA"},{"Key":"30","Value":"#DA70D6"},{"Key":"31","Value":"#BA55D3"},{"Key":"32","Value":"#9370DB"},{"Key":"90","Value":"#888888"},{"Key":"91","Value":"#00AAFF"},{"Key":"92","Value":"#FFFF00"},{"Key":"93","Value":"#FF3300"},{"Key":"94","Value":"#FF0000"},{"Key":"95","Value":"#FF1493"},{"Key":"96","Value":"#FF00FF"},{"Key":"100","Value":"#FFA500"},{"Key":"255","Value":"#FFFFFF"},{"Key":"254","Value":"#FFFFFF"},{"Key":"0","Value":"#FFFFFF"}]}'
+  _showTimestamp: 1
+  _showLogLevel: 1
+  _showTag: 1
+  _timestampFormat: yyyy-MM-ddTHH:mm:ssZ
