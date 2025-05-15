@@ -1,9 +1,10 @@
-using System;
+/*using System;
 using Unity.Collections;
 using Unity.Profiling;
 using UnityEditor;
 using UnityEngine;
 using AhBearStudios.Core.Logging.Events;
+using AhBearStudios.Core.Profiling;
 using Unity.Profiling.Editor;
 
 namespace AhBearStudios.Core.Logging.Unity.Editor
@@ -408,4 +409,4 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
             Dispose();
         }
     }
-}
+}*/

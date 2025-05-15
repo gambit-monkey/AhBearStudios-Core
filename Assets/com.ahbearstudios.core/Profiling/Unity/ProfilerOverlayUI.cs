@@ -1,8 +1,10 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using Unity.Profiling;
+using AhBearStudios.Core.Profiling.Events;
 
 namespace AhBearStudios.Core.Profiling.Unity
 {
@@ -25,6 +27,8 @@ namespace AhBearStudios.Core.Profiling.Unity
         [SerializeField] private Text _refreshRateText;
         [SerializeField] private Button _resetButton;
         [SerializeField] private Toggle _showDetailsToggle;
+        [SerializeField] private Button _startStopButton;
+        [SerializeField] private Text _startStopButtonText;
         
         [Header("Configuration")]
         [SerializeField] private float _refreshInterval = 0.5f;
@@ -35,6 +39,7 @@ namespace AhBearStudios.Core.Profiling.Unity
         [SerializeField] private Color _errorColor = Color.red;
         [SerializeField] private float _warningThreshold = 16.7f; // 60 FPS
         [SerializeField] private float _errorThreshold = 33.3f;   // 30 FPS
+        [SerializeField] private float _alertFlashDuration = 0.2f;
         
         // Reference to profiler manager
         private RuntimeProfilerManager _profilerManager;
@@ -126,11 +131,28 @@ namespace AhBearStudios.Core.Profiling.Unity
                 _showDetailsToggle.onValueChanged.AddListener(SetShowDetails);
             }
             
+            if (_startStopButton != null)
+            {
+                _startStopButton.onClick.AddListener(ToggleProfiling);
+                UpdateStartStopButtonText();
+            }
+            
             // Initialize
             _timeSinceLastRefresh = _refreshInterval;
             
             // Register for profiler events
             _profilerManager.SessionCompleted += OnSessionCompleted;
+            _profilerManager.ProfilingStarted += OnProfilingStarted;
+            _profilerManager.ProfilingStopped += OnProfilingStopped;
+            _profilerManager.StatsReset += OnStatsReset;
+            _profilerManager.MetricAlertTriggered += OnMetricAlertTriggered;
+            _profilerManager.SessionAlertTriggered += OnSessionAlertTriggered;
+            
+            // Update UI with current status
+            if (_titleText != null)
+            {
+                _titleText.text = _profilerManager.IsEnabled ? "PROFILER (ACTIVE)" : "PROFILER (INACTIVE)";
+            }
         }
         
         private void OnDestroy()
@@ -139,12 +161,17 @@ namespace AhBearStudios.Core.Profiling.Unity
             if (_profilerManager != null)
             {
                 _profilerManager.SessionCompleted -= OnSessionCompleted;
+                _profilerManager.ProfilingStarted -= OnProfilingStarted;
+                _profilerManager.ProfilingStopped -= OnProfilingStopped;
+                _profilerManager.StatsReset -= OnStatsReset;
+                _profilerManager.MetricAlertTriggered -= OnMetricAlertTriggered;
+                _profilerManager.SessionAlertTriggered -= OnSessionAlertTriggered;
             }
         }
         
         private void Update()
         {
-            if (!_autoUpdate)
+            if (!_autoUpdate || !_profilerManager.IsEnabled)
                 return;
                 
             _timeSinceLastRefresh += Time.unscaledDeltaTime;
@@ -162,6 +189,12 @@ namespace AhBearStudios.Core.Profiling.Unity
         public void SetAutoUpdate(bool autoUpdate)
         {
             _autoUpdate = autoUpdate;
+            
+            // If we just turned on auto-update, refresh immediately
+            if (_autoUpdate)
+            {
+                RefreshUI();
+            }
         }
         
         /// <summary>
@@ -190,19 +223,31 @@ namespace AhBearStudios.Core.Profiling.Unity
         public void ResetStats()
         {
             _profilerManager.ResetStats();
-            _metricItems.Clear();
-            _sessionItems.Clear();
-            
-            // Clear metric container
-            foreach (Transform child in _metricsContainer)
+        }
+        
+        /// <summary>
+        /// Toggle profiling active state
+        /// </summary>
+        public void ToggleProfiling()
+        {
+            if (_profilerManager.IsEnabled)
             {
-                Destroy(child.gameObject);
+                _profilerManager.StopProfiling();
             }
-            
-            // Clear session container
-            foreach (Transform child in _sessionsContainer)
+            else
             {
-                Destroy(child.gameObject);
+                _profilerManager.StartProfiling();
+            }
+        }
+        
+        /// <summary>
+        /// Update start/stop button text based on profiler state
+        /// </summary>
+        private void UpdateStartStopButtonText()
+        {
+            if (_startStopButtonText != null)
+            {
+                _startStopButtonText.text = _profilerManager.IsEnabled ? "Stop Profiling" : "Start Profiling";
             }
         }
         
@@ -508,6 +553,8 @@ namespace AhBearStudios.Core.Profiling.Unity
             }
         }
         
+        #region Event Handlers
+        
         /// <summary>
         /// Handle session completed event
         /// </summary>
@@ -519,5 +566,142 @@ namespace AhBearStudios.Core.Profiling.Unity
                 RefreshUI();
             }
         }
+        
+        /// <summary>
+        /// Handle profiling started event
+        /// </summary>
+        private void OnProfilingStarted(object sender, EventArgs e)
+        {
+            // Update UI to reflect that profiling is active
+            if (_titleText != null)
+            {
+                _titleText.text = "PROFILER (ACTIVE)";
+            }
+            
+            // Update button text
+            UpdateStartStopButtonText();
+            
+            // Refresh UI
+            RefreshUI();
+        }
+        
+        /// <summary>
+        /// Handle profiling stopped event
+        /// </summary>
+        private void OnProfilingStopped(object sender, EventArgs e)
+        {
+            // Update UI to reflect that profiling is inactive
+            if (_titleText != null)
+            {
+                _titleText.text = "PROFILER (INACTIVE)";
+            }
+            
+            // Update button text
+            UpdateStartStopButtonText();
+        }
+        
+        /// <summary>
+        /// Handle stats reset event
+        /// </summary>
+        private void OnStatsReset(object sender, EventArgs e)
+        {
+            // Clear UI elements
+            _metricItems.Clear();
+            _sessionItems.Clear();
+            
+            // Clear containers
+            foreach (Transform child in _metricsContainer)
+            {
+                Destroy(child.gameObject);
+            }
+            
+            foreach (Transform child in _sessionsContainer)
+            {
+                Destroy(child.gameObject);
+            }
+            
+            // Refresh UI
+            RefreshUI();
+        }
+        
+        /// <summary>
+        /// Handle metric alert triggered event
+        /// </summary>
+        private void OnMetricAlertTriggered(object sender, MetricEventArgs e)
+        {
+            // Highlight the affected metric if it exists
+            if (_metricItems.TryGetValue(e.MetricTag, out var item))
+            {
+                // Flash the value
+                StartCoroutine(FlashMetricItem(item));
+            }
+        }
+        
+        /// <summary>
+        /// Handle session alert triggered event
+        /// </summary>
+        private void OnSessionAlertTriggered(object sender, ProfilerSessionEventArgs e)
+        {
+            // Highlight the affected session if it exists
+            if (_sessionItems.TryGetValue(e.Tag, out var item))
+            {
+                // Flash the value
+                StartCoroutine(FlashSessionItem(item));
+            }
+        }
+        
+        #endregion
+        
+        #region Visual Effects
+        
+        /// <summary>
+        /// Flash a metric item to highlight an alert
+        /// </summary>
+        private IEnumerator FlashMetricItem(MetricUIItem item)
+        {
+            if (item?.ValueText == null)
+                yield break;
+                
+            // Save original color and font style
+            var originalColor = item.ValueText.color;
+            var originalFontStyle = item.ValueText.fontStyle;
+            
+            // Set alert style
+            item.ValueText.color = _errorColor;
+            item.ValueText.fontStyle = FontStyle.Bold;
+            
+            // Wait for flash duration
+            yield return new WaitForSeconds(_alertFlashDuration);
+            
+            // Restore original style
+            item.ValueText.color = originalColor;
+            item.ValueText.fontStyle = originalFontStyle;
+        }
+        
+        /// <summary>
+        /// Flash a session item to highlight an alert
+        /// </summary>
+        private IEnumerator FlashSessionItem(SessionUIItem item)
+        {
+            if (item?.ValueText == null)
+                yield break;
+                
+            // Save original color and font style
+            var originalColor = item.ValueText.color;
+            var originalFontStyle = item.ValueText.fontStyle;
+            
+            // Set alert style
+            item.ValueText.color = _errorColor;
+            item.ValueText.fontStyle = FontStyle.Bold;
+            
+            // Wait for flash duration
+            yield return new WaitForSeconds(_alertFlashDuration);
+            
+            // Restore original style
+            item.ValueText.color = originalColor;
+            item.ValueText.fontStyle = originalFontStyle;
+        }
+        
+        #endregion
     }
 }

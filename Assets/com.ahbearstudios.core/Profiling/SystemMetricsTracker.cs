@@ -126,11 +126,11 @@ namespace AhBearStudios.Core.Profiling
                 "GC.Alloc.Size", "KB");
             RegisterMetric(new ProfilerTag(ProfilerCategory.Memory, "GC.Count"), 
                 "GC.Alloc.Count", "count");
-            RegisterMetric(new ProfilerTag(ProfilerCategory.Rendering, "Main Thread"), 
+            RegisterMetric(new ProfilerTag(ProfilerCategory.Render, "Main Thread"), 
                 "Main Thread", "ms");
-            RegisterMetric(new ProfilerTag(ProfilerCategory.Rendering, "Frame Time"), 
+            RegisterMetric(new ProfilerTag(ProfilerCategory.Render, "Frame Time"), 
                 "FrameTime", "ms");
-            RegisterMetric(new ProfilerTag(ProfilerCategory.Rendering, "Draw Calls"), 
+            RegisterMetric(new ProfilerTag(ProfilerCategory.Render, "Draw Calls"), 
                 "Batches Count", "count");
             RegisterMetric(new ProfilerTag(ProfilerCategory.Physics, "Physics.Step"), 
                 "Physics.Step", "ms");

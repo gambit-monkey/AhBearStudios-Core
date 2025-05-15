@@ -83,7 +83,7 @@ namespace AhBearStudios.Core.Profiling.Factories
                     : classAttr.Prefix;
                     
                 // Create a synthetic attribute
-                var syntheticAttr = new ProfileMethodAttribute(classAttr.Category, $"{prefix}.{method.Name}");
+                var syntheticAttr = new ProfileMethodAttribute(classAttr.CategoryName, $"{prefix}.{method.Name}");
                 
                 // Create the proxy
                 var proxy = CreateProxyInternal(method, syntheticAttr);
@@ -296,7 +296,7 @@ namespace AhBearStudios.Core.Profiling.Factories
                 name = targetMethod.Name;
             }
             
-            Tag = new ProfilerTag(attr.Category, $"{targetMethod.DeclaringType.Name}.{name}");
+            Tag = new ProfilerTag(attr.GetCategory(), $"{targetMethod.DeclaringType.Name}.{name}");
             
             // Create the profiler marker
             Marker = new ProfilerMarker(Tag.FullName);

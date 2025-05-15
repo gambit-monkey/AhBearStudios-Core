@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Unity.Collections;
+using Unity.Profiling;
 
 namespace AhBearStudios.Core.Profiling
 {
@@ -65,13 +66,13 @@ namespace AhBearStudios.Core.Profiling
         
         #region Common Tags
         // Pre-defined common tags to prevent string allocations
-        public static readonly ProfilerTag Uncategorized = new ProfilerTag(ProfilerCategory.Uncategorized, "Default");
-        public static readonly ProfilerTag RenderingMain = new ProfilerTag(ProfilerCategory.Rendering, "Main");
+        public static readonly ProfilerTag Uncategorized = new ProfilerTag(ProfilerCategory.Internal, "Default");
+        public static readonly ProfilerTag RenderingMain = new ProfilerTag(ProfilerCategory.Render, "Main");
         public static readonly ProfilerTag PhysicsUpdate = new ProfilerTag(ProfilerCategory.Physics, "Update");
         public static readonly ProfilerTag AnimationUpdate = new ProfilerTag(ProfilerCategory.Animation, "Update");
-        public static readonly ProfilerTag AIUpdate = new ProfilerTag(ProfilerCategory.AI, "Update");
-        public static readonly ProfilerTag GameplayUpdate = new ProfilerTag(ProfilerCategory.Gameplay, "Update");
-        public static readonly ProfilerTag UIUpdate = new ProfilerTag(ProfilerCategory.UI, "Update");
+        public static readonly ProfilerTag AIUpdate = new ProfilerTag(ProfilerCategory.Ai, "Update");
+        public static readonly ProfilerTag GameplayUpdate = new ProfilerTag(ProfilerCategory.Internal, "Update");
+        public static readonly ProfilerTag UIUpdate = new ProfilerTag(ProfilerCategory.Gui, "Update");
         public static readonly ProfilerTag LoadingMain = new ProfilerTag(ProfilerCategory.Loading, "Main");
         public static readonly ProfilerTag MemoryAllocation = new ProfilerTag(ProfilerCategory.Memory, "Allocation");
         public static readonly ProfilerTag NetworkSend = new ProfilerTag(ProfilerCategory.Network, "Send");

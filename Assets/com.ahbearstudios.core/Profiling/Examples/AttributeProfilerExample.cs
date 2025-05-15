@@ -2,6 +2,7 @@ using System;
 using AhBearStudios.Core.Profiling.Attributes;
 using AhBearStudios.Core.Profiling.Factories;
 using AhBearStudios.Core.Profiling.Unity;
+using Unity.Profiling;
 using UnityEngine;
 
 namespace AhBearStudios.Core.Profiling.Examples
@@ -9,7 +10,7 @@ namespace AhBearStudios.Core.Profiling.Examples
     /// <summary>
     /// Example class showing how to use attribute-based profiling
     /// </summary>
-    [ProfileClass(ProfilerCategory.Gameplay, "AI", includeInherited: true, includePrivate: true)]
+    [ProfileClass("Ai", "AI", includeInherited: true, includePrivate: true)]
     public class AttributeProfilerExample : MonoBehaviour
     {
         [SerializeField] private bool _enableAttributeProfiling = true;
@@ -101,7 +102,7 @@ namespace AhBearStudios.Core.Profiling.Examples
         }
         
         // This method has its own custom profile attribute
-        [ProfileMethod(ProfilerCategory.AI, "CustomProcessing")]
+        [ProfileMethod(ProfilerCategories.AI, "CustomProcessing")]
         private int ProcessWithCustomTag(string data)
         {
             Debug.Log($"Processing data: {data}");
@@ -136,7 +137,7 @@ namespace AhBearStudios.Core.Profiling.Examples
         [SerializeField] private int _iterations = 1000;
         
         // Profile just this specific method
-        [ProfileMethod(ProfilerCategory.Gameplay, "PlayerUpdate")]
+        [ProfileMethod(ProfilerCategories.Gameplay, "PlayerUpdate")]
         private void UpdatePlayerState()
         {
             // Method body
@@ -144,7 +145,7 @@ namespace AhBearStudios.Core.Profiling.Examples
         }
         
         // Profile with custom name
-        [ProfileMethod(ProfilerCategory.Physics, "CollisionCheck")]
+        [ProfileMethod(ProfilerCategories.Physics, "CollisionCheck")]
         private bool CheckCollisions(Collider[] colliders)
         {
             // Method body
@@ -153,7 +154,7 @@ namespace AhBearStudios.Core.Profiling.Examples
         }
         
         // Profile with full control over the name
-        [ProfileMethod(ProfilerCategory.Custom, "HighPrecisionCalculation")]
+        [ProfileMethod("Custom", "HighPrecisionCalculation")]
         private double CalculateTrajectory(Vector3 start, Vector3 end, float speed)
         {
             // Method body

@@ -1,4 +1,7 @@
+using System;
+using System.Collections.Generic;
 using Unity.Profiling;
+using Unity.Profiling.LowLevel;
 
 namespace AhBearStudios.Core.Profiling
 {
@@ -7,6 +10,8 @@ namespace AhBearStudios.Core.Profiling
     /// </summary>
     public class SystemMetric
     {
+        private readonly string _statName;
+        
         /// <summary>
         /// The profiler tag for this metric
         /// </summary>
@@ -101,33 +106,67 @@ namespace AhBearStudios.Core.Profiling
             MaxValue = 0;
             SampleCount = 0;
         }
+        
+        // Dictionary of known stat names and their data types
+        private static readonly Dictionary<string, MetricDataType> _knownStatTypes = new Dictionary<string, MetricDataType>(StringComparer.OrdinalIgnoreCase)
+        {
+            // Time values (in nanoseconds)
+            { "Main Thread", MetricDataType.TimeNanoseconds },
+            { "FrameTime", MetricDataType.TimeNanoseconds },
+            { "Physics.Step", MetricDataType.TimeNanoseconds },
+    
+            // Byte values
+            { "GC.Alloc.Size", MetricDataType.Bytes },
+            { "System Used Memory", MetricDataType.Bytes },
+    
+            // Count values
+            { "GC.Alloc.Count", MetricDataType.Count },
+            { "Batches Count", MetricDataType.Count }
+    
+            // Add other known stats as needed
+        };
+        internal SystemMetric(ProfilerTag tag, ProfilerRecorder recorder, string statName, string unit)
+        {
+            Tag = tag;
+            Recorder = recorder;
+            _statName = statName;
+            Unit = unit;
+            LastValue = 0;
+            AverageValue = 0;
+            MaxValue = 0;
+            SampleCount = 0;
+        }
 
         /// <summary>
-        /// Convert raw value to readable value based on marker type
+        /// Convert raw value to readable value based on known stat type
         /// </summary>
         private double ConvertToReadableValue(long rawValue)
         {
             double value = rawValue;
 
-            // Convert based on marker type
-            switch (Recorder.ProfilerMarkerDataType)
+            // Look up the type for this stat name
+            if (_knownStatTypes.TryGetValue(_statName, out var dataType))
             {
-                case ProfilerMarkerDataType.TimeNanoseconds:
-                    value = value / 1_000_000.0; // ns to ms
-                    break;
+                switch (dataType)
+                {
+                    case MetricDataType.TimeNanoseconds:
+                        value = value / 1_000_000.0; // ns to ms
+                        break;
 
-                case ProfilerMarkerDataType.Bytes:
-                    value = value / 1024.0; // bytes to KB
-                    break;
+                    case MetricDataType.Bytes:
+                        value = value / 1024.0; // bytes to KB
+                        break;
 
-                case ProfilerMarkerDataType.Frequency:
-                case ProfilerMarkerDataType.Count:
-                    // Keep as is
-                    break;
-
-                default:
-                    // Keep as is for unknown types
-                    break;
+                    // Handle other types as needed
+                }
+            }
+            else
+            {
+                // Fallback - try to infer from the unit as before
+                if (Unit.Equals("ms", StringComparison.OrdinalIgnoreCase))
+                    value = value / 1_000_000.0;
+                else if (Unit.Equals("KB", StringComparison.OrdinalIgnoreCase))
+                    value = value / 1024.0;
             }
 
             return value;

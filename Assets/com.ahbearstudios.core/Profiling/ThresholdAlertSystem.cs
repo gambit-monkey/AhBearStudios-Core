@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AhBearStudios.Core.Profiling.Events;
 using UnityEngine;
 
 namespace AhBearStudios.Core.Profiling
@@ -9,6 +10,9 @@ namespace AhBearStudios.Core.Profiling
     /// </summary>
     public class ThresholdAlertSystem : IDisposable
     {
+        // Reference to the RuntimeProfilerManager
+        private readonly RuntimeProfilerManager _profilerManager;
+        
         // Metric alerts
         private readonly Dictionary<SystemMetric, List<MetricAlert>> _metricAlerts = new Dictionary<SystemMetric, List<MetricAlert>>();
         
@@ -24,8 +28,20 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Create a new threshold alert system
         /// </summary>
+        /// <param name="profilerManager">Reference to the RuntimeProfilerManager</param>
+        public ThresholdAlertSystem(RuntimeProfilerManager profilerManager)
+        {
+            _profilerManager = profilerManager;
+            _isRunning = false;
+        }
+        
+        /// <summary>
+        /// Create a new threshold alert system without a manager reference
+        /// (for backward compatibility)
+        /// </summary>
         public ThresholdAlertSystem()
         {
+            _profilerManager = null;
             _isRunning = false;
         }
         
@@ -124,9 +140,18 @@ namespace AhBearStudios.Core.Profiling
                     // Trigger alert
                     alert.CurrentCooldown = alert.Cooldown;
                     
+                    // Create event args
+                    var eventArgs = new ProfilerSessionEventArgs(tag, durationMs);
+                    
                     try
                     {
-                        var eventArgs = new ProfilerSessionEventArgs(tag, durationMs);
+                        // If using the new event system, notify the profiler manager
+                        if (_profilerManager != null)
+                        {
+                            _profilerManager.OnSessionAlertTriggered(eventArgs);
+                        }
+                        
+                        // Call the direct callback (legacy method)
                         alert.Callback?.Invoke(eventArgs);
                     }
                     catch (Exception e)
@@ -134,8 +159,12 @@ namespace AhBearStudios.Core.Profiling
                         Debug.LogError($"Error in session alert callback: {e.Message}");
                     }
                     
-                    // Log alert
-                    Debug.LogWarning($"[Profiler Alert] Session {tag.FullName} exceeded threshold: {durationMs:F2}ms > {alert.ThresholdMs:F2}ms");
+                    // This log will be redundant with the new system, but kept for backward compatibility
+                    // when _profilerManager is null
+                    if (_profilerManager == null)
+                    {
+                        Debug.LogWarning($"[Profiler Alert] Session {tag.FullName} exceeded threshold: {durationMs:F2}ms > {alert.ThresholdMs:F2}ms");
+                    }
                 }
             }
         }
@@ -160,9 +189,18 @@ namespace AhBearStudios.Core.Profiling
                         // Trigger alert
                         alert.CurrentCooldown = alert.Cooldown;
                         
+                        // Create event args
+                        var eventArgs = new MetricEventArgs(metric, metric.LastValue);
+                        
                         try
                         {
-                            var eventArgs = new MetricEventArgs(metric, metric.LastValue);
+                            // If using the new event system, notify the profiler manager
+                            if (_profilerManager != null)
+                            {
+                                _profilerManager.OnMetricAlertTriggered(eventArgs);
+                            }
+                            
+                            // Call the direct callback (legacy method)
                             alert.Callback?.Invoke(eventArgs);
                         }
                         catch (Exception e)
@@ -170,8 +208,12 @@ namespace AhBearStudios.Core.Profiling
                             Debug.LogError($"Error in metric alert callback: {e.Message}");
                         }
                         
-                        // Log alert
-                        Debug.LogWarning($"[Profiler Alert] Metric {metric.Tag.FullName} exceeded threshold: {metric.GetFormattedLastValue()} > {alert.Threshold:F2} {metric.Unit}");
+                        // This log will be redundant with the new system, but kept for backward compatibility
+                        // when _profilerManager is null
+                        if (_profilerManager == null)
+                        {
+                            Debug.LogWarning($"[Profiler Alert] Metric {metric.Tag.FullName} exceeded threshold: {metric.GetFormattedLastValue()} > {alert.Threshold:F2} {metric.Unit}");
+                        }
                     }
                 }
             }

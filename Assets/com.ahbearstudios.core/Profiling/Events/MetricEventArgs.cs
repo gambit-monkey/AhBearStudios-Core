@@ -18,6 +18,16 @@ namespace AhBearStudios.Core.Profiling.Events
         public double Value { get; }
         
         /// <summary>
+        /// The tag of the metric that triggered the event
+        /// </summary>
+        public ProfilerTag MetricTag => Metric?.Tag ?? ProfilerTag.Uncategorized;
+        
+        /// <summary>
+        /// The unit of the metric value
+        /// </summary>
+        public string Unit => Metric?.Unit;
+        
+        /// <summary>
         /// Create new metric event args
         /// </summary>
         public MetricEventArgs(SystemMetric metric, double value)

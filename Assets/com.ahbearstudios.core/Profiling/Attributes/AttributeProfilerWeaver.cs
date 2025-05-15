@@ -122,17 +122,22 @@ namespace AhBearStudios.Core.Profiling.Attributes
             {
                 name = methodBase.Name;
             }
-            
-            return new ProfilerTag(attr.Category, $"{methodBase.DeclaringType.Name}.{name}");
+    
+            // Get the category from the attribute
+            ProfilerCategory category = attr.GetCategory();
+            return new ProfilerTag(category, $"{methodBase.DeclaringType.Name}.{name}");
         }
-        
+
         /// <summary>
         /// Create a tag for a method from a class attribute
         /// </summary>
         private ProfilerTag CreateTagForMethodFromClass(MethodBase methodBase, ProfileClassAttribute attr)
         {
             string prefix = string.IsNullOrEmpty(attr.Prefix) ? methodBase.DeclaringType.Name : attr.Prefix;
-            return new ProfilerTag(attr.Category, $"{prefix}.{methodBase.Name}");
+    
+            // Convert the category name to a ProfilerCategory using our helper class
+            ProfilerCategory category = ProfilerCategories.GetCategory(attr.CategoryName);
+            return new ProfilerTag(category, $"{prefix}.{methodBase.Name}");
         }
         
         /// <summary>

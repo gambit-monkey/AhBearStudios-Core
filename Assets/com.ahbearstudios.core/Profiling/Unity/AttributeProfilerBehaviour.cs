@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Linq;
+using AhBearStudios.Core.Profiling.Attributes;
+using AhBearStudios.Core.Profiling.Factories;
+using AhBearStudios.Core.Profiling.Interfaces;
 using UnityEngine;
 
 namespace AhBearStudios.Core.Profiling.Unity

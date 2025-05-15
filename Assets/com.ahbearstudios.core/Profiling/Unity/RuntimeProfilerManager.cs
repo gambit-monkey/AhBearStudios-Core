@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Profiling.Events;
+using Unity.Profiling;
 using UnityEngine;
 
 namespace AhBearStudios.Core.Profiling
@@ -69,6 +70,31 @@ namespace AhBearStudios.Core.Profiling
         /// </summary>
         public event EventHandler<ProfilerSessionEventArgs> SessionCompleted;
         
+        /// <summary>
+        /// Event fired when profiling is started
+        /// </summary>
+        public event EventHandler ProfilingStarted;
+        
+        /// <summary>
+        /// Event fired when profiling is stopped
+        /// </summary>
+        public event EventHandler ProfilingStopped;
+        
+        /// <summary>
+        /// Event fired when stats are reset
+        /// </summary>
+        public event EventHandler StatsReset;
+        
+        /// <summary>
+        /// Event fired when a metric alert is triggered
+        /// </summary>
+        public event EventHandler<MetricEventArgs> MetricAlertTriggered;
+        
+        /// <summary>
+        /// Event fired when a session alert is triggered
+        /// </summary>
+        public event EventHandler<ProfilerSessionEventArgs> SessionAlertTriggered;
+        
         private void Awake()
         {
             if (_instance != null && _instance != this)
@@ -81,7 +107,7 @@ namespace AhBearStudios.Core.Profiling
             DontDestroyOnLoad(gameObject);
             
             SystemMetrics = new SystemMetricsTracker();
-            AlertSystem = new ThresholdAlertSystem();
+            AlertSystem = new ThresholdAlertSystem(this);
             
             IsEnabled = true;
             LogToConsole = Debug.isDebugBuild;
@@ -121,6 +147,14 @@ namespace AhBearStudios.Core.Profiling
             IsEnabled = true;
             SystemMetrics?.Start();
             AlertSystem?.Start();
+            
+            // Fire event
+            ProfilingStarted?.Invoke(this, EventArgs.Empty);
+            
+            if (LogToConsole)
+            {
+                Debug.Log("[Profiler] Profiling started");
+            }
         }
         
         /// <summary>
@@ -134,6 +168,14 @@ namespace AhBearStudios.Core.Profiling
             IsEnabled = false;
             SystemMetrics?.Stop();
             AlertSystem?.Stop();
+            
+            // Fire event
+            ProfilingStopped?.Invoke(this, EventArgs.Empty);
+            
+            if (LogToConsole)
+            {
+                Debug.Log("[Profiler] Profiling stopped");
+            }
         }
         
         /// <summary>
@@ -218,6 +260,36 @@ namespace AhBearStudios.Core.Profiling
         }
         
         /// <summary>
+        /// Notifies that a metric alert has been triggered
+        /// </summary>
+        internal void OnMetricAlertTriggered(MetricEventArgs args)
+        {
+            // Fire event
+            MetricAlertTriggered?.Invoke(this, args);
+            
+            // Log if enabled
+            if (LogToConsole)
+            {
+                Debug.LogWarning($"[ProfilerAlert] {args.MetricTag.FullName}: {args.Value:F2} {args.Unit}");
+            }
+        }
+        
+        /// <summary>
+        /// Notifies that a session alert has been triggered
+        /// </summary>
+        internal void OnSessionAlertTriggered(ProfilerSessionEventArgs args)
+        {
+            // Fire event
+            SessionAlertTriggered?.Invoke(this, args);
+            
+            // Log if enabled
+            if (LogToConsole)
+            {
+                Debug.LogWarning($"[ProfilerAlert] Session {args.Tag.FullName}: {args.DurationMs:F2} ms");
+            }
+        }
+        
+        /// <summary>
         /// Get stats for a specific profiling tag
         /// </summary>
         public ProfileStats GetStats(ProfilerTag tag)
@@ -262,6 +334,14 @@ namespace AhBearStudios.Core.Profiling
             }
             
             _sessionHistory.Clear();
+            
+            // Fire event
+            StatsReset?.Invoke(this, EventArgs.Empty);
+            
+            if (LogToConsole)
+            {
+                Debug.Log("[Profiler] Stats reset");
+            }
         }
         
         /// <summary>
@@ -280,7 +360,20 @@ namespace AhBearStudios.Core.Profiling
             var metric = SystemMetrics.GetMetric(metricTag);
             if (metric != null)
             {
-                AlertSystem.RegisterMetricAlert(metric, threshold, callback);
+                // Register the alert with our internal handler
+                AlertSystem.RegisterMetricAlert(metric, threshold, OnInternalMetricAlert);
+                
+                // Register the user's callback if provided
+                if (callback != null)
+                {
+                    MetricAlertTriggered += (sender, args) => 
+                    {
+                        if (args.MetricTag.Equals(metricTag))
+                        {
+                            callback(args);
+                        }
+                    };
+                }
             }
         }
         
@@ -289,7 +382,36 @@ namespace AhBearStudios.Core.Profiling
         /// </summary>
         public void RegisterSessionAlert(ProfilerTag sessionTag, double thresholdMs, Action<ProfilerSessionEventArgs> callback)
         {
-            AlertSystem.RegisterSessionAlert(sessionTag, thresholdMs, callback);
+            // Register the alert with our internal handler
+            AlertSystem.RegisterSessionAlert(sessionTag, thresholdMs, OnInternalSessionAlert);
+            
+            // Register the user's callback if provided
+            if (callback != null)
+            {
+                SessionAlertTriggered += (sender, args) => 
+                {
+                    if (args.Tag.Equals(sessionTag))
+                    {
+                        callback(args);
+                    }
+                };
+            }
+        }
+        
+        /// <summary>
+        /// Internal handler for metric alerts
+        /// </summary>
+        private void OnInternalMetricAlert(MetricEventArgs args)
+        {
+            OnMetricAlertTriggered(args);
+        }
+        
+        /// <summary>
+        /// Internal handler for session alerts
+        /// </summary>
+        private void OnInternalSessionAlert(ProfilerSessionEventArgs args)
+        {
+            OnSessionAlertTriggered(args);
         }
     }
 }

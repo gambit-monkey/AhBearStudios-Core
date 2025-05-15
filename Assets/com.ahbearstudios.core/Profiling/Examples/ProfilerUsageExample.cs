@@ -1,4 +1,5 @@
 using System;
+using AhBearStudios.Core.Profiling.Events;
 using UnityEngine;
 using Unity.Profiling;
 
@@ -33,10 +34,10 @@ namespace AhBearStudios.Core.Profiling.Examples
         private RuntimeProfilerManager _profilerManager;
         
         // Profile tag for update
-        private readonly ProfilerTag _updateTag = new ProfilerTag(ProfilerCategory.Gameplay, "Update");
+        private readonly ProfilerTag _updateTag = new ProfilerTag(ProfilerCategory.Internal, "Update");
         private readonly ProfilerTag _fixedUpdateTag = new ProfilerTag(ProfilerCategory.Physics, "FixedUpdate");
-        private readonly ProfilerTag _lateUpdateTag = new ProfilerTag(ProfilerCategory.Rendering, "LateUpdate");
-        private readonly ProfilerTag _simulateTag = new ProfilerTag(ProfilerCategory.Custom, "HeavyLoad");
+        private readonly ProfilerTag _lateUpdateTag = new ProfilerTag(ProfilerCategory.Render, "LateUpdate");
+        private readonly ProfilerTag _simulateTag = new ProfilerTag(ProfilerCategory.Internal, "HeavyLoad");
         
         // Direct profiler marker for critical section
         private static readonly ProfilerMarker _criticalSectionMarker = new ProfilerMarker("CriticalSection");
@@ -62,7 +63,7 @@ namespace AhBearStudios.Core.Profiling.Examples
                 
                 if (_trackCustomMetric)
                 {
-                    SystemMetricsTracker.RegisterCustomMetric("Custom Metric", ProfilerCategory.Custom, "CustomStat", "units");
+                    SystemMetricsTracker.RegisterCustomMetric("Custom Metric", ProfilerCategory.Internal, "CustomStat", "units");
                 }
             }
             
@@ -70,7 +71,7 @@ namespace AhBearStudios.Core.Profiling.Examples
             if (_enableFrameTimeAlert)
             {
                 _profilerManager.RegisterMetricAlert(
-                    new ProfilerTag(ProfilerCategory.Rendering, "Frame Time"), 
+                    new ProfilerTag(ProfilerCategory.Render, "Frame Time"), 
                     _frameTimeThresholdMs,
                     OnFrameTimeAlert);
             }
@@ -256,7 +257,7 @@ namespace AhBearStudios.Core.Profiling.Examples
             };
             
             // Profile using extension method
-            someAction.Profile(new ProfilerTag(ProfilerCategory.Gameplay, "SomeAction"));
+            someAction.Profile(new ProfilerTag(ProfilerCategory.Internal, "SomeAction"));
             
             // Profile a function with return value
             Func<int> someFunc = () => {
@@ -266,7 +267,7 @@ namespace AhBearStudios.Core.Profiling.Examples
             };
             
             // Profile using extension method and get result
-            int result = someFunc.Profile(new ProfilerTag(ProfilerCategory.Gameplay, "SomeFunc"));
+            int result = someFunc.Profile(new ProfilerTag(ProfilerCategory.Internal, "SomeFunc"));
         }
     }
 }
