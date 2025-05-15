@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using Unity.Collections;
 using Unity.Burst;
 using AhBearStudios.Core.Logging.Data;
+using AhBearStudios.Core.Logging.Events;
 using AhBearStudios.Core.Logging.Formatters;
 using AhBearStudios.Core.Logging.Tags;
 
@@ -12,6 +14,11 @@ namespace AhBearStudios.Core.Logging
     /// Processes batches of log messages from a queue and sends them to one or more log targets.
     /// Optimized for use with Unity Collections v2 with robust error handling and 
     /// resource management. Supports custom formatting through ILogFormatter.
+    /// 
+    /// Thread Safety:
+    /// - Enqueue: Thread-safe if using external queue with ParallelWriter
+    /// - Flush: Not thread-safe, should be called from a single thread
+    /// - Target Management: Not thread-safe, modify targets only from the main thread
     /// </summary>
     [BurstCompile]
     public class LogBatchProcessor : IDisposable
@@ -61,6 +68,11 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         private readonly int _maxMessagesPerFlush;
         
+        /// <summary>
+        /// Size of the last processed batch, used for adaptive buffer sizing.
+        /// </summary>
+        private int _lastBatchSize;
+        
         #region Multi-target Constructors
 
         /// <summary>
@@ -83,6 +95,7 @@ namespace AhBearStudios.Core.Logging
             _isLegacyMode = false;
             _burstLogger = null;
             _formatter = formatter;
+            _lastBatchSize = 0;
             
             // Create owned collections
             _targets = new List<ILogTarget>();
@@ -124,6 +137,7 @@ namespace AhBearStudios.Core.Logging
             _isLegacyMode = false;
             _burstLogger = null;
             _formatter = formatter;
+            _lastBatchSize = 0;
             
             // Create owned collections
             _targets = new List<ILogTarget> { target };
@@ -156,6 +170,7 @@ namespace AhBearStudios.Core.Logging
             _isLegacyMode = false;
             _burstLogger = null;
             _formatter = formatter;
+            _lastBatchSize = 0;
             
             // Create owned targets list
             _targets = new List<ILogTarget>();
@@ -200,6 +215,7 @@ namespace AhBearStudios.Core.Logging
             _isLegacyMode = true;
             _targets = new List<ILogTarget>();
             _batchBuffer = new NativeList<LogMessage>(Math.Min(64, maxMessagesPerFlush), Allocator.Persistent);
+            _lastBatchSize = 0;
             
             _queue = queue;
             _ownsQueue = false;
@@ -224,6 +240,7 @@ namespace AhBearStudios.Core.Logging
             _isLegacyMode = true;
             _targets = new List<ILogTarget>();
             _batchBuffer = new NativeList<LogMessage>(Math.Min(initialCapacity, 64), Allocator.Persistent);
+            _lastBatchSize = 0;
             
             _queue = new NativeQueue<LogMessage>(Allocator.Persistent);
             _ownsQueue = true;
@@ -363,6 +380,16 @@ namespace AhBearStudios.Core.Logging
                 throw new ObjectDisposedException(nameof(LogBatchProcessor));
                 
             _queue.Enqueue(message);
+            
+            // Notify about message received
+            try
+            {
+                LogEvents.RaiseMessageReceived(this, message);
+            }
+            catch
+            {
+                // Silently continue if event handling fails
+            }
         }
         
         /// <summary>
@@ -381,7 +408,9 @@ namespace AhBearStudios.Core.Logging
             
             if (remaining == 0)
                 return 0;
-                
+            
+            var stopwatch = Stopwatch.StartNew();
+            
             try
             {
                 // Use different processing paths based on mode
@@ -414,6 +443,19 @@ namespace AhBearStudios.Core.Logging
                 }
             }
             
+            stopwatch.Stop();
+            float processingTimeMs = stopwatch.ElapsedMilliseconds;
+            
+            // Notify about batch processing
+            try
+            {
+                LogEvents.RaiseBatchProcessed(this, count, _queue.Count, processingTimeMs);
+            }
+            catch
+            {
+                // Silently continue if event handling fails
+            }
+            
             return count;
         }
         
@@ -425,17 +467,17 @@ namespace AhBearStudios.Core.Logging
         private int FlushMultiTarget(int maxToProcess)
         {
             int count = 0;
-            
+    
             // Clear buffer before use
             _batchBuffer.Clear();
-            
+    
             // Dequeue messages into the batch buffer
             while (count < maxToProcess && _queue.TryDequeue(out var log))
             {
                 _batchBuffer.Add(log);
                 count++;
             }
-            
+    
             if (count > 0)
             {
                 // Process the batch through all targets
@@ -450,8 +492,22 @@ namespace AhBearStudios.Core.Logging
                         // Continue with other targets if one fails
                     }
                 }
+        
+                // Notify about each processed message
+                foreach (var message in _batchBuffer)
+                {
+                    try
+                    {
+                        LogEvents.RaiseMessageProcessed(message);
+                    }
+                    catch
+                    {
+                        // Silently continue if event handling fails
+                    }
+                }
             }
-            
+    
+            _lastBatchSize = count;
             return count;
         }
         
@@ -474,6 +530,16 @@ namespace AhBearStudios.Core.Logging
                     // Convert to string for the burstLogger interface
                     _burstLogger.Log(log.Level, formattedMessage.ToString(), log.GetTagString().ToString());
                     
+                    // Notify that message was processed
+                    try
+                    {
+                        LogEvents.RaiseMessageProcessed(log);
+                    }
+                    catch
+                    {
+                        // Silently continue if event handling fails
+                    }
+                    
                     count++;
                 }
                 catch (Exception ex)
@@ -484,7 +550,7 @@ namespace AhBearStudios.Core.Logging
                         _burstLogger.Log(
                             (byte)Tagging.LogTag.Error, 
                             $"Error processing log message: {ex.Message}", 
-                            Tagging.LogTag.Error.ToString()
+                            nameof(Tagging.LogTag.Error)
                         );
                     }
                     catch
@@ -495,6 +561,7 @@ namespace AhBearStudios.Core.Logging
                 }
             }
             
+            _lastBatchSize = count;
             return count;
         }
         

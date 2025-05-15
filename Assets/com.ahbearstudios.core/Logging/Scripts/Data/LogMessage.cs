@@ -98,6 +98,18 @@ namespace AhBearStudios.Core.Logging.Data
         }
         
         /// <summary>
+        /// Initializes the properties collection if it doesn't already exist.
+        /// </summary>
+        /// <param name="initialCapacity">Initial capacity for the properties collection.</param>
+        public void InitializeProperties(int initialCapacity = 8)
+        {
+            if (!Properties.IsCreated)
+            {
+                Properties = new LogProperties(initialCapacity);
+            }
+        }
+        
+        /// <summary>
         /// Gets the appropriate tag string, handling both enum tags and custom tags.
         /// </summary>
         /// <returns>A string representation of the tag.</returns>
