@@ -212,7 +212,7 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
         /// </summary>
         /// <param name="position">The rect position for rendering.</param>
         /// <param name="timeline">The profiler timeline.</param>
-        public override void OnGUI(Rect position, ProfilerTimeline timeline)
+        public void OnGUI(Rect position, ProfilerTimeline timeline)
         {
             if (!_isInitialized)
             {
