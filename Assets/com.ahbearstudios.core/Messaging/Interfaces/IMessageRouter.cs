@@ -1,44 +1,73 @@
 ﻿using System;
-using System.Threading;
-using System.Threading.Tasks;
+using System.Collections.Generic;
+using AhBearStudios.Core.Messaging.Routers;
 
 namespace AhBearStudios.Core.Messaging.Interfaces
 {
     /// <summary>
-    /// Interface for routing messages to specific handlers
+    /// Interface for routing messages to different message buses based on filtering rules.
     /// </summary>
-    public interface IMessageRouter
+    /// <typeparam name="TMessage">The type of messages to route.</typeparam>
+    public interface IMessageRouter<TMessage> : IDisposable where TMessage : IMessage
     {
         /// <summary>
-        /// Routes a message to the appropriate handlers
+        /// Gets or sets the name of this router.
         /// </summary>
-        /// <typeparam name="TMessage">The type of message to route</typeparam>
-        /// <param name="message">The message to route</param>
-        void Route<TMessage>(TMessage message) where TMessage : IMessage;
-    
+        string Name { get; set; }
+
         /// <summary>
-        /// Routes a message to the appropriate handlers asynchronously
+        /// Gets the number of defined routes.
         /// </summary>
-        /// <typeparam name="TMessage">The type of message to route</typeparam>
-        /// <param name="message">The message to route</param>
-        /// <param name="cancellationToken">Optional cancellation token</param>
-        Task RouteAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default) where TMessage : IMessage;
-    
+        int RouteCount { get; }
+
         /// <summary>
-        /// Registers a route for a message type
+        /// Adds a route from a filter to a destination.
         /// </summary>
-        /// <typeparam name="TMessage">The type of message to route</typeparam>
-        /// <param name="handler">The handler to route messages to</param>
-        /// <returns>A token that can be disposed to unregister the route</returns>
-        ISubscriptionToken RegisterRoute<TMessage>(Action<TMessage> handler) where TMessage : IMessage;
-    
+        /// <param name="filter">The filter that determines whether a message should be routed.</param>
+        /// <param name="destination">The destination message bus.</param>
+        /// <param name="routeName">Optional name for the route.</param>
+        void AddRoute(IMessageFilter<TMessage> filter, IMessageBus<TMessage> destination, string routeName = null);
+
         /// <summary>
-        /// Registers a route for a message type with a filter
+        /// Removes a route by name.
         /// </summary>
-        /// <typeparam name="TMessage">The type of message to route</typeparam>
-        /// <param name="handler">The handler to route messages to</param>
-        /// <param name="filter">The filter to apply to messages</param>
-        /// <returns>A token that can be disposed to unregister the route</returns>
-        ISubscriptionToken RegisterRoute<TMessage>(Action<TMessage> handler, IMessageFilter<TMessage> filter) where TMessage : IMessage;
+        /// <param name="routeName">The name of the route to remove.</param>
+        /// <returns>True if the route was found and removed, false otherwise.</returns>
+        bool RemoveRoute(string routeName);
+
+        /// <summary>
+        /// Removes all routes to a specific destination.
+        /// </summary>
+        /// <param name="destination">The destination to remove routes for.</param>
+        /// <returns>True if any routes were removed, false otherwise.</returns>
+        bool RemoveRoutesByDestination(IMessageBus<TMessage> destination);
+
+        /// <summary>
+        /// Clears all routes.
+        /// </summary>
+        void ClearRoutes();
+
+        /// <summary>
+        /// Gets information about all defined routes.
+        /// </summary>
+        /// <returns>A list of route information.</returns>
+        List<RouteInfo> GetRouteInfo();
+
+        /// <summary>
+        /// Connects a source message bus to this router.
+        /// </summary>
+        /// <param name="source">The source message bus.</param>
+        void ConnectSource(IMessageBus<TMessage> source);
+
+        /// <summary>
+        /// Disconnects a source message bus from this router.
+        /// </summary>
+        /// <param name="source">The source message bus to disconnect.</param>
+        void DisconnectSource(IMessageBus<TMessage> source);
+
+        /// <summary>
+        /// Disconnects all source message buses from this router.
+        /// </summary>
+        void DisconnectAllSources();
     }
 }

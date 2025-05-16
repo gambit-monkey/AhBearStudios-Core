@@ -1,58 +1,69 @@
-using System;
 using System.Collections.Generic;
 
 namespace AhBearStudios.Core.Messaging.Interfaces
 {
     /// <summary>
-    /// Interface for a hierarchical message bus that supports parent-child relationships
+    /// Interface for a hierarchical message bus that supports parent-child relationships.
+    /// Allows for message propagation between related buses.
     /// </summary>
-    /// <typeparam name="TMessage">The type of message to publish or subscribe to</typeparam>
+    /// <typeparam name="TMessage">The type of messages this bus will handle.</typeparam>
     public interface IHierarchicalMessageBus<TMessage> : IMessageBus<TMessage> where TMessage : IMessage
     {
         /// <summary>
-        /// Gets the parent message bus, or null if this is a root bus
+        /// Gets or sets the name of this message bus.
+        /// </summary>
+        string Name { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the propagation mode for this message bus.
+        /// </summary>
+        MessagePropagationMode PropagationMode { get; set; }
+        
+        /// <summary>
+        /// Gets the parent message bus, if any.
         /// </summary>
         IHierarchicalMessageBus<TMessage> Parent { get; }
-    
+        
         /// <summary>
-        /// Gets the child message buses
+        /// Gets a read-only list of child message buses.
         /// </summary>
         IReadOnlyList<IHierarchicalMessageBus<TMessage>> Children { get; }
-    
+        
         /// <summary>
-        /// Gets the propagation mode for this bus
+        /// Adds a child bus to this bus.
         /// </summary>
-        MessagePropagationMode PropagationMode { get; }
-    
-        /// <summary>
-        /// Adds a child message bus
-        /// </summary>
-        /// <param name="child">The child bus to add</param>
+        /// <param name="child">The child bus to add.</param>
         void AddChild(IHierarchicalMessageBus<TMessage> child);
-    
+        
         /// <summary>
-        /// Removes a child message bus
+        /// Removes a child bus from this bus.
         /// </summary>
-        /// <param name="child">The child bus to remove</param>
-        /// <returns>True if the child was removed; otherwise, false</returns>
-        bool RemoveChild(IHierarchicalMessageBus<TMessage> child);
-    
+        /// <param name="child">The child bus to remove.</param>
+        void RemoveChild(IHierarchicalMessageBus<TMessage> child);
+        
         /// <summary>
-        /// Sets the parent message bus
+        /// Removes this bus from its parent, if any.
         /// </summary>
-        /// <param name="parent">The parent bus</param>
-        void SetParent(IHierarchicalMessageBus<TMessage> parent);
-    
+        void RemoveFromParent();
+        
         /// <summary>
-        /// Clears the parent reference
+        /// Sets the propagation mode for this bus.
         /// </summary>
-        void ClearParent();
-    
+        /// <param name="mode">The new propagation mode.</param>
+        void SetPropagationMode(MessagePropagationMode mode);
+        
         /// <summary>
-        /// Subscribes to messages locally (without propagation)
+        /// Determines if this bus is a descendant of the specified bus.
         /// </summary>
-        /// <param name="handler">The handler to be called when a message is published</param>
-        /// <returns>A token that can be disposed to unsubscribe</returns>
-        ISubscriptionToken SubscribeLocal(Action<TMessage> handler);
+        /// <param name="potentialAncestor">The potential ancestor bus.</param>
+        /// <returns>True if this bus is a descendant of the specified bus, false otherwise.</returns>
+        bool IsDescendantOf(IHierarchicalMessageBus<TMessage> potentialAncestor);
+        
+        /// <summary>
+        /// Determines if this bus is an ancestor of the specified bus.
+        /// </summary>
+        /// <param name="potentialDescendant">The potential descendant bus.</param>
+        /// <returns>True if this bus is an ancestor of the specified bus, false otherwise.</returns>
+        bool IsAncestorOf(IHierarchicalMessageBus<TMessage> potentialDescendant);
     }
 }

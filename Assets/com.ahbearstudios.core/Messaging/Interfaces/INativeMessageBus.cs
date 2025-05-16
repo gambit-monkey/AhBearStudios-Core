@@ -1,51 +1,58 @@
 ﻿using System;
+using AhBearStudios.Core.Messaging.Interfaces;
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
 
-namespace AhBearStudios.Core.Messaging.Interfaces
+namespace AhBearStudios.Core.Messaging
 {
     /// <summary>
-    /// Interface for a burst-compatible message bus
+    /// Interface for a native message bus that can be used with Burst and Jobs.
+    /// Provides a thread-safe way to publish and subscribe to messages in a DOTS-compatible way.
     /// </summary>
-    /// <typeparam name="T">The type of message to publish or subscribe to</typeparam>
-    public interface INativeMessageBus<T> : IDisposable where T : unmanaged
+    /// <typeparam name="T">The type of message to handle.</typeparam>
+    public interface INativeMessageBus<T> where T : unmanaged, IMessage
     {
         /// <summary>
-        /// Publishes a message to all subscribers
+        /// Gets the number of pending messages in the bus.
         /// </summary>
-        /// <param name="message">The message to publish</param>
-        void Publish(T message);
-    
+        int PendingMessageCount { get; }
+
         /// <summary>
-        /// Queues a message for later processing
+        /// Subscribes to messages of a specific type.
         /// </summary>
-        /// <param name="message">The message to queue</param>
-        void QueueMessage(T message);
-    
+        /// <param name="messageTypeId">The type ID of the message to subscribe to, or 0 for all messages.</param>
+        /// <param name="handler">Function pointer to the message handler.</param>
+        /// <returns>A subscription handle that can be used to unsubscribe.</returns>
+        SubscriptionHandle Subscribe(int messageTypeId, FunctionPointer<MessageHandler> handler);
+
         /// <summary>
-        /// Processes all queued messages
+        /// Unsubscribes from messages using a subscription handle.
         /// </summary>
-        void ProcessQueue();
-    
+        /// <param name="handle">The subscription handle to unsubscribe.</param>
+        /// <returns>True if the subscription was found and removed, false otherwise.</returns>
+        bool Unsubscribe(SubscriptionHandle handle);
+
         /// <summary>
-        /// Subscribes to messages with a function pointer
+        /// Publishes a message to all subscribers.
         /// </summary>
-        /// <param name="handler">The function pointer to call when a message is published</param>
-        /// <returns>A handle that can be used to unsubscribe</returns>
-        unsafe SubscriptionHandle Subscribe(delegate* managed<T, void> handler);
-    
+        /// <param name="message">The message to publish.</param>
+        /// <returns>True if the message was successfully published, false otherwise.</returns>
+        bool Publish(T message);
+
         /// <summary>
-        /// Unsubscribes from messages using a subscription handle
+        /// Processes a specified number of pending messages.
         /// </summary>
-        /// <param name="handle">The handle of the subscription to remove</param>
-        void Unsubscribe(SubscriptionHandle handle);
-    
+        /// <param name="maxMessages">The maximum number of messages to process.</param>
+        /// <returns>The number of messages that were processed.</returns>
+        int ProcessMessages(int maxMessages = 100);
+
         /// <summary>
-        /// Gets the number of subscribers
+        /// Schedules a job to process a specified number of pending messages.
         /// </summary>
-        int SubscriberCount { get; }
-    
-        /// <summary>
-        /// Gets the number of queued messages
-        /// </summary>
-        int QueueCount { get; }
+        /// <param name="maxMessages">The maximum number of messages to process.</param>
+        /// <param name="dependsOn">The JobHandle to depend on.</param>
+        /// <returns>A JobHandle for the scheduled job.</returns>
+        JobHandle ScheduleMessageProcessing(int maxMessages = 100, JobHandle dependsOn = default);
     }
 }

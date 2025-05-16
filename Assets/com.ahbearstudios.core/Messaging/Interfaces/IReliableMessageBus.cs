@@ -1,34 +1,47 @@
-namespace AhBearStudios.Core.Messaging.Interfaces
+using System;
+using System.Collections.Generic;
+using AhBearStudios.Core.Messaging.Interfaces;
+
+namespace AhBearStudios.Core.Messaging
 {
     /// <summary>
-    /// Interface for a reliable message bus that guarantees message delivery
+    /// Interface for a message bus that guarantees message delivery even across application restarts.
+    /// Extends IMessageBus with reliability features.
     /// </summary>
-    /// <typeparam name="TMessage">The type of message to publish or subscribe to</typeparam>
+    /// <typeparam name="TMessage">The type of messages this bus will handle.</typeparam>
     public interface IReliableMessageBus<TMessage> : IMessageBus<TMessage> where TMessage : IMessage
     {
         /// <summary>
-        /// Gets the number of pending messages that have not been confirmed
+        /// Starts the reliable message processor.
         /// </summary>
-        int PendingMessageCount { get; }
-    
+        void Start();
+        
         /// <summary>
-        /// Publishes a message with guaranteed delivery
+        /// Stops the reliable message processor.
         /// </summary>
-        /// <param name="message">The message to publish</param>
-        /// <returns>A unique identifier for tracking the message</returns>
-        string PublishReliable(TMessage message);
-    
+        void Stop();
+        
         /// <summary>
-        /// Confirms that a message has been successfully processed
+        /// Gets the number of pending messages waiting for delivery.
         /// </summary>
-        /// <param name="messageId">The ID of the message to confirm</param>
-        /// <returns>True if the message was confirmed; otherwise, false</returns>
-        bool ConfirmMessage(string messageId);
-    
+        /// <returns>The number of pending messages.</returns>
+        int GetPendingMessageCount();
+        
         /// <summary>
-        /// Redelivers all pending messages that have not been confirmed
+        /// Clears all pending messages from the store.
         /// </summary>
-        /// <returns>The number of messages redelivered</returns>
-        int RedeliverPendingMessages();
+        void ClearPendingMessages();
+        
+        /// <summary>
+        /// Gets the IDs of all pending messages.
+        /// </summary>
+        /// <returns>A list of pending message IDs.</returns>
+        List<Guid> GetPendingMessageIds();
+        
+        /// <summary>
+        /// Manually triggers redelivery of a specific message.
+        /// </summary>
+        /// <param name="messageId">The ID of the message to redeliver.</param>
+        void RedeliverMessage(Guid messageId);
     }
 }

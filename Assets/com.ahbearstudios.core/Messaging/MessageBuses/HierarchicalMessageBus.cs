@@ -4,260 +4,1060 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Messaging.Extensions;
 using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.Profiling;
 
-namespace AhBearStudios.Core.Messaging.MessageBuses
+namespace AhBearStudios.Core.Messaging
 {
     /// <summary>
-    /// Implementation of a hierarchical message bus
+    /// Implementation of a hierarchical message bus that supports parent-child relationships.
+    /// Allows for message propagation between related buses based on propagation mode.
     /// </summary>
-    /// <typeparam name="TMessage">The type of message to publish or subscribe to</typeparam>
-    public class HierarchicalMessageBus<TMessage> : IHierarchicalMessageBus<TMessage> where TMessage : IMessage
+    /// <typeparam name="TMessage">The type of messages this bus will handle.</typeparam>
+    public class HierarchicalMessageBus<TMessage> : IMessageBus<TMessage>, IHierarchicalMessageBus<TMessage> where TMessage : IMessage
     {
         private readonly IMessageBus<TMessage> _innerBus;
-        private readonly List<ISubscriptionToken> _subscriptions = new List<ISubscriptionToken>();
-
-        private readonly List<IHierarchicalMessageBus<TMessage>> _children =
-            new List<IHierarchicalMessageBus<TMessage>>();
-
-        private readonly Dictionary<Guid, bool> _processedMessages = new Dictionary<Guid, bool>();
         private readonly IBurstLogger _logger;
-        private readonly object _syncRoot = new object();
+        private readonly IProfiler _profiler;
+        private readonly object _hierarchyLock = new object();
+        private readonly HashSet<ISubscriptionToken> _parentSubscriptions = new HashSet<ISubscriptionToken>();
+        private readonly HashSet<PropagationInfo> _propagatingMessages = new HashSet<PropagationInfo>();
+        
+        private HierarchicalMessageBus<TMessage> _parent;
+        private readonly List<HierarchicalMessageBus<TMessage>> _children = new List<HierarchicalMessageBus<TMessage>>();
+        
+        private MessagePropagationMode _propagationMode;
+        private string _name;
+        private bool _isDisposed;
 
-        private IHierarchicalMessageBus<TMessage> _parent;
+        /// <summary>
+        /// Gets or sets the name of this message bus.
+        /// </summary>
+        public string Name
+        {
+            get => _name;
+            set => _name = value;
+        }
 
-        public IHierarchicalMessageBus<TMessage> Parent => _parent;
+        /// <summary>
+        /// Gets or sets the propagation mode for this message bus.
+        /// </summary>
+        public MessagePropagationMode PropagationMode
+        {
+            get => _propagationMode;
+            set => _propagationMode = value;
+        }
 
-        public IReadOnlyList<IHierarchicalMessageBus<TMessage>> Children => _children.AsReadOnly();
+        /// <summary>
+        /// Gets the parent message bus, if any.
+        /// </summary>
+        public IHierarchicalMessageBus<TMessage> Parent
+        {
+            get => _parent;
+        }
 
-        public MessagePropagationMode PropagationMode { get; set; }
+        /// <summary>
+        /// Gets a read-only list of child message buses.
+        /// </summary>
+        public IReadOnlyList<IHierarchicalMessageBus<TMessage>> Children
+        {
+            get
+            {
+                lock (_hierarchyLock)
+                {
+                    return _children.Cast<IHierarchicalMessageBus<TMessage>>().ToList().AsReadOnly();
+                }
+            }
+        }
 
-        public HierarchicalMessageBus(IMessageBus<TMessage> innerBus,
-            MessagePropagationMode propagationMode = MessagePropagationMode.Bidirectional, IBurstLogger logger = null)
+        /// <summary>
+        /// Initializes a new instance of the HierarchicalMessageBus class.
+        /// </summary>
+        /// <param name="innerBus">The underlying message bus to use for message delivery.</param>
+        /// <param name="name">Optional name for this bus instance.</param>
+        /// <param name="propagationMode">The mode that controls how messages propagate.</param>
+        /// <param name="logger">Optional logger for bus operations.</param>
+        /// <param name="profiler">Optional profiler for performance monitoring.</param>
+        public HierarchicalMessageBus(
+            IMessageBus<TMessage> innerBus,
+            string name = null,
+            MessagePropagationMode propagationMode = MessagePropagationMode.None,
+            IBurstLogger logger = null,
+            IProfiler profiler = null)
         {
             _innerBus = innerBus ?? throw new ArgumentNullException(nameof(innerBus));
-            PropagationMode = propagationMode;
+            _name = name ?? $"HierarchicalBus_{Guid.NewGuid():N}";
+            _propagationMode = propagationMode;
             _logger = logger;
+            _profiler = profiler;
+            _isDisposed = false;
+            
+            if (_logger != null)
+            {
+                _logger.Info($"HierarchicalMessageBus '{_name}' initialized with propagation mode {_propagationMode.GetDescription()}");
+            }
         }
 
+        /// <inheritdoc/>
+        public ISubscriptionToken Subscribe<T>(Action<T> handler) where T : TMessage
+        {
+            using (_profiler?.BeginSample("HierarchicalMessageBus.Subscribe"))
+            {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
+                }
+
+                // Delegate to the inner bus
+                return _innerBus.Subscribe(handler);
+            }
+        }
+
+        /// <inheritdoc/>
+        public ISubscriptionToken SubscribeAsync<T>(Func<T, Task> handler) where T : TMessage
+        {
+            using (_profiler?.BeginSample("HierarchicalMessageBus.SubscribeAsync"))
+            {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
+                }
+
+                // Delegate to the inner bus
+                return _innerBus.SubscribeAsync(handler);
+            }
+        }
+
+        /// <inheritdoc/>
+        public ISubscriptionToken SubscribeToAll(Action<TMessage> handler)
+        {
+            using (_profiler?.BeginSample("HierarchicalMessageBus.SubscribeToAll"))
+            {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
+                }
+
+                // Delegate to the inner bus
+                return _innerBus.SubscribeToAll(handler);
+            }
+        }
+
+        /// <inheritdoc/>
+        public ISubscriptionToken SubscribeToAllAsync(Func<TMessage, Task> handler)
+        {
+            using (_profiler?.BeginSample("HierarchicalMessageBus.SubscribeToAllAsync"))
+            {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
+                }
+
+                // Delegate to the inner bus
+                return _innerBus.SubscribeToAllAsync(handler);
+            }
+        }
+
+        /// <inheritdoc/>
+        public void Unsubscribe(ISubscriptionToken token)
+        {
+            using (_profiler?.BeginSample("HierarchicalMessageBus.Unsubscribe"))
+            {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
+                }
+
+                // Delegate to the inner bus
+                _innerBus.Unsubscribe(token);
+            }
+        }
+
+        /// <inheritdoc/>
         public void Publish(TMessage message)
         {
-            if (message == null)
-                throw new ArgumentNullException(nameof(message));
-
-            // Check if we've already processed this message to prevent cycles
-            if (HasProcessedMessage(message.Id))
-                return;
-
-            // Mark as processed
-            MarkMessageAsProcessed(message.Id);
-
-            // Publish locally
-            _innerBus.Publish(message);
-
-            // Propagate based on mode
-            PropagateMessage(message);
-        }
-
-        public Task PublishAsync(TMessage message, CancellationToken cancellationToken = default)
-        {
-            if (message == null)
-                throw new ArgumentNullException(nameof(message));
-
-            // Check if we've already processed this message to prevent cycles
-            if (HasProcessedMessage(message.Id))
-                return Task.CompletedTask;
-
-            // Mark as processed
-            MarkMessageAsProcessed(message.Id);
-
-            // Publish locally
-            var localTask = _innerBus.PublishAsync(message, cancellationToken);
-
-            // Propagate based on mode
-            var propagationTask = PropagateMessageAsync(message, cancellationToken);
-
-            return Task.WhenAll(localTask, propagationTask);
-        }
-
-        public ISubscriptionToken Subscribe(Action<TMessage> handler)
-        {
-            if (handler == null)
-                throw new ArgumentNullException(nameof(handler));
-
-            return _innerBus.Subscribe(handler);
-        }
-
-        public ISubscriptionToken SubscribeAsync(Func<TMessage, Task> handler)
-        {
-            if (handler == null)
-                throw new ArgumentNullException(nameof(handler));
-        
-            // Subscribe to the inner message bus with the async handler
-            // The inner bus will be responsible for properly executing the async Tasks
-            var token = _innerBus.SubscribeAsync(async message => 
+            using (_profiler?.BeginSample("HierarchicalMessageBus.Publish"))
             {
-                // Only handle messages that should be propagated based on the propagation mode
-                if (ShouldHandleMessage(message))
+                if (_isDisposed)
                 {
-                    await handler(message);
+                    throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
                 }
-            });
-    
-            // Store the subscription to manage hierarchy-specific behavior
-            _subscriptions.Add(token);
-    
-            return token;
+
+                if (message == null)
+                {
+                    throw new ArgumentNullException(nameof(message));
+                }
+
+                // Create a propagation context to track message propagation
+                PropagationInfo propagationInfo = new PropagationInfo(message.Id);
+                
+                // Only propagate if this is the first time we're seeing this message
+                if (AddPropagationInfo(propagationInfo))
+                {
+                    // Publish to the inner bus
+                    _innerBus.Publish(message);
+                    
+                    // Propagate to parent if needed
+                    PropagateToParent(message, propagationInfo);
+                    
+                    // Propagate to children if needed
+                    PropagateToChildren(message, propagationInfo);
+                    
+                    // Remove the propagation info after propagation is complete
+                    RemovePropagationInfo(propagationInfo);
+                    
+                    if (_logger != null)
+                    {
+                        _logger.Debug($"Published message {message.Id} to bus '{_name}'");
+                    }
+                }
+            }
         }
-        
-        /// <summary>
-        /// Determines whether a message should be handled based on the propagation mode
-        /// </summary>
-        /// <param name="message">The message to check</param>
-        /// <returns>True if the message should be handled, false otherwise</returns>
-        private bool ShouldHandleMessage(TMessage message)
+
+        /// <inheritdoc/>
+        public async Task PublishAsync(TMessage message, CancellationToken cancellationToken = default)
         {
-            // In most cases, we want to handle all messages that reach us
-            // But if we need specific filtering based on propagation mode:
-    
-            // Example: If we only want to handle messages from our own bus or parent
-            // if (message.SourceId != null && !message.SourceId.Equals(this.Id) && 
-            //     (Parent == null || !message.SourceId.Equals(Parent.Id)))
-            //     return false;
-    
-            // For now, handle all messages that reach this bus
-            return true;
+            using (_profiler?.BeginSample("HierarchicalMessageBus.PublishAsync"))
+            {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
+                }
+
+                if (message == null)
+                {
+                    throw new ArgumentNullException(nameof(message));
+                }
+
+                // Create a propagation context to track message propagation
+                PropagationInfo propagationInfo = new PropagationInfo(message.Id);
+                
+                // Only propagate if this is the first time we're seeing this message
+                if (AddPropagationInfo(propagationInfo))
+                {
+                    // Publish to the inner bus
+                    await _innerBus.PublishAsync(message, cancellationToken);
+                    
+                    // Propagate to parent if needed
+                    await PropagateToParentAsync(message, propagationInfo, cancellationToken);
+                    
+                    // Propagate to children if needed
+                    await PropagateToChildrenAsync(message, propagationInfo, cancellationToken);
+                    
+                    // Remove the propagation info after propagation is complete
+                    RemovePropagationInfo(propagationInfo);
+                    
+                    if (_logger != null)
+                    {
+                        _logger.Debug($"Published message {message.Id} to bus '{_name}' asynchronously");
+                    }
+                }
+            }
         }
 
-        public ISubscriptionToken SubscribeLocal(Action<TMessage> handler)
-        {
-            if (handler == null)
-                throw new ArgumentNullException(nameof(handler));
-
-            return _innerBus.Subscribe(handler);
-        }
-
+        /// <inheritdoc/>
         public void AddChild(IHierarchicalMessageBus<TMessage> child)
         {
-            if (child == null)
-                throw new ArgumentNullException(nameof(child));
-
-            lock (_syncRoot)
+            using (_profiler?.BeginSample("HierarchicalMessageBus.AddChild"))
             {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
+                }
+
+                if (child == null)
+                {
+                    throw new ArgumentNullException(nameof(child));
+                }
+
+                if (!(child is HierarchicalMessageBus<TMessage> typedChild))
+                {
+                    throw new ArgumentException("Child must be of type HierarchicalMessageBus<TMessage>", nameof(child));
+                }
+
+                lock (_hierarchyLock)
+                {
+                    // Make sure the child doesn't already have a parent
+                    if (typedChild._parent != null)
+                    {
+                        throw new InvalidOperationException("Child already has a parent. Remove it from its current parent first.");
+                    }
+                    
+                    // Make sure the child isn't already in our child list
+                    if (_children.Contains(typedChild))
+                    {
+                        return;
+                    }
+                    
+                    // Make sure this wouldn't create a cycle
+                    if (IsDescendantOf(typedChild))
+                    {
+                        throw new InvalidOperationException("Cannot add a bus as a child of its own descendant.");
+                    }
+                    
+                    // Add the child
+                    _children.Add(typedChild);
+                    typedChild._parent = this;
+                    
+                    // Set up subscriptions for bidirectional propagation
+                    SetupChildSubscriptions(typedChild);
+                    
+                    if (_logger != null)
+                    {
+                        _logger.Info($"Added child bus '{typedChild._name}' to parent '{_name}'");
+                    }
+                }
+            }
+        }
+
+        /// <inheritdoc/>
+        public void RemoveChild(IHierarchicalMessageBus<TMessage> child)
+        {
+            using (_profiler?.BeginSample("HierarchicalMessageBus.RemoveChild"))
+            {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
+                }
+
+                if (child == null)
+                {
+                    throw new ArgumentNullException(nameof(child));
+                }
+
+                if (!(child is HierarchicalMessageBus<TMessage> typedChild))
+                {
+                    throw new ArgumentException("Child must be of type HierarchicalMessageBus<TMessage>", nameof(child));
+                }
+
+                lock (_hierarchyLock)
+                {
+                    // Make sure the child is actually our child
+                    if (!_children.Contains(typedChild) || typedChild._parent != this)
+                    {
+                        return;
+                    }
+                    
+                    // Remove the child
+                    _children.Remove(typedChild);
+                    typedChild._parent = null;
+                    
+                    // Clean up any subscriptions to the child
+                    CleanupChildSubscriptions(typedChild);
+                    
+                    if (_logger != null)
+                    {
+                        _logger.Info($"Removed child bus '{typedChild._name}' from parent '{_name}'");
+                    }
+                }
+            }
+        }
+
+        /// <inheritdoc/>
+        public void RemoveFromParent()
+        {
+            using (_profiler?.BeginSample("HierarchicalMessageBus.RemoveFromParent"))
+            {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
+                }
+
+                lock (_hierarchyLock)
+                {
+                    var parent = _parent;
+                    if (parent != null)
+                    {
+                        parent.RemoveChild(this);
+                    }
+                }
+            }
+        }
+
+        /// <inheritdoc/>
+        public void SetPropagationMode(MessagePropagationMode mode)
+        {
+            using (_profiler?.BeginSample("HierarchicalMessageBus.SetPropagationMode"))
+            {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
+                }
+
+                lock (_hierarchyLock)
+                {
+                    if (_propagationMode == mode)
+                    {
+                        return;
+                    }
+                    
+                    _propagationMode = mode;
+                    
+                    // Update subscriptions for all children
+                    foreach (var child in _children)
+                    {
+                        CleanupChildSubscriptions(child);
+                        SetupChildSubscriptions(child);
+                    }
+                    
+                    if (_logger != null)
+                    {
+                        _logger.Info($"Changed propagation mode for bus '{_name}' to {_propagationMode.GetDescription()}");
+                    }
+                }
+            }
+        }
+
+        /// <inheritdoc/>
+        public bool IsDescendantOf(IHierarchicalMessageBus<TMessage> potentialAncestor)
+        {
+            using (_profiler?.BeginSample("HierarchicalMessageBus.IsDescendantOf"))
+            {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
+                }
+
+                if (potentialAncestor == null)
+                {
+                    return false;
+                }
+
+                lock (_hierarchyLock)
+                {
+                    var current = _parent;
+                    while (current != null)
+                    {
+                        if (current == potentialAncestor)
+                        {
+                            return true;
+                        }
+                        
+                        current = current._parent;
+                    }
+                    
+                    return false;
+                }
+            }
+        }
+
+        /// <inheritdoc/>
+        public bool IsAncestorOf(IHierarchicalMessageBus<TMessage> potentialDescendant)
+        {
+            using (_profiler?.BeginSample("HierarchicalMessageBus.IsAncestorOf"))
+            {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
+                }
+
+                if (potentialDescendant == null)
+                {
+                    return false;
+                }
+
+                return potentialDescendant.IsDescendantOf(this);
+            }
+        }
+
+        /// <inheritdoc/>
+        public void Dispose()
+        {
+            using (_profiler?.BeginSample("HierarchicalMessageBus.Dispose"))
+            {
+                Dispose(true);
+                GC.SuppressFinalize(this);
+            }
+        }
+
+        /// <summary>
+        /// Releases resources used by the hierarchical message bus.
+        /// </summary>
+        /// <param name="disposing">True if called from Dispose(), false if called from finalizer.</param>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            if (disposing)
+            {
+                // Remove from parent
+                RemoveFromParent();
+                
+                // Remove all children
+                lock (_hierarchyLock)
+                {
+                    var childrenCopy = _children.ToList();
+                    foreach (var child in childrenCopy)
+                    {
+                        RemoveChild(child);
+                    }
+                    
+                    // Clean up parent subscriptions
+                    foreach (var subscription in _parentSubscriptions)
+                    {
+                        subscription.Dispose();
+                    }
+                    
+                    _parentSubscriptions.Clear();
+                }
+                
+                // Dispose the inner bus if it's disposable
+                if (_innerBus is IDisposable disposableBus)
+                {
+                    disposableBus.Dispose();
+                }
+                
+                if (_logger != null)
+                {
+                    _logger.Info($"HierarchicalMessageBus '{_name}' disposed");
+                }
+            }
+
+            _isDisposed = true;
+        }
+
+        /// <summary>
+        /// Finalizer to ensure resource cleanup.
+        /// </summary>
+        ~HierarchicalMessageBus()
+        {
+            Dispose(false);
+        }
+
+        /// <summary>
+        /// Propagates a message to the parent bus.
+        /// </summary>
+        /// <param name="message">The message to propagate.</param>
+        /// <param name="propagationInfo">Propagation tracking information.</param>
+        private void PropagateToParent(TMessage message, PropagationInfo propagationInfo)
+        {
+            if (_parent == null || !_propagationMode.IncludesUpwardPropagation())
+            {
+                return;
+            }
+            
+            try
+            {
+                // Publish to the parent
+                _parent.OnMessageFromChild(this, message, propagationInfo);
+                
+                if (_logger != null)
+                {
+                    _logger.Debug($"Propagated message {message.Id} from '{_name}' to parent '{_parent._name}'");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_logger != null)
+                {
+                    _logger.Error($"Error propagating message {message.Id} to parent: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Propagates a message to the parent bus asynchronously.
+        /// </summary>
+        /// <param name="message">The message to propagate.</param>
+        /// <param name="propagationInfo">Propagation tracking information.</param>
+        /// <param name="cancellationToken">A cancellation token to stop propagation.</param>
+        private async Task PropagateToParentAsync(TMessage message, PropagationInfo propagationInfo, CancellationToken cancellationToken)
+        {
+            if (_parent == null || !_propagationMode.IncludesUpwardPropagation())
+            {
+                return;
+            }
+            
+            try
+            {
+                // Publish to the parent
+                await _parent.OnMessageFromChildAsync(this, message, propagationInfo, cancellationToken);
+                
+                if (_logger != null)
+                {
+                    _logger.Debug($"Propagated message {message.Id} from '{_name}' to parent '{_parent._name}' asynchronously");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (_logger != null)
+                {
+                    _logger.Error($"Error propagating message {message.Id} to parent asynchronously: {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Propagates a message to all child buses.
+        /// </summary>
+        /// <param name="message">The message to propagate.</param>
+        /// <param name="propagationInfo">Propagation tracking information.</param>
+        private void PropagateToChildren(TMessage message, PropagationInfo propagationInfo)
+        {
+            if (!_propagationMode.IncludesDownwardPropagation() || _children.Count == 0)
+            {
+                return;
+            }
+            
+            List<HierarchicalMessageBus<TMessage>> childrenCopy;
+            
+            lock (_hierarchyLock)
+            {
+                childrenCopy = _children.ToList();
+            }
+            
+            foreach (var child in childrenCopy)
+            {
+                try
+                {
+                    // Publish to the child
+                    child.OnMessageFromParent(this, message, propagationInfo);
+                    
+                    if (_logger != null)
+                    {
+                        _logger.Debug($"Propagated message {message.Id} from '{_name}' to child '{child._name}'");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (_logger != null)
+                    {
+                        _logger.Error($"Error propagating message {message.Id} to child '{child._name}': {ex.Message}");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Propagates a message to all child buses asynchronously.
+        /// </summary>
+        /// <param name="message">The message to propagate.</param>
+        /// <param name="propagationInfo">Propagation tracking information.</param>
+        /// <param name="cancellationToken">A cancellation token to stop propagation.</param>
+        private async Task PropagateToChildrenAsync(TMessage message, PropagationInfo propagationInfo, CancellationToken cancellationToken)
+        {
+            if (!_propagationMode.IncludesDownwardPropagation() || _children.Count == 0)
+            {
+                return;
+            }
+            
+            List<HierarchicalMessageBus<TMessage>> childrenCopy;
+            
+            lock (_hierarchyLock)
+            {
+                childrenCopy = _children.ToList();
+            }
+            
+            // Propagate to all children in parallel
+            var propagationTasks = childrenCopy.Select(async child =>
+            {
+                try
+                {
+                    // Publish to the child
+                    await child.OnMessageFromParentAsync(this, message, propagationInfo, cancellationToken);
+                    
+                    if (_logger != null)
+                    {
+                        _logger.Debug($"Propagated message {message.Id} from '{_name}' to child '{child._name}' asynchronously");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (_logger != null)
+                    {
+                        _logger.Error($"Error propagating message {message.Id} to child '{child._name}' asynchronously: {ex.Message}");
+                    }
+                }
+            });
+            
+            await Task.WhenAll(propagationTasks);
+        }
+
+        /// <summary>
+        /// Handles a message received from a parent bus.
+        /// </summary>
+        /// <param name="parent">The parent bus that sent the message.</param>
+        /// <param name="message">The message being propagated.</param>
+        /// <param name="propagationInfo">Propagation tracking information.</param>
+        internal void OnMessageFromParent(HierarchicalMessageBus<TMessage> parent, TMessage message, PropagationInfo propagationInfo)
+        {
+            using (_profiler?.BeginSample("HierarchicalMessageBus.OnMessageFromParent"))
+            {
+                if (_isDisposed)
+                {
+                    return;
+                }
+
+                // Make sure this is actually our parent
+                if (_parent != parent)
+                {
+                    if (_logger != null)
+                    {
+                        _logger.Warning($"Received message {message.Id} from bus '{parent._name}' which is not the parent of '{_name}'");
+                    }
+                    
+                    return;
+                }
+
+                // Only propagate if we haven't seen this message before
+                if (AddPropagationInfo(propagationInfo))
+                {
+                    // Publish to our inner bus
+                    _innerBus.Publish(message);
+                    
+                    // Propagate to children if needed
+                    PropagateToChildren(message, propagationInfo);
+                    
+                    // Remove the propagation info after propagation is complete
+                    RemovePropagationInfo(propagationInfo);
+                    
+                    if (_logger != null)
+                    {
+                        _logger.Debug($"Received message {message.Id} from parent '{parent._name}' in bus '{_name}'");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handles a message received from a parent bus asynchronously.
+        /// </summary>
+        /// <param name="parent">The parent bus that sent the message.</param>
+        /// <param name="message">The message being propagated.</param>
+        /// <param name="propagationInfo">Propagation tracking information.</param>
+        /// <param name="cancellationToken">A cancellation token to stop propagation.</param>
+        internal async Task OnMessageFromParentAsync(HierarchicalMessageBus<TMessage> parent, TMessage message, PropagationInfo propagationInfo, CancellationToken cancellationToken)
+        {
+            using (_profiler?.BeginSample("HierarchicalMessageBus.OnMessageFromParentAsync"))
+            {
+                if (_isDisposed)
+                {
+                    return;
+                }
+
+                // Make sure this is actually our parent
+                if (_parent != parent)
+                {
+                    if (_logger != null)
+                    {
+                        _logger.Warning($"Received message {message.Id} from bus '{parent._name}' which is not the parent of '{_name}' asynchronously");
+                    }
+                    
+                    return;
+                }
+
+                // Only propagate if we haven't seen this message before
+                if (AddPropagationInfo(propagationInfo))
+                {
+                    // Publish to our inner bus
+                    await _innerBus.PublishAsync(message, cancellationToken);
+                    
+                    // Propagate to children if needed
+                    await PropagateToChildrenAsync(message, propagationInfo, cancellationToken);
+                    
+                    // Remove the propagation info after propagation is complete
+                    RemovePropagationInfo(propagationInfo);
+                    
+                    if (_logger != null)
+                    {
+                        _logger.Debug($"Received message {message.Id} from parent '{parent._name}' in bus '{_name}' asynchronously");
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Handles a message received from a child bus.
+        /// </summary>
+        /// <param name="child">The child bus that sent the message.</param>
+        /// <param name="message">The message being propagated.</param>
+        /// <param name="propagationInfo">Propagation tracking information.</param>
+        internal void OnMessageFromChild(HierarchicalMessageBus<TMessage> child, TMessage message, PropagationInfo propagationInfo)
+        {
+            using (_profiler?.BeginSample("HierarchicalMessageBus.OnMessageFromChild"))
+            {
+                if (_isDisposed)
+                {
+                    return;
+                }
+                // Make sure this is actually one of our children
                 if (!_children.Contains(child))
                 {
-                    _children.Add(child);
-                    child.SetParent(this);
-                }
-            }
-        }
-
-        public bool RemoveChild(IHierarchicalMessageBus<TMessage> child)
-        {
-            if (child == null)
-                throw new ArgumentNullException(nameof(child));
-
-            lock (_syncRoot)
-            {
-                if (_children.Remove(child))
-                {
-                    child.ClearParent();
-                    return true;
-                }
-
-                return false;
-            }
-        }
-
-        public void SetParent(IHierarchicalMessageBus<TMessage> parent)
-        {
-            if (parent == this)
-                throw new InvalidOperationException("Cannot set self as parent");
-
-            _parent = parent;
-        }
-
-        public void ClearParent()
-        {
-            _parent = null;
-        }
-
-        private void PropagateMessage(TMessage message)
-        {
-            // Propagate to parent if enabled
-            if ((PropagationMode == MessagePropagationMode.UpstreamOnly ||
-                 PropagationMode == MessagePropagationMode.Bidirectional) &&
-                _parent != null)
-            {
-                _parent.Publish(message);
-            }
-
-            // Propagate to children if enabled
-            if (PropagationMode == MessagePropagationMode.DownstreamOnly ||
-                PropagationMode == MessagePropagationMode.Bidirectional)
-            {
-                lock (_syncRoot)
-                {
-                    foreach (var child in _children)
+                    if (_logger != null)
                     {
-                        child.Publish(message);
+                        _logger.Warning($"Received message {message.Id} from bus '{child._name}' which is not a child of '{_name}'");
+                    }
+                    
+                    return;
+                }
+
+                // Only propagate if we haven't seen this message before
+                if (AddPropagationInfo(propagationInfo))
+                {
+                    // Publish to our inner bus
+                    _innerBus.Publish(message);
+                    
+                    // Propagate to parent if needed
+                    PropagateToParent(message, propagationInfo);
+                    
+                    // Propagate to other children if sibling propagation is enabled
+                    if (_propagationMode.IncludesSiblingPropagation())
+                    {
+                        PropagateToSiblings(child, message, propagationInfo);
+                    }
+                    
+                    // Remove the propagation info after propagation is complete
+                    RemovePropagationInfo(propagationInfo);
+                    
+                    if (_logger != null)
+                    {
+                        _logger.Debug($"Received message {message.Id} from child '{child._name}' in bus '{_name}'");
                     }
                 }
             }
         }
 
-        private async Task PropagateMessageAsync(TMessage message, CancellationToken cancellationToken)
+        /// <summary>
+        /// Handles a message received from a child bus asynchronously.
+        /// </summary>
+        /// <param name="child">The child bus that sent the message.</param>
+        /// <param name="message">The message being propagated.</param>
+        /// <param name="propagationInfo">Propagation tracking information.</param>
+        /// <param name="cancellationToken">A cancellation token to stop propagation.</param>
+        internal async Task OnMessageFromChildAsync(HierarchicalMessageBus<TMessage> child, TMessage message, PropagationInfo propagationInfo, CancellationToken cancellationToken)
         {
-            var tasks = new List<Task>();
-
-            // Propagate to parent if enabled
-            if ((PropagationMode == MessagePropagationMode.UpstreamOnly ||
-                 PropagationMode == MessagePropagationMode.Bidirectional) &&
-                _parent != null)
+            using (_profiler?.BeginSample("HierarchicalMessageBus.OnMessageFromChildAsync"))
             {
-                tasks.Add(_parent.PublishAsync(message, cancellationToken));
-            }
-
-            // Propagate to children if enabled
-            if (PropagationMode == MessagePropagationMode.DownstreamOnly ||
-                PropagationMode == MessagePropagationMode.Bidirectional)
-            {
-                lock (_syncRoot)
+                if (_isDisposed)
                 {
-                    foreach (var child in _children)
+                    return;
+                }
+
+                // Make sure this is actually one of our children
+                if (!_children.Contains(child))
+                {
+                    if (_logger != null)
                     {
-                        tasks.Add(child.PublishAsync(message, cancellationToken));
+                        _logger.Warning($"Received message {message.Id} from bus '{child._name}' which is not a child of '{_name}' asynchronously");
+                    }
+                    
+                    return;
+                }
+
+                // Only propagate if we haven't seen this message before
+                if (AddPropagationInfo(propagationInfo))
+                {
+                    // Publish to our inner bus
+                    await _innerBus.PublishAsync(message, cancellationToken);
+                    
+                    // Propagate to parent if needed
+                    await PropagateToParentAsync(message, propagationInfo, cancellationToken);
+                    
+                    // Propagate to other children if sibling propagation is enabled
+                    if (_propagationMode.IncludesSiblingPropagation())
+                    {
+                        await PropagateToSiblingsAsync(child, message, propagationInfo, cancellationToken);
+                    }
+                    
+                    // Remove the propagation info after propagation is complete
+                    RemovePropagationInfo(propagationInfo);
+                    
+                    if (_logger != null)
+                    {
+                        _logger.Debug($"Received message {message.Id} from child '{child._name}' in bus '{_name}' asynchronously");
                     }
                 }
             }
-
-            await Task.WhenAll(tasks);
         }
 
-        private bool HasProcessedMessage(Guid messageId)
+        /// <summary>
+        /// Propagates a message to all children except the sender.
+        /// </summary>
+        /// <param name="sender">The child bus that sent the message.</param>
+        /// <param name="message">The message to propagate.</param>
+        /// <param name="propagationInfo">Propagation tracking information.</param>
+        private void PropagateToSiblings(HierarchicalMessageBus<TMessage> sender, TMessage message, PropagationInfo propagationInfo)
         {
-            lock (_syncRoot)
+            List<HierarchicalMessageBus<TMessage>> siblings;
+            
+            lock (_hierarchyLock)
             {
-                return _processedMessages.ContainsKey(messageId);
+                siblings = _children.Where(c => c != sender).ToList();
+            }
+            
+            foreach (var sibling in siblings)
+            {
+                try
+                {
+                    // Publish to the sibling
+                    sibling.OnMessageFromParent(this, message, propagationInfo);
+                    
+                    if (_logger != null)
+                    {
+                        _logger.Debug($"Propagated message {message.Id} from child '{sender._name}' to sibling '{sibling._name}'");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    if (_logger != null)
+                    {
+                        _logger.Error($"Error propagating message {message.Id} to sibling '{sibling._name}': {ex.Message}");
+                    }
+                }
             }
         }
 
-        private void MarkMessageAsProcessed(Guid messageId)
+        /// <summary>
+        /// Propagates a message to all children except the sender asynchronously.
+        /// </summary>
+        /// <param name="sender">The child bus that sent the message.</param>
+        /// <param name="message">The message to propagate.</param>
+        /// <param name="propagationInfo">Propagation tracking information.</param>
+        /// <param name="cancellationToken">A cancellation token to stop propagation.</param>
+        private async Task PropagateToSiblingsAsync(HierarchicalMessageBus<TMessage> sender, TMessage message, PropagationInfo propagationInfo, CancellationToken cancellationToken)
         {
-            lock (_syncRoot)
+            List<HierarchicalMessageBus<TMessage>> siblings;
+            
+            lock (_hierarchyLock)
             {
-                _processedMessages[messageId] = true;
-
-                // Clean up old processed messages periodically
-                if (_processedMessages.Count > 1000)
+                siblings = _children.Where(c => c != sender).ToList();
+            }
+            
+            // Propagate to all siblings in parallel
+            var propagationTasks = siblings.Select(async sibling =>
+            {
+                try
                 {
-                    // Remove oldest entries (beyond the first 100)
-                    var keysToRemove = _processedMessages.Keys.Skip(100).ToList();
-                    foreach (var key in keysToRemove)
+                    // Publish to the sibling
+                    await sibling.OnMessageFromParentAsync(this, message, propagationInfo, cancellationToken);
+                    
+                    if (_logger != null)
                     {
-                        _processedMessages.Remove(key);
+                        _logger.Debug($"Propagated message {message.Id} from child '{sender._name}' to sibling '{sibling._name}' asynchronously");
                     }
                 }
+                catch (Exception ex)
+                {
+                    if (_logger != null)
+                    {
+                        _logger.Error($"Error propagating message {message.Id} to sibling '{sibling._name}' asynchronously: {ex.Message}");
+                    }
+                }
+            });
+            
+            await Task.WhenAll(propagationTasks);
+        }
+
+        /// <summary>
+        /// Sets up subscriptions for a child bus.
+        /// </summary>
+        /// <param name="child">The child bus to set up subscriptions for.</param>
+        private void SetupChildSubscriptions(HierarchicalMessageBus<TMessage> child)
+        {
+            // No subscriptions needed for mode None
+            if (_propagationMode == MessagePropagationMode.None)
+            {
+                return;
+            }
+            
+            // No subscriptions needed for UpwardOnly, as the child will push to parent
+            // No subscriptions needed for DownwardOnly, as the parent will push to child
+            
+            // No additional subscriptions needed at the moment
+        }
+
+        /// <summary>
+        /// Cleans up subscriptions for a child bus.
+        /// </summary>
+        /// <param name="child">The child bus to clean up subscriptions for.</param>
+        private void CleanupChildSubscriptions(HierarchicalMessageBus<TMessage> child)
+        {
+            // No subscriptions needed currently, so nothing to clean up
+        }
+
+        /// <summary>
+        /// Adds propagation info to track message propagation.
+        /// </summary>
+        /// <param name="propagationInfo">The propagation info to add.</param>
+        /// <returns>True if the propagation info was added, false if it already existed.</returns>
+        private bool AddPropagationInfo(PropagationInfo propagationInfo)
+        {
+            lock (_propagatingMessages)
+            {
+                // If we've already seen this message, don't propagate it again
+                if (_propagatingMessages.Contains(propagationInfo))
+                {
+                    return false;
+                }
+                
+                // Add the propagation info
+                _propagatingMessages.Add(propagationInfo);
+                return true;
+            }
+        }
+
+        /// <summary>
+        /// Removes propagation info after message propagation is complete.
+        /// </summary>
+        /// <param name="propagationInfo">The propagation info to remove.</param>
+        private void RemovePropagationInfo(PropagationInfo propagationInfo)
+        {
+            lock (_propagatingMessages)
+            {
+                _propagatingMessages.Remove(propagationInfo);
+            }
+        }
+
+        /// <summary>
+        /// Information used to track message propagation through the bus hierarchy.
+        /// </summary>
+        private struct PropagationInfo : IEquatable<PropagationInfo>
+        {
+            /// <summary>
+            /// The ID of the message being propagated.
+            /// </summary>
+            public readonly Guid MessageId;
+
+            /// <summary>
+            /// Initializes a new instance of the PropagationInfo struct.
+            /// </summary>
+            /// <param name="messageId">The ID of the message being propagated.</param>
+            public PropagationInfo(Guid messageId)
+            {
+                MessageId = messageId;
+            }
+
+            /// <summary>
+            /// Determines if this propagation info is equal to another.
+            /// </summary>
+            /// <param name="other">The propagation info to compare with.</param>
+            /// <returns>True if the propagation infos are equal, false otherwise.</returns>
+            public bool Equals(PropagationInfo other)
+            {
+                return MessageId.Equals(other.MessageId);
+            }
+
+            /// <summary>
+            /// Determines if this propagation info is equal to another object.
+            /// </summary>
+            /// <param name="obj">The object to compare with.</param>
+            /// <returns>True if the object is a PropagationInfo and is equal to this info, false otherwise.</returns>
+            public override bool Equals(object obj)
+            {
+                return obj is PropagationInfo other && Equals(other);
+            }
+
+            /// <summary>
+            /// Gets a hash code for this propagation info.
+            /// </summary>
+            /// <returns>A hash code for this propagation info.</returns>
+            public override int GetHashCode()
+            {
+                return MessageId.GetHashCode();
             }
         }
     }
