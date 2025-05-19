@@ -5,7 +5,7 @@ namespace AhBearStudios.Core.Messaging.Interfaces
     /// <summary>
     /// Interface for a serializer that supports compression
     /// </summary>
-    public interface ICompressibleMessageSerializer : IMessageSerializer
+    public interface ICompressibleMessageSerializer : IMessageSerializer<IMessage>
     {
         /// <summary>
         /// Serializes an object with compression

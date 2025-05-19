@@ -7,7 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Profiling.Interfaces;
 
 namespace AhBearStudios.Core.Messaging
 {
@@ -102,7 +102,7 @@ namespace AhBearStudios.Core.Messaging
                     _messageCache[message.Id] = new StoredMessage
                     {
                         Id = message.Id,
-                        Timestamp = message.Timestamp,
+                        Timestamp = message.Timestamp.Ticks,
                         SerializedData = serializedMessage,
                         DeserializedMessage = message
                     };
@@ -160,7 +160,7 @@ namespace AhBearStudios.Core.Messaging
                     _messageCache[message.Id] = new StoredMessage
                     {
                         Id = message.Id,
-                        Timestamp = message.Timestamp,
+                        Timestamp = message.Timestamp.Ticks,
                         SerializedData = serializedMessage,
                         DeserializedMessage = message
                     };
@@ -227,7 +227,7 @@ namespace AhBearStudios.Core.Messaging
                         _messageCache[messageId] = new StoredMessage
                         {
                             Id = messageId,
-                            Timestamp = message.Timestamp,
+                            Timestamp = message.Timestamp.Ticks,
                             SerializedData = serializedMessage,
                             DeserializedMessage = message
                         };
@@ -300,7 +300,7 @@ namespace AhBearStudios.Core.Messaging
                         _messageCache[messageId] = new StoredMessage
                         {
                             Id = messageId,
-                            Timestamp = message.Timestamp,
+                            Timestamp = message.Timestamp.Ticks,
                             SerializedData = serializedMessage,
                             DeserializedMessage = message
                         };
@@ -710,7 +710,7 @@ namespace AhBearStudios.Core.Messaging
                                     Id = messageId,
                                     Timestamp = timestamp,
                                     SerializedData = serializedMessage,
-                                    DeserializedMessage = null
+                                    DeserializedMessage = default
                                 };
                                 
                                 loadedCount++;
@@ -775,7 +775,7 @@ namespace AhBearStudios.Core.Messaging
                                     Id = messageId,
                                     Timestamp = timestamp,
                                     SerializedData = serializedMessage,
-                                    DeserializedMessage = null
+                                    DeserializedMessage = default
                                 };
                                 
                                 if (_logger != null)

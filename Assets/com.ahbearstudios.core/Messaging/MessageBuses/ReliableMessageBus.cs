@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Configuration;
 using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Profiling.Interfaces;
 
 namespace AhBearStudios.Core.Messaging
 {

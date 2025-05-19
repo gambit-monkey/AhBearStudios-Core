@@ -3,12 +3,12 @@ using Unity.Jobs;
 using Unity.Burst;
 using AhBearStudios.Core.Messaging.Interfaces;
 
-namespace AhBearStudios.Core.Messaging
+namespace AhBearStudios.Core.Messaging.Jobs
 {
     /// <summary>
     /// Burst-compatible job for processing messages in parallel.
-    /// Processes messages from a source queue or buffer and can optionally
-    /// output processed messages to a destination queue or buffer.
+    /// Processes messages from a source queue and can optionally
+    /// output processed messages to a destination queue.
     /// </summary>
     /// <typeparam name="T">The type of message to process.</typeparam>
     [BurstCompile]
@@ -36,32 +36,26 @@ namespace AhBearStudios.Core.Messaging
         public int MaxMessagesToProcess;
         
         /// <summary>
-        /// Delegate for the message processing function.
-        /// </summary>
-        /// <param name="message">The message to process.</param>
-        /// <returns>The processed message, if any.</returns>
-        public delegate T ProcessMessageDelegate(T message);
-        
-        // Since delegates are not directly Burst-compatible,
-        // we use function pointers for the processing logic.
-        // The client code will need to use BurstCompiler.CompileFunctionPointer
-        // to create a Burst-compatible function pointer.
-        
-        /// <summary>
         /// Function pointer for the message processing function.
         /// </summary>
-        [BurstDiscard]
         public FunctionPointer<ProcessMessageDelegate> ProcessFunction;
         
         /// <summary>
         /// Counter for the number of messages processed.
         /// </summary>
-        public NativeAtomic<int> ProcessedCount;
+        public NativeReference<int> ProcessedCount;
         
         /// <summary>
         /// Counter for the number of messages that failed processing.
         /// </summary>
-        public NativeAtomic<int> FailedCount;
+        public NativeReference<int> FailedCount;
+
+        /// <summary>
+        /// Delegate for the message processing function.
+        /// </summary>
+        /// <param name="message">The message to process.</param>
+        /// <returns>The processed message, if any.</returns>
+        public delegate T ProcessMessageDelegate(T message);
 
         /// <summary>
         /// Executes the job, processing messages from the source queue.
@@ -69,60 +63,79 @@ namespace AhBearStudios.Core.Messaging
         [BurstCompile]
         public void Execute()
         {
+            // Safety checks for required resources
+            if (!SourceQueue.IsCreated)
+            {
+                return;
+            }
+            
+            if (!ProcessFunction.IsCreated)
+            {
+                return;
+            }
+
             // Initialize counters if they're not already created
             bool disposeProcessedCount = false;
             bool disposeFailedCount = false;
             
             if (!ProcessedCount.IsCreated)
             {
-                ProcessedCount = new NativeAtomic<int>(0, Allocator.Temp);
+                ProcessedCount = new NativeReference<int>(0, Allocator.Temp);
                 disposeProcessedCount = true;
             }
             
             if (!FailedCount.IsCreated)
             {
-                FailedCount = new NativeAtomic<int>(0, Allocator.Temp);
+                FailedCount = new NativeReference<int>(0, Allocator.Temp);
                 disposeFailedCount = true;
             }
 
             // Process messages
             int messagesProcessed = 0;
+            int processedValue = ProcessedCount.Value;
+            int failedValue = FailedCount.Value;
             
             try
             {
-                while (SourceQueue.TryDequeue(out T message))
+                // Continue processing while we have messages and haven't reached the limit
+                while (messagesProcessed < MaxMessagesToProcess || ProcessAllMessages)
                 {
+                    // Try to dequeue a message
+                    if (!SourceQueue.TryDequeue(out T message))
+                    {
+                        // No more messages in the queue
+                        break;
+                    }
+
                     try
                     {
-                        // Process the message
-                        T processedMessage = ProcessFunction.Invoke(message);
+                        // Process the message using the function pointer
+                        T processedMessage = ProcessMessage(message);
                         
-                        // If a destination queue is provided, add the processed message to it
+                        // If a destination queue is provided and created, add the processed message to it
                         if (DestinationQueue.IsCreated)
                         {
                             if (!DestinationQueue.TryEnqueue(processedMessage))
                             {
                                 // If the destination queue is full, increment the failed count
-                                FailedCount.Value++;
+                                failedValue++;
                             }
                         }
                         
                         // Increment the processed count
-                        ProcessedCount.Value++;
+                        processedValue++;
                         messagesProcessed++;
-                        
-                        // If we've reached the maximum number of messages to process and we're not processing all messages, stop
-                        if (!ProcessAllMessages && messagesProcessed >= MaxMessagesToProcess)
-                        {
-                            break;
-                        }
                     }
                     catch
                     {
-                        // Increment the failed count
-                        FailedCount.Value++;
+                        // Increment the failed count in case of any exception
+                        failedValue++;
                     }
                 }
+                
+                // Update the counter values
+                ProcessedCount.Value = processedValue;
+                FailedCount.Value = failedValue;
             }
             finally
             {
@@ -138,49 +151,17 @@ namespace AhBearStudios.Core.Messaging
                 }
             }
         }
-    }
 
-    /// <summary>
-    /// Utility class for creating and scheduling message processing jobs.
-    /// </summary>
-    public static class MessageProcessingJobs
-    {
         /// <summary>
-        /// Creates and schedules a message processing job.
+        /// Processes a message using the function pointer.
+        /// This method allows the BurstDiscard attribute to be properly applied.
         /// </summary>
-        /// <typeparam name="T">The type of message to process.</typeparam>
-        /// <param name="sourceQueue">The source message queue to read messages from.</param>
-        /// <param name="processFunction">The function pointer for message processing.</param>
-        /// <param name="dependsOn">The JobHandle to depend on.</param>
-        /// <param name="destinationQueue">The destination message queue to write processed messages to (optional).</param>
-        /// <param name="processAllMessages">Whether to process all available messages.</param>
-        /// <param name="maxMessagesToProcess">The maximum number of messages to process.</param>
-        /// <param name="processedCount">Counter for the number of messages processed (optional).</param>
-        /// <param name="failedCount">Counter for the number of messages that failed processing (optional).</param>
-        /// <returns>A JobHandle for the scheduled job.</returns>
-        public static JobHandle Schedule<T>(
-            NativeMessageQueue<T> sourceQueue,
-            FunctionPointer<MessageProcessingJob<T>.ProcessMessageDelegate> processFunction,
-            JobHandle dependsOn = default,
-            NativeMessageQueue<T> destinationQueue = default,
-            bool processAllMessages = true,
-            int maxMessagesToProcess = 100,
-            NativeAtomic<int> processedCount = default,
-            NativeAtomic<int> failedCount = default)
-            where T : unmanaged, IMessage
+        /// <param name="message">The message to process.</param>
+        /// <returns>The processed message.</returns>
+        [BurstDiscard]
+        private T ProcessMessage(T message)
         {
-            var job = new MessageProcessingJob<T>
-            {
-                SourceQueue = sourceQueue,
-                DestinationQueue = destinationQueue,
-                ProcessFunction = processFunction,
-                ProcessAllMessages = processAllMessages,
-                MaxMessagesToProcess = maxMessagesToProcess,
-                ProcessedCount = processedCount,
-                FailedCount = failedCount
-            };
-            
-            return job.Schedule(dependsOn);
+            return ProcessFunction.Invoke(message);
         }
     }
 }

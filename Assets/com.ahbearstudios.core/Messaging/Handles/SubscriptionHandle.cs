@@ -1,4 +1,5 @@
 ﻿using System;
+using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 
 namespace AhBearStudios.Core.Messaging
@@ -107,7 +108,7 @@ namespace AhBearStudios.Core.Messaging
             int* ptr = (int*)UnsafeUtility.Malloc(
                 handles.Length * sizeof(int), 
                 UnsafeUtility.AlignOf<int>(), 
-                Unity.Collections.Allocator.Persistent);
+                Allocator.Persistent);
                 
             for (int i = 0; i < handles.Length; i++)
             {
@@ -147,7 +148,7 @@ namespace AhBearStudios.Core.Messaging
         {
             if (ptr != IntPtr.Zero)
             {
-                UnsafeUtility.Free((void*)ptr, Unity.Collections.Allocator.Persistent);
+                UnsafeUtility.Free((void*)ptr, Allocator.Persistent);
             }
         }
     }

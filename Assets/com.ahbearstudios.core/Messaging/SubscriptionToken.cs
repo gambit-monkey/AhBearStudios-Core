@@ -9,29 +9,46 @@ namespace AhBearStudios.Core.Messaging
     /// </summary>
     public class SubscriptionToken : ISubscriptionToken
     {
-        private readonly IMessageBus _messageBus;
+        private readonly object _messageBus;
         private readonly Guid _tokenId;
+        private readonly Type _messageType;
         private bool _isDisposed;
 
         /// <summary>
         /// Initializes a new instance of the SubscriptionToken class.
         /// </summary>
         /// <param name="messageBus">The message bus that created this token.</param>
-        public SubscriptionToken(IMessageBus messageBus)
+        /// <param name="messageType">The type of message this subscription is for, or null for all messages.</param>
+        public SubscriptionToken(object messageBus, Type messageType = null)
         {
             _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
             _tokenId = Guid.NewGuid();
+            _messageType = messageType;
             IsActive = true;
             _isDisposed = false;
         }
 
         /// <inheritdoc/>
+        public Guid Id => _tokenId;
+
+        /// <inheritdoc/>
         public bool IsActive { get; private set; }
 
+        /// <inheritdoc/>
+        public Type MessageType => _messageType;
+
         /// <summary>
-        /// Gets the unique identifier for this subscription token.
+        /// Gets the message bus associated with this token.
         /// </summary>
-        public Guid TokenId => _tokenId;
+        public object MessageBus => _messageBus;
+
+        /// <summary>
+        /// Deactivates this subscription token.
+        /// </summary>
+        internal void Deactivate()
+        {
+            IsActive = false;
+        }
 
         /// <inheritdoc/>
         public void Dispose()
@@ -56,7 +73,15 @@ namespace AhBearStudios.Core.Messaging
                 // Only attempt to unsubscribe if we're being disposed explicitly
                 try
                 {
-                    _messageBus.Unsubscribe(this);
+                    // Use pattern matching to determine the correct unsubscribe method
+                    if (_messageBus is IMessageBus messageBus)
+                    {
+                        messageBus.Unsubscribe(this);
+                    }
+                    else if (_messageBus is IKeyedMessageBus keyedMessageBus)
+                    {
+                        keyedMessageBus.Unsubscribe(this);
+                    }
                 }
                 catch (Exception)
                 {
@@ -107,7 +132,8 @@ namespace AhBearStudios.Core.Messaging
         /// <returns>A string representation of the token.</returns>
         public override string ToString()
         {
-            return $"SubscriptionToken[{_tokenId}] IsActive: {IsActive}";
+            string typeName = _messageType != null ? _messageType.Name : "All";
+            return $"SubscriptionToken[{_tokenId}] Type: {typeName}, IsActive: {IsActive}";
         }
     }
 }

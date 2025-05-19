@@ -6,7 +6,9 @@ using System.Threading.Tasks;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Extensions;
 using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Profiling.Interfaces;
+using System.Collections.Concurrent;
+using AhBearStudios.Core.Messaging.Data;
 
 namespace AhBearStudios.Core.Messaging
 {
@@ -22,7 +24,10 @@ namespace AhBearStudios.Core.Messaging
         private readonly IProfiler _profiler;
         private readonly object _hierarchyLock = new object();
         private readonly HashSet<ISubscriptionToken> _parentSubscriptions = new HashSet<ISubscriptionToken>();
-        private readonly HashSet<PropagationInfo> _propagatingMessages = new HashSet<PropagationInfo>();
+        //private readonly HashSet<PropagationInfo> _propagatingMessages = new HashSet<PropagationInfo>();
+        private readonly ConcurrentDictionary<Guid, PropagationInfo> _propagatingMessages = 
+            new ConcurrentDictionary<Guid, PropagationInfo>();
+        private IReadOnlyList<IHierarchicalMessageBus<TMessage>> _childrenReadOnly;
         
         private HierarchicalMessageBus<TMessage> _parent;
         private readonly List<HierarchicalMessageBus<TMessage>> _children = new List<HierarchicalMessageBus<TMessage>>();
@@ -66,7 +71,10 @@ namespace AhBearStudios.Core.Messaging
             {
                 lock (_hierarchyLock)
                 {
-                    return _children.Cast<IHierarchicalMessageBus<TMessage>>().ToList().AsReadOnly();
+                    return _childrenReadOnly ??= _children
+                        .Cast<IHierarchicalMessageBus<TMessage>>()
+                        .ToList()
+                        .AsReadOnly();
                 }
             }
         }
@@ -177,41 +185,38 @@ namespace AhBearStudios.Core.Messaging
         /// <inheritdoc/>
         public void Publish(TMessage message)
         {
-            using (_profiler?.BeginSample("HierarchicalMessageBus.Publish"))
+            using var _ = _profiler?.BeginSample("HierarchicalMessageBus.Publish");
+    
+            if (_isDisposed)
+                throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
+
+            if (message == null)
+                throw new ArgumentNullException(nameof(message));
+
+            try
             {
-                if (_isDisposed)
-                {
-                    throw new ObjectDisposedException(nameof(HierarchicalMessageBus<TMessage>));
-                }
+                var propagationInfo = new PropagationInfo(message.Id);
+        
+                if (!AddPropagationInfo(propagationInfo))
+                    return;
 
-                if (message == null)
+                try
                 {
-                    throw new ArgumentNullException(nameof(message));
-                }
-
-                // Create a propagation context to track message propagation
-                PropagationInfo propagationInfo = new PropagationInfo(message.Id);
-                
-                // Only propagate if this is the first time we're seeing this message
-                if (AddPropagationInfo(propagationInfo))
-                {
-                    // Publish to the inner bus
                     _innerBus.Publish(message);
-                    
-                    // Propagate to parent if needed
                     PropagateToParent(message, propagationInfo);
-                    
-                    // Propagate to children if needed
                     PropagateToChildren(message, propagationInfo);
-                    
-                    // Remove the propagation info after propagation is complete
-                    RemovePropagationInfo(propagationInfo);
-                    
-                    if (_logger != null)
-                    {
-                        _logger.Debug($"Published message {message.Id} to bus '{_name}'");
-                    }
+            
+                    _logger?.Debug($"Published message {message.Id} to bus '{_name}'");
                 }
+                finally
+                {
+                    RemovePropagationInfo(propagationInfo);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Error($"Error publishing message {message.Id}: {ex.Message}");
+                throw;
             }
         }
 
@@ -478,16 +483,12 @@ namespace AhBearStudios.Core.Messaging
         protected virtual void Dispose(bool disposing)
         {
             if (_isDisposed)
-            {
                 return;
-            }
 
             if (disposing)
             {
-                // Remove from parent
                 RemoveFromParent();
-                
-                // Remove all children
+        
                 lock (_hierarchyLock)
                 {
                     var childrenCopy = _children.ToList();
@@ -495,26 +496,23 @@ namespace AhBearStudios.Core.Messaging
                     {
                         RemoveChild(child);
                     }
-                    
-                    // Clean up parent subscriptions
+            
                     foreach (var subscription in _parentSubscriptions)
                     {
                         subscription.Dispose();
                     }
-                    
+            
                     _parentSubscriptions.Clear();
+                    _propagatingMessages.Clear();
+                    _childrenReadOnly = null;
                 }
-                
-                // Dispose the inner bus if it's disposable
+        
                 if (_innerBus is IDisposable disposableBus)
                 {
                     disposableBus.Dispose();
                 }
-                
-                if (_logger != null)
-                {
-                    _logger.Info($"HierarchicalMessageBus '{_name}' disposed");
-                }
+        
+                _logger?.Info($"HierarchicalMessageBus '{_name}' disposed");
             }
 
             _isDisposed = true;
@@ -638,45 +636,24 @@ namespace AhBearStudios.Core.Messaging
         /// <param name="message">The message to propagate.</param>
         /// <param name="propagationInfo">Propagation tracking information.</param>
         /// <param name="cancellationToken">A cancellation token to stop propagation.</param>
-        private async Task PropagateToChildrenAsync(TMessage message, PropagationInfo propagationInfo, CancellationToken cancellationToken)
+        private async Task PropagateToChildrenAsync(TMessage message, PropagationInfo propagationInfo, 
+            CancellationToken cancellationToken)
         {
             if (!_propagationMode.IncludesDownwardPropagation() || _children.Count == 0)
-            {
                 return;
-            }
-            
+
             List<HierarchicalMessageBus<TMessage>> childrenCopy;
-            
             lock (_hierarchyLock)
             {
-                childrenCopy = _children.ToList();
+                childrenCopy = new List<HierarchicalMessageBus<TMessage>>(_children.Count);
+                childrenCopy.AddRange(_children);
             }
-            
-            // Propagate to all children in parallel
-            var propagationTasks = childrenCopy.Select(async child =>
-            {
-                try
-                {
-                    // Publish to the child
-                    await child.OnMessageFromParentAsync(this, message, propagationInfo, cancellationToken);
-                    
-                    if (_logger != null)
-                    {
-                        _logger.Debug($"Propagated message {message.Id} from '{_name}' to child '{child._name}' asynchronously");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    if (_logger != null)
-                    {
-                        _logger.Error($"Error propagating message {message.Id} to child '{child._name}' asynchronously: {ex.Message}");
-                    }
-                }
-            });
-            
-            await Task.WhenAll(propagationTasks);
-        }
 
+            var propagationTasks = childrenCopy.Select(child => new ValueTask(
+                child.OnMessageFromParentAsync(this, message, propagationInfo, cancellationToken)));
+
+            await Task.WhenAll(propagationTasks.Select(vt => vt.AsTask()));
+        }
         /// <summary>
         /// Handles a message received from a parent bus.
         /// </summary>
@@ -986,18 +963,7 @@ namespace AhBearStudios.Core.Messaging
         /// <returns>True if the propagation info was added, false if it already existed.</returns>
         private bool AddPropagationInfo(PropagationInfo propagationInfo)
         {
-            lock (_propagatingMessages)
-            {
-                // If we've already seen this message, don't propagate it again
-                if (_propagatingMessages.Contains(propagationInfo))
-                {
-                    return false;
-                }
-                
-                // Add the propagation info
-                _propagatingMessages.Add(propagationInfo);
-                return true;
-            }
+            return _propagatingMessages.TryAdd(propagationInfo.MessageId, propagationInfo);
         }
 
         /// <summary>
@@ -1006,59 +972,7 @@ namespace AhBearStudios.Core.Messaging
         /// <param name="propagationInfo">The propagation info to remove.</param>
         private void RemovePropagationInfo(PropagationInfo propagationInfo)
         {
-            lock (_propagatingMessages)
-            {
-                _propagatingMessages.Remove(propagationInfo);
-            }
-        }
-
-        /// <summary>
-        /// Information used to track message propagation through the bus hierarchy.
-        /// </summary>
-        private struct PropagationInfo : IEquatable<PropagationInfo>
-        {
-            /// <summary>
-            /// The ID of the message being propagated.
-            /// </summary>
-            public readonly Guid MessageId;
-
-            /// <summary>
-            /// Initializes a new instance of the PropagationInfo struct.
-            /// </summary>
-            /// <param name="messageId">The ID of the message being propagated.</param>
-            public PropagationInfo(Guid messageId)
-            {
-                MessageId = messageId;
-            }
-
-            /// <summary>
-            /// Determines if this propagation info is equal to another.
-            /// </summary>
-            /// <param name="other">The propagation info to compare with.</param>
-            /// <returns>True if the propagation infos are equal, false otherwise.</returns>
-            public bool Equals(PropagationInfo other)
-            {
-                return MessageId.Equals(other.MessageId);
-            }
-
-            /// <summary>
-            /// Determines if this propagation info is equal to another object.
-            /// </summary>
-            /// <param name="obj">The object to compare with.</param>
-            /// <returns>True if the object is a PropagationInfo and is equal to this info, false otherwise.</returns>
-            public override bool Equals(object obj)
-            {
-                return obj is PropagationInfo other && Equals(other);
-            }
-
-            /// <summary>
-            /// Gets a hash code for this propagation info.
-            /// </summary>
-            /// <returns>A hash code for this propagation info.</returns>
-            public override int GetHashCode()
-            {
-                return MessageId.GetHashCode();
-            }
+            _propagatingMessages.TryRemove(propagationInfo.MessageId, out _);
         }
     }
 }

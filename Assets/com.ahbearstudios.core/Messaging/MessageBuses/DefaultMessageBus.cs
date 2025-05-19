@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.Profiling.Interfaces;
 
 namespace AhBearStudios.Core.Messaging
 {
@@ -75,7 +76,8 @@ namespace AhBearStudios.Core.Messaging
                         _logger.Debug($"Subscribed to {messageType.Name} messages");
                     }
 
-                    return new SubscriptionToken(this);
+                    // Create a token with the specific message type
+                    return new SubscriptionToken(this, messageType);
                 }
             }
         }
@@ -111,7 +113,8 @@ namespace AhBearStudios.Core.Messaging
                         _logger.Debug($"Subscribed async handler to {messageType.Name} messages");
                     }
 
-                    return new SubscriptionToken(this);
+                    // Create a token with the specific message type
+                    return new SubscriptionToken(this, messageType);
                 }
             }
         }
@@ -147,7 +150,8 @@ namespace AhBearStudios.Core.Messaging
                         _logger.Debug("Subscribed to all messages");
                     }
 
-                    return new SubscriptionToken(this);
+                    // Create a token with null message type (indicating all messages)
+                    return new SubscriptionToken(this, null);
                 }
             }
         }
@@ -176,7 +180,8 @@ namespace AhBearStudios.Core.Messaging
                         _logger.Debug("Subscribed async handler to all messages");
                     }
 
-                    return new SubscriptionToken(this);
+                    // Create a token with null message type (indicating all messages)
+                    return new SubscriptionToken(this, null);
                 }
             }
         }
@@ -201,8 +206,13 @@ namespace AhBearStudios.Core.Messaging
                     throw new ArgumentException("Token is not a valid subscription token", nameof(token));
                 }
 
-                // In a real implementation, we would need to track which handler is associated with
-                // this token. For now, we're just marking the token as inactive.
+                // Check if this token belongs to this message bus
+                if (subscriptionToken.MessageBus != this)
+                {
+                    throw new ArgumentException("Token was not created by this message bus", nameof(token));
+                }
+
+                // Deactivate the token
                 subscriptionToken.Deactivate();
                 
                 if (_logger != null)

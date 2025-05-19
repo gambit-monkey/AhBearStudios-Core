@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Profiling.Interfaces;
 
 namespace AhBearStudios.Core.Messaging.Factories
 {
@@ -31,7 +31,7 @@ namespace AhBearStudios.Core.Messaging.Factories
             _logger = logger;
             _profiler = profiler;
             _isDisposed = false;
-            
+
             if (_logger != null)
             {
                 _logger.Info("MessageBusFactory initialized");
@@ -49,7 +49,7 @@ namespace AhBearStudios.Core.Messaging.Factories
                 }
 
                 Type messageType = typeof(TMessage);
-                
+
                 lock (_cacheLock)
                 {
                     // Check if we already have a bus for this message type
@@ -59,27 +59,27 @@ namespace AhBearStudios.Core.Messaging.Factories
                         {
                             _logger.Debug($"Retrieved cached message bus for type {messageType.Name}");
                         }
-                        
+
                         return (IMessageBus<TMessage>)existingBus;
                     }
-                    
+
                     // Create a new bus
                     var newBus = new DefaultMessageBus<TMessage>(_logger, _profiler);
                     _messageBusCache[messageType] = newBus;
-                    
+
                     if (_logger != null)
                     {
                         _logger.Debug($"Created new message bus for type {messageType.Name}");
                     }
-                    
+
                     return newBus;
                 }
             }
         }
 
         /// <inheritdoc/>
-        public IKeyedMessageBus<TKey, TMessage> CreateKeyedMessageBus<TKey, TMessage>() 
-            where TMessage : IMessage 
+        public IKeyedMessageBus<TKey, TMessage> CreateKeyedMessageBus<TKey, TMessage>()
+            where TMessage : IMessage
             where TKey : IEquatable<TKey>
         {
             using (_profiler?.BeginSample("MessageBusFactory.CreateKeyedMessageBus"))
@@ -92,7 +92,7 @@ namespace AhBearStudios.Core.Messaging.Factories
                 Type keyType = typeof(TKey);
                 Type messageType = typeof(TMessage);
                 var cacheKey = (keyType, messageType);
-                
+
                 lock (_cacheLock)
                 {
                     // Check if we already have a bus for this key+message type combination
@@ -100,21 +100,23 @@ namespace AhBearStudios.Core.Messaging.Factories
                     {
                         if (_logger != null)
                         {
-                            _logger.Debug($"Retrieved cached keyed message bus for key type {keyType.Name} and message type {messageType.Name}");
+                            _logger.Debug(
+                                $"Retrieved cached keyed message bus for key type {keyType.Name} and message type {messageType.Name}");
                         }
-                        
+
                         return (IKeyedMessageBus<TKey, TMessage>)existingBus;
                     }
-                    
+
                     // Create a new bus
                     var newBus = new DefaultKeyedMessageBus<TKey, TMessage>(_logger, _profiler);
                     _keyedMessageBusCache[cacheKey] = newBus;
-                    
+
                     if (_logger != null)
                     {
-                        _logger.Debug($"Created new keyed message bus for key type {keyType.Name} and message type {messageType.Name}");
+                        _logger.Debug(
+                            $"Created new keyed message bus for key type {keyType.Name} and message type {messageType.Name}");
                     }
-                    
+
                     return newBus;
                 }
             }
@@ -126,7 +128,7 @@ namespace AhBearStudios.Core.Messaging.Factories
         /// <typeparam name="TMessage">The type of messages this bus will handle.</typeparam>
         /// <param name="configureBus">Action to configure the new message bus.</param>
         /// <returns>A new, configured message bus.</returns>
-        public IMessageBus<TMessage> CreateCustomMessageBus<TMessage>(Action<DefaultMessageBus<TMessage>> configureBus) 
+        public IMessageBus<TMessage> CreateCustomMessageBus<TMessage>(Action<DefaultMessageBus<TMessage>> configureBus)
             where TMessage : IMessage
         {
             using (_profiler?.BeginSample("MessageBusFactory.CreateCustomMessageBus"))
@@ -143,12 +145,12 @@ namespace AhBearStudios.Core.Messaging.Factories
 
                 var newBus = new DefaultMessageBus<TMessage>(_logger, _profiler);
                 configureBus(newBus);
-                
+
                 if (_logger != null)
                 {
                     _logger.Debug($"Created new custom message bus for type {typeof(TMessage).Name}");
                 }
-                
+
                 return newBus;
             }
         }
@@ -160,8 +162,9 @@ namespace AhBearStudios.Core.Messaging.Factories
         /// <typeparam name="TMessage">The type of messages this bus will handle.</typeparam>
         /// <param name="configureBus">Action to configure the new keyed message bus.</param>
         /// <returns>A new, configured keyed message bus.</returns>
-        public IKeyedMessageBus<TKey, TMessage> CreateCustomKeyedMessageBus<TKey, TMessage>(Action<DefaultKeyedMessageBus<TKey, TMessage>> configureBus) 
-            where TMessage : IMessage 
+        public IKeyedMessageBus<TKey, TMessage> CreateCustomKeyedMessageBus<TKey, TMessage>(
+            Action<DefaultKeyedMessageBus<TKey, TMessage>> configureBus)
+            where TMessage : IMessage
             where TKey : IEquatable<TKey>
         {
             using (_profiler?.BeginSample("MessageBusFactory.CreateCustomKeyedMessageBus"))
@@ -178,12 +181,13 @@ namespace AhBearStudios.Core.Messaging.Factories
 
                 var newBus = new DefaultKeyedMessageBus<TKey, TMessage>(_logger, _profiler);
                 configureBus(newBus);
-                
+
                 if (_logger != null)
                 {
-                    _logger.Debug($"Created new custom keyed message bus for key type {typeof(TKey).Name} and message type {typeof(TMessage).Name}");
+                    _logger.Debug(
+                        $"Created new custom keyed message bus for key type {typeof(TKey).Name} and message type {typeof(TMessage).Name}");
                 }
-                
+
                 return newBus;
             }
         }
@@ -217,7 +221,7 @@ namespace AhBearStudios.Core.Messaging.Factories
                             }
                         }
                     }
-                    
+
                     foreach (var bus in _keyedMessageBusCache.Values)
                     {
                         try
@@ -232,10 +236,10 @@ namespace AhBearStudios.Core.Messaging.Factories
                             }
                         }
                     }
-                    
+
                     _messageBusCache.Clear();
                     _keyedMessageBusCache.Clear();
-                    
+
                     if (_logger != null)
                     {
                         _logger.Debug("Message bus cache cleared");
@@ -273,7 +277,7 @@ namespace AhBearStudios.Core.Messaging.Factories
             }
 
             _isDisposed = true;
-            
+
             if (_logger != null)
             {
                 _logger.Debug("MessageBusFactory disposed");
@@ -286,6 +290,91 @@ namespace AhBearStudios.Core.Messaging.Factories
         ~MessageBusFactory()
         {
             Dispose(false);
+        }
+
+        public IMessageBus<TMessage> CreateBus<TMessage>() where TMessage : IMessage
+        {
+            using (_profiler?.BeginSample("MessageBusFactory.CreateBus"))
+            {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(MessageBusFactory));
+                }
+
+                // This can reuse the existing CreateMessageBus implementation
+                return CreateMessageBus<TMessage>();
+            }
+        }
+
+        public object CreateBus(Type messageType)
+        {
+            using (_profiler?.BeginSample("MessageBusFactory.CreateBus"))
+            {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(MessageBusFactory));
+                }
+
+                if (messageType == null)
+                {
+                    throw new ArgumentNullException(nameof(messageType));
+                }
+
+                if (!typeof(IMessage).IsAssignableFrom(messageType))
+                {
+                    throw new ArgumentException("Type must implement IMessage", nameof(messageType));
+                }
+
+                lock (_cacheLock)
+                {
+                    // Check if we already have a bus for this message type
+                    if (_messageBusCache.TryGetValue(messageType, out object existingBus))
+                    {
+                        if (_logger != null)
+                        {
+                            _logger.Debug($"Retrieved cached message bus for type {messageType.Name}");
+                        }
+
+                        return existingBus;
+                    }
+
+                    // Create a new bus using reflection
+                    Type busType = typeof(DefaultMessageBus<>).MakeGenericType(messageType);
+                    var newBus = Activator.CreateInstance(busType, _logger, _profiler);
+                    _messageBusCache[messageType] = newBus;
+
+                    if (_logger != null)
+                    {
+                        _logger.Debug($"Created new message bus for type {messageType.Name}");
+                    }
+
+                    return newBus;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Creates a typed message bus that can handle multiple message types.
+        /// </summary>
+        /// <returns>A new typed message bus.</returns>
+        public ITypedMessageBus CreateTypedBus()
+        {
+            using (_profiler?.BeginSample("MessageBusFactory.CreateTypedMessageBus"))
+            {
+                if (_isDisposed)
+                {
+                    throw new ObjectDisposedException(nameof(MessageBusFactory));
+                }
+
+                var typedBus = new TypedMessageBus(this, _logger, _profiler);
+        
+                if (_logger != null)
+                {
+                    _logger.Debug("Created new typed message bus");
+                }
+        
+                return typedBus;
+            }
         }
     }
 }

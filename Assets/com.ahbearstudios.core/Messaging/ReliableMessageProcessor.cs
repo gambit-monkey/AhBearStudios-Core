@@ -6,6 +6,7 @@ using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Configuration;
 using AhBearStudios.Core.Messaging.Interfaces;
 using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Profiling.Interfaces;
 
 namespace AhBearStudios.Core.Messaging
 {
@@ -256,7 +257,7 @@ namespace AhBearStudios.Core.Messaging
                     
                     // Calculate the next retry delay
                     int retryDelay = _options.RetryDelayBaseMs * (int)Math.Pow(2, attempts); // Exponential backoff
-                    DateTime messageTime = new DateTime(message.Timestamp);
+                    DateTime messageTime = message.Timestamp;
                     TimeSpan age = DateTime.UtcNow - messageTime;
                     
                     // Only redeliver if the message has been waiting long enough
@@ -323,24 +324,23 @@ namespace AhBearStudios.Core.Messaging
                 {
                     // Define the cutoff time
                     DateTime cutoffTime = DateTime.UtcNow.AddMinutes(-_options.MaxMessageAgeMinutes);
-                    long cutoffTicks = cutoffTime.Ticks;
-                    
+            
                     // Get all messages
                     List<TMessage> messages = await _messageStore.GetAllMessagesAsync(cancellationToken);
                     int removedCount = 0;
-                    
+            
                     foreach (TMessage message in messages)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
-                        
-                        if (message.Timestamp < cutoffTicks)
+                
+                        if (message.Timestamp < cutoffTime)  // Compare DateTime directly
                         {
                             await _messageStore.RemoveMessageAsync(message.Id, cancellationToken);
                             _retryAttempts.Remove(message.Id);
                             removedCount++;
                         }
                     }
-                    
+            
                     if (removedCount > 0 && _logger != null)
                     {
                         _logger.Info($"Removed {removedCount} expired messages");

@@ -3,7 +3,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Messaging.Schema;
 
 namespace AhBearStudios.Core.Messaging.MessageBuses
 {

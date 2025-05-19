@@ -1,11 +1,9 @@
 using System;
-using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
-using Unity.Jobs;
-using Unity.Burst;
-using AhBearStudios.Core.Logging;
+using System.Threading;
 using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Profiling;
+using Unity.Collections;
+using Unity.Burst;
+using Unity.Jobs;
 
 namespace AhBearStudios.Core.Messaging
 {
@@ -14,294 +12,187 @@ namespace AhBearStudios.Core.Messaging
     /// Provides a fixed-size ring buffer for message storage and retrieval.
     /// </summary>
     /// <typeparam name="T">The type of message to store in the buffer.</typeparam>
-    [GenerateTestsForBurstCompatibility]
+    [BurstCompile]
     public struct NativeMessageBuffer<T> : IDisposable where T : unmanaged, IMessage
     {
         /// <summary>
-        /// The capacity of the buffer.
+        /// Configuration parameters for the buffer
         /// </summary>
-        public readonly int Capacity;
-        
-        [NativeDisableParallelForRestriction]
+        public readonly struct Config
+        {
+            public readonly int Capacity;
+            public readonly bool OverwriteWhenFull;
+            public readonly Allocator Allocator;
+
+            public Config(int capacity, Allocator allocator, bool overwriteWhenFull = false)
+            {
+                Capacity = capacity;
+                Allocator = allocator;
+                OverwriteWhenFull = overwriteWhenFull;
+            }
+        }
+
+        private readonly Config _config;
         private NativeArray<T> _buffer;
-        
-        [NativeDisableParallelForRestriction]
-        private NativeAtomic<int> _head;
-        
-        [NativeDisableParallelForRestriction]
-        private NativeAtomic<int> _tail;
-        
-        [NativeDisableParallelForRestriction]
-        private NativeAtomic<int> _count;
-        
-        private readonly Allocator _allocator;
-        private readonly bool _overwriteWhenFull;
-        
+        private SharedStatic<int> _head;
+        private SharedStatic<int> _tail;
+        private SharedStatic<int> _count;
+        private volatile bool _isCreated;
+
         /// <summary>
         /// Gets the current number of messages in the buffer.
         /// </summary>
-        public int Count => _count.Value;
-        
+        public readonly int Count => _count.Data;
+
         /// <summary>
         /// Gets whether the buffer is full.
         /// </summary>
-        public bool IsFull => Count >= Capacity;
-        
+        public readonly bool IsFull => Count >= _config.Capacity;
+
         /// <summary>
         /// Gets whether the buffer is empty.
         /// </summary>
-        public bool IsEmpty => Count <= 0;
-        
+        public readonly bool IsEmpty => Count <= 0;
+
         /// <summary>
         /// Gets whether the buffer has been allocated.
         /// </summary>
-        public bool IsCreated => _buffer.IsCreated;
+        public readonly bool IsCreated => _isCreated && _buffer.IsCreated;
+
+        /// <summary>
+        /// Gets the capacity of the buffer.
+        /// </summary>
+        public readonly int Capacity => _config.Capacity;
 
         /// <summary>
         /// Initializes a new instance of the NativeMessageBuffer struct.
         /// </summary>
-        /// <param name="capacity">The maximum number of messages the buffer can hold.</param>
-        /// <param name="allocator">The allocation type to use for the buffer.</param>
-        /// <param name="overwriteWhenFull">Whether to overwrite oldest messages when the buffer is full.</param>
-        public NativeMessageBuffer(int capacity, Allocator allocator, bool overwriteWhenFull = false)
+        public NativeMessageBuffer(Config config)
         {
-            if (capacity <= 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity), "Capacity must be greater than zero.");
-            }
-            
-            if (allocator <= Allocator.None)
-            {
-                throw new ArgumentException("Invalid allocator type.", nameof(allocator));
-            }
+            ValidateConfig(config);
 
-            Capacity = capacity;
-            _allocator = allocator;
-            _overwriteWhenFull = overwriteWhenFull;
-            
-            // Allocate the buffer and atomic counters
-            _buffer = new NativeArray<T>(capacity, allocator, NativeArrayOptions.UninitializedMemory);
-            _head = new NativeAtomic<int>(0, allocator);
-            _tail = new NativeAtomic<int>(0, allocator);
-            _count = new NativeAtomic<int>(0, allocator);
+            _config = config;
+            _buffer = new NativeArray<T>(config.Capacity, config.Allocator, NativeArrayOptions.ClearMemory);
+            _head = SharedStatic<int>.GetOrCreate<NativeMessageBuffer<T>>();
+            _tail = SharedStatic<int>.GetOrCreate<NativeMessageBuffer<T>>();
+            _count = SharedStatic<int>.GetOrCreate<NativeMessageBuffer<T>>();
+            _isCreated = true;
+
+            _head.Data = 0;
+            _tail.Data = 0;
+            _count.Data = 0;
+        }
+
+        [BurstCompile]
+        private static void ValidateConfig(Config config)
+        {
+            if (config.Capacity <= 0)
+                throw new ArgumentOutOfRangeException(nameof(config.Capacity), "Capacity must be greater than zero.");
+
+            if (config.Allocator <= Allocator.None)
+                throw new ArgumentException("Invalid allocator type.", nameof(config.Allocator));
         }
 
         /// <summary>
         /// Attempts to add a message to the buffer.
         /// </summary>
-        /// <param name="message">The message to add.</param>
-        /// <returns>True if the message was added, false if the buffer was full and overwriting is disabled.</returns>
-        [GenerateTestsForBurstCompatibility]
-        public bool TryEnqueue(T message)
+        [BurstCompile]
+        public bool TryEnqueue(in T message)
         {
-            // If the buffer is full and we're not overwriting, fail
-            if (IsFull && !_overwriteWhenFull)
-            {
+            CheckDisposed();
+
+            if (IsFull && !_config.OverwriteWhenFull)
                 return false;
-            }
 
-            // If the buffer is full and we are overwriting, advance the head to remove the oldest message
-            if (IsFull && _overwriteWhenFull)
+            if (IsFull)
             {
-                _head.Value = (_head.Value + 1) % Capacity;
-                _count.Value--;
+                Interlocked.Increment(ref _head.Data);
+                Interlocked.Decrement(ref _count.Data);
             }
 
-            // Add the message at the tail position
-            _buffer[_tail.Value] = message;
-            
-            // Advance the tail
-            _tail.Value = (_tail.Value + 1) % Capacity;
-            
-            // Increment the count
-            _count.Value++;
-            
+            var tailIndex = _tail.Data % _config.Capacity;
+            _buffer[tailIndex] = message;
+            Interlocked.Increment(ref _tail.Data);
+            Interlocked.Increment(ref _count.Data);
+
             return true;
         }
 
         /// <summary>
         /// Attempts to remove and return the oldest message from the buffer.
         /// </summary>
-        /// <param name="message">When this method returns, contains the message that was removed, if any.</param>
-        /// <returns>True if a message was retrieved, false if the buffer was empty.</returns>
-        [GenerateTestsForBurstCompatibility]
+        [BurstCompile]
         public bool TryDequeue(out T message)
         {
-            // If the buffer is empty, fail
+            CheckDisposed();
+
             if (IsEmpty)
             {
                 message = default;
                 return false;
             }
 
-            // Get the message at the head position
-            message = _buffer[_head.Value];
-            
-            // Advance the head
-            _head.Value = (_head.Value + 1) % Capacity;
-            
-            // Decrement the count
-            _count.Value--;
-            
+            var headIndex = _head.Data % _config.Capacity;
+            message = _buffer[headIndex];
+            Interlocked.Increment(ref _head.Data);
+            Interlocked.Decrement(ref _count.Data);
+
             return true;
         }
 
         /// <summary>
         /// Attempts to peek at the oldest message without removing it.
         /// </summary>
-        /// <param name="message">When this method returns, contains the oldest message, if any.</param>
-        /// <returns>True if a message was peeked, false if the buffer was empty.</returns>
-        [GenerateTestsForBurstCompatibility]
+        [BurstCompile]
         public bool TryPeek(out T message)
         {
-            // If the buffer is empty, fail
+            CheckDisposed();
+
             if (IsEmpty)
             {
                 message = default;
                 return false;
             }
 
-            // Get the message at the head position without advancing the head
-            message = _buffer[_head.Value];
+            message = _buffer[_head.Data % _config.Capacity];
             return true;
         }
 
         /// <summary>
         /// Clears all messages from the buffer.
         /// </summary>
-        [GenerateTestsForBurstCompatibility]
+        [BurstCompile]
         public void Clear()
         {
-            _head.Value = 0;
-            _tail.Value = 0;
-            _count.Value = 0;
+            CheckDisposed();
+            _head.Data = 0;
+            _tail.Data = 0;
+            _count.Data = 0;
         }
 
         /// <summary>
         /// Disposes the buffer and releases all resources.
         /// </summary>
-        [GenerateTestsForBurstCompatibility]
+        [BurstCompile]
         public void Dispose()
         {
+            if (!_isCreated) return;
+            
             if (_buffer.IsCreated)
-            {
                 _buffer.Dispose();
-            }
-            
-            if (_head.IsCreated)
-            {
-                _head.Dispose();
-            }
-            
-            if (_tail.IsCreated)
-            {
-                _tail.Dispose();
-            }
-            
-            if (_count.IsCreated)
-            {
-                _count.Dispose();
-            }
+
+            _isCreated = false;
         }
 
         /// <summary>
         /// Creates a job handle for the buffer's disposal.
         /// </summary>
-        /// <param name="inputDeps">The JobHandle that represents already scheduled dependencies.</param>
-        /// <returns>A new JobHandle that includes the disposal job.</returns>
-        [GenerateTestsForBurstCompatibility]
-        public JobHandle Dispose(JobHandle inputDeps)
+        public JobHandle Dispose(JobHandle inputDeps) => _buffer.Dispose(inputDeps);
+
+        private void CheckDisposed()
         {
-            var jobHandle = _buffer.Dispose(inputDeps);
-            jobHandle = _head.Dispose(jobHandle);
-            jobHandle = _tail.Dispose(jobHandle);
-            jobHandle = _count.Dispose(jobHandle);
-            return jobHandle;
-        }
-
-        /// <summary>
-        /// Gets an enumerator for iterating through the buffer's messages.
-        /// This does not remove messages from the buffer.
-        /// </summary>
-        /// <returns>An enumerator for the buffer's messages.</returns>
-        [GenerateTestsForBurstCompatibility]
-        public BufferEnumerator GetEnumerator()
-        {
-            return new BufferEnumerator(this);
-        }
-
-        /// <summary>
-        /// Enumerator for iterating through the buffer's messages.
-        /// </summary>
-        [GenerateTestsForBurstCompatibility]
-        public struct BufferEnumerator
-        {
-            private readonly NativeMessageBuffer<T> _buffer;
-            private int _currentIndex;
-            private int _remainingCount;
-
-            internal BufferEnumerator(NativeMessageBuffer<T> buffer)
-            {
-                _buffer = buffer;
-                _currentIndex = buffer._head.Value;
-                _remainingCount = buffer.Count;
-                Current = default;
-            }
-
-            /// <summary>
-            /// Gets the current message.
-            /// </summary>
-            public T Current { get; private set; }
-
-            /// <summary>
-            /// Advances the enumerator to the next message.
-            /// </summary>
-            /// <returns>True if another message is available, false if the end of the buffer has been reached.</returns>
-            [GenerateTestsForBurstCompatibility]
-            public bool MoveNext()
-            {
-                if (_remainingCount <= 0)
-                {
-                    Current = default;
-                    return false;
-                }
-
-                Current = _buffer._buffer[_currentIndex];
-                _currentIndex = (_currentIndex + 1) % _buffer.Capacity;
-                _remainingCount--;
-                return true;
-            }
-
-            /// <summary>
-            /// Resets the enumerator to the beginning of the buffer.
-            /// </summary>
-            [GenerateTestsForBurstCompatibility]
-            public void Reset()
-            {
-                _currentIndex = _buffer._head.Value;
-                _remainingCount = _buffer.Count;
-                Current = default;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Non-generic utility class for NativeMessageBuffer operations.
-    /// </summary>
-    public static class NativeMessageBuffer
-    {
-        /// <summary>
-        /// Creates a new NativeMessageBuffer of the specified type.
-        /// </summary>
-        /// <typeparam name="T">The type of message to store in the buffer.</typeparam>
-        /// <param name="capacity">The maximum number of messages the buffer can hold.</param>
-        /// <param name="allocator">The allocation type to use for the buffer.</param>
-        /// <param name="overwriteWhenFull">Whether to overwrite oldest messages when the buffer is full.</param>
-        /// <returns>A new NativeMessageBuffer instance.</returns>
-        public static NativeMessageBuffer<T> Create<T>(int capacity, Allocator allocator, bool overwriteWhenFull = false) 
-            where T : unmanaged, IMessage
-        {
-            return new NativeMessageBuffer<T>(capacity, allocator, overwriteWhenFull);
+            if (!IsCreated)
+                throw new ObjectDisposedException(nameof(NativeMessageBuffer<T>));
         }
     }
 }

@@ -14,7 +14,10 @@ namespace AhBearStudios.Core.Messaging.Factories
             where TMessage : IMessage
         {
             var innerBus = factory.CreateBus<TMessage>();
-            return new HierarchicalMessageBus<TMessage>(innerBus, propagationMode);
+            return new HierarchicalMessageBus<TMessage>(
+                innerBus, 
+                propagationMode: propagationMode  // Pass the enum directly
+            );
         }
     }
 }
