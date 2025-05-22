@@ -44,6 +44,7 @@
 *.ipa
 *.log
 *.mdb
+*.meta
 *.mdb.meta
 *.opendb
 *.pdb

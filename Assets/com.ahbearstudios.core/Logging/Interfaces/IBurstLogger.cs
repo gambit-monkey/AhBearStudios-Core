@@ -1,7 +1,4 @@
-using System;
 using AhBearStudios.Core.Logging.Data;
-using Unity.Collections;
-using AhBearStudios.Core.Logging.Tags;
 
 namespace AhBearStudios.Core.Logging
 {
@@ -27,5 +24,14 @@ namespace AhBearStudios.Core.Logging
         /// <param name="tag">The tag identifying the source or category of the log.</param>
         /// <param name="properties">Key-value properties providing structured context.</param>
         void Log(byte level, string message, string tag, LogProperties properties);
+        
+        /// <summary>
+        /// Checks if logging is enabled for the specified log level.
+        /// This allows for performance optimization by avoiding expensive log message construction
+        /// when the message would not be logged anyway.
+        /// </summary>
+        /// <param name="level">The log level to check.</param>
+        /// <returns>True if messages at this level would be logged; otherwise, false.</returns>
+        bool IsEnabled(byte level);
     }
 }

@@ -2,13 +2,12 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using AhBearStudios.Core.Logging.Adapters;
 using UnityEngine;
 using AhBearStudios.Core.Logging.Config;
-using AhBearStudios.Core.Logging.Data;
 using AhBearStudios.Core.Logging.LogTargets;
 using AhBearStudios.Core.Logging.Unity;
 using AhBearStudios.Core.Logging.Formatters;
-using AhBearStudios.Core.Logging.Jobs;
 
 namespace AhBearStudios.Core.Logging
 {
@@ -166,52 +165,6 @@ namespace AhBearStudios.Core.Logging
 
                 // Instead of rethrowing, create a fallback minimal logger for critical messages
                 CreateFallbackLogger();
-            }
-        }
-
-        /// <summary>
-        /// Creates a bridge adapter between JobLogger and IBurstLogger
-        /// </summary>
-        private class JobLoggerToBurstAdapter : IBurstLogger
-        {
-            private readonly JobLoggerManager _manager;
-    
-            public JobLoggerToBurstAdapter(JobLoggerManager manager)
-            {
-                _manager = manager ?? throw new ArgumentNullException(nameof(manager));
-            }
-    
-            public void Log(byte level, string message, string tag)
-            {
-                // JobLoggerManager.Log expects (level, tag, message) order
-                // and a Tagging.LogTag type for the tag parameter
-        
-                // Handle the tag conversion - try to parse as LogTag enum first
-                if (System.Enum.TryParse<Tags.Tagging.LogTag>(tag, true, out var logTag))
-                {
-                    _manager.Log(level, logTag, message);
-                }
-                else
-                {
-                    // Fallback to Default tag with the original string in the message
-                    _manager.Log(level, Tags.Tagging.LogTag.Default, $"{tag}: {message}");
-                }
-            }
-            public void Log(byte level, string message, string tag, LogProperties properties)
-            {
-                // JobLoggerManager.Log expects (level, tag, message) order
-                // and a Tagging.LogTag type for the tag parameter
-    
-                // Handle the tag conversion - try to parse as LogTag enum first
-                if (System.Enum.TryParse<Tags.Tagging.LogTag>(tag, true, out var logTag))
-                {
-                    _manager.Log(level, logTag, message, properties);
-                }
-                else
-                {
-                    // Fallback to Default tag with the original string in the message
-                    _manager.Log(level, Tags.Tagging.LogTag.Default, $"{tag}: {message}", properties);
-                }
             }
         }
 

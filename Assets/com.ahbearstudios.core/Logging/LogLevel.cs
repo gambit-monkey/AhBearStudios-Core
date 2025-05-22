@@ -1,52 +1,90 @@
-using AhBearStudios.Core.Logging.Tags;
-
 namespace AhBearStudios.Core.Logging
 {
     /// <summary>
-    /// Standard log severity levels as byte constants.
-    /// Maps directly to corresponding Tagging.LogTag values for consistency.
+    /// Defines standard log levels as byte constants.
+    /// Higher values indicate more severe log levels.
     /// </summary>
     public static class LogLevel
     {
         /// <summary>
-        /// Debug level - least severe, used for detailed troubleshooting information.
+        /// Trace level - most detailed information, typically only enabled during development.
         /// </summary>
-        public const byte Debug = (byte)Tagging.LogTag.Debug;
-        
-        /// <summary>
-        /// Information level - general operational information.
-        /// </summary>
-        public const byte Info = (byte)Tagging.LogTag.Info;
-        
-        /// <summary>
-        /// Warning level - non-critical issues that might need attention.
-        /// </summary>
-        public const byte Warning = (byte)Tagging.LogTag.Warning;
-        
-        /// <summary>
-        /// Error level - issues that prevent normal operation but don't crash the application.
-        /// </summary>
-        public const byte Error = (byte)Tagging.LogTag.Error;
-        
-        /// <summary>
-        /// Critical level - severe errors that may cause the application to terminate.
-        /// </summary>
-        public const byte Critical = (byte)Tagging.LogTag.Critical;
+        public const byte Trace = 0;
 
         /// <summary>
-        /// Trace level - used for highly detailed diagnostic and tracing information during execution.
+        /// Debug level - detailed information for debugging purposes.
         /// </summary>
-        public const byte Trace = (byte)Tagging.LogTag.Critical;
-        
+        public const byte Debug = 10;
+
         /// <summary>
-        /// Determines if a log level meets or exceeds a minimum threshold.
+        /// Info level - informational messages that highlight progress or state.
         /// </summary>
-        /// <param name="level">The log level to check.</param>
-        /// <param name="minimumLevel">The minimum acceptable level.</param>
-        /// <returns>True if the level meets or exceeds the minimum threshold.</returns>
-        public static bool MeetsMinimumLevel(byte level, byte minimumLevel)
+        public const byte Info = 20;
+
+        /// <summary>
+        /// Warning level - potentially harmful situations or unexpected behavior.
+        /// </summary>
+        public const byte Warning = 30;
+
+        /// <summary>
+        /// Error level - error events that might still allow the application to continue.
+        /// </summary>
+        public const byte Error = 40;
+
+        /// <summary>
+        /// Critical level - very severe error events that will likely cause the application to abort.
+        /// </summary>
+        public const byte Critical = 50;
+
+        /// <summary>
+        /// None level - logging is disabled.
+        /// </summary>
+        public const byte None = byte.MaxValue;
+
+        /// <summary>
+        /// Gets the name of a log level.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <returns>The name of the log level.</returns>
+        public static string GetName(byte level)
         {
-            return level >= minimumLevel;
+            if (level >= Critical)
+                return "CRITICAL";
+            if (level >= Error)
+                return "ERROR";
+            if (level >= Warning)
+                return "WARNING";
+            if (level >= Info)
+                return "INFO";
+            if (level >= Debug)
+                return "DEBUG";
+            if (level >= Trace)
+                return "TRACE";
+            
+            return "UNKNOWN";
+        }
+
+        /// <summary>
+        /// Gets a short name (3 characters) for a log level.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <returns>A 3-character abbreviation of the log level.</returns>
+        public static string GetShortName(byte level)
+        {
+            if (level >= Critical)
+                return "CRT";
+            if (level >= Error)
+                return "ERR";
+            if (level >= Warning)
+                return "WRN";
+            if (level >= Info)
+                return "INF";
+            if (level >= Debug)
+                return "DBG";
+            if (level >= Trace)
+                return "TRC";
+            
+            return "UNK";
         }
     }
 }
