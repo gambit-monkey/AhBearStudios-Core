@@ -35,5 +35,17 @@ namespace AhBearStudios.Core.Messaging.Configuration
         /// Set to 0 to disable automatic cleanup.
         /// </summary>
         public int MaxMessageAgeMinutes { get; set; } = 1440; // 24 hours
+        
+        /// <summary>
+        /// Gets or sets a value indicating whether to remove messages from the store
+        /// after exceeding the maximum delivery attempts.
+        /// </summary>
+        public bool RemoveFailedMessages { get; set; } = true;
+        
+        /// <summary>
+        /// Gets or sets a value indicating whether to rethrow exceptions that occur
+        /// during message publishing.
+        /// </summary>
+        public bool RethrowExceptions { get; set; } = false;
     }
 }

@@ -48,6 +48,7 @@ namespace AhBearStudios.Core.Logging.Tags
             Critical = 94,
             Exception = 95,
             Assert = 96,
+            Trace = 97,
             
             // Special tags
             Custom = 100, // For dynamic tags stored separately
@@ -95,6 +96,7 @@ namespace AhBearStudios.Core.Logging.Tags
                 
                 case LogTag.Debug:
                 case LogTag.Info:
+                case LogTag.Trace:
                     return TagCategory.Debug;
                 
                 case LogTag.Warning:

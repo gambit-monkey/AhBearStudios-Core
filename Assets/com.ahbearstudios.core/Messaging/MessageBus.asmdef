@@ -1,0 +1,40 @@
+{
+  "name": "AhBearStudios.Core.Messaging",
+  "rootNamespace": "AhBearStudios.Core.Messaging",
+  "references": [
+    "MessagePipe",
+    "Unity.Collections",
+    "Unity.Mathematics",
+    "AhBearStudios.Core",
+    "AhBearStudios.Core.Logging"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": true,
+  "overrideReferences": false,
+  "precompiledReferences": [
+    "MessagePipe.dll",
+    "Microsoft.Extensions.DependencyInjection.Abstractions.dll",
+    "Microsoft.Extensions.DependencyInjection.dll"
+  ],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [
+    {
+      "name": "com.unity.collections",
+      "expression": "2.0.0",
+      "define": "COLLECTIONS_V2"
+    },
+    {
+      "name": "com.cysharp.messagepipe",
+      "expression": "1.0.0",
+      "define": "MESSAGEPIPE"
+    },
+    {
+      "name": "com.unity.burst",
+      "expression": "1.6.0",
+      "define": "BURST_1_6_OR_NEWER"
+    }
+  ],
+  "noEngineReferences": false
+}

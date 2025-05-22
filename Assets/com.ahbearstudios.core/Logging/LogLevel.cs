@@ -32,6 +32,11 @@ namespace AhBearStudios.Core.Logging
         /// Critical level - severe errors that may cause the application to terminate.
         /// </summary>
         public const byte Critical = (byte)Tagging.LogTag.Critical;
+
+        /// <summary>
+        /// Trace level - used for highly detailed diagnostic and tracing information during execution.
+        /// </summary>
+        public const byte Trace = (byte)Tagging.LogTag.Critical;
         
         /// <summary>
         /// Determines if a log level meets or exceeds a minimum threshold.
