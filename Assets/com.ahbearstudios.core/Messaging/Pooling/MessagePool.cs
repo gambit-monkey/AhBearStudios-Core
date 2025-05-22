@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.Profiling.Interfaces;
 
 namespace AhBearStudios.Core.Messaging
 {

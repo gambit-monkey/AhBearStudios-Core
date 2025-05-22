@@ -1,5 +1,7 @@
 using System;
 using Unity.Mathematics;
+using AhBearStudios.Core.Messaging.Interfaces;
+using Random = Unity.Mathematics.Random;
 
 namespace AhBearStudios.Core.Messaging.Messages
 {
@@ -7,12 +9,12 @@ namespace AhBearStudios.Core.Messaging.Messages
     /// Base struct for messages that need to be Burst-compatible.
     /// Uses blittable types only for full Burst compatibility.
     /// </summary>
-    public struct BlittableMessageBase : IMessage
+    public struct BlittableMessageBase : IUnmanagedMessage
     {
         /// <summary>
-        /// Internal storage for the message ID.
+        /// Internal storage for the message ID using math types for unmanaged compatibility.
         /// </summary>
-        private readonly Random.State _idState;
+        private readonly uint4 _idStorage;
         
         /// <summary>
         /// UTC timestamp ticks when the message was created.
@@ -26,17 +28,17 @@ namespace AhBearStudios.Core.Messaging.Messages
         
         /// <inheritdoc />
         public Guid Id => new Guid(
-            (uint)math.hash(new int2(_idState.state, 0)),
-            (ushort)math.hash(new int2(_idState.state, 1)),
-            (ushort)math.hash(new int2(_idState.state, 2)),
-            (byte)math.hash(new int2(_idState.state, 3)),
-            (byte)math.hash(new int2(_idState.state, 4)),
-            (byte)math.hash(new int2(_idState.state, 5)),
-            (byte)math.hash(new int2(_idState.state, 6)),
-            (byte)math.hash(new int2(_idState.state, 7)),
-            (byte)math.hash(new int2(_idState.state, 8)),
-            (byte)math.hash(new int2(_idState.state, 9)),
-            (byte)math.hash(new int2(_idState.state, 10))
+            _idStorage.x,
+            (ushort)(_idStorage.y & 0xFFFF),
+            (ushort)((_idStorage.y >> 16) & 0xFFFF),
+            (byte)(_idStorage.z & 0xFF),
+            (byte)((_idStorage.z >> 8) & 0xFF),
+            (byte)((_idStorage.z >> 16) & 0xFF),
+            (byte)((_idStorage.z >> 24) & 0xFF),
+            (byte)(_idStorage.w & 0xFF),
+            (byte)((_idStorage.w >> 8) & 0xFF),
+            (byte)((_idStorage.w >> 16) & 0xFF),
+            (byte)((_idStorage.w >> 24) & 0xFF)
         );
         
         /// <inheritdoc />
@@ -46,13 +48,23 @@ namespace AhBearStudios.Core.Messaging.Messages
         public ushort TypeCode => _typeCode;
         
         /// <summary>
-        /// Initializes a new instance of the BlittableMessageBase struct.
+        /// Initializes a new instance of the UnmanagedMessageBase struct.
         /// </summary>
         /// <param name="typeCode">The type code that identifies this message type.</param>
         public BlittableMessageBase(ushort typeCode)
         {
-            _idState = new Unity.Mathematics.Random.State((uint)System.DateTime.UtcNow.Ticks);
-            _timestamp = System.DateTime.UtcNow.Ticks;
+            // Generate a pseudo-random ID using the current timestamp
+            var now = DateTime.UtcNow.Ticks;
+            var random = new Random((uint)now);
+            
+            _idStorage = new uint4(
+                random.NextUInt(),
+                random.NextUInt(),
+                random.NextUInt(),
+                random.NextUInt()
+            );
+            
+            _timestamp = now;
             _typeCode = typeCode;
         }
     }

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using AhBearStudios.Core.com.ahbearstudios.core.Messaging_v2.Interfaces;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Interfaces;
 

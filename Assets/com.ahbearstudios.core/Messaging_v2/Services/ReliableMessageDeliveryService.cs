@@ -10,6 +10,7 @@ using AhBearStudios.Core.Messaging.Configuration;
 using AhBearStudios.Core.Messaging.Data;
 using AhBearStudios.Core.Messaging.Extensions;
 using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Reliability;
 using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Profiling.Interfaces;

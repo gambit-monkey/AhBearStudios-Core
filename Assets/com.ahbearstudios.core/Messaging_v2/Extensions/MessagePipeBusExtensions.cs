@@ -1,4 +1,3 @@
-// MessageBusExtensions.cs (continued)
 using System;
 using AhBearStudios.Core.Messaging.Interfaces;
 

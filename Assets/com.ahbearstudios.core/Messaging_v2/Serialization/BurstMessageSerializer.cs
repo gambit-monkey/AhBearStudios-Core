@@ -4,6 +4,7 @@ using Unity.Collections.LowLevel.Unsafe;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Data;
 using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Profiling.Interfaces;
 
 namespace AhBearStudios.Core.Messaging.Serialization
@@ -325,7 +326,7 @@ namespace AhBearStudios.Core.Messaging.Serialization
         private IMessage DeserializeBlittable(byte[] data, Type messageType)
         {
             var size = UnsafeUtility.SizeOf(messageType);
-            
+    
             if (data.Length != size + 2) // +2 for type code
             {
                 _logger.Log(LogLevel.Error, 
@@ -333,19 +334,20 @@ namespace AhBearStudios.Core.Messaging.Serialization
                     "BurstSerializer");
                 return null;
             }
-            
+    
             try
             {
                 var message = Activator.CreateInstance(messageType);
-                
+        
                 unsafe
                 {
                     fixed (byte* dataPtr = &data[2])
                     {
-                        UnsafeUtility.CopyPtrToStructure(dataPtr, message);
+                        // Use CopyPtrToStructure correctly with object destination
+                        UnsafeUtility.CopyPtrToStructure(dataPtr, out message);
                     }
                 }
-                
+        
                 return (IMessage)message;
             }
             catch (Exception ex)

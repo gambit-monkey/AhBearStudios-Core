@@ -1,5 +1,6 @@
 using System;
 using AhBearStudios.Core.Logging;
+using MessagePipe;
 
 namespace AhBearStudios.Core.Messaging.Handlers
 {

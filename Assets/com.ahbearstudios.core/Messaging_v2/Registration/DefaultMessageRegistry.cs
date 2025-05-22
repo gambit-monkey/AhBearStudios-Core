@@ -6,6 +6,7 @@ using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Attributes;
 using AhBearStudios.Core.Messaging.Data;
 using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.Messaging.Messages;
 
 namespace AhBearStudios.Core.Messaging.Registration
 {

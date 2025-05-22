@@ -1,4 +1,5 @@
 using System;
+using AhBearStudios.Core.Messaging.Services;
 
 namespace AhBearStudios.Core.Messaging.Data
 {

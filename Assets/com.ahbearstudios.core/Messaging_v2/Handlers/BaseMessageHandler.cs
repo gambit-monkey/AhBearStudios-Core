@@ -4,6 +4,7 @@ using AhBearStudios.Core.Messaging.Extensions;
 using AhBearStudios.Core.Messaging.Interfaces;
 using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Profiling.Interfaces;
+using Unity.Profiling;
 
 namespace AhBearStudios.Core.Messaging.Handlers
 {
@@ -34,7 +35,7 @@ namespace AhBearStudios.Core.Messaging.Handlers
             var messageType = typeof(TMessage);
             var handlerType = GetType();
             
-            _handlerTag = new ProfilerTag("MessageHandler", $"{handlerType.Name}_{messageType.Name}");
+            _handlerTag = new ProfilerTag(new ProfilerCategory("MessageHandler"), $"{handlerType.Name}_{messageType.Name}");
             
             _subscription = _messageBus.Subscribe<TMessage>(HandleMessageInternal);
             

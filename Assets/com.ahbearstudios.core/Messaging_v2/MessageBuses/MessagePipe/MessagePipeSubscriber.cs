@@ -3,6 +3,7 @@ using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Interfaces;
 using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Profiling.Interfaces;
+using MessagePipe;
 using Unity.Profiling;
 
 namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
