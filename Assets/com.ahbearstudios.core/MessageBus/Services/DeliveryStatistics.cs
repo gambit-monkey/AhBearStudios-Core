@@ -1,3 +1,4 @@
+
 using System;
 using System.Threading;
 using AhBearStudios.Core.Messaging.Interfaces;
@@ -7,7 +8,7 @@ namespace AhBearStudios.Core.Messaging.Services
     /// <summary>
     /// Implementation of IDeliveryStatistics that tracks delivery service metrics.
     /// </summary>
-    internal sealed class DeliveryStatistics : IDeliveryStatistics
+    internal class DeliveryStatistics : IDeliveryStatistics
     {
         private long _totalMessagesSent;
         private long _totalMessagesDelivered;
@@ -42,9 +43,9 @@ namespace AhBearStudios.Core.Messaging.Services
         
         /// <inheritdoc />
         public DateTime LastResetTime { get; private set; } = DateTime.UtcNow;
-        // DeliveryStatistics.cs (continued)
+        
         /// <inheritdoc />
-        public void Reset()
+        public virtual void Reset()
         {
             Interlocked.Exchange(ref _totalMessagesSent, 0);
             Interlocked.Exchange(ref _totalMessagesDelivered, 0);
@@ -109,4 +110,3 @@ namespace AhBearStudios.Core.Messaging.Services
         }
     }
 }
-        

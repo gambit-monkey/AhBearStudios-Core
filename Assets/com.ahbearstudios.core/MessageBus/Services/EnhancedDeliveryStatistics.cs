@@ -6,7 +6,7 @@ namespace AhBearStudios.Core.Messaging.Services
     /// <summary>
     /// Enhanced delivery statistics implementation for batch-optimized services.
     /// </summary>
-    internal sealed class EnhancedDeliveryStatistics : DeliveryStatistics
+    internal class BatchingDeliveryStatistics : DeliveryStatistics
     {
         private long _totalBatchesProcessed;
         private long _totalBatchProcessingTimeMs;

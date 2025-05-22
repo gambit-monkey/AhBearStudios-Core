@@ -1,7 +1,9 @@
 using System;
+using System.Threading.Tasks;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Interfaces;
 using AhBearStudios.Core.Profiling.Interfaces;
+using Cysharp.Threading.Tasks;
 using MessagePipe;
 
 namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
@@ -14,12 +16,12 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
     /// <typeparam name="TMessage">The type of message to publish.</typeparam>
     public sealed class MessagePipeKeyedPublisher<TKey, TMessage> : IKeyedMessagePublisher<TKey, TMessage>, IDisposable
     {
-        private readonly IPublisher<TKey, TMessage> _publisher;
+        private readonly IAsyncPublisher<TKey, TMessage> _publisher;
         private readonly IBurstLogger _logger;
         private readonly IProfiler _profiler;
         private readonly string _publisherName;
         private readonly object _syncLock = new object();
-        
+
         private long _totalMessagesPublished;
         private long _totalAsyncPublishes;
         private bool _disposed;
@@ -31,18 +33,18 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
         /// <param name="logger">The logger for diagnostic output.</param>
         /// <param name="profiler">The profiler for performance monitoring.</param>
         public MessagePipeKeyedPublisher(
-            IPublisher<TKey, TMessage> publisher,
+            IAsyncPublisher<TKey, TMessage> publisher,
             IBurstLogger logger,
             IProfiler profiler)
         {
             _publisher = publisher ?? throw new ArgumentNullException(nameof(publisher));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
-            
+
             _publisherName = $"KeyedPublisher<{typeof(TKey).Name}, {typeof(TMessage).Name}>";
-            
-            _logger.Log(LogLevel.Debug, 
-                $"Created {_publisherName}", 
+
+            _logger.Log(LogLevel.Debug,
+                $"Created {_publisherName}",
                 "MessagePipeKeyedPublisher");
         }
 
@@ -63,7 +65,7 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
                 try
                 {
                     _publisher.Publish(key, message);
-                    
+
                     lock (_syncLock)
                     {
                         _totalMessagesPublished++;
@@ -87,6 +89,8 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
         }
 
         /// <inheritdoc />
+
+        /// <inheritdoc />
         public IDisposable PublishAsync(TKey key, TMessage message)
         {
             if (_disposed)
@@ -102,8 +106,9 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
             {
                 try
                 {
-                    var result = _publisher.PublishAsync(key, message);
-                    
+                    // Create the UniTask from MessagePipe's PublishAsync
+                    var task = _publisher.PublishAsync(key, message);
+
                     lock (_syncLock)
                     {
                         _totalMessagesPublished++;
@@ -117,8 +122,33 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
                             "MessagePipeKeyedPublisher");
                     }
 
-                    // Wrap the result to add logging on completion
-                    return new PublishAsyncHandle(result, key, _logger, _publisherName);
+                    // Create a TaskCompletionSource to monitor the UniTask
+                    var taskCompletionSource = new TaskCompletionSource<bool>();
+
+                    // Convert UniTask to a traditional Task and set up completion
+                    task.AsTask().ContinueWith(t =>
+                    {
+                        if (t.IsCompletedSuccessfully)
+                        {
+                            taskCompletionSource.SetResult(true);
+                            if (_logger.IsEnabled(LogLevel.Trace))
+                            {
+                                _logger.Log(LogLevel.Trace,
+                                    $"{_publisherName}: Async publish completed for key '{key}'",
+                                    "MessagePipeKeyedPublisher");
+                            }
+                        }
+                        else if (t.IsFaulted)
+                        {
+                            _logger.Log(LogLevel.Error,
+                                $"{_publisherName}: Error completing async publish for key '{key}': {t.Exception.Message}",
+                                "MessagePipeKeyedPublisher");
+                            taskCompletionSource.SetException(t.Exception);
+                        }
+                    });
+
+                    // Return a disposable that can be used to await or cancel the operation
+                    return new TaskDisposable(taskCompletionSource);
                 }
                 catch (Exception ex)
                 {
@@ -126,6 +156,35 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
                         $"Error publishing async keyed message: {ex.Message}",
                         "MessagePipeKeyedPublisher");
                     throw;
+                }
+            }
+        }
+        private sealed class TaskDisposable : IDisposable
+        {
+            private readonly TaskCompletionSource<bool> _taskCompletionSource;
+            private bool _disposed;
+
+            public TaskDisposable(TaskCompletionSource<bool> taskCompletionSource)
+            {
+                _taskCompletionSource = taskCompletionSource;
+            }
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+
+                // If the task is still running, try to cancel it
+                if (!_taskCompletionSource.Task.IsCompleted)
+                {
+                    try
+                    {
+                        _taskCompletionSource.TrySetCanceled();
+                    }
+                    catch
+                    {
+                        // Ignore any exceptions during cancellation
+                    }
                 }
             }
         }
@@ -191,8 +250,8 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
             private bool _disposed;
 
             public PublishAsyncHandle(
-                IDisposable innerHandle, 
-                TKey key, 
+                IDisposable innerHandle,
+                TKey key,
                 IBurstLogger logger,
                 string publisherName)
             {
@@ -210,7 +269,7 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
                 try
                 {
                     _innerHandle.Dispose();
-                    
+
                     if (_logger.IsEnabled(LogLevel.Trace))
                     {
                         _logger.Log(LogLevel.Trace,

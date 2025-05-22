@@ -82,7 +82,7 @@ namespace AhBearStudios.Core.Messaging.Services
         /// <inheritdoc />
         public async Task StartAsync(CancellationToken cancellationToken = default)
         {
-            using var scope = _profiler.BeginScope(new ProfilerTag("DeliveryService", "Start"));
+            using var scope = _profiler.BeginScope(new ProfilerTag(new ProfilerCategory("DeliveryService"), "Start"));
             
             if (_status != DeliveryServiceStatus.Stopped)
             {
@@ -160,7 +160,7 @@ namespace AhBearStudios.Core.Messaging.Services
         /// <inheritdoc />
         public async Task SendAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default) where TMessage : IMessage
         {
-            using var scope = _profiler.BeginScope(new ProfilerTag("DeliveryService", "SendAsync"));
+            using var scope = _profiler.BeginScope(new ProfilerTag(new ProfilerCategory("DeliveryService"), "SendAsync"));
             
             if (message == null) throw new ArgumentNullException(nameof(message));
             
