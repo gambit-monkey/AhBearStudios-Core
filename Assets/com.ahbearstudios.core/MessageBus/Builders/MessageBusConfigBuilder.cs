@@ -1,6 +1,7 @@
 using System;
+using AhBearStudios.Core.MessageBus.Configuration;
 
-namespace AhBearStudios.Core.Messaging.Configuration
+namespace AhBearStudios.Core.MessageBus.Builders
 {
     /// <summary>
     /// Builder for configuring the message bus system.

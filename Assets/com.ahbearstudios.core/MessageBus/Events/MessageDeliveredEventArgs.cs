@@ -1,6 +1,8 @@
 using System;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.MessageBus.Services;
 
-namespace AhBearStudios.Core.Messaging.Services
+namespace AhBearStudios.Core.MessageBus.Events
 {
     /// <summary>
     /// Event arguments for message delivery events.

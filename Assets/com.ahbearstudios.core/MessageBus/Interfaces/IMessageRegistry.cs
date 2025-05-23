@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace AhBearStudios.Core.Messaging.Interfaces
+namespace AhBearStudios.Core.MessageBus.Interfaces
 {
     /// <summary>
     /// Interface for message registry implementations that provide discovery and cataloging of messages.

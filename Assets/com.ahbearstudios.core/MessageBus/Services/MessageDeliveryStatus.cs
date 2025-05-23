@@ -1,4 +1,4 @@
-namespace AhBearStudios.Core.Messaging.Services
+namespace AhBearStudios.Core.MessageBus.Services
 {
     /// <summary>
     /// Enumeration of message delivery statuses.

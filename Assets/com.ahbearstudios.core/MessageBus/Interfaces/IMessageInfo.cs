@@ -1,7 +1,7 @@
 using System;
-using AhBearStudios.Core.Messaging.Attributes;
+using AhBearStudios.Core.MessageBus.Attributes;
 
-namespace AhBearStudios.Core.Messaging.Interfaces
+namespace AhBearStudios.Core.MessageBus.Interfaces
 {
     /// <summary>
     /// Interface for message information that provides details about a registered message type.

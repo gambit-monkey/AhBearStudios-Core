@@ -2,7 +2,7 @@ using System;
 using AhBearStudios.Core.Logging;
 using MessagePipe;
 
-namespace AhBearStudios.Core.Messaging.Handlers
+namespace AhBearStudios.Core.MessageBus.Handlers
 {
     /// <summary>
     /// Diagnostic handler for MessagePipe that integrates with the logging system.

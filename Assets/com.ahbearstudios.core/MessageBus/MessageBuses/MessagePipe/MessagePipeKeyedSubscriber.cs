@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling.Interfaces;
 using MessagePipe;
 
-namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
+namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 {
     /// <summary>
     /// Implementation of IKeyedMessageSubscriber using MessagePipe's keyed subscriber.
@@ -127,79 +127,81 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
         }
 
         /// <inheritdoc />
-        public IDisposable Subscribe(Action<TKey, TMessage> handler)
+        
+/// <inheritdoc />
+public IDisposable Subscribe(Action<TKey, TMessage> handler)
+{
+    if (_disposed)
+        throw new ObjectDisposedException(_subscriberName);
+
+    if (handler == null)
+        throw new ArgumentNullException(nameof(handler));
+
+    using (_profiler.BeginSample($"{_subscriberName}.SubscribeAll"))
+    {
+        try
         {
-            if (_disposed)
-                throw new ObjectDisposedException(_subscriberName);
-
-            if (handler == null)
-                throw new ArgumentNullException(nameof(handler));
-
-            using (_profiler.BeginSample($"{_subscriberName}.SubscribeAll"))
+            // Wrap the handler to add profiling and logging
+            Action<TKey, TMessage> wrappedHandler = (key, message) =>
             {
-                try
+                using (_profiler.BeginSample($"{_subscriberName}.HandleMessage"))
                 {
-                    // Wrap the handler to add profiling and logging
-                    Action<TKey, TMessage> wrappedHandler = (key, message) =>
+                    try
                     {
-                        using (_profiler.BeginSample($"{_subscriberName}.HandleMessage"))
-                        {
-                            try
-                            {
-                                handler(key, message);
-                                
-                                lock (_syncLock)
-                                {
-                                    _totalMessagesReceived++;
-                                }
-
-                                if (_logger.IsEnabled(LogLevel.Trace))
-                                {
-                                    _logger.Log(LogLevel.Trace,
-                                        $"Handled message with key '{key}' of type {typeof(TMessage).Name}",
-                                        "MessagePipeKeyedSubscriber");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.Log(LogLevel.Error,
-                                    $"Error in message handler: {ex.Message}",
-                                    "MessagePipeKeyedSubscriber");
-                                throw;
-                            }
-                        }
-                    };
-
-                    var subscription = _subscriber.Subscribe(wrappedHandler);
-                    
-                    lock (_syncLock)
-                    {
-                        _totalSubscriptions++;
-                        _activeSubscriptions.Add(subscription);
-                    }
-
-                    _logger.Log(LogLevel.Debug,
-                        $"Created subscription for all keys on {_subscriberName}",
-                        "MessagePipeKeyedSubscriber");
-
-                    // Return a wrapper that removes from tracking when disposed
-                    return new SubscriptionHandle(subscription, () =>
-                    {
+                        handler(key, message);
+                        
                         lock (_syncLock)
                         {
-                            _activeSubscriptions.Remove(subscription);
+                            _totalMessagesReceived++;
                         }
-                    }, null, _logger, _subscriberName);
+
+                        if (_logger.IsEnabled(LogLevel.Trace))
+                        {
+                            _logger.Log(LogLevel.Trace,
+                                $"Handled message with key '{key}' of type {typeof(TMessage).Name}",
+                                "MessagePipeKeyedSubscriber");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.Log(LogLevel.Error,
+                            $"Error in message handler: {ex.Message}",
+                            "MessagePipeKeyedSubscriber");
+                        throw;
+                    }
                 }
-                catch (Exception ex)
-                {
-                    _logger.Log(LogLevel.Error,
-                        $"Error creating subscription for all keys: {ex.Message}",
-                        "MessagePipeKeyedSubscriber");
-                    throw;
-                }
+            };
+
+            var subscription = _subscriber.Subscribe<TKey, TMessage>(wrappedHandler);
+            
+            lock (_syncLock)
+            {
+                _totalSubscriptions++;
+                _activeSubscriptions.Add(subscription);
             }
+
+            _logger.Log(LogLevel.Debug,
+                $"Created subscription for all keys on {_subscriberName}",
+                "MessagePipeKeyedSubscriber");
+
+            // Return a wrapper that removes from tracking when disposed
+            return new SubscriptionHandle(subscription, () =>
+            {
+                lock (_syncLock)
+                {
+                    _activeSubscriptions.Remove(subscription);
+                }
+            }, null, _logger, _subscriberName);
         }
+        catch (Exception ex)
+        {
+            _logger.Log(LogLevel.Error,
+                $"Error creating subscription for all keys: {ex.Message}",
+                "MessagePipeKeyedSubscriber");
+            throw;
+        }
+    }
+}
 
         /// <inheritdoc />
         public IDisposable Subscribe(TKey key, Action<TMessage> handler, Func<TMessage, bool> filter)

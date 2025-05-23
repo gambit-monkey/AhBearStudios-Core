@@ -1,6 +1,6 @@
 using System;
 
-namespace AhBearStudios.Core.Messaging.Interfaces
+namespace AhBearStudios.Core.MessageBus.Interfaces
 {
     /// <summary>
     /// Interface for publishing keyed messages.

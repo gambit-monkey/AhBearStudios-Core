@@ -3,12 +3,11 @@ using System.Collections.Generic;
 using System.Linq;
 using AhBearStudios.Core.DependencyInjection.Interfaces;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Messaging.MessageBuses.MessagePipe;
+using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling.Interfaces;
 using MessagePipe;
 
-namespace AhBearStudios.Core.Messaging
+namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 {
     /// <summary>
     /// Implementation of the IMessageBus interface using MessagePipe.
@@ -62,7 +61,7 @@ namespace AhBearStudios.Core.Messaging
             {
                 using (_profiler.BeginSample("MessagePipeBus.GetPublisher"))
                 {
-                    var messagePipePublisher = _dependencyProvider.Resolve<IPublisher<TMessage>>();
+                    var messagePipePublisher = _dependencyProvider.Resolve<IAsyncPublisher<TMessage>>();
                     if (messagePipePublisher == null)
                     {
                         throw new InvalidOperationException($"Failed to resolve IPublisher<{messageType.Name}> from dependency provider.");
@@ -130,7 +129,7 @@ namespace AhBearStudios.Core.Messaging
             {
                 using (_profiler.BeginSample("MessagePipeBus.GetKeyedPublisher"))
                 {
-                    var messagePipePublisher = _dependencyProvider.Resolve<IPublisher<TKey, TMessage>>();
+                    var messagePipePublisher = _dependencyProvider.Resolve<IAsyncPublisher<TKey, TMessage>>();
                     if (messagePipePublisher == null)
                     {
                         throw new InvalidOperationException($"Failed to resolve IPublisher<{typeof(TKey).Name}, {typeof(TMessage).Name}> from dependency provider.");

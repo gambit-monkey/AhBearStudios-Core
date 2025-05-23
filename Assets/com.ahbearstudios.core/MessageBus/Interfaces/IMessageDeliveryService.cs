@@ -2,12 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using AhBearStudios.Core.Messaging.Configuration;
-using AhBearStudios.Core.Messaging.Data;
-using AhBearStudios.Core.Messaging.Reliability;
-using AhBearStudios.Core.Messaging.Services;
+using AhBearStudios.Core.MessageBus.Configuration;
+using AhBearStudios.Core.MessageBus.Data;
+using AhBearStudios.Core.MessageBus.Events;
+using AhBearStudios.Core.MessageBus.Services;
 
-namespace AhBearStudios.Core.Messaging.Interfaces
+namespace AhBearStudios.Core.MessageBus.Interfaces
 {
     /// <summary>
     /// Interface for message delivery services that handle message transmission with various delivery guarantees.

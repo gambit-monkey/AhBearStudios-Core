@@ -4,16 +4,16 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Configuration;
-using AhBearStudios.Core.Messaging.Data;
-using AhBearStudios.Core.Messaging.Extensions;
-using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Messaging.Reliability;
+using AhBearStudios.Core.MessageBus.Configuration;
+using AhBearStudios.Core.MessageBus.Data;
+using AhBearStudios.Core.MessageBus.Events;
+using AhBearStudios.Core.MessageBus.Extensions;
+using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Profiling.Interfaces;
 using Unity.Profiling;
 
-namespace AhBearStudios.Core.Messaging.Services
+namespace AhBearStudios.Core.MessageBus.Services
 {
     /// <summary>
     /// Simple fire-and-forget message delivery service with no reliability guarantees.

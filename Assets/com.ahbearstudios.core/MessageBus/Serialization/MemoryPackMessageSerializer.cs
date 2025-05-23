@@ -1,13 +1,13 @@
 using System;
 using System.Diagnostics;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Data;
-using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Messaging.Messages;
+using AhBearStudios.Core.MessageBus.Data;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.MessageBus.Messages;
 using AhBearStudios.Core.Profiling.Interfaces;
 using MemoryPack;
 
-namespace AhBearStudios.Core.Messaging.Serialization
+namespace AhBearStudios.Core.MessageBus.Serialization
 {
     /// <summary>
     /// Message serializer implementation using MemoryPack for high-performance serialization.

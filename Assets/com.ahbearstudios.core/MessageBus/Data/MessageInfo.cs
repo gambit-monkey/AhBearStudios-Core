@@ -1,12 +1,11 @@
 using System;
 using System.Reflection;
-using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Messaging.Attributes;
-using AhBearStudios.Core.Messaging.Messages;
-using AhBearStudios.Core.Messaging.Reliability;
+using AhBearStudios.Core.MessageBus.Attributes;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.MessageBus.Messages;
 using MemoryPack;
 
-namespace AhBearStudios.Core.Messaging.Data
+namespace AhBearStudios.Core.MessageBus.Data
 {
     /// <summary>
     /// Implementation of IMessageInfo that provides information about a registered message type.

@@ -1,4 +1,4 @@
-namespace AhBearStudios.Core.Messaging.Interfaces
+namespace AhBearStudios.Core.MessageBus.Interfaces
 {
     /// <summary>
     /// Interface for creating message serializer instances.

@@ -3,13 +3,14 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Jobs;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.MessageBus.Jobs;
 using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Profiling.Interfaces;
 using Unity.Burst;
 using Unity.Profiling;
 
-namespace AhBearStudios.Core.Messaging.Jobs
+namespace AhBearStudios.Core.MessageBus.Processors
 {
     /// <summary>
     /// Processor for handling batches of messages, supporting both managed and unmanaged types.

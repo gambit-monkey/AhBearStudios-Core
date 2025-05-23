@@ -1,6 +1,6 @@
 using System;
 
-namespace AhBearStudios.Core.Messaging.Reliability
+namespace AhBearStudios.Core.MessageBus.Interfaces
 {
     /// <summary>
     /// Interface for messages that require reliable delivery.

@@ -6,16 +6,16 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Configuration;
-using AhBearStudios.Core.Messaging.Data;
-using AhBearStudios.Core.Messaging.Extensions;
-using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Messaging.Messages;
-using AhBearStudios.Core.Messaging.Reliability;
+using AhBearStudios.Core.MessageBus.Configuration;
+using AhBearStudios.Core.MessageBus.Data;
+using AhBearStudios.Core.MessageBus.Events;
+using AhBearStudios.Core.MessageBus.Extensions;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.MessageBus.Messages;
 using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Profiling.Interfaces;
 
-namespace AhBearStudios.Core.Messaging.Services
+namespace AhBearStudios.Core.MessageBus.Services
 {
     /// <summary>
     /// Batch-optimized message delivery service that accumulates messages and processes them in batches

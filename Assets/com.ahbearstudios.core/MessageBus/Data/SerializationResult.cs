@@ -1,6 +1,7 @@
 using System;
+using AhBearStudios.Core.MessageBus.Interfaces;
 
-namespace AhBearStudios.Core.Messaging.Data
+namespace AhBearStudios.Core.MessageBus.Data
 {
     /// <summary>
     /// Result of a serialization operation.

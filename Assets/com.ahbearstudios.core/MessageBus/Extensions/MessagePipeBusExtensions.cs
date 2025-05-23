@@ -1,7 +1,7 @@
 using System;
-using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.MessageBus.Interfaces;
 
-namespace AhBearStudios.Core.Messaging.Extensions
+namespace AhBearStudios.Core.MessageBus.Extensions
 {
     /// <summary>
     /// Extension methods for the message bus system.

@@ -1,11 +1,10 @@
-
 using System;
-using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.MessageBus.Interfaces;
 using Unity.Collections;
 using Unity.Jobs;
 using Unity.Burst;
 
-namespace AhBearStudios.Core.Messaging.Jobs
+namespace AhBearStudios.Core.MessageBus.Jobs
 {
     /// <summary>
     /// A queue for processing unmanaged messages in a Burst-compatible job.

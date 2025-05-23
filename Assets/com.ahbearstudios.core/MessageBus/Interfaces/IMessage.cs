@@ -1,6 +1,6 @@
 using System;
 
-namespace AhBearStudios.Core.Messaging
+namespace AhBearStudios.Core.MessageBus.Interfaces
 {
     /// <summary>
     /// Interface that marks a struct as a message that can be used with the message bus system.

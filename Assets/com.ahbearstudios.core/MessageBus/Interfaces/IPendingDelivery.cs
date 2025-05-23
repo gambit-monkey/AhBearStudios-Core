@@ -1,7 +1,7 @@
 using System;
-using AhBearStudios.Core.Messaging.Services;
+using AhBearStudios.Core.MessageBus.Services;
 
-namespace AhBearStudios.Core.Messaging.Interfaces
+namespace AhBearStudios.Core.MessageBus.Interfaces
 {
     /// <summary>
     /// Interface for pending message deliveries.

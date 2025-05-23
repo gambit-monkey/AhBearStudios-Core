@@ -1,7 +1,7 @@
 using System;
 using System.Threading;
 
-namespace AhBearStudios.Core.Messaging.Services
+namespace AhBearStudios.Core.MessageBus.Services
 {
     /// <summary>
     /// Enhanced delivery statistics implementation for batch-optimized services.

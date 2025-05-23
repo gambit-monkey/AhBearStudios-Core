@@ -1,8 +1,8 @@
 using System;
+using AhBearStudios.Core.MessageBus.Interfaces;
 using MemoryPack;
-using AhBearStudios.Core.Messaging.Reliability;
 
-namespace AhBearStudios.Core.Messaging.Messages
+namespace AhBearStudios.Core.MessageBus.Messages
 {
     /// <summary>
     /// Base class for messages that require reliable delivery.

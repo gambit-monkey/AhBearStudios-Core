@@ -2,9 +2,9 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.MessageBus.Interfaces;
 
-namespace AhBearStudios.Core.Messaging.Registration
+namespace AhBearStudios.Core.MessageBus.Registration
 {
     /// <summary>
     /// High-performance message registry implementation that uses concurrent collections

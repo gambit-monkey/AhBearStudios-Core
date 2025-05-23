@@ -1,12 +1,12 @@
 using System;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Extensions;
-using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.MessageBus.Extensions;
+using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Profiling.Interfaces;
 using Unity.Profiling;
 
-namespace AhBearStudios.Core.Messaging.Handlers
+namespace AhBearStudios.Core.MessageBus.Handlers
 {
     /// <summary>
     /// Base class for message handlers that provides logging and profiling support.

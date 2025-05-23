@@ -1,8 +1,8 @@
 using System;
-using AhBearStudios.Core.Messaging.Data;
+using AhBearStudios.Core.MessageBus.Data;
 using AhBearStudios.Core.Profiling.Interfaces;
 
-namespace AhBearStudios.Core.Messaging.Interfaces
+namespace AhBearStudios.Core.MessageBus.Interfaces
 {
     /// <summary>
     /// Interface for message serializers that can serialize and deserialize messages.

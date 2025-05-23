@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Data;
+using AhBearStudios.Core.MessageBus.Data;
 
-namespace AhBearStudios.Core.Messaging.Services
+namespace AhBearStudios.Core.MessageBus.Services
 {
     /// <summary>
     /// Manager for adaptive batch sizing based on throughput metrics.

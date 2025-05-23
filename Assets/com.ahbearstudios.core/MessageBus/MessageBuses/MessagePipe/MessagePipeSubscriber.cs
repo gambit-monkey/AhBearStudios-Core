@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling.Interfaces;
 using MessagePipe;
 
-namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
+namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 {
     /// <summary>
     /// Implementation of IMessageSubscriber using MessagePipe's subscriber.

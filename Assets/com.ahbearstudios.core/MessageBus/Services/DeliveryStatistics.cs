@@ -1,9 +1,8 @@
-
 using System;
 using System.Threading;
-using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.MessageBus.Interfaces;
 
-namespace AhBearStudios.Core.Messaging.Services
+namespace AhBearStudios.Core.MessageBus.Services
 {
     /// <summary>
     /// Implementation of IDeliveryStatistics that tracks delivery service metrics.

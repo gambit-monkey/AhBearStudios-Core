@@ -1,7 +1,7 @@
 using System;
-using AhBearStudios.Core.Messaging.Services;
+using AhBearStudios.Core.MessageBus.Services;
 
-namespace AhBearStudios.Core.Messaging.Data
+namespace AhBearStudios.Core.MessageBus.Data
 {
     /// <summary>
     /// Result of a reliable message delivery operation.

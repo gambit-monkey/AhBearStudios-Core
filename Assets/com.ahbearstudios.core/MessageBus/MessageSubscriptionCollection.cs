@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace AhBearStudios.Core.Messaging
+namespace AhBearStudios.Core.MessageBus
 {
     /// <summary>
     /// A collection of message subscriptions that can be disposed as a group.

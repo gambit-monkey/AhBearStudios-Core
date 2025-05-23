@@ -1,10 +1,9 @@
 using System;
 using System.Threading.Tasks;
-using AhBearStudios.Core.Messaging.Data;
-using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Messaging.Reliability;
+using AhBearStudios.Core.MessageBus.Data;
+using AhBearStudios.Core.MessageBus.Interfaces;
 
-namespace AhBearStudios.Core.Messaging.Services
+namespace AhBearStudios.Core.MessageBus.Services
 {
     /// <summary>
     /// Represents a pending message delivery.

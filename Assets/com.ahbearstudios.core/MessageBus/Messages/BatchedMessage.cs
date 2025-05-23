@@ -1,6 +1,7 @@
 using System;
+using AhBearStudios.Core.MessageBus.Interfaces;
 
-namespace AhBearStudios.Core.Messaging.Data
+namespace AhBearStudios.Core.MessageBus.Messages
 {
     /// <summary>
     /// Represents a message in the batch processing queue.

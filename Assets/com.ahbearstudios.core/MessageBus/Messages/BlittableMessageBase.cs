@@ -1,9 +1,9 @@
 using System;
+using AhBearStudios.Core.MessageBus.Interfaces;
 using Unity.Mathematics;
-using AhBearStudios.Core.Messaging.Interfaces;
 using Random = Unity.Mathematics.Random;
 
-namespace AhBearStudios.Core.Messaging.Messages
+namespace AhBearStudios.Core.MessageBus.Messages
 {
     /// <summary>
     /// Base struct for messages that need to be Burst-compatible.

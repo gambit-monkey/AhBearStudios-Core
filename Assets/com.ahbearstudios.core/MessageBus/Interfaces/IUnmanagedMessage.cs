@@ -1,4 +1,4 @@
-namespace AhBearStudios.Core.Messaging.Interfaces
+namespace AhBearStudios.Core.MessageBus.Interfaces
 {
     /// <summary>
     /// Interface for unmanaged messages that can be used in Unity Jobs and Burst-compiled code.

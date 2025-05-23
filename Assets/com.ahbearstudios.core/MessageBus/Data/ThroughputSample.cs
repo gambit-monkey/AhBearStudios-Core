@@ -1,6 +1,6 @@
 using System;
 
-namespace AhBearStudios.Core.Messaging.Data
+namespace AhBearStudios.Core.MessageBus.Data
 {
     /// <summary>
     /// Represents a throughput sample.

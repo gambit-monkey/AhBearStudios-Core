@@ -1,10 +1,10 @@
 using System;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Messaging.Serialization;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.MessageBus.Serialization;
 using AhBearStudios.Core.Profiling.Interfaces;
 
-namespace AhBearStudios.Core.Messaging.Factories
+namespace AhBearStudios.Core.MessageBus.Factories
 {
     /// <summary>
     /// Default implementation of IMessageSerializerFactory.

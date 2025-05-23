@@ -3,12 +3,12 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Attributes;
-using AhBearStudios.Core.Messaging.Data;
-using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Messaging.Messages;
+using AhBearStudios.Core.MessageBus.Attributes;
+using AhBearStudios.Core.MessageBus.Data;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.MessageBus.Messages;
 
-namespace AhBearStudios.Core.Messaging.Registration
+namespace AhBearStudios.Core.MessageBus.Registration
 {
     /// <summary>
     /// Default implementation of IMessageRegistry that provides discovery and cataloging of messages.

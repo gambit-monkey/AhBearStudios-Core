@@ -1,4 +1,4 @@
-namespace AhBearStudios.Core.Messaging.Configuration
+namespace AhBearStudios.Core.MessageBus.Configuration
 {
     /// <summary>
     /// Configuration for the message bus system.

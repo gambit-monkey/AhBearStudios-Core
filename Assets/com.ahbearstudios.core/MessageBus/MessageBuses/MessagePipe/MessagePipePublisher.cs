@@ -1,10 +1,10 @@
 using System;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling.Interfaces;
 using MessagePipe;
 
-namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
+namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 {
     /// <summary>
     /// Implementation of IMessagePublisher using MessagePipe's publisher.
@@ -13,7 +13,7 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
     /// <typeparam name="TMessage">The type of message to publish.</typeparam>
     public sealed class MessagePipePublisher<TMessage> : IMessagePublisher<TMessage>, IDisposable
     {
-        private readonly IPublisher<TMessage> _publisher;
+        private readonly IAsyncPublisher<TMessage> _publisher;
         private readonly IBurstLogger _logger;
         private readonly IProfiler _profiler;
         private readonly string _publisherName;
@@ -30,7 +30,7 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
         /// <param name="logger">The logger for diagnostic output.</param>
         /// <param name="profiler">The profiler for performance monitoring.</param>
         public MessagePipePublisher(
-            IPublisher<TMessage> publisher,
+            IAsyncPublisher<TMessage> publisher,
             IBurstLogger logger,
             IProfiler profiler)
         {
@@ -84,6 +84,7 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
         }
 
         /// <inheritdoc />
+        /// <inheritdoc />
         public IDisposable PublishAsync(TMessage message)
         {
             if (_disposed)
@@ -96,8 +97,12 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
             {
                 try
                 {
-                    var result = _publisher.PublishAsync(message);
-                    
+                    // Get the UniTask
+                    var task = _publisher.PublishAsync(message);
+            
+                    // Create a dummy disposable to track the async operation
+                    var asyncTracker = new AsyncPublishTracker(task, message, _logger, _publisherName);
+            
                     lock (_syncLock)
                     {
                         _totalMessagesPublished++;
@@ -112,8 +117,8 @@ namespace AhBearStudios.Core.Messaging.MessageBuses.MessagePipe
                             "MessagePipePublisher");
                     }
 
-                    // Wrap the result to add logging on completion
-                    return new PublishAsyncHandle(result, message, _logger, _publisherName);
+                    // Return the tracking disposable
+                    return asyncTracker;
                 }
                 catch (Exception ex)
                 {

@@ -1,9 +1,10 @@
 using System;
 using System.Threading.Tasks;
-using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Messaging.Services;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.MessageBus.Messages;
+using AhBearStudios.Core.MessageBus.Services;
 
-namespace AhBearStudios.Core.Messaging.Data
+namespace AhBearStudios.Core.MessageBus.Data
 {
     /// <summary>
     /// Represents a pending delivery in the batch-optimized service.
@@ -60,7 +61,7 @@ namespace AhBearStudios.Core.Messaging.Data
             FirstAttemptTime = DateTime.UtcNow;
             IsReliable = deliveryType == DeliveryType.Reliable;
             
-            if (message is AhBearStudios.Core.Messaging.Reliability.IReliableMessage reliableMessage)
+            if (message is IReliableMessage reliableMessage)
             {
                 MaxDeliveryAttempts = reliableMessage.MaxDeliveryAttempts;
                 NextAttemptTime = new DateTime(reliableMessage.NextAttemptTicks, DateTimeKind.Utc);

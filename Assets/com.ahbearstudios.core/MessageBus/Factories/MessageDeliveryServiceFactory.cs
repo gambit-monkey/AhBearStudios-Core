@@ -1,10 +1,11 @@
 using System;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Configuration;
-using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.MessageBus.Configuration;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.MessageBus.Services;
 using AhBearStudios.Core.Profiling.Interfaces;
 
-namespace AhBearStudios.Core.Messaging.Services
+namespace AhBearStudios.Core.MessageBus.Factories
 {
     /// <summary>
     /// Default implementation of IMessageDeliveryServiceFactory.

@@ -1,6 +1,6 @@
 using System;
 
-namespace AhBearStudios.Core.Messaging.Attributes
+namespace AhBearStudios.Core.MessageBus.Attributes
 {
     /// <summary>
     /// Attribute used to specify an explicit type code for a message type.

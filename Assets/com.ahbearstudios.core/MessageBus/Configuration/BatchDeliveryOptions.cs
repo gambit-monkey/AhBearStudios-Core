@@ -1,6 +1,6 @@
 using System;
 
-namespace AhBearStudios.Core.Messaging.Configuration
+namespace AhBearStudios.Core.MessageBus.Configuration
 {
     /// <summary>
     /// Options for batch message delivery.

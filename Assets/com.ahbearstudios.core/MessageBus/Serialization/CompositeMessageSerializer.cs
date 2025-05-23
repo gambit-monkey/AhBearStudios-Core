@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Data;
-using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.MessageBus.Data;
+using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling.Interfaces;
 
-namespace AhBearStudios.Core.Messaging.Serialization
+namespace AhBearStudios.Core.MessageBus.Serialization
 {
     /// <summary>
     /// Composite message serializer that delegates to different serializers based on message type.

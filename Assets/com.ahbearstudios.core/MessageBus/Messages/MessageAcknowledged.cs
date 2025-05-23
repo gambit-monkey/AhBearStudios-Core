@@ -1,9 +1,8 @@
-// MessageAcknowledged.cs
 using System;
-using AhBearStudios.Core.Messaging.Attributes;
+using AhBearStudios.Core.MessageBus.Attributes;
 using MemoryPack;
 
-namespace AhBearStudios.Core.Messaging.Messages
+namespace AhBearStudios.Core.MessageBus.Messages
 {
     /// <summary>
     /// Message sent to acknowledge receipt of another message.

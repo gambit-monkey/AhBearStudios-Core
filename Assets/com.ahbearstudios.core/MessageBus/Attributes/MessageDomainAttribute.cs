@@ -1,6 +1,6 @@
 using System;
 
-namespace AhBearStudios.Core.Messaging.Attributes
+namespace AhBearStudios.Core.MessageBus.Attributes
 {
     /// <summary>
     /// Attribute that specifies the domain to which a message or group of messages belongs.

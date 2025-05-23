@@ -2,12 +2,12 @@ using System;
 using Unity.Burst;
 using Unity.Collections.LowLevel.Unsafe;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Data;
-using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Messaging.Messages;
+using AhBearStudios.Core.MessageBus.Data;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.MessageBus.Messages;
 using AhBearStudios.Core.Profiling.Interfaces;
 
-namespace AhBearStudios.Core.Messaging.Serialization
+namespace AhBearStudios.Core.MessageBus.Serialization
 {
     /// <summary>
     /// Burst-compatible message serializer for blittable message types.
@@ -17,7 +17,6 @@ namespace AhBearStudios.Core.Messaging.Serialization
         private readonly IBurstLogger _logger;
         private readonly IMessageRegistry _messageRegistry;
         private readonly ISerializerMetrics _metrics;
-
 
         /// <inheritdoc />
         public string Name => "Burst";

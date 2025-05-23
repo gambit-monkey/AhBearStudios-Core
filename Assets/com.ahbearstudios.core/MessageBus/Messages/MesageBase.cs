@@ -1,7 +1,9 @@
 using System;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.MessageBus.Registration;
 using MemoryPack;
 
-namespace AhBearStudios.Core.Messaging.Messages
+namespace AhBearStudios.Core.MessageBus.Messages
 {
     /// <summary>
     /// Base class for messages that don't need to be Burst-compatible.

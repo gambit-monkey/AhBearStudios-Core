@@ -3,9 +3,10 @@ using AhBearStudios.Core.DependencyInjection.Attributes;
 using UnityEngine;
 using VContainer;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Interfaces;
+using AhBearStudios.Core.MessageBus.Events;
+using AhBearStudios.Core.MessageBus.Interfaces;
 
-namespace AhBearStudios.Core.Messaging.Services
+namespace AhBearStudios.Core.MessageBus.Unity
 {
     /// <summary>
     /// Unity component that manages the message delivery service lifecycle.

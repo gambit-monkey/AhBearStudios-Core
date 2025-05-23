@@ -1,6 +1,6 @@
 using System;
 
-namespace AhBearStudios.Core.Messaging.Services
+namespace AhBearStudios.Core.MessageBus.Configuration
 {
     /// <summary>
     /// Configuration for message delivery services.

@@ -1,10 +1,9 @@
 using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Messaging.Interfaces;
-using AhBearStudios.Core.Messaging.Registration;
+using AhBearStudios.Core.MessageBus.Interfaces;
 
-namespace AhBearStudios.Core.Messaging
+namespace AhBearStudios.Core.MessageBus.Registration
 {
     /// <summary>
     /// Static registry of message types with their corresponding type codes.

@@ -4,7 +4,7 @@ using AhBearStudios.Core.Profiling.Interfaces;
 using MessagePipe;
 using Unity.Profiling;
 
-namespace AhBearStudios.Core.Messaging.Handlers
+namespace AhBearStudios.Core.MessageBus.Handlers
 {
     /// <summary>
     /// Performance handler for MessagePipe that integrates with the profiling system.
