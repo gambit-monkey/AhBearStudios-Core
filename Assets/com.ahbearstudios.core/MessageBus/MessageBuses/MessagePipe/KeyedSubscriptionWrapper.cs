@@ -3,12 +3,12 @@ using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling.Interfaces;
 
-namespace AhBearStudios.Core.MessageBus.Handlers
+namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 {
     /// <summary>
-    /// Implementation of IMessageHandlerWrapper that provides profiling, logging, and error handling.
+    /// Implementation of IKeyedSubscriptionWrapper that provides profiling, logging, and error handling.
     /// </summary>
-    internal sealed class MessageHandlerWrapper : IMessageHandlerWrapper
+    internal sealed class KeyedSubscriptionWrapper : IKeyedSubscriptionWrapper
     {
         private readonly IBurstLogger _logger;
         private readonly IProfiler _profiler;
@@ -18,12 +18,12 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         private long _totalMessagesReceived;
 
         /// <summary>
-        /// Initializes a new instance of the MessageHandlerWrapper class.
+        /// Initializes a new instance of the KeyedSubscriptionWrapper class.
         /// </summary>
         /// <param name="logger">The logger for diagnostic output.</param>
         /// <param name="profiler">The profiler for performance monitoring.</param>
         /// <param name="subscriberName">The name of the subscriber for logging purposes.</param>
-        public MessageHandlerWrapper(IBurstLogger logger, IProfiler profiler, string subscriberName)
+        public KeyedSubscriptionWrapper(IBurstLogger logger, IProfiler profiler, string subscriberName)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
@@ -47,7 +47,7 @@ namespace AhBearStudios.Core.MessageBus.Handlers
             TKey key,
             Action<TMessage> handler,
             Func<Action<TMessage>, IDisposable> subscribe,
-            ISubscriptionTracker tracker)
+            IKeyedSubscriptionTracker tracker)
         {
             using (_profiler.BeginSample($"{_subscriberName}.Subscribe"))
             {
@@ -76,7 +76,7 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         public IDisposable WrapGlobalSubscription<TKey, TMessage>(
             Action<TKey, TMessage> handler,
             Func<Action<TMessage>, IDisposable> subscribe,
-            ISubscriptionTracker tracker)
+            IKeyedSubscriptionTracker tracker)
         {
             using (_profiler.BeginSample($"{_subscriberName}.SubscribeAll"))
             {
@@ -109,7 +109,7 @@ namespace AhBearStudios.Core.MessageBus.Handlers
             Action<TMessage> handler,
             Func<TMessage, bool> filter,
             Func<Action<TMessage>, IDisposable> subscribe,
-            ISubscriptionTracker tracker)
+            IKeyedSubscriptionTracker tracker)
         {
             using (_profiler.BeginSample($"{_subscriberName}.SubscribeWithFilter"))
             {

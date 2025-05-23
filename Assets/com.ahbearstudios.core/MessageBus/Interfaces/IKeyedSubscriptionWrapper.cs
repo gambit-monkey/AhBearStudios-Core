@@ -3,12 +3,12 @@ using System;
 namespace AhBearStudios.Core.MessageBus.Interfaces
 {
     /// <summary>
-    /// Handles wrapping message handlers with profiling, logging, and error handling.
+    /// Handles wrapping subscription operations with profiling, logging, and error handling.
     /// </summary>
-    internal interface IMessageHandlerWrapper
+    internal interface IKeyedSubscriptionWrapper
     {
         /// <summary>
-        /// Gets the total number of messages received by wrapped handlers.
+        /// Gets the total number of messages received by wrapped subscriptions.
         /// </summary>
         long TotalMessagesReceived { get; }
         
@@ -26,7 +26,7 @@ namespace AhBearStudios.Core.MessageBus.Interfaces
             TKey key,
             Action<TMessage> handler,
             Func<Action<TMessage>, IDisposable> subscribe,
-            ISubscriptionTracker tracker);
+            IKeyedSubscriptionTracker tracker);
             
         /// <summary>
         /// Wraps a global subscription with profiling, logging, and error handling.
@@ -40,7 +40,7 @@ namespace AhBearStudios.Core.MessageBus.Interfaces
         IDisposable WrapGlobalSubscription<TKey, TMessage>(
             Action<TKey, TMessage> handler,
             Func<Action<TMessage>, IDisposable> subscribe,
-            ISubscriptionTracker tracker);
+            IKeyedSubscriptionTracker tracker);
             
         /// <summary>
         /// Wraps a filtered subscription with profiling, logging, and error handling.
@@ -58,6 +58,6 @@ namespace AhBearStudios.Core.MessageBus.Interfaces
             Action<TMessage> handler,
             Func<TMessage, bool> filter,
             Func<Action<TMessage>, IDisposable> subscribe,
-            ISubscriptionTracker tracker);
+            IKeyedSubscriptionTracker tracker);
     }
 }

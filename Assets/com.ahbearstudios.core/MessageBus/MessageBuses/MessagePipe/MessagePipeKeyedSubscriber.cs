@@ -16,8 +16,8 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
     {
         private readonly ISubscriber<TKey, TMessage> _keyedSubscriber;
         private readonly ISubscriber<TMessage> _globalSubscriber;
-        private readonly IMessageHandlerWrapper _handlerWrapper;
-        private readonly ISubscriptionTracker _subscriptionTracker;
+        private readonly IKeyedSubscriptionWrapper _keyedSubscriptionWrapper;
+        private readonly IKeyedSubscriptionTracker _subscriptionTracker;
         private readonly string _subscriberName;
         
         private bool _disposed;
@@ -43,8 +43,8 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             
             _subscriberName = $"KeyedSubscriber<{typeof(TKey).Name}, {typeof(TMessage).Name}>";
             
-            _handlerWrapper = new MessageHandlerWrapper(handlerLogger, handlerProfiler, _subscriberName);
-            _subscriptionTracker = new SubscriptionTracker(handlerLogger, _subscriberName);
+            _keyedSubscriptionWrapper = new KeyedSubscriptionWrapper(handlerLogger, handlerProfiler, _subscriberName);
+            _subscriptionTracker = new KeyedSubscriptionTracker(handlerLogger, _subscriberName);
             
             handlerLogger.Log(LogLevel.Debug, 
                 $"Created {_subscriberName}", 
@@ -61,7 +61,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             if (handler == null)
                 throw new ArgumentNullException(nameof(handler));
 
-            return _handlerWrapper.WrapKeyedSubscription(
+            return _keyedSubscriptionWrapper.WrapKeyedSubscription(
                 key,
                 handler,
                 wrappedHandler => _keyedSubscriber.Subscribe(key, wrappedHandler),
@@ -76,7 +76,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             if (handler == null)
                 throw new ArgumentNullException(nameof(handler));
 
-            return _handlerWrapper.WrapGlobalSubscription(
+            return _keyedSubscriptionWrapper.WrapGlobalSubscription(
                 handler,
                 wrappedHandler => _globalSubscriber.Subscribe(wrappedHandler),
                 _subscriptionTracker);
@@ -94,7 +94,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             if (filter == null)
                 throw new ArgumentNullException(nameof(filter));
 
-            return _handlerWrapper.WrapFilteredSubscription(
+            return _keyedSubscriptionWrapper.WrapFilteredSubscription(
                 key,
                 handler,
                 filter,
@@ -110,7 +110,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         /// <summary>
         /// Gets the total number of messages received by this subscriber.
         /// </summary>
-        public long TotalMessagesReceived => _handlerWrapper.TotalMessagesReceived;
+        public long TotalMessagesReceived => _keyedSubscriptionWrapper.TotalMessagesReceived;
 
         /// <summary>
         /// Gets the number of currently active subscriptions.

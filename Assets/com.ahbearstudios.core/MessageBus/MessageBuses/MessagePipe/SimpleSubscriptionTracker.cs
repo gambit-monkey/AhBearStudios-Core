@@ -1,13 +1,15 @@
 using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.MessageBus.Handlers;
+using AhBearStudios.Core.MessageBus.Interfaces;
 
 namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 {
     /// <summary>
-    /// Implementation of ISubscriptionTracker that manages subscription lifecycle and statistics.
+    /// Implementation of ISimpleSubscriptionTracker that manages simple subscription lifecycle and statistics.
     /// </summary>
-    internal sealed class SubscriptionTracker : ISubscriptionTracker
+    internal sealed class SimpleSubscriptionTracker : ISubscriptionTracker
     {
         private readonly IBurstLogger _logger;
         private readonly string _subscriberName;
@@ -18,11 +20,11 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         private bool _disposed;
 
         /// <summary>
-        /// Initializes a new instance of the SubscriptionTracker class.
+        /// Initializes a new instance of the SimpleSubscriptionTracker class.
         /// </summary>
         /// <param name="logger">The logger for diagnostic output.</param>
         /// <param name="subscriberName">The name of the subscriber for logging purposes.</param>
-        public SubscriptionTracker(IBurstLogger logger, string subscriberName)
+        public SimpleSubscriptionTracker(IBurstLogger logger, string subscriberName)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _subscriberName = subscriberName ?? throw new ArgumentNullException(nameof(subscriberName));
@@ -50,10 +52,8 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                     return _activeSubscriptions.Count;
                 }
             }
-        }
-
-        /// <inheritdoc />
-        public IDisposable TrackSubscription<TKey>(IDisposable subscription, TKey key)
+        }/// <inheritdoc />
+        public IDisposable TrackSubscription(IDisposable subscription, bool isFiltered = false)
         {
             if (subscription == null)
                 throw new ArgumentNullException(nameof(subscription));
@@ -64,34 +64,20 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                 _activeSubscriptions.Add(subscription);
             }
 
-            return new SubscriptionHandle<TKey>(subscription, () =>
+            return new SimpleSubscriptionHandle(subscription, () =>
             {
                 lock (_syncLock)
                 {
                     _activeSubscriptions.Remove(subscription);
+                    
+                    if (_logger.IsEnabled(LogLevel.Debug))
+                    {
+                        _logger.Log(LogLevel.Debug,
+                            $"Removed subscription from {_subscriberName}. Remaining active: {_activeSubscriptions.Count}",
+                            "MessagePipeSubscriber");
+                    }
                 }
-            }, key, _logger, _subscriberName);
-        }
-
-        /// <inheritdoc />
-        public IDisposable TrackSubscription(IDisposable subscription)
-        {
-            if (subscription == null)
-                throw new ArgumentNullException(nameof(subscription));
-
-            lock (_syncLock)
-            {
-                _totalSubscriptions++;
-                _activeSubscriptions.Add(subscription);
-            }
-
-            return new SubscriptionHandle(subscription, () =>
-            {
-                lock (_syncLock)
-                {
-                    _activeSubscriptions.Remove(subscription);
-                }
-            }, _logger, _subscriberName);
+            }, _logger, _subscriberName, isFiltered);
         }
 
         /// <inheritdoc />
@@ -108,7 +94,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                 _logger.Log(LogLevel.Debug,
                     $"Disposing {_subscriberName}. Total subscriptions: {_totalSubscriptions}, " +
                     $"Active subscriptions: {_activeSubscriptions.Count}",
-                    "MessagePipeKeyedSubscriber");
+                    "MessagePipeSubscriber");
 
                 foreach (var subscription in _activeSubscriptions)
                 {
@@ -120,7 +106,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                     {
                         _logger.Log(LogLevel.Warning,
                             $"Error disposing subscription: {ex.Message}",
-                            "MessagePipeKeyedSubscriber");
+                            "MessagePipeSubscriber");
                     }
                 }
 

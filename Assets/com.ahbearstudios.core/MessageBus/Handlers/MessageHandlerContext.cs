@@ -1,5 +1,6 @@
 using System;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.MessageBus.Extensions;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Profiling.Interfaces;
@@ -54,17 +55,15 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         /// <inheritdoc />
         public IDisposable SubscribeKeyed<TKey, TMessage>(TKey key, Action<TMessage> handler)
         {
-            // Use extension methods or direct access to keyed subscriber
-            // This assumes the MessageBus has extension methods for keyed subscriptions
-            return MessageBus.Subscribe<TKey, TMessage>(key, handler);
+            // Use the extension method for keyed subscription with specific key
+            return MessageBus.SubscribeKeyed<TKey, TMessage>(key, handler);
         }
 
         /// <inheritdoc />
         public IDisposable SubscribeKeyedAll<TKey, TMessage>(Action<TKey, TMessage> handler)
         {
-            // Use extension methods or direct access to keyed subscriber  
-            // This assumes the MessageBus has extension methods for keyed subscriptions
-            return MessageBus.Subscribe<TKey, TMessage>(handler);
+            // Use the extension method for subscribing to all keyed messages
+            return MessageBus.SubscribeKeyedAll<TKey, TMessage>(handler);
         }
 
         /// <inheritdoc />
