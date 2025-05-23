@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling.Interfaces;
@@ -15,35 +14,39 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
     /// <typeparam name="TMessage">The type of message to subscribe to.</typeparam>
     public sealed class MessagePipeKeyedSubscriber<TKey, TMessage> : IKeyedMessageSubscriber<TKey, TMessage>, IDisposable
     {
-        private readonly ISubscriber<TKey, TMessage> _subscriber;
-        private readonly IBurstLogger _logger;
-        private readonly IProfiler _profiler;
+        private readonly ISubscriber<TKey, TMessage> _keyedSubscriber;
+        private readonly ISubscriber<TMessage> _globalSubscriber;
+        private readonly IMessageHandlerWrapper _handlerWrapper;
+        private readonly ISubscriptionTracker _subscriptionTracker;
         private readonly string _subscriberName;
-        private readonly object _syncLock = new object();
-        private readonly List<IDisposable> _activeSubscriptions = new List<IDisposable>();
         
-        private long _totalSubscriptions;
-        private long _totalMessagesReceived;
         private bool _disposed;
 
         /// <summary>
         /// Initializes a new instance of the MessagePipeKeyedSubscriber class.
         /// </summary>
-        /// <param name="subscriber">The underlying MessagePipe keyed subscriber.</param>
+        /// <param name="keyedSubscriber">The underlying MessagePipe keyed subscriber.</param>
+        /// <param name="globalSubscriber">The underlying MessagePipe global subscriber for all-key subscriptions.</param>
         /// <param name="logger">The logger for diagnostic output.</param>
         /// <param name="profiler">The profiler for performance monitoring.</param>
         public MessagePipeKeyedSubscriber(
-            ISubscriber<TKey, TMessage> subscriber,
+            ISubscriber<TKey, TMessage> keyedSubscriber,
+            ISubscriber<TMessage> globalSubscriber,
             IBurstLogger logger,
             IProfiler profiler)
         {
-            _subscriber = subscriber ?? throw new ArgumentNullException(nameof(subscriber));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            _keyedSubscriber = keyedSubscriber ?? throw new ArgumentNullException(nameof(keyedSubscriber));
+            _globalSubscriber = globalSubscriber ?? throw new ArgumentNullException(nameof(globalSubscriber));
+            
+            var handlerLogger = logger ?? throw new ArgumentNullException(nameof(logger));
+            var handlerProfiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
             
             _subscriberName = $"KeyedSubscriber<{typeof(TKey).Name}, {typeof(TMessage).Name}>";
             
-            _logger.Log(LogLevel.Debug, 
+            _handlerWrapper = new MessageHandlerWrapper(handlerLogger, handlerProfiler, _subscriberName);
+            _subscriptionTracker = new SubscriptionTracker(handlerLogger, _subscriberName);
+            
+            handlerLogger.Log(LogLevel.Debug, 
                 $"Created {_subscriberName}", 
                 "MessagePipeKeyedSubscriber");
         }
@@ -51,306 +54,68 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         /// <inheritdoc />
         public IDisposable Subscribe(TKey key, Action<TMessage> handler)
         {
-            if (_disposed)
-                throw new ObjectDisposedException(_subscriberName);
-
+            ThrowIfDisposed();
+            
             if (key == null)
                 throw new ArgumentNullException(nameof(key));
-
             if (handler == null)
                 throw new ArgumentNullException(nameof(handler));
 
-            using (_profiler.BeginSample($"{_subscriberName}.Subscribe"))
-            {
-                try
-                {
-                    // Wrap the handler to add profiling and logging
-                    Action<TMessage> wrappedHandler = message =>
-                    {
-                        using (_profiler.BeginSample($"{_subscriberName}.HandleMessage"))
-                        {
-                            try
-                            {
-                                handler(message);
-                                
-                                lock (_syncLock)
-                                {
-                                    _totalMessagesReceived++;
-                                }
-
-                                if (_logger.IsEnabled(LogLevel.Trace))
-                                {
-                                    _logger.Log(LogLevel.Trace,
-                                        $"Handled message with key '{key}' of type {typeof(TMessage).Name}",
-                                        "MessagePipeKeyedSubscriber");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.Log(LogLevel.Error,
-                                    $"Error in message handler for key '{key}': {ex.Message}",
-                                    "MessagePipeKeyedSubscriber");
-                                throw;
-                            }
-                        }
-                    };
-
-                    var subscription = _subscriber.Subscribe(key, wrappedHandler);
-                    
-                    lock (_syncLock)
-                    {
-                        _totalSubscriptions++;
-                        _activeSubscriptions.Add(subscription);
-                    }
-
-                    _logger.Log(LogLevel.Debug,
-                        $"Created subscription for key '{key}' on {_subscriberName}",
-                        "MessagePipeKeyedSubscriber");
-
-                    // Return a wrapper that removes from tracking when disposed
-                    return new SubscriptionHandle(subscription, () =>
-                    {
-                        lock (_syncLock)
-                        {
-                            _activeSubscriptions.Remove(subscription);
-                        }
-                    }, key, _logger, _subscriberName);
-                }
-                catch (Exception ex)
-                {
-                    _logger.Log(LogLevel.Error,
-                        $"Error creating subscription for key '{key}': {ex.Message}",
-                        "MessagePipeKeyedSubscriber");
-                    throw;
-                }
-            }
+            return _handlerWrapper.WrapKeyedSubscription(
+                key,
+                handler,
+                wrappedHandler => _keyedSubscriber.Subscribe(key, wrappedHandler),
+                _subscriptionTracker);
         }
 
         /// <inheritdoc />
-        
-/// <inheritdoc />
-public IDisposable Subscribe(Action<TKey, TMessage> handler)
-{
-    if (_disposed)
-        throw new ObjectDisposedException(_subscriberName);
-
-    if (handler == null)
-        throw new ArgumentNullException(nameof(handler));
-
-    using (_profiler.BeginSample($"{_subscriberName}.SubscribeAll"))
-    {
-        try
+        public IDisposable Subscribe(Action<TKey, TMessage> handler)
         {
-            // Wrap the handler to add profiling and logging
-            Action<TKey, TMessage> wrappedHandler = (key, message) =>
-            {
-                using (_profiler.BeginSample($"{_subscriberName}.HandleMessage"))
-                {
-                    try
-                    {
-                        handler(key, message);
-                        
-                        lock (_syncLock)
-                        {
-                            _totalMessagesReceived++;
-                        }
-
-                        if (_logger.IsEnabled(LogLevel.Trace))
-                        {
-                            _logger.Log(LogLevel.Trace,
-                                $"Handled message with key '{key}' of type {typeof(TMessage).Name}",
-                                "MessagePipeKeyedSubscriber");
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Log(LogLevel.Error,
-                            $"Error in message handler: {ex.Message}",
-                            "MessagePipeKeyedSubscriber");
-                        throw;
-                    }
-                }
-            };
-
-            var subscription = _subscriber.Subscribe<TKey, TMessage>(wrappedHandler);
+            ThrowIfDisposed();
             
-            lock (_syncLock)
-            {
-                _totalSubscriptions++;
-                _activeSubscriptions.Add(subscription);
-            }
+            if (handler == null)
+                throw new ArgumentNullException(nameof(handler));
 
-            _logger.Log(LogLevel.Debug,
-                $"Created subscription for all keys on {_subscriberName}",
-                "MessagePipeKeyedSubscriber");
-
-            // Return a wrapper that removes from tracking when disposed
-            return new SubscriptionHandle(subscription, () =>
-            {
-                lock (_syncLock)
-                {
-                    _activeSubscriptions.Remove(subscription);
-                }
-            }, null, _logger, _subscriberName);
+            return _handlerWrapper.WrapGlobalSubscription(
+                handler,
+                wrappedHandler => _globalSubscriber.Subscribe(wrappedHandler),
+                _subscriptionTracker);
         }
-        catch (Exception ex)
-        {
-            _logger.Log(LogLevel.Error,
-                $"Error creating subscription for all keys: {ex.Message}",
-                "MessagePipeKeyedSubscriber");
-            throw;
-        }
-    }
-}
 
         /// <inheritdoc />
         public IDisposable Subscribe(TKey key, Action<TMessage> handler, Func<TMessage, bool> filter)
         {
-            if (_disposed)
-                throw new ObjectDisposedException(_subscriberName);
-
+            ThrowIfDisposed();
+            
             if (key == null)
                 throw new ArgumentNullException(nameof(key));
-
             if (handler == null)
                 throw new ArgumentNullException(nameof(handler));
-
             if (filter == null)
                 throw new ArgumentNullException(nameof(filter));
 
-            using (_profiler.BeginSample($"{_subscriberName}.SubscribeWithFilter"))
-            {
-                try
-                {
-                    // Wrap the handler to add filtering, profiling and logging
-                    Action<TMessage> wrappedHandler = message =>
-                    {
-                        using (_profiler.BeginSample($"{_subscriberName}.HandleMessage"))
-                        {
-                            try
-                            {
-                                // Apply filter first
-                                bool shouldHandle;
-                                try
-                                {
-                                    shouldHandle = filter(message);
-                                }
-                                catch (Exception filterEx)
-                                {
-                                    _logger.Log(LogLevel.Error,
-                                        $"Error in message filter for key '{key}': {filterEx.Message}",
-                                        "MessagePipeKeyedSubscriber");
-                                    // Don't process the message if filter fails
-                                    return;
-                                }
-
-                                if (!shouldHandle)
-                                {
-                                    if (_logger.IsEnabled(LogLevel.Trace))
-                                    {
-                                        _logger.Log(LogLevel.Trace,
-                                            $"Message filtered out for key '{key}'",
-                                            "MessagePipeKeyedSubscriber");
-                                    }
-                                    return;
-                                }
-
-                                handler(message);
-                                
-                                lock (_syncLock)
-                                {
-                                    _totalMessagesReceived++;
-                                }
-
-                                if (_logger.IsEnabled(LogLevel.Trace))
-                                {
-                                    _logger.Log(LogLevel.Trace,
-                                        $"Handled filtered message with key '{key}' of type {typeof(TMessage).Name}",
-                                        "MessagePipeKeyedSubscriber");
-                                }
-                            }
-                            catch (Exception ex)
-                            {
-                                _logger.Log(LogLevel.Error,
-                                    $"Error in message handler for key '{key}': {ex.Message}",
-                                    "MessagePipeKeyedSubscriber");
-                                throw;
-                            }
-                        }
-                    };
-
-                    var subscription = _subscriber.Subscribe(key, wrappedHandler);
-                    
-                    lock (_syncLock)
-                    {
-                        _totalSubscriptions++;
-                        _activeSubscriptions.Add(subscription);
-                    }
-
-                    _logger.Log(LogLevel.Debug,
-                        $"Created filtered subscription for key '{key}' on {_subscriberName}",
-                        "MessagePipeKeyedSubscriber");
-
-                    // Return a wrapper that removes from tracking when disposed
-                    return new SubscriptionHandle(subscription, () =>
-                    {
-                        lock (_syncLock)
-                        {
-                            _activeSubscriptions.Remove(subscription);
-                        }
-                    }, key, _logger, _subscriberName);
-                }
-                catch (Exception ex)
-                {
-                    _logger.Log(LogLevel.Error,
-                        $"Error creating filtered subscription for key '{key}': {ex.Message}",
-                        "MessagePipeKeyedSubscriber");
-                    throw;
-                }
-            }
+            return _handlerWrapper.WrapFilteredSubscription(
+                key,
+                handler,
+                filter,
+                wrappedHandler => _keyedSubscriber.Subscribe(key, wrappedHandler),
+                _subscriptionTracker);
         }
 
         /// <summary>
         /// Gets the total number of subscriptions created by this subscriber.
         /// </summary>
-        public long TotalSubscriptions
-        {
-            get
-            {
-                lock (_syncLock)
-                {
-                    return _totalSubscriptions;
-                }
-            }
-        }
+        public long TotalSubscriptions => _subscriptionTracker.TotalSubscriptions;
 
         /// <summary>
         /// Gets the total number of messages received by this subscriber.
         /// </summary>
-        public long TotalMessagesReceived
-        {
-            get
-            {
-                lock (_syncLock)
-                {
-                    return _totalMessagesReceived;
-                }
-            }
-        }
+        public long TotalMessagesReceived => _handlerWrapper.TotalMessagesReceived;
 
         /// <summary>
         /// Gets the number of currently active subscriptions.
         /// </summary>
-        public int ActiveSubscriptionCount
-        {
-            get
-            {
-                lock (_syncLock)
-                {
-                    return _activeSubscriptions.Count;
-                }
-            }
-        }
+        public int ActiveSubscriptionCount => _subscriptionTracker.ActiveSubscriptionCount;
 
         /// <inheritdoc />
         public void Dispose()
@@ -358,92 +123,14 @@ public IDisposable Subscribe(Action<TKey, TMessage> handler)
             if (_disposed)
                 return;
 
-            lock (_syncLock)
-            {
-                if (_disposed)
-                    return;
-
-                _logger.Log(LogLevel.Debug,
-                    $"Disposing {_subscriberName}. Total subscriptions: {_totalSubscriptions}, " +
-                    $"Messages received: {_totalMessagesReceived}, Active subscriptions: {_activeSubscriptions.Count}",
-                    "MessagePipeKeyedSubscriber");
-
-                // Dispose all active subscriptions
-                foreach (var subscription in _activeSubscriptions)
-                {
-                    try
-                    {
-                        subscription?.Dispose();
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.Log(LogLevel.Warning,
-                            $"Error disposing subscription: {ex.Message}",
-                            "MessagePipeKeyedSubscriber");
-                    }
-                }
-
-                _activeSubscriptions.Clear();
-                _disposed = true;
-            }
+            _subscriptionTracker.Dispose();
+            _disposed = true;
         }
 
-        /// <summary>
-        /// Handle for subscription operations that provides disposal tracking.
-        /// </summary>
-        private sealed class SubscriptionHandle : IDisposable
+        private void ThrowIfDisposed()
         {
-            private readonly IDisposable _innerSubscription;
-            private readonly Action _onDispose;
-            private readonly TKey _key;
-            private readonly IBurstLogger _logger;
-            private readonly string _subscriberName;
-            private bool _disposed;
-
-            public SubscriptionHandle(
-                IDisposable innerSubscription,
-                Action onDispose,
-                TKey key,
-                IBurstLogger logger,
-                string subscriberName)
-            {
-                _innerSubscription = innerSubscription ?? throw new ArgumentNullException(nameof(innerSubscription));
-                _onDispose = onDispose;
-                _key = key;
-                _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-                _subscriberName = subscriberName;
-            }
-
-            public void Dispose()
-            {
-                if (_disposed)
-                    return;
-
-                try
-                {
-                    _innerSubscription.Dispose();
-                    _onDispose?.Invoke();
-                    
-                    if (_logger.IsEnabled(LogLevel.Debug))
-                    {
-                        var keyInfo = _key != null ? $"key '{_key}'" : "all keys";
-                        _logger.Log(LogLevel.Debug,
-                            $"{_subscriberName}: Disposed subscription for {keyInfo}",
-                            "MessagePipeKeyedSubscriber");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.Log(LogLevel.Error,
-                        $"{_subscriberName}: Error disposing subscription: {ex.Message}",
-                        "MessagePipeKeyedSubscriber");
-                    throw;
-                }
-                finally
-                {
-                    _disposed = true;
-                }
-            }
+            if (_disposed)
+                throw new ObjectDisposedException(_subscriberName);
         }
     }
 }
