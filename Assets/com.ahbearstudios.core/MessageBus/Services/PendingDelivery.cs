@@ -6,11 +6,12 @@ using AhBearStudios.Core.MessageBus.Interfaces;
 namespace AhBearStudios.Core.MessageBus.Services
 {
     /// <summary>
-    /// Represents a pending message delivery.
+    /// Represents a pending message delivery with tracking and completion management.
     /// </summary>
     internal sealed class PendingDelivery : IPendingDelivery
     {
         private readonly TaskCompletionSource<object> _completionSource;
+        private readonly object _statusLock = new object();
         
         /// <inheritdoc />
         public IMessage Message { get; }
@@ -44,7 +45,12 @@ namespace AhBearStudios.Core.MessageBus.Services
         /// <param name="maxDeliveryAttempts">The maximum number of delivery attempts.</param>
         /// <param name="isReliable">Whether this is a reliable delivery.</param>
         /// <param name="completionSource">The completion source for the delivery task.</param>
-        public PendingDelivery(IMessage message, Guid deliveryId, int maxDeliveryAttempts, bool isReliable, TaskCompletionSource<object> completionSource)
+        public PendingDelivery(
+            IMessage message, 
+            Guid deliveryId, 
+            int maxDeliveryAttempts, 
+            bool isReliable, 
+            TaskCompletionSource<object> completionSource)
         {
             Message = message ?? throw new ArgumentNullException(nameof(message));
             DeliveryId = deliveryId;
@@ -63,36 +69,63 @@ namespace AhBearStudios.Core.MessageBus.Services
         }
         
         /// <summary>
-        /// Updates the delivery status.
+        /// Updates the delivery status in a thread-safe manner.
         /// </summary>
         /// <param name="status">The new status.</param>
         public void UpdateStatus(MessageDeliveryStatus status)
         {
-            Status = status;
+            lock (_statusLock)
+            {
+                Status = status;
+            }
+        }
+        
+        /// <summary>
+        /// Increments the delivery attempts counter.
+        /// </summary>
+        public void IncrementAttempts()
+        {
+            lock (_statusLock)
+            {
+                DeliveryAttempts++;
+            }
+        }
+        
+        /// <summary>
+        /// Updates the next attempt time.
+        /// </summary>
+        /// <param name="nextAttemptTime">The next attempt time.</param>
+        public void UpdateNextAttemptTime(DateTime nextAttemptTime)
+        {
+            lock (_statusLock)
+            {
+                NextAttemptTime = nextAttemptTime;
+            }
         }
         
         /// <summary>
         /// Completes the delivery with a success result.
         /// </summary>
         /// <param name="result">The delivery result.</param>
-        public void Complete(DeliveryResult result)
+        public void Complete(object result)
         {
-            Status = MessageDeliveryStatus.Delivered;
+            if (result == null) throw new ArgumentNullException(nameof(result));
             
-            if (IsReliable)
+            lock (_statusLock)
             {
-                var reliableResult = ReliableDeliveryResult.Success(
-                    result.MessageId,
-                    result.DeliveryId,
-                    DeliveryAttempts,
-                    result.DeliveryTime);
+                if (Status == MessageDeliveryStatus.Delivered || 
+                    Status == MessageDeliveryStatus.Failed ||
+                    Status == MessageDeliveryStatus.Cancelled ||
+                    Status == MessageDeliveryStatus.Expired)
+                {
+                    // Already completed
+                    return;
+                }
                 
-                _completionSource.TrySetResult(reliableResult);
+                Status = MessageDeliveryStatus.Delivered;
             }
-            else
-            {
-                _completionSource.TrySetResult(result);
-            }
+            
+            _completionSource.TrySetResult(result);
         }
         
         /// <summary>
@@ -101,7 +134,20 @@ namespace AhBearStudios.Core.MessageBus.Services
         /// <param name="result">The failure result.</param>
         public void Expire(ReliableDeliveryResult result)
         {
-            Status = MessageDeliveryStatus.Expired;
+            lock (_statusLock)
+            {
+                if (Status == MessageDeliveryStatus.Delivered || 
+                    Status == MessageDeliveryStatus.Failed ||
+                    Status == MessageDeliveryStatus.Cancelled ||
+                    Status == MessageDeliveryStatus.Expired)
+                {
+                    // Already completed
+                    return;
+                }
+                
+                Status = MessageDeliveryStatus.Expired;
+            }
+            
             _completionSource.TrySetResult(result);
         }
         
@@ -110,7 +156,19 @@ namespace AhBearStudios.Core.MessageBus.Services
         /// </summary>
         public void Cancel()
         {
-            Status = MessageDeliveryStatus.Cancelled;
+            lock (_statusLock)
+            {
+                if (Status == MessageDeliveryStatus.Delivered || 
+                    Status == MessageDeliveryStatus.Failed ||
+                    Status == MessageDeliveryStatus.Cancelled ||
+                    Status == MessageDeliveryStatus.Expired)
+                {
+                    // Already completed
+                    return;
+                }
+                
+                Status = MessageDeliveryStatus.Cancelled;
+            }
             
             if (IsReliable)
             {

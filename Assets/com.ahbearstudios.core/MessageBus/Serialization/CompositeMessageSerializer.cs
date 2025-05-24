@@ -5,6 +5,7 @@ using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.MessageBus.Data;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling.Interfaces;
+using Unity.Collections.LowLevel.Unsafe;
 
 namespace AhBearStudios.Core.MessageBus.Serialization
 {
@@ -292,7 +293,7 @@ namespace AhBearStudios.Core.MessageBus.Serialization
             
             // Fallback estimation
             return message?.GetType().IsValueType == true 
-                ? Unity.Collections.LowLevel.Unsafe.UnsafeUtility.SizeOf(message.GetType()) + 2
+                ? UnsafeUtility.SizeOf(message.GetType()) + 2
                 : 256; // Rough estimate for managed types
         }
         

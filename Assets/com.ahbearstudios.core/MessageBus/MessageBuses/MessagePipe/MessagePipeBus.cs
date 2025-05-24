@@ -305,8 +305,9 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                         $"Subscribed to messages of type {typeof(TMessage).Name}",
                         "MessageBus");
 
-                    // Return a wrapper that removes from tracking when disposed
-                    return new SubscriptionWrapper(subscription, () =>
+                    // The subscription already includes proper cleanup through the subscriber's tracker
+                    // Just need to ensure we remove it from our active subscriptions list when disposed
+                    return new ActiveSubscriptionHandle(subscription, () =>
                     {
                         lock (_cacheLock)
                         {
@@ -347,7 +348,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                         _logger.Log(LogLevel.Warning, 
                             "No message types registered in the registry", 
                             "MessageBus");
-                        return new EmptyDisposable();
+                        return null;
                     }
 
                     // Create a composite disposable to store all subscriptions
@@ -390,7 +391,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                         $"Subscribed to all message types ({subscriptions.Count} successful subscriptions out of {messageTypes.Count} types)",
                         "MessageBus");
 
-                    return new CompositeDisposable(subscriptions, () =>
+                    return new CompositeSubscriptionHandle(subscriptions, () =>
                     {
                         lock (_cacheLock)
                         {
@@ -487,17 +488,18 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         }
 
         /// <summary>
-        /// Wrapper for subscriptions that allows tracking and cleanup.
+        /// Lightweight handle for tracking active subscriptions in the message bus.
+        /// The actual subscription tracking is handled by the subscriber's tracker.
         /// </summary>
-        private sealed class SubscriptionWrapper : IDisposable
+        private sealed class ActiveSubscriptionHandle : IDisposable
         {
-            private readonly IDisposable _subscription;
+            private readonly IDisposable _innerSubscription;
             private readonly Action _onDispose;
             private bool _disposed;
 
-            public SubscriptionWrapper(IDisposable subscription, Action onDispose)
+            public ActiveSubscriptionHandle(IDisposable innerSubscription, Action onDispose)
             {
-                _subscription = subscription ?? throw new ArgumentNullException(nameof(subscription));
+                _innerSubscription = innerSubscription ?? throw new ArgumentNullException(nameof(innerSubscription));
                 _onDispose = onDispose;
             }
 
@@ -508,7 +510,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 
                 try
                 {
-                    _subscription.Dispose();
+                    _innerSubscription.Dispose();
                     _onDispose?.Invoke();
                 }
                 finally
@@ -519,28 +521,17 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         }
 
         /// <summary>
-        /// Empty disposable for cases where no subscriptions are created.
+        /// Composite handle for managing multiple subscriptions as a single unit.
         /// </summary>
-        private sealed class EmptyDisposable : IDisposable
+        private sealed class CompositeSubscriptionHandle : IDisposable
         {
-            public void Dispose()
-            {
-                // Nothing to dispose
-            }
-        }
-
-        /// <summary>
-        /// Composite disposable that disposes multiple subscriptions.
-        /// </summary>
-        private sealed class CompositeDisposable : IDisposable
-        {
-            private readonly List<IDisposable> _disposables;
+            private readonly List<IDisposable> _subscriptions;
             private readonly Action _onDispose;
             private bool _disposed;
 
-            public CompositeDisposable(List<IDisposable> disposables, Action onDispose = null)
+            public CompositeSubscriptionHandle(List<IDisposable> subscriptions, Action onDispose = null)
             {
-                _disposables = disposables ?? throw new ArgumentNullException(nameof(disposables));
+                _subscriptions = subscriptions ?? throw new ArgumentNullException(nameof(subscriptions));
                 _onDispose = onDispose;
             }
 
@@ -551,11 +542,11 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 
                 try
                 {
-                    foreach (var disposable in _disposables)
+                    foreach (var subscription in _subscriptions)
                     {
                         try
                         {
-                            disposable?.Dispose();
+                            subscription?.Dispose();
                         }
                         catch
                         {
@@ -563,7 +554,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                         }
                     }
 
-                    _disposables.Clear();
+                    _subscriptions.Clear();
                     _onDispose?.Invoke();
                 }
                 finally

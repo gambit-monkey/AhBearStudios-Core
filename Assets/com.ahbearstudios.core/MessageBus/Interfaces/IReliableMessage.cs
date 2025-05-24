@@ -26,5 +26,10 @@ namespace AhBearStudios.Core.MessageBus.Interfaces
         /// Gets or sets the time of the next delivery attempt.
         /// </summary>
         long NextAttemptTicks { get; set; }
+        
+        /// <summary>
+        /// Schedules the next delivery attempt for the message.
+        /// </summary>
+        void ScheduleNextAttempt();
     }
 }
