@@ -11,10 +11,11 @@ using Unity.Collections.LowLevel.Unsafe;
 namespace AhBearStudios.Core.MessageBus.Serialization
 {
     /// <summary>
-    /// Message serializer implementation using MemoryPack for managed types and direct memory operations for blittable types.
+    /// Message serializer implementation using MemoryPack for managed types.
+    /// Provides high-performance serialization with automatic type handling.
     /// </summary>
     [UnityEngine.Scripting.Preserve]
-    public sealed unsafe class MemoryPackMessageSerializer : IMessageSerializer, IDisposable
+    public sealed class MemoryPackMessageSerializer : IMessageSerializer, IDisposable
     {
         private readonly IBurstLogger _logger;
         private readonly IMessageRegistry _messageRegistry;
@@ -32,8 +33,11 @@ namespace AhBearStudios.Core.MessageBus.Serialization
         /// <summary>
         /// Initializes a new instance of the MemoryPackMessageSerializer class.
         /// </summary>
-        public MemoryPackMessageSerializer(IBurstLogger logger, IMessageRegistry messageRegistry,
-            ISerializerMetrics metrics)
+        /// <param name="logger">The logger to use for logging operations.</param>
+        /// <param name="messageRegistry">The message registry for type resolution.</param>
+        /// <param name="metrics">The metrics collector for performance tracking.</param>
+        /// <exception cref="ArgumentNullException">Thrown when any parameter is null.</exception>
+        public MemoryPackMessageSerializer(IBurstLogger logger, IMessageRegistry messageRegistry, ISerializerMetrics metrics)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _messageRegistry = messageRegistry ?? throw new ArgumentNullException(nameof(messageRegistry));
@@ -43,30 +47,51 @@ namespace AhBearStudios.Core.MessageBus.Serialization
         /// <inheritdoc />
         public SerializationResult SerializeWithResult(IMessage message)
         {
-            if (message == null) return SerializationResult.Failure("Message cannot be null");
+            if (message == null)
+            {
+                return SerializationResult.Failure("Message cannot be null");
+            }
 
             var stopwatch = Stopwatch.StartNew();
             try
             {
-                byte[] data;
-                if (IsBlittableMessage(message))
+                // Get the type code for this message type
+                var messageType = message.GetType();
+                var typeCode = _messageRegistry.GetTypeCode(messageType);
+                
+                if (typeCode == 0)
                 {
-                    data = SerializeBlittableMessage(message);
-                }
-                else
-                {
-                    data = MemoryPackSerializer.Serialize(message);
+                    throw new InvalidOperationException($"Message type {messageType.Name} is not registered");
                 }
 
+                // Serialize the message using MemoryPack
+                var messageData = MemoryPackSerializer.Serialize(message);
+                
+                // Create the final data with type code prefix
+                var finalData = new byte[messageData.Length + sizeof(ushort)];
+                
+                // Write type code (little-endian)
+                finalData[0] = (byte)(typeCode & 0xFF);
+                finalData[1] = (byte)((typeCode >> 8) & 0xFF);
+                
+                // Copy message data
+                Array.Copy(messageData, 0, finalData, sizeof(ushort), messageData.Length);
+
                 stopwatch.Stop();
-                _metrics.RecordSerialization(stopwatch.Elapsed, data.Length, true);
-                return SerializationResult.Success(data);
+                _metrics.RecordSerialization(stopwatch.Elapsed, finalData.Length, true);
+                
+                return SerializationResult.Success(finalData);
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
                 _metrics.RecordSerialization(stopwatch.Elapsed, 0, false);
-                return SerializationResult.Failure(ex.Message, ex);
+                
+                _logger.Log(LogLevel.Error, 
+                    $"Failed to serialize message of type {message.GetType().Name}: {ex.Message}", 
+                    "MemoryPackSerializer");
+                
+                return SerializationResult.Failure($"Serialization failed: {ex.Message}", ex);
             }
         }
 
@@ -91,80 +116,63 @@ namespace AhBearStudios.Core.MessageBus.Serialization
         }
 
         /// <inheritdoc />
-        /// <inheritdoc />
         public DeserializationResult<TMessage> DeserializeWithResult<TMessage>(byte[] data) where TMessage : IMessage
         {
-            if (data == null || data.Length == 0)
-                return DeserializationResult<TMessage>.Failure("Data is null or empty");
+            if (data == null || data.Length < sizeof(ushort))
+            {
+                return DeserializationResult<TMessage>.Failure("Data is null or too short to contain type code");
+            }
 
             var stopwatch = Stopwatch.StartNew();
             try
             {
-                TMessage result;
-                var type = typeof(TMessage);
-
-                // For blittable value types, use direct memory copying
-                if (type.IsValueType && UnsafeUtility.IsBlittable(type))
+                // Extract type code
+                var typeCode = GetTypeCodeFromData(data);
+                var messageType = _messageRegistry.GetMessageType(typeCode);
+                
+                if (messageType == null)
                 {
-                    // Get type code from data
-                    var typeCode = GetTypeCodeFromData(data);
-                    var expectedType = _messageRegistry.GetMessageType(typeCode);
+                    throw new InvalidOperationException($"Unknown message type code: {typeCode}");
+                }
 
-                    // Verify the type matches what we expect
-                    if (expectedType != type)
-                    {
-                        throw new InvalidOperationException(
-                            $"Type mismatch: Expected {type.Name} but data contains {expectedType?.Name ?? "unknown"}");
-                    }
+                // Verify the type matches what we expect
+                if (!typeof(TMessage).IsAssignableFrom(messageType))
+                {
+                    throw new InvalidOperationException(
+                        $"Type mismatch: Expected {typeof(TMessage).Name} or compatible type, but data contains {messageType.Name}");
+                }
 
-                    // Make sure we have enough data
-                    var expectedSize = UnsafeUtility.SizeOf(type) + sizeof(ushort);
-                    if (data.Length != expectedSize)
-                    {
-                        throw new ArgumentException(
-                            $"Invalid data length for type {type.Name}: expected {expectedSize}, got {data.Length}");
-                    }
+                // Extract message data (skip type code)
+                var messageData = new byte[data.Length - sizeof(ushort)];
+                Array.Copy(data, sizeof(ushort), messageData, 0, messageData.Length);
 
-                    // Handle blittable types using type-specific method
-                    if (type == typeof(BlittableMessage))
-                    {
-                        var blittableResult = DeserializeBlittableInternal<BlittableMessage>(data);
-                        result = (TMessage)(object)blittableResult;
-                    }
-                    else
-                    {
-                        // Use MemoryPack for all other cases
-                        result = MemoryPackSerializer.Deserialize<TMessage>(data);
-                    }
+                // Deserialize using MemoryPack
+                var deserializedMessage = MemoryPackSerializer.Deserialize(messageType, messageData);
+                
+                if (deserializedMessage is TMessage typedMessage)
+                {
+                    stopwatch.Stop();
+                    _metrics.RecordDeserialization(stopwatch.Elapsed, data.Length, true);
+                    
+                    return DeserializationResult<TMessage>.Success(typedMessage);
                 }
                 else
                 {
-                    // Use MemoryPack for reference types and non-blittable types
-                    result = MemoryPackSerializer.Deserialize<TMessage>(data);
+                    throw new InvalidOperationException(
+                        $"Deserialized message could not be cast to {typeof(TMessage).Name}");
                 }
-
-                stopwatch.Stop();
-                _metrics.RecordDeserialization(stopwatch.Elapsed, data.Length, true);
-                return DeserializationResult<TMessage>.Success(result);
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
                 _metrics.RecordDeserialization(stopwatch.Elapsed, data.Length, false);
-                return DeserializationResult<TMessage>.Failure(ex.Message, ex);
+                
+                _logger.Log(LogLevel.Error, 
+                    $"Failed to deserialize message: {ex.Message}", 
+                    "MemoryPackSerializer");
+                
+                return DeserializationResult<TMessage>.Failure($"Deserialization failed: {ex.Message}", ex);
             }
-        }
-
-// Helper method for deserializing blittable types
-        private T DeserializeBlittableInternal<T>(byte[] data) where T : struct
-        {
-            var result = default(T);
-            fixed (byte* src = &data[sizeof(ushort)])
-            {
-                UnsafeUtility.CopyPtrToStructure(src, UnsafeUtility.AddressOf(ref result));
-            }
-
-            return result;
         }
 
         /// <inheritdoc />
@@ -185,21 +193,42 @@ namespace AhBearStudios.Core.MessageBus.Serialization
         public bool TryDeserialize(byte[] data, out IMessage message)
         {
             message = null;
-            if (data == null || data.Length < 2) return false;
+            
+            if (data == null || data.Length < sizeof(ushort))
+            {
+                return false;
+            }
 
             try
             {
                 var typeCode = GetTypeCodeFromData(data);
                 var messageType = _messageRegistry.GetMessageType(typeCode);
-                if (messageType == null) return false;
+                
+                if (messageType == null)
+                {
+                    return false;
+                }
 
-                var result = MemoryPackSerializer.Deserialize(messageType, data);
-                message = result as IMessage;
-                return message != null;
+                // Extract message data (skip type code)
+                var messageData = new byte[data.Length - sizeof(ushort)];
+                Array.Copy(data, sizeof(ushort), messageData, 0, messageData.Length);
+
+                // Deserialize using MemoryPack
+                var deserializedMessage = MemoryPackSerializer.Deserialize(messageType, messageData);
+                
+                if (deserializedMessage is IMessage msg)
+                {
+                    message = msg;
+                    return true;
+                }
+
+                return false;
             }
             catch (Exception ex)
             {
-                _logger.Log(LogLevel.Error, $"Deserialization failed: {ex.Message}", "MemoryPackSerializer");
+                _logger.Log(LogLevel.Warning, 
+                    $"Failed to deserialize message: {ex.Message}", 
+                    "MemoryPackSerializer");
                 return false;
             }
         }
@@ -207,30 +236,33 @@ namespace AhBearStudios.Core.MessageBus.Serialization
         /// <inheritdoc />
         public IMessage Deserialize(byte[] data)
         {
-            if (!TryDeserialize(data, out var message))
+            if (TryDeserialize(data, out var message))
             {
-                return null;
+                return message;
             }
-
-            return message;
+            return null;
         }
 
         /// <inheritdoc />
         public TMessage Deserialize<TMessage>(byte[] data) where TMessage : IMessage
         {
-            if (!TryDeserialize(data, out TMessage message))
+            if (TryDeserialize(data, out TMessage message))
             {
-                return default;
+                return message;
             }
-
-            return message;
+            return default;
         }
 
         /// <inheritdoc />
         public ushort GetTypeCodeFromData(byte[] data)
         {
-            if (data == null || data.Length < 2) return 0;
-            return (ushort)((data[1] << 8) | data[0]);
+            if (data == null || data.Length < sizeof(ushort))
+            {
+                return 0;
+            }
+
+            // Read little-endian ushort
+            return (ushort)(data[0] | (data[1] << 8));
         }
 
         /// <inheritdoc />
@@ -243,98 +275,48 @@ namespace AhBearStudios.Core.MessageBus.Serialization
         /// <inheritdoc />
         public bool SupportsMessageType(Type messageType)
         {
-            if (messageType == null) return false;
+            if (messageType == null)
+            {
+                return false;
+            }
+
+            // Support any type that implements IMessage and can be registered
             return typeof(IMessage).IsAssignableFrom(messageType);
         }
 
         /// <inheritdoc />
         public bool SupportsMessageType<TMessage>() where TMessage : IMessage
         {
-            return true;
-        }
-
-        private bool IsBlittableMessage(IMessage message)
-        {
-            var type = message.GetType();
-            return type.IsValueType && UnsafeUtility.IsBlittable(type);
-        }
-
-        private bool IsBlittableType<T>() where T : IMessage
-        {
-            return typeof(T).IsValueType && UnsafeUtility.IsBlittable<T>();
-        }
-
-        private byte[] SerializeBlittableMessage(IMessage message)
-        {
-            var type = message.GetType();
-            var size = UnsafeUtility.SizeOf(type);
-            var data = new byte[size + sizeof(ushort)];
-
-            var typeCode = _messageRegistry.GetTypeCode(type);
-            data[0] = (byte)(typeCode & 0xFF);
-            data[1] = (byte)(typeCode >> 8);
-
-            fixed (void* dest = &data[sizeof(ushort)])
-            {
-                void* src = UnsafeUtility.AddressOf(ref message);
-                UnsafeUtility.MemCpy(dest, src, size);
-            }
-
-            return data;
-        }
-
-        private T DeserializeBlittable<T>(byte[] data) where T : struct, IMessage
-        {
-            var size = UnsafeUtility.SizeOf<T>();
-            if (data.Length != size + sizeof(ushort))
-            {
-                throw new ArgumentException($"Invalid data length for type {typeof(T).Name}");
-            }
-
-            T result = default;
-            fixed (byte* src = &data[sizeof(ushort)])
-            {
-                UnsafeUtility.CopyPtrToStructure(src, UnsafeUtility.AddressOf(ref result));
-            }
-
-            return result;
+            return SupportsMessageType(typeof(TMessage));
         }
 
         /// <inheritdoc />
         public int GetEstimatedSerializedSize(IMessage message)
         {
             if (message == null)
+            {
                 return 0;
-
-            // Add size for type code
-            int estimatedSize = sizeof(ushort);
-
-            if (IsBlittableMessage(message))
-            {
-                // For blittable types, we can get the exact size
-                estimatedSize += UnsafeUtility.SizeOf(message.GetType());
-            }
-            else
-            {
-                // For non-blittable types, we'll serialize to get the actual size
-                // This is more expensive but accurate
-                try
-                {
-                    var serialized = MemoryPackSerializer.Serialize(message);
-                    estimatedSize += serialized.Length;
-                }
-                catch (Exception ex)
-                {
-                    _logger.Log(LogLevel.Warning,
-                        $"Failed to estimate serialized size for message type {message.GetType().Name}: {ex.Message}",
-                        "MemoryPackSerializer");
-
-                    // Fallback to a rough estimate based on the object's type
-                    estimatedSize += EstimateObjectSize(message);
-                }
             }
 
-            return estimatedSize;
+            // Base size includes type code
+            var baseSize = sizeof(ushort);
+            
+            try
+            {
+                // For accurate estimation, we serialize the message
+                // This is more expensive but provides accurate sizing
+                var messageData = MemoryPackSerializer.Serialize(message);
+                return baseSize + messageData.Length;
+            }
+            catch (Exception ex)
+            {
+                _logger.Log(LogLevel.Warning,
+                    $"Failed to estimate serialized size for message type {message.GetType().Name}: {ex.Message}",
+                    "MemoryPackSerializer");
+
+                // Fallback to rough estimation
+                return baseSize + EstimateMessageSize(message);
+            }
         }
 
         /// <inheritdoc />
@@ -343,28 +325,56 @@ namespace AhBearStudios.Core.MessageBus.Serialization
             return _metrics;
         }
 
-        private int EstimateObjectSize(IMessage message)
+        /// <summary>
+        /// Provides a rough estimation of message size for fallback scenarios.
+        /// </summary>
+        /// <param name="message">The message to estimate size for.</param>
+        /// <returns>Estimated size in bytes.</returns>
+        private int EstimateMessageSize(IMessage message)
         {
-            // This is a rough estimation for non-blittable types
-            // You might want to adjust these values based on your specific message types
-            const int BaseSize = 32; // Base size for any message
+            const int BaseMessageSize = 32; // Base size for any message (ID, timestamp, etc.)
             const int PerFieldSize = 8; // Estimated size per field
+            const int StringFieldSize = 16; // Estimated size for string fields
 
-            var type = message.GetType();
-            var fields = type.GetFields(System.Reflection.BindingFlags.Public |
-                                        System.Reflection.BindingFlags.NonPublic |
-                                        System.Reflection.BindingFlags.Instance);
+            var messageType = message.GetType();
+            var fields = messageType.GetFields(System.Reflection.BindingFlags.Public |
+                                               System.Reflection.BindingFlags.NonPublic |
+                                               System.Reflection.BindingFlags.Instance);
 
-            var properties = type.GetProperties(System.Reflection.BindingFlags.Public |
-                                                System.Reflection.BindingFlags.NonPublic |
-                                                System.Reflection.BindingFlags.Instance);
+            var properties = messageType.GetProperties(System.Reflection.BindingFlags.Public |
+                                                       System.Reflection.BindingFlags.NonPublic |
+                                                       System.Reflection.BindingFlags.Instance);
 
-            return BaseSize + ((fields.Length + properties.Length) * PerFieldSize);
+            var totalFields = fields.Length + properties.Length;
+            var stringFields = 0;
+
+            // Count string properties for better estimation
+            foreach (var prop in properties)
+            {
+                if (prop.PropertyType == typeof(string))
+                {
+                    stringFields++;
+                }
+            }
+
+            foreach (var field in fields)
+            {
+                if (field.FieldType == typeof(string))
+                {
+                    stringFields++;
+                }
+            }
+
+            return BaseMessageSize + 
+                   (totalFields * PerFieldSize) + 
+                   (stringFields * StringFieldSize);
         }
 
+        /// <inheritdoc />
         public void Dispose()
         {
-            // No unmanaged resources to dispose
+            // MemoryPack doesn't require explicit disposal
+            // No unmanaged resources to clean up
         }
     }
 }
