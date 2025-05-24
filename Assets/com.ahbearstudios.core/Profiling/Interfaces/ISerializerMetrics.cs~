@@ -1,5 +1,3 @@
-using System;
-
 namespace AhBearStudios.Core.Profiling.Interfaces
 {
     /// <summary>
@@ -46,22 +44,6 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         /// Gets the total bytes deserialized.
         /// </summary>
         long TotalBytesDeserialized { get; }
-
-        /// <summary>
-        /// Records metrics for a serialization operation.
-        /// </summary>
-        /// <param name="duration">The duration of the serialization operation.</param>
-        /// <param name="dataSize">The size of the serialized data in bytes.</param>
-        /// <param name="success">Whether the serialization was successful.</param>
-        void RecordSerialization(TimeSpan duration, int dataSize, bool success);
-
-        /// <summary>
-        /// Records metrics for a deserialization operation.
-        /// </summary>
-        /// <param name="duration">The duration of the deserialization operation.</param>
-        /// <param name="dataSize">The size of the data being deserialized in bytes.</param>
-        /// <param name="success">Whether the deserialization was successful.</param>
-        void RecordDeserialization(TimeSpan duration, int dataSize, bool success);
         
         /// <summary>
         /// Resets all metrics.

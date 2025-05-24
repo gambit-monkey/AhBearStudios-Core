@@ -1,10 +1,9 @@
 using System;
-using AhBearStudios.Core.DependencyInjection.Attributes;
 using UnityEngine;
-using VContainer;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.MessageBus.Events;
 using AhBearStudios.Core.MessageBus.Interfaces;
+using Inject = AhBearStudios.Core.DependencyInjection.Attributes.InjectAttribute;
 
 namespace AhBearStudios.Core.MessageBus.Unity
 {

@@ -5,6 +5,7 @@ using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.MessageBus.Data;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling.Interfaces;
+using AhBearStudios.Core.Profiling.Metrics.Serialization;
 using Unity.Collections.LowLevel.Unsafe;
 
 namespace AhBearStudios.Core.MessageBus.Serialization
@@ -349,53 +350,6 @@ namespace AhBearStudios.Core.MessageBus.Serialization
             }
             
             _serializerCache.Clear();
-        }
-        
-        /// <summary>
-        /// Null implementation of ISerializerMetrics for when no metrics are available.
-        /// </summary>
-        private sealed class NullSerializerMetrics : ISerializerMetrics
-        {
-            public long TotalSerializations => 0;
-            public long TotalDeserializations => 0;
-            public long FailedSerializations => 0;
-            public long FailedDeserializations => 0;
-            public double AverageSerializationTimeMs => 0.0;
-            public double AverageDeserializationTimeMs => 0.0;
-            public long TotalBytesSeralized => 0;
-            public long TotalBytesDeserialized => 0;
-            
-            public void Reset() { }
-        }
-        
-        /// <summary>
-        /// Composite implementation of ISerializerMetrics that combines metrics from multiple serializers.
-        /// </summary>
-        private sealed class CompositeSerializerMetrics : ISerializerMetrics
-        {
-            private readonly List<ISerializerMetrics> _metrics;
-            
-            public CompositeSerializerMetrics(List<ISerializerMetrics> metrics)
-            {
-                _metrics = metrics ?? new List<ISerializerMetrics>();
-            }
-            
-            public long TotalSerializations => _metrics.Sum(m => m.TotalSerializations);
-            public long TotalDeserializations => _metrics.Sum(m => m.TotalDeserializations);
-            public long FailedSerializations => _metrics.Sum(m => m.FailedSerializations);
-            public long FailedDeserializations => _metrics.Sum(m => m.FailedDeserializations);
-            public double AverageSerializationTimeMs => _metrics.Count > 0 ? _metrics.Average(m => m.AverageSerializationTimeMs) : 0.0;
-            public double AverageDeserializationTimeMs => _metrics.Count > 0 ? _metrics.Average(m => m.AverageDeserializationTimeMs) : 0.0;
-            public long TotalBytesSeralized => _metrics.Sum(m => m.TotalBytesSeralized);
-            public long TotalBytesDeserialized => _metrics.Sum(m => m.TotalBytesDeserialized);
-            
-            public void Reset()
-            {
-                foreach (var metric in _metrics)
-                {
-                    metric.Reset();
-                }
-            }
         }
     }
 }
