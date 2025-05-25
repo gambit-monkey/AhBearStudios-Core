@@ -14,22 +14,35 @@ namespace AhBearStudios.Core.MessageBus.Messages
     {
         /// <inheritdoc />
         [MemoryPackInclude]
-        public Guid Id { get; private set; } = Guid.NewGuid();
+        public Guid Id { get; protected set; }
         
         /// <inheritdoc />
         [MemoryPackInclude]
-        public long TimestampTicks { get; private set; } = DateTime.UtcNow.Ticks;
+        public long TimestampTicks { get; protected set; }
         
         /// <inheritdoc />
         [MemoryPackInclude]
-        public ushort TypeCode { get; private set; }
+        public ushort TypeCode { get; protected set; }
         
         /// <summary>
         /// Initializes a new instance of the MessageBase class.
         /// </summary>
         public MessageBase()
         {
+            Id = Guid.NewGuid();
+            TimestampTicks = DateTime.UtcNow.Ticks;
             TypeCode = MessageTypeRegistry.GetTypeCode(GetType());
+        }
+        
+        /// <summary>
+        /// Constructor for MemoryPack serialization.
+        /// </summary>
+        [MemoryPackConstructor]
+        protected MessageBase(Guid id, long timestampTicks, ushort typeCode)
+        {
+            Id = id;
+            TimestampTicks = timestampTicks;
+            TypeCode = typeCode;
         }
         
         /// <summary>
