@@ -1,0 +1,118 @@
+﻿## BasicPoolingExample.unity Scene Setup Instructions
+Here's how to create the BasicPoolingExample.unity scene:
+1. **Create the scene file**:
+    - In Unity, go to File > New Scene (or press Ctrl+N)
+    - Save the scene as `BasicPoolingExample.unity` in the `Assets/com.ahbearstudios.pooling/Samples/BasicExample/Scenes` folder
+
+2. **Scene setup components**:
+**Main Camera**:
+    - Position: (0, 5, -10)
+    - Rotation: (30, 0, 0)
+    - Add a solid color background (RGB: 0.2, 0.3, 0.4)
+
+**Directional Light**:
+    - Position: (3, 10, 3)
+    - Rotation: (50, -30, 0)
+    - Color: Slightly warm white (RGB: 1, 0.95, 0.9)
+    - Intensity: 1.2
+    - Shadow Type: Soft Shadows
+
+**Ground Plane**:
+    - Create a Plane GameObject
+    - Position: (0, 0, 0)
+    - Scale: (5, 1, 5)
+    - Add a PhysicMaterial with medium bounce
+    - Create a simple material with a grid texture
+
+**Spawn Area**:
+    - Create an empty GameObject named "SpawnArea"
+    - Position: (0, 5, 0)
+    - Add a Box Collider (as Trigger)
+    - Scale: (8, 0.1, 8)
+    - Make it invisible in game (Disable Mesh Renderer if it has one)
+
+**Pool Container**:
+    - Create an empty GameObject named "PoolContainer"
+    - This will be used as the parent for pooled objects
+
+3. **UI Setup**:
+    - Create a Canvas (UI > Canvas)
+    - Set Canvas to Screen Space - Overlay
+    - Add a Panel for the sidebar (anchored to right side)
+    - Add the following UI elements to the panel:
+        - Title Text: "Pooling Example"
+        - Button: "Spawn Cube"
+        - Button: "Spawn Sphere"
+        - Button: "Spawn Particle"
+        - Button: "Spawn Multiple"
+        - Button: "Clear All"
+        - Toggle/Button: "Start Stress Test"
+        - Slider: "Spawn Rate"
+        - Dropdown: "Pool Type"
+        - Text: "Stats" (for displaying pool statistics)
+        - Text: "Active Objects" (for displaying active objects count)
+
+4. **Prefabs Setup**:
+    - Create a folder named "Prefabs" in the BasicExample folder
+    - Create and save these prefabs:
+        - **Cube Prefab**:
+            - Standard cube with Rigidbody
+            - Add a distinct material (blue)
+            - Tag as "Pooled"
+
+        - **Sphere Prefab**:
+            - Standard sphere with Rigidbody and bounce physics material
+            - Add a distinct material (red)
+            - Tag as "Pooled"
+
+        - **Particle Effect Prefab**:
+            - Particle system with a simple burst effect
+            - Duration: 2-3 seconds
+            - Auto-destroy: False (important for pooling)
+            - Add the AutoReturnParticleSystem component
+
+5. **Scripts Setup**:
+    - Create an empty GameObject named "SceneManager"
+    - Add the ExampleSceneManager.cs script to it
+    - Configure the script references in the Inspector:
+        - Assign the cube, sphere, and particle prefabs
+        - Assign all UI elements to their respective fields
+        - Set the SpawnArea reference to the SpawnArea GameObject
+        - Set object lifetime to 3 seconds
+        - Set multiple spawn count to 50
+        - Set spawn height to 5
+
+    - Add a PoolManager component to the scene if not already present
+
+6. **Final touches**:
+    - Create a simple skybox or environment
+    - Add some ambient lighting
+    - Test the buttons work as expected
+    - Make sure physics interactions are working properly
+
+## Scene Hierarchy Structure
+When completed, your scene hierarchy should look something like this:
+``` 
+BasicPoolingExample
+├── Main Camera
+├── Directional Light
+├── Ground Plane
+├── SpawnArea
+├── PoolContainer
+├── SceneManager (with ExampleSceneManager.cs)
+├── PoolManager
+└── Canvas
+    └── Panel
+        ├── Title
+        ├── SpawnCubeButton
+        ├── SpawnSphereButton
+        ├── SpawnParticleButton
+        ├── SpawnMultipleButton
+        ├── ClearAllButton
+        ├── ToggleStressTestButton
+        ├── SpawnRateSlider
+        ├── PoolTypeDropdown
+        ├── StatsText
+        └── ActiveObjectsText
+```
+This setup provides a complete working example of the pooling system with interactive UI elements allowing users to test different aspects of the pooling framework. The scene demonstrates GameObject pooling, component pooling, spawn/release mechanics, and performance under stress testing.
