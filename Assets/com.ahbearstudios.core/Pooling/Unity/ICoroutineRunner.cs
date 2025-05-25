@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Collections;
 using UnityEngine;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Pools.Unity;
+using AhBearStudios.Core.Pooling.Pools.Unity;
 
-namespace AhBearStudios.Pooling.Unity
+namespace AhBearStudios.Core.Pooling.Unity
 {
     /// <summary>
     /// Interface for running coroutines in the pooling system.

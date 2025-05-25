@@ -3,10 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
 
-namespace AhBearStudios.Pooling.Pools.Async
+namespace AhBearStudios.Core.Pooling.Pools.Async
 {
     /// <summary>
     /// Implements an asynchronous object pool that supports pooling of objects 

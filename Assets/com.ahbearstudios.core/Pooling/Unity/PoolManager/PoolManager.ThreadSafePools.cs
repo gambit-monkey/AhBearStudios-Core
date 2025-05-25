@@ -1,11 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading;
-using AhBearStudios.Pooling.Core.Pooling.Core;
-using AhBearStudios.Pooling.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Pools.Managed;
 using Unity.Collections;
 
-namespace AhBearStudios.Pooling.Core.Pooling
+namespace AhBearStudios.Core.Pooling.Unity
 {
     /// <summary>
     /// Partial class for PoolManager that handles thread-safe pool creation and management

@@ -1,10 +1,8 @@
 ﻿using System;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using Unity.Collections;
+using AhBearStudios.Core.Pooling.Configurations;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Builders
+namespace AhBearStudios.Core.Pooling.Builders
 {
     /// <summary>
     /// Factory extension for creating component pool configuration builders.

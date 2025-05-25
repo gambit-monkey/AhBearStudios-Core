@@ -1,4 +1,4 @@
-﻿namespace AhBearStudios.Pooling.Core
+﻿namespace AhBearStudios.Core.Pooling
 {
     public enum PoolThreadingMode
     {

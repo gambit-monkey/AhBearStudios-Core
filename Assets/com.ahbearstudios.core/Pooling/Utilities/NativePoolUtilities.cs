@@ -1,14 +1,13 @@
-﻿
-using System;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Pools.Native;
-using AhBearStudios.Pooling.Services;
+﻿using System;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Pools.Native;
+using AhBearStudios.Core.Pooling.Services;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 
-namespace AhBearStudios.Pooling.Utilities
+namespace AhBearStudios.Core.Pooling.Utilities
 {
     /// <summary>
     /// Provides utility methods for working with native pools.

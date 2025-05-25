@@ -2,7 +2,7 @@
 using Unity.Collections;
 using Unity.Jobs;
 
-namespace AhBearStudios.Pooling.Diagnostics
+namespace AhBearStudios.Core.Pooling.Diagnostics
 {
     /// <summary>
     /// Burst-compatible interface for pool metrics tracking.

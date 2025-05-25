@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Pools.Async;
+using AhBearStudios.Core.Pooling.Pools.Async;
 
-namespace AhBearStudios.Pooling.Extensions
+namespace AhBearStudios.Core.Pooling.Extensions
 {
     /// <summary>
     /// Extensions methods for pools providing common operations and utility functions

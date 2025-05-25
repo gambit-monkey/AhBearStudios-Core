@@ -2,13 +2,12 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Services;
-using AhBearStudios.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Services;
+using AhBearStudios.Core.Pooling.Configurations;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Pools.Advanced
+namespace AhBearStudios.Core.Pooling.Pools.Advanced
 {
     /// <summary>
     /// Thread-safe pool implementation that uses a semaphore to limit concurrent access.

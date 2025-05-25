@@ -1,4 +1,4 @@
-﻿namespace AhBearStudios.Pooling.Pools.Async
+﻿namespace AhBearStudios.Core.Pooling.Pools.Async
 {
     /// <summary>
     /// Predefined usage patterns for asynchronous object pools

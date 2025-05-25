@@ -2,10 +2,9 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using AhBearStudios.Pooling.Core;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Diagnostics
+namespace AhBearStudios.Core.Pooling.Diagnostics
 {
     /// <summary>
     /// Provides logging and diagnostic features for pool operations

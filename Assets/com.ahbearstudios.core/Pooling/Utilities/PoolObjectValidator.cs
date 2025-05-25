@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using AhBearStudios.Pooling.Services;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Core.Pooling.Core
+namespace AhBearStudios.Core.Pooling.Pooling.Core
 
 //namespace AhBearStudios.Pooling.Utilities
 {

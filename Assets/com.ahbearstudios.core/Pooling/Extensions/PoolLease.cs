@@ -1,7 +1,6 @@
 ﻿using System;
-using AhBearStudios.Pooling.Core;
 
-namespace AhBearStudios.Pooling.Extensions
+namespace AhBearStudios.Core.Pooling.Extensions
 {
     /// <summary>
     /// Represents a lease for a pooled object that automatically returns it to the pool when disposed.

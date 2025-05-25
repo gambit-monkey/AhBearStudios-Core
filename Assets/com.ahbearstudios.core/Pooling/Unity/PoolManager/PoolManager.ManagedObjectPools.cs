@@ -1,11 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
-using AhBearStudios.Pooling.Core.Pooling.Core;
-using AhBearStudios.Pooling.Core.Pooling.Managed;
-using AhBearStudios.Pooling.Core.Pooling.Diagnostics;
-using Unity.Collections;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Pools.Managed;
 
-namespace AhBearStudios.Pooling.Core.Pooling
+namespace AhBearStudios.Core.Pooling.Unity
 {
     /// <summary>
     /// Partial class for PoolManager that handles managed object pools

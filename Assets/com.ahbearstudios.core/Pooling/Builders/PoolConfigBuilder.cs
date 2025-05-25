@@ -1,6 +1,6 @@
-﻿using AhBearStudios.Pooling.Configurations;
+﻿using AhBearStudios.Core.Pooling.Configurations;
 
-namespace AhBearStudios.Pooling.Builders
+namespace AhBearStudios.Core.Pooling.Builders
 {
     /// <summary>
     /// Builder for standard pool configurations

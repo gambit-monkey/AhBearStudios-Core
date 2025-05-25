@@ -1,12 +1,11 @@
 ﻿using System;
-using AhBearStudios.Pooling.Builders;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Services;
+using AhBearStudios.Core.Pooling.Builders;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Services;
 using Unity.Collections;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Configurations
+namespace AhBearStudios.Core.Pooling.Configurations
 {
     /// <summary>
     /// Configuration for managed object pools that work with standard C# classes.

@@ -4,7 +4,7 @@ using System.Threading;
 using Unity.Collections;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Diagnostics
+namespace AhBearStudios.Core.Pooling.Diagnostics
 {
     /// <summary>
     /// Managed implementation of pool metrics tracking.

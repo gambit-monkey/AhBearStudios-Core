@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 
-namespace AhBearStudios.Pooling.Diagnostics
+namespace AhBearStudios.Core.Pooling.Diagnostics
 {
     /// <summary>
     /// Sample data for profiling with pool identification using both GUID and name

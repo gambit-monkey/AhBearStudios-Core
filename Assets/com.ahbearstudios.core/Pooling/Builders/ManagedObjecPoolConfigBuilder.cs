@@ -1,10 +1,9 @@
 ﻿using System;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
+using AhBearStudios.Core.Pooling.Configurations;
 using Unity.Collections;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Builders
+namespace AhBearStudios.Core.Pooling.Builders
 {
     /// <summary>
     /// Builder for Managed object pool configurations implementing IPoolConfigBuilder.

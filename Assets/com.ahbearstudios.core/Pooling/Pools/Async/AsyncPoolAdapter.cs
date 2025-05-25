@@ -2,12 +2,10 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Services;
+using AhBearStudios.Core.Pooling.Diagnostics;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Pools.Async
+namespace AhBearStudios.Core.Pooling.Pools.Async
 {
     /// <summary>
     /// Adapter class that wraps a synchronous pool with asynchronous capabilities.

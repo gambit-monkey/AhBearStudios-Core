@@ -3,7 +3,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-namespace AhBearStudios.Pooling.Jobs
+namespace AhBearStudios.Core.Pooling.Jobs
 {
     /// <summary>
     /// Provides utility methods for working with pooled objects in Unity Jobs.

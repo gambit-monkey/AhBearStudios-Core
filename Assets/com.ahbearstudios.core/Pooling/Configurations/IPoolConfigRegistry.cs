@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace AhBearStudios.Pooling.Configurations
+namespace AhBearStudios.Core.Pooling.Configurations
 {
     /// <summary>
     /// Interface for registry of pool configurations that supports retrieval by both name and type.

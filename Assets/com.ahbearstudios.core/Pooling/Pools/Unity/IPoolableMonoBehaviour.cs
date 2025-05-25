@@ -1,6 +1,6 @@
 ﻿using UnityEngine;
 
-namespace AhBearStudios.Pooling.Pools.Unity
+namespace AhBearStudios.Core.Pooling.Pools.Unity
 {
     /// <summary>
     /// Interface for MonoBehaviours that can be pooled

@@ -4,9 +4,8 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using Unity.Profiling;
-using AhBearStudios.Pooling.Diagnostics;
 
-namespace AhBearStudios.Pooling.Core
+namespace AhBearStudios.Core.Pooling
 {
     /// <summary>
     /// Registry for managing object pools with thread-safe access.

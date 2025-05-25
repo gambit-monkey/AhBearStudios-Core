@@ -1,10 +1,8 @@
 ﻿using System;
-using System.Collections.Generic;
-using AhBearStudios.Pooling.Core.Pooling.Core;
-using AhBearStudios.Pooling.Core.Pooling.Advanced;
-using Unity.Collections;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Pools.Advanced;
 
-namespace AhBearStudios.Pooling.Core.Pooling
+namespace AhBearStudios.Core.Pooling.Unity
 {
     /// <summary>
     /// Partial class for PoolManager that handles complex object pools with extended functionality

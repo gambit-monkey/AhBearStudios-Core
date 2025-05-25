@@ -1,13 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Factories;
-using AhBearStudios.Pooling.Pools.Native;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Factories;
+using AhBearStudios.Core.Pooling.Pools.Native;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Services
+namespace AhBearStudios.Core.Pooling.Services
 {
     /// <summary>
     /// Default implementation of the pooling service locator following the singleton pattern.

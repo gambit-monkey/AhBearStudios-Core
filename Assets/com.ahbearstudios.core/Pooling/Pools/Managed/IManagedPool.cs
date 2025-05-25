@@ -1,7 +1,4 @@
-﻿using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-
-namespace AhBearStudios.Pooling.Pools.Managed
+﻿namespace AhBearStudios.Core.Pooling.Pools.Managed
 {
     /// <summary>
     /// Interface for managed object pools, providing comprehensive object lifecycle management

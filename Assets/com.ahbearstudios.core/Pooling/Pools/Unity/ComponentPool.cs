@@ -1,12 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Services;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Services;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Pools.Unity
+namespace AhBearStudios.Core.Pooling.Pools.Unity
 {
     /// <summary>
     /// A pool for Unity Component instances that provides efficient object reuse.

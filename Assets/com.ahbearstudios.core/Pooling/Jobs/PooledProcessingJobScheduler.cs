@@ -1,13 +1,12 @@
 ﻿using System;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Pools.Native;
-using AhBearStudios.Pooling.Services;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Pools.Native;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 
-namespace AhBearStudios.Pooling.Jobs
+namespace AhBearStudios.Core.Pooling.Jobs
 {
     /// <summary>
     /// Helper class for scheduling pooled processing jobs.

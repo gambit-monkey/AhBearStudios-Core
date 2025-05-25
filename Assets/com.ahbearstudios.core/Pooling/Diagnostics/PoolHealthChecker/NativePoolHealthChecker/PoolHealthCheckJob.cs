@@ -5,7 +5,7 @@ using Unity.Collections;
 using Unity.Jobs;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Diagnostics
+namespace AhBearStudios.Core.Pooling.Diagnostics
 {
     /// <summary>
     /// Job for processing pool health checks in parallel

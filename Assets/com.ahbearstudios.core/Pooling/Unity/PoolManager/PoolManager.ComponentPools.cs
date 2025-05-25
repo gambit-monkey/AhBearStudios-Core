@@ -1,11 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Pools.Advanced;
+using AhBearStudios.Core.Pooling.Pools.Unity;
 using UnityEngine;
-using AhBearStudios.Pooling.Core.Pooling.Core;
-using AhBearStudios.Pooling.Core.Pooling.Component;
-using AhBearStudios.Pooling.Core.Pooling.Advanced;
 
-namespace AhBearStudios.Pooling.Core.Pooling
+namespace AhBearStudios.Core.Pooling.Unity
 {
     /// <summary>
     /// Partial class for PoolManager that handles component-based pools

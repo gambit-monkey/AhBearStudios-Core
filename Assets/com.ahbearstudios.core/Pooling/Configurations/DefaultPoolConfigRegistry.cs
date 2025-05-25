@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Services;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Services;
 
-namespace AhBearStudios.Pooling.Configurations
+namespace AhBearStudios.Core.Pooling.Configurations
 {
     /// <summary>
     /// Registry for pool configurations that supports retrieval by both name and type,

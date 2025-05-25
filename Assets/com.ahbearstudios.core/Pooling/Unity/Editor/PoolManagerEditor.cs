@@ -3,12 +3,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using AhBearStudios.Pooling.Core.Pooling.Core;
-using AhBearStudios.Pooling.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Pooling.Core;
+using AhBearStudios.Core.Pooling.Pooling.Diagnostics;
 using UnityEditor;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Core.Pooling.Editor
+namespace AhBearStudios.Core.Pooling.Unity.Editor
 {
     /// <summary>
     /// Custom editor for the PoolManager component

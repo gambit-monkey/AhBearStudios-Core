@@ -2,16 +2,13 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Factories;
-using AhBearStudios.Pooling.Pools.Async;
-using AhBearStudios.Pooling.Pools.Native;
-using AhBearStudios.Pooling.Pools.Unity;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Pools.Async;
+using AhBearStudios.Core.Pooling.Pools.Native;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling
+namespace AhBearStudios.Core.Pooling.Factories
 {
     /// <summary>
     /// Factory for creating and managing various types of object pools.

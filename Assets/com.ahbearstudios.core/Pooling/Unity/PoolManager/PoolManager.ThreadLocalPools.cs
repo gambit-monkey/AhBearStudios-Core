@@ -1,7 +1,9 @@
 ﻿using System;
 using System.Threading;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Pools.Managed;
 
-namespace AhBearStudios.Pooling.Core.Pooling
+namespace AhBearStudios.Core.Pooling.Unity
 {
     /// <summary>
     /// Partial class for PoolManager that handles thread-local pool creation and management

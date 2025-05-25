@@ -1,14 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Pools.Advanced;
-using AhBearStudios.Pooling.Pools.Unity;
-using AhBearStudios.Pooling.Services;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Pools.Advanced;
+using AhBearStudios.Core.Pooling.Pools.Unity;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Factories
+namespace AhBearStudios.Core.Pooling.Factories
 {
     /// <summary>
     /// Factory for creating and configuring poolable objects that implement IPoolable.

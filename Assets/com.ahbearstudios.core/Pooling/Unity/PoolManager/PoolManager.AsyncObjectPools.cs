@@ -1,11 +1,9 @@
 ﻿using System;
 using System.Threading.Tasks;
+using AhBearStudios.Core.Pooling.Pools.Async;
 using UnityEngine;
-using AhBearStudios.Pooling.Core.Pooling.Adapters;
-using AhBearStudios.Pooling.Core.Pooling.Async;
-using AhBearStudios.Pooling.Core.Pooling.Core;
 
-namespace AhBearStudios.Pooling.Core.Pooling
+namespace AhBearStudios.Core.Pooling.Unity
 {
     /// <summary>
     /// Partial class for PoolManager that handles async object pools using the AsyncPoolAdapter

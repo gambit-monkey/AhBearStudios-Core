@@ -4,7 +4,7 @@ using System.Diagnostics;
 using Unity.Profiling;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Diagnostics
+namespace AhBearStudios.Core.Pooling.Diagnostics
 {
     /// <summary>
     /// Profiles and reports on pool performance with Unity Profiler integration. Supports custom profiler markers

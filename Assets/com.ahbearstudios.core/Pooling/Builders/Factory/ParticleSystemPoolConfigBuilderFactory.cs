@@ -1,7 +1,7 @@
 ﻿using System;
-using AhBearStudios.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Configurations;
 
-namespace AhBearStudios.Pooling.Builders
+namespace AhBearStudios.Core.Pooling.Builders
 {
     /// <summary>
     /// Factory for creating various particle system pool configuration builders.

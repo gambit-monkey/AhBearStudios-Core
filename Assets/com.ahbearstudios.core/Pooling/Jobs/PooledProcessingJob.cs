@@ -1,11 +1,11 @@
 ﻿using System.Runtime.InteropServices;
-using AhBearStudios.Pooling.Pools.Native;
+using AhBearStudios.Core.Pooling.Pools.Native;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 
-namespace AhBearStudios.Pooling.Jobs
+namespace AhBearStudios.Core.Pooling.Jobs
 {
     /// <summary>
     /// Burst-compilable job for processing items in a native pool in parallel.

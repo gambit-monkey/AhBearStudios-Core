@@ -1,9 +1,9 @@
 ﻿using System;
-using AhBearStudios.Pooling.Pools.Native;
+using AhBearStudios.Core.Pooling.Pools.Native;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 
-namespace AhBearStudios.Pooling.Jobs
+namespace AhBearStudios.Core.Pooling.Jobs
 {
     /// <summary>
     /// Represents a job handle for a native pool job that will release indices when complete

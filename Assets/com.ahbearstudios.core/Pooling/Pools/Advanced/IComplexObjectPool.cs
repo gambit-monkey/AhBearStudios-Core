@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
 
-namespace AhBearStudios.Pooling.Pools.Advanced
+namespace AhBearStudios.Core.Pooling.Pools.Advanced
 {
     /// <summary>
     /// Interface for complex object pool implementations that provides advanced features like

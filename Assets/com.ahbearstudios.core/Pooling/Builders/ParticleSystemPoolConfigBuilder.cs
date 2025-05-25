@@ -1,9 +1,8 @@
 ﻿using System;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
+using AhBearStudios.Core.Pooling.Configurations;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Builders
+namespace AhBearStudios.Core.Pooling.Builders
 {
     /// <summary>
     /// Builder for particle system pool configurations implementing IPoolConfigBuilder.

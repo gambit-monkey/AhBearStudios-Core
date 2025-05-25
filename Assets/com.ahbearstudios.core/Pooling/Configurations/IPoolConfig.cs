@@ -1,7 +1,6 @@
-﻿using AhBearStudios.Pooling.Core;
-using Unity.Collections;
+﻿using Unity.Collections;
 
-namespace AhBearStudios.Pooling.Configurations
+namespace AhBearStudios.Core.Pooling.Configurations
 {
     /// <summary>
     /// Defines the contract for pool configurations that control behavior of object pools.

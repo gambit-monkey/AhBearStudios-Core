@@ -1,8 +1,8 @@
 ﻿using System;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
+using AhBearStudios.Core.Pooling.Builders;
+using AhBearStudios.Core.Pooling.Configurations;
 
-namespace AhBearStudios.Pooling.Builders
+namespace AhBearStudios.Core.Pooling
 {
     /// <summary>
     /// Factory extension for creating complex object pool configuration builders.

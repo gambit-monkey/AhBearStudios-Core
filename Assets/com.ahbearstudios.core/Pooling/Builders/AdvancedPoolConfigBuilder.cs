@@ -1,9 +1,8 @@
 ﻿using System;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
+using AhBearStudios.Core.Pooling.Configurations;
 using Unity.Collections;
 
-namespace AhBearStudios.Pooling.Builders
+namespace AhBearStudios.Core.Pooling.Builders
 {
     /// <summary>
     /// Advanced pool configuration builder for creating AdvancedPoolConfig instances

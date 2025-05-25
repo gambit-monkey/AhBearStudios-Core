@@ -1,10 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
+using AhBearStudios.Core.Pooling.Configurations;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Factories
+namespace AhBearStudios.Core.Pooling.Factories
 {
     /// <summary>
     /// Represents the current state of a pool factory

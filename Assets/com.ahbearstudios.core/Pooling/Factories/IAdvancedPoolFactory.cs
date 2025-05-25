@@ -1,11 +1,10 @@
 ﻿using System;
-using AhBearStudios.Pooling.Builders;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Pools.Advanced;
+using AhBearStudios.Core.Pooling.Builders;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Pools.Advanced;
 
-namespace AhBearStudios.Pooling.Factories
+namespace AhBearStudios.Core.Pooling.Factories
 {
     /// <summary>
     /// Factory interface for creating and managing advanced object pools.

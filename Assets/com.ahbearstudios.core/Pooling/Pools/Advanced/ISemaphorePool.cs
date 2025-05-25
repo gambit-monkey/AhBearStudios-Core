@@ -1,9 +1,7 @@
 ﻿using System.Threading;
 using System.Threading.Tasks;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
 
-namespace AhBearStudios.Pooling.Pools.Advanced
+namespace AhBearStudios.Core.Pooling.Pools.Advanced
 {
     /// <summary>
     /// Thread-safe pool interface that uses a semaphore to limit concurrent access.

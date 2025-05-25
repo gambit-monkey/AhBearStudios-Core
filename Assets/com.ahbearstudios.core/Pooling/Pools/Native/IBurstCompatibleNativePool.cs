@@ -1,7 +1,7 @@
 ﻿using Unity.Burst;
 using Unity.Collections;
 
-namespace AhBearStudios.Pooling.Pools.Native
+namespace AhBearStudios.Core.Pooling.Pools.Native
 {
     /// <summary>
     /// Interface for Burst-compatible native pools optimized for maximum performance

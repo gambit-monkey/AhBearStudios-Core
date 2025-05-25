@@ -1,4 +1,4 @@
-﻿namespace AhBearStudios.Pooling.Jobs
+﻿namespace AhBearStudios.Core.Pooling.Jobs
 {
     /// <summary>
     /// Interface for types that can be transformed

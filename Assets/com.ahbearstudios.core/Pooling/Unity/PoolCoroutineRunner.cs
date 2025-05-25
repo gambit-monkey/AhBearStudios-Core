@@ -2,13 +2,12 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Pools.Unity;
-using AhBearStudios.Pooling.Services;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Pools.Unity;
+using AhBearStudios.Core.Pooling.Services;
 using Unity.Collections;
 
-namespace AhBearStudios.Pooling.Unity
+namespace AhBearStudios.Core.Pooling.Unity
 {
     /// <summary>
     /// Component for running pooling-related coroutines with efficient memory management.

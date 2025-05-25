@@ -3,7 +3,7 @@ using System.Threading;
 using Unity.Burst;
 using Unity.Collections.LowLevel.Unsafe;
 
-namespace AhBearStudios.Pooling.Utilities
+namespace AhBearStudios.Core.Pooling.Utilities
 {
     /// <summary>
     /// Provides atomic operations optimized for Unity's Burst compiler.

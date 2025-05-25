@@ -2,13 +2,11 @@
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.Threading;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Services;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Pools.Managed
+namespace AhBearStudios.Core.Pooling.Pools.Managed
 {
     /// <summary>
     /// Thread-safe implementation of an object pool that can be safely accessed from multiple threads.

@@ -1,4 +1,4 @@
-﻿namespace AhBearStudios.Pooling.Builders
+﻿namespace AhBearStudios.Core.Pooling.Builders
 {
     /// <summary>
     /// Predefined presets for value type pool configuration

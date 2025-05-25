@@ -1,16 +1,12 @@
-﻿using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Pools.Unity;
-using AhBearStudios.Pooling.Configurations; // Add this for ParticleSystemPoolConfig
+﻿using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Configurations; 
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using AhBearStudios.Pooling.Unity;
+using AhBearStudios.Core.Pooling.Unity;
 using UnityEngine;
-using Unity.Collections; // Add this for Allocator enum
 
-namespace AhBearStudios.Pooling.Pools.Unity
+namespace AhBearStudios.Core.Pooling.Pools.Unity
 {
     /// <summary>
     /// A specialized pool for ParticleSystem components, providing efficient management of

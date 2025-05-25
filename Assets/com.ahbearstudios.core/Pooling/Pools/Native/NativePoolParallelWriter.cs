@@ -2,7 +2,7 @@
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 
-namespace AhBearStudios.Pooling.Pools.Native
+namespace AhBearStudios.Core.Pooling.Pools.Native
 {
     /// <summary>
     /// Provides thread-safe parallel write access to a native pool from multiple jobs.

@@ -1,8 +1,7 @@
-﻿using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
+﻿using AhBearStudios.Core.Pooling.Configurations;
 using Unity.Collections;
 
-namespace AhBearStudios.Pooling.Builders
+namespace AhBearStudios.Core.Pooling.Builders
 {
     /// <summary>
     /// Base class for all pool configuration builders implementing the fluent pattern

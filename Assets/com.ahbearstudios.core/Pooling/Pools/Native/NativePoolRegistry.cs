@@ -4,7 +4,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 
-namespace AhBearStudios.Pooling.Pools.Native
+namespace AhBearStudios.Core.Pooling.Pools.Native
 {
     /// <summary>
     /// Registry for native pools that is compatible with Burst compilation.

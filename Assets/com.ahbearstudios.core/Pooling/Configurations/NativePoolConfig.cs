@@ -1,9 +1,8 @@
 ﻿using System;
-using AhBearStudios.Pooling.Builders;
-using AhBearStudios.Pooling.Core;
+using AhBearStudios.Core.Pooling.Builders;
 using Unity.Collections;
 
-namespace AhBearStudios.Pooling.Configurations
+namespace AhBearStudios.Core.Pooling.Configurations
 {
     /// <summary>
     /// Configuration for Unity native container pools optimized for high-performance scenarios.

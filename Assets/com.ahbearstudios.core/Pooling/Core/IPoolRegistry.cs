@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace AhBearStudios.Pooling.Core
+namespace AhBearStudios.Core.Pooling
 {
     /// <summary>
     /// Interface for a thread-safe registry that manages object pools.

@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Pools.Managed;
+using AhBearStudios.Core.Pooling.Pools.Managed;
 
-namespace AhBearStudios.Pooling.Utilities
+namespace AhBearStudios.Core.Pooling.Utilities
 {
     /// <summary>
     /// A Dictionary implementation that returns itself to a pool when disposed.

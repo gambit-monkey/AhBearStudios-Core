@@ -1,7 +1,7 @@
 ﻿using UnityEditor;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Core.Pooling.Editor
+namespace AhBearStudios.Core.Pooling.Unity.Editor
 {
     /// <summary>
     /// Asset post-processor for pool-related assets

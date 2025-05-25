@@ -1,9 +1,8 @@
 ﻿using System;
-using AhBearStudios.Pooling.Builders;
-using AhBearStudios.Pooling.Core;
+using AhBearStudios.Core.Pooling.Builders;
 using Unity.Collections;
 
-namespace AhBearStudios.Pooling.Configurations
+namespace AhBearStudios.Core.Pooling.Configurations
 {
     /// <summary>
     /// Standard implementation of configuration options for object pools.

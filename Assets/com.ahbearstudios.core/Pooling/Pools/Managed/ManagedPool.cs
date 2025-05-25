@@ -1,12 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Services;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Pools.Managed
+namespace AhBearStudios.Core.Pooling.Pools.Managed
 {
     /// <summary>
     /// A generic object pool that manages reusable instances of type T.

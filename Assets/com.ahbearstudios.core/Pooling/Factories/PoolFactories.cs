@@ -1,4 +1,4 @@
-﻿namespace AhBearStudios.Pooling.Factories
+﻿namespace AhBearStudios.Core.Pooling.Factories
 {
     /// <summary>
     /// Provides access to pool factories

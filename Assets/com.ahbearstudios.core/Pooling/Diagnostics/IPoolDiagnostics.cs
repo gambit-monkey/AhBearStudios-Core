@@ -1,8 +1,7 @@
 ﻿using System.Collections.Generic;
-using AhBearStudios.Pooling.Core;
 using Unity.Collections;
 
-namespace AhBearStudios.Pooling.Diagnostics
+namespace AhBearStudios.Core.Pooling.Diagnostics
 {
     /// <summary>
     /// Interface for collecting and managing pool diagnostics.

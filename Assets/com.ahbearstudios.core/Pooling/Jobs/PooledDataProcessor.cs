@@ -1,15 +1,15 @@
 ﻿using System;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Jobs;
-using AhBearStudios.Pooling.Pools.Native;
-using AhBearStudios.Pooling.Services;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Jobs;
+using AhBearStudios.Core.Pooling.Pools.Native;
+using AhBearStudios.Core.Pooling.Services;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 using Unity.Profiling;
 
-namespace AhBearStudios.Pooling.Processing
+namespace AhBearStudios.Core.Pooling.Processing
 {
     /// <summary>
     /// Processes data from native pools using the job system.

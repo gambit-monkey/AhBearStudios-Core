@@ -1,4 +1,4 @@
-﻿namespace AhBearStudios.Pooling.Builders
+﻿namespace AhBearStudios.Core.Pooling.Builders
 {
     /// <summary>
     /// Predefined usage patterns for complex object pools

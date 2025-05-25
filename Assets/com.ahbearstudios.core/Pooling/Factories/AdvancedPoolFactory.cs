@@ -2,15 +2,14 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using AhBearStudios.Pooling.Builders;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Pools.Advanced;
-using AhBearStudios.Pooling.Services;
+using AhBearStudios.Core.Pooling.Builders;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Pools.Advanced;
+using AhBearStudios.Core.Pooling.Services;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Factories
+namespace AhBearStudios.Core.Pooling.Factories
 {
     /// <summary>
     /// Factory for creating and managing advanced object pools with enhanced functionality,

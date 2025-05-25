@@ -1,8 +1,8 @@
 ﻿using System;
-using AhBearStudios.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Configurations;
 using Unity.Collections;
 
-namespace AhBearStudios.Pooling.Builders
+namespace AhBearStudios.Core.Pooling.Builders
 {
     /// <summary>
     /// Factory for creating various job-compatible pool configuration builders.

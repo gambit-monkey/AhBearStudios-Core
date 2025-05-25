@@ -1,9 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
 
-namespace AhBearStudios.Pooling.Pools.Managed
+namespace AhBearStudios.Core.Pooling.Pools.Managed
 {
     /// <summary>
     /// Interface for thread-safe object pools that can be safely accessed from multiple threads.

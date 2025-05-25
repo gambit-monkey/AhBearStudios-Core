@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using Unity.Profiling;
 
-namespace AhBearStudios.Pooling.Diagnostics
+namespace AhBearStudios.Core.Pooling.Diagnostics
 {
     /// <summary>
     /// Interface for profiling and reporting on pool performance with Unity Profiler integration.

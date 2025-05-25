@@ -1,11 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Services;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Services;
 
-namespace AhBearStudios.Pooling.Factories
+namespace AhBearStudios.Core.Pooling.Factories
 {
     /// <summary>
     /// Base interface for all pool factories, defining common functionality

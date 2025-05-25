@@ -1,6 +1,6 @@
 ﻿using Unity.Collections;
 
-namespace AhBearStudios.Pooling.Diagnostics
+namespace AhBearStudios.Core.Pooling.Diagnostics
 {
     /// <summary>
     /// Structure containing tracking information for a pool.

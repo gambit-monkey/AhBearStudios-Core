@@ -1,8 +1,6 @@
 ﻿using System;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
 
-namespace AhBearStudios.Pooling.Pools.Advanced
+namespace AhBearStudios.Core.Pooling.Pools.Advanced
 {
     /// <summary>
     /// Advanced object pool interface with extended functionality. Provides configurable auto-shrinking,

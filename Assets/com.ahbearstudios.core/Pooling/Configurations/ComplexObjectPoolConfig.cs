@@ -1,12 +1,12 @@
 ﻿using System;
-using AhBearStudios.Pooling.Builders;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Builders;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Services;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Configurations
+namespace AhBearStudios.Core.Pooling.Configurations
 {
     /// <summary>
     /// Configuration for complex object pools that support advanced features like dependencies tracking,

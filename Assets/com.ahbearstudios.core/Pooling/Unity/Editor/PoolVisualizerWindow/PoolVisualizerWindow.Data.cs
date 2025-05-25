@@ -2,13 +2,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using AhBearStudios.Pooling.Core.Pooling.Core;
-using AhBearStudios.Pooling.Core.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Core.Pooling.Native;
+using AhBearStudios.Core.Pooling.Core;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Native;
 using UnityEditor;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Core.Pooling.Editor
+namespace AhBearStudios.Core.Pooling.Unity.Editor
 {
     /// <summary>
     /// Partial class handling pool metrics visualization functionality

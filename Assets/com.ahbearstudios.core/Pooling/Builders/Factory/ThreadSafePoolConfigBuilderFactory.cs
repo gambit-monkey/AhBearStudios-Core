@@ -1,12 +1,8 @@
 ﻿using System;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using Unity.Collections;
-using Unity.Jobs;
+using AhBearStudios.Core.Pooling.Configurations;
 using Unity.Jobs.LowLevel.Unsafe;
-using UnityEngine;
 
-namespace AhBearStudios.Pooling.Builders
+namespace AhBearStudios.Core.Pooling.Builders
 {
     /// <summary>
     /// Factory for creating various thread-safe pool configuration builders.

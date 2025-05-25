@@ -1,10 +1,9 @@
 ﻿using System;
-using AhBearStudios.Pooling.Builders;
-using AhBearStudios.Pooling.Core;
+using AhBearStudios.Core.Pooling.Builders;
 using Unity.Collections;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Configurations
+namespace AhBearStudios.Core.Pooling.Configurations
 {
     /// <summary>
     /// Configuration for thread-local object pools that maintain separate pools for each thread.

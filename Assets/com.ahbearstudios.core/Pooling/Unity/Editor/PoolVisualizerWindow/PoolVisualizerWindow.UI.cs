@@ -2,12 +2,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using AhBearStudios.Pooling.Core.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Core.Pooling.Core;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Core;
 using UnityEditor;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Core.Pooling.Editor
+namespace AhBearStudios.Core.Pooling.Unity.Editor
 {
     /// <summary>
     /// Partial class handling UI functionality for the pool visualizer

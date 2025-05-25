@@ -1,9 +1,10 @@
 ﻿using System;
-using AhBearStudios.Pooling.Core.Pooling.Managed;
-using AhBearStudios.Pooling.Core.Pooling.Unity;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Pools.Advanced;
+using AhBearStudios.Core.Pooling.Pools.Unity;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Core.Pooling
+namespace AhBearStudios.Core.Pooling.Unity
 {
     /// <summary>
     /// Partial class for PoolManager that handles GameObject pools

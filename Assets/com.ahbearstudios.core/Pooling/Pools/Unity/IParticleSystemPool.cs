@@ -1,10 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Pools.Unity
+namespace AhBearStudios.Core.Pooling.Pools.Unity
 {
     /// <summary>
     /// Base interface for Unity ParticleSystem pools that manage particle effect instances.

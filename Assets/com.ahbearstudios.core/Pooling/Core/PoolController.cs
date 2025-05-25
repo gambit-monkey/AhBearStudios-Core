@@ -1,12 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Linq;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Factories;
-using AhBearStudios.Pooling.Pools.Native;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Factories;
+using AhBearStudios.Core.Pooling.Pools.Native;
 
-namespace AhBearStudios.Pooling.Core
+namespace AhBearStudios.Core.Pooling
 {
     /// <summary>
     /// Domain-specific controller for managing a logically related group of pools.

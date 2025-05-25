@@ -1,6 +1,6 @@
 ﻿using Unity.Jobs;
 
-namespace AhBearStudios.Pooling.Pools.Native
+namespace AhBearStudios.Core.Pooling.Pools.Native
 {
     /// <summary>
     /// Interface for Job-compatible native pools optimized for use with 

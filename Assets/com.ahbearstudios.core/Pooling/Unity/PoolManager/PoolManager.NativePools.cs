@@ -1,12 +1,10 @@
 ﻿using System;
-using System.Collections.Generic;
-using UnityEngine;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Pools.Advanced;
+using AhBearStudios.Core.Pooling.Pools.Native;
 using Unity.Collections;
-using Unity.Collections.LowLevel.Unsafe;
-using AhBearStudios.Pooling.Core.Pooling.Core;
-using AhBearStudios.Pooling.Core.Pooling.Native;
 
-namespace AhBearStudios.Pooling.Core.Pooling
+namespace AhBearStudios.Core.Pooling.Unity
 {
     /// <summary>
     /// Partial class implementation of PoolManager that provides methods for creating and managing

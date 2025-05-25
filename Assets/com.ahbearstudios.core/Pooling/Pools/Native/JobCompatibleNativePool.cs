@@ -1,16 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Pools.Native;
-using AhBearStudios.Pooling.Services;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Pools.Native
+namespace AhBearStudios.Core.Pooling.Pools.Native
 {
     /// <summary>
     /// A high-performance, job-compatible native pool implementation designed for use with Unity's job system.

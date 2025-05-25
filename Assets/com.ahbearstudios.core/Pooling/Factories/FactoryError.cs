@@ -1,6 +1,6 @@
 ﻿using System;
 
-namespace AhBearStudios.Pooling.Factories
+namespace AhBearStudios.Core.Pooling.Factories
 {
     /// <summary>
     /// Represents a factory error with an error code and message.

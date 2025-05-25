@@ -2,7 +2,7 @@
 using Unity.Collections;
 using Unity.Jobs;
 
-namespace AhBearStudios.Pooling.Jobs
+namespace AhBearStudios.Core.Pooling.Jobs
 {
     /// <summary>
     /// Extension methods for scheduling jobs with auto-release of resources

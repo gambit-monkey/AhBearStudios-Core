@@ -1,11 +1,10 @@
 ﻿using System;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
+using AhBearStudios.Core.Pooling.Configurations;
 using Unity.Burst;
 using Unity.Collections;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Builders
+namespace AhBearStudios.Core.Pooling.Builders
 {
     /// <summary>
     /// Builder for job-compatible pool configurations implementing IPoolConfigBuilder.

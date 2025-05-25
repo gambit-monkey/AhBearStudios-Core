@@ -1,7 +1,7 @@
 ﻿using Unity.Burst;
 using Unity.Jobs;
 
-namespace AhBearStudios.Pooling.Diagnostics
+namespace AhBearStudios.Core.Pooling.Diagnostics
 {
     /// <summary>
     /// Job that updates pool metrics data atomically

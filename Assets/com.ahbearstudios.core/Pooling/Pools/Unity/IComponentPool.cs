@@ -1,8 +1,6 @@
-﻿using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using UnityEngine;
+﻿using UnityEngine;
 
-namespace AhBearStudios.Pooling.Pools.Unity
+namespace AhBearStudios.Core.Pooling.Pools.Unity
 {
     /// <summary>
     /// Interface for Unity Component pools that manage GameObject components.

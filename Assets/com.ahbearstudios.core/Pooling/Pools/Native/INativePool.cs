@@ -1,9 +1,7 @@
-﻿using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using Unity.Collections;
+﻿using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 
-namespace AhBearStudios.Pooling.Pools.Native
+namespace AhBearStudios.Core.Pooling.Pools.Native
 {
     /// <summary>
     /// Interface for all native pool implementations that use Unity Collections v2.

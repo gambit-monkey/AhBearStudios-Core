@@ -1,4 +1,4 @@
-﻿namespace AhBearStudios.Pooling.Configurations
+﻿namespace AhBearStudios.Core.Pooling.Configurations
 {
     /// <summary>
     /// Defines how the value type pool handles overflow situations.

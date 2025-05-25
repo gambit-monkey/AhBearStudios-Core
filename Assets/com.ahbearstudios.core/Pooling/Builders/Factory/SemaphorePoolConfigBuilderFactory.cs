@@ -1,10 +1,7 @@
 ﻿using System;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using Unity.Collections;
-using UnityEngine;
+using AhBearStudios.Core.Pooling.Configurations;
 
-namespace AhBearStudios.Pooling.Builders
+namespace AhBearStudios.Core.Pooling.Builders
 {
     /// <summary>
     /// Factory for creating various semaphore pool configuration builders.

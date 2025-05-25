@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Core;
+using AhBearStudios.Core.Pooling.Services;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Jobs;
@@ -8,7 +8,7 @@ using Unity.Mathematics;
 using Unity.Profiling;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Diagnostics
+namespace AhBearStudios.Core.Pooling.Diagnostics
 {
     /// <summary>
     /// Service for monitoring and validating the health of object pools.

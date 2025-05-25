@@ -1,8 +1,6 @@
-﻿using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
+﻿using AhBearStudios.Core.Pooling.Configurations;
 
-namespace AhBearStudios.Pooling.Pools.Managed
+namespace AhBearStudios.Core.Pooling.Pools.Managed
 {
     /// <summary>
     /// Interface for thread-local object pools that maintain separate pools for each thread.

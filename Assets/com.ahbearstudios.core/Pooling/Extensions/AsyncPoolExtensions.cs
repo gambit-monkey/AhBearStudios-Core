@@ -2,9 +2,8 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using AhBearStudios.Pooling.Core;
 
-namespace AhBearStudios.Pooling.Extensions
+namespace AhBearStudios.Core.Pooling.Extensions
 {
     /// <summary>
     /// Extension methods for asynchronous pool operations

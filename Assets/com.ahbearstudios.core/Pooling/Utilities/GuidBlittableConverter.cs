@@ -1,7 +1,7 @@
 ﻿using System;
 using Unity.Collections;
 
-namespace AhBearStudios.Pooling.Utilities
+namespace AhBearStudios.Core.Pooling.Utilities
 {
     /// <summary>
     /// Provides conversion utilities for working with Guid in blittable contexts.

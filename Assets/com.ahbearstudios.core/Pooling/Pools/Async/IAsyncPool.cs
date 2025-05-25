@@ -2,10 +2,8 @@
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
 
-namespace AhBearStudios.Pooling.Pools.Async
+namespace AhBearStudios.Core.Pooling.Pools.Async
 {
     /// <summary>
     /// Interface for pools that support asynchronous operations

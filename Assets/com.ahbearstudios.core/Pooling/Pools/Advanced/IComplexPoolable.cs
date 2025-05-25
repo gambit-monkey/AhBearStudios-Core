@@ -1,6 +1,4 @@
-﻿using AhBearStudios.Pooling.Core;
-
-namespace AhBearStudios.Pooling.Pools.Advanced
+﻿namespace AhBearStudios.Core.Pooling.Pools.Advanced
 {
     /// <summary>
     /// Interface for objects that support complex pooling features

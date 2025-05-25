@@ -1,13 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Configurations;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Services;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
 using Unity.Collections;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Pools.Advanced
+namespace AhBearStudios.Core.Pooling.Pools.Advanced
 {
     /// <summary>
     /// A high-performance pool for value types that minimizes GC allocations.

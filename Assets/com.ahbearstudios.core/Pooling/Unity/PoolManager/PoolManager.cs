@@ -6,14 +6,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using Unity.Collections;
-using AhBearStudios.Pooling.Core.Pooling.Configurations;
-using AhBearStudios.Pooling.Core.Pooling.Core;
-using AhBearStudios.Pooling.Core.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Core.Pooling.Managed;
-using AhBearStudios.Pooling.Core.Pooling.Native;
-using AhBearStudios.Pooling.Core.Pooling.Unity;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Factories;
+using AhBearStudios.Core.Pooling.Pools.Native;
+using AhBearStudios.Core.Pooling.Unity;
+using UnityUtils;
 
-namespace AhBearStudios.Pooling.Core.Pooling
+namespace AhBearStudios.Core.Pooling.Unity
 {
     /// <summary>
     /// Singleton manager for object pools with centralized creation, management, 

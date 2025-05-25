@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using AhBearStudios.Pooling.Core;
 using Unity.Collections;
 
-namespace AhBearStudios.Pooling.Diagnostics
+namespace AhBearStudios.Core.Pooling.Diagnostics
 {
     /// <summary>
     /// Interface defining operations for monitoring and validating the health of object pools.

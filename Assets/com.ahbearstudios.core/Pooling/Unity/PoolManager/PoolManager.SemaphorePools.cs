@@ -1,12 +1,12 @@
 ﻿using System;
-using System.Threading;
 using System.Threading.Tasks;
-using AhBearStudios.Pooling.Core.Pooling.Core;
-using AhBearStudios.Pooling.Core.Pooling.Managed;
-using AhBearStudios.Pooling.Core.Pooling.Native;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Pools.Advanced;
+using AhBearStudios.Core.Pooling.Pools.Managed;
+using AhBearStudios.Core.Pooling.Pools.Native;
 using Unity.Collections;
 
-namespace AhBearStudios.Pooling.Core.Pooling
+namespace AhBearStudios.Core.Pooling.Unity
 {
     /// <summary>
     /// Partial class for PoolManager that handles semaphore-limited pools.

@@ -1,15 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Services;
-using AhBearStudios.Pooling.Utilities;
+using AhBearStudios.Core.Pooling.Services;
+using AhBearStudios.Core.Pooling.Utilities;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Mathematics;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Diagnostics
+namespace AhBearStudios.Core.Pooling.Diagnostics
 {
     /// <summary>
     /// Centralized diagnostics system for monitoring pool performance and usage.

@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Pools.Unity;
+using AhBearStudios.Core.Pooling.Pools.Unity;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Extensions
+namespace AhBearStudios.Core.Pooling.Extensions
 {
     /// <summary>
     /// Extension methods for Unity-specific pool operations

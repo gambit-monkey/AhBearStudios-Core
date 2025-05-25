@@ -1,4 +1,4 @@
-﻿namespace AhBearStudios.Pooling.Configurations
+﻿namespace AhBearStudios.Core.Pooling.Configurations
 {
     /// <summary>
     /// Defines the scheduling mode for job operations.

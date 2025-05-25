@@ -1,4 +1,4 @@
-namespace AhBearStudios.Pooling.Factories
+namespace AhBearStudios.Core.Pooling.Factories
 {
     /// <summary>
     /// Error codes that can occur during pool factory operations

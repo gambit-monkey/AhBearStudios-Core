@@ -1,15 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Services;
+using AhBearStudios.Core.Pooling.Utilities;
 using Unity.Collections;
 using Unity.Mathematics;
-using AhBearStudios.Pooling.Core;
-using AhBearStudios.Pooling.Diagnostics;
-using AhBearStudios.Pooling.Utilities;
 using Unity.Collections.LowLevel.Unsafe;
 using UnityEngine;
 
-namespace AhBearStudios.Pooling.Pools
+namespace AhBearStudios.Core.Pooling
 {
     /// <summary>
     /// A modern, optimized pool implementation that serves as a base for specialized pool types.
