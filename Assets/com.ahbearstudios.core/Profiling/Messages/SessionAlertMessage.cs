@@ -30,6 +30,11 @@ namespace AhBearStudios.Core.Profiling.Messages
         public ProfilerTag SessionTag { get; }
         
         /// <summary>
+        /// The session identifier
+        /// </summary>
+        public Guid SessionId { get; }
+        
+        /// <summary>
         /// The duration of the session in milliseconds
         /// </summary>
         public double DurationMs { get; }
@@ -48,16 +53,38 @@ namespace AhBearStudios.Core.Profiling.Messages
         /// Creates a new SessionAlertMessage
         /// </summary>
         /// <param name="sessionTag">The session tag</param>
+        /// <param name="sessionId">The session identifier</param>
         /// <param name="durationMs">Duration in milliseconds</param>
         /// <param name="thresholdMs">Threshold in milliseconds</param>
-        public SessionAlertMessage(ProfilerTag sessionTag, double durationMs, double thresholdMs)
+        public SessionAlertMessage(ProfilerTag sessionTag, Guid sessionId, double durationMs, double thresholdMs)
         {
             Id = Guid.NewGuid();
             TimestampTicks = DateTime.UtcNow.Ticks;
             SessionTag = sessionTag;
+            SessionId = sessionId;
             DurationMs = durationMs;
             ThresholdMs = thresholdMs;
             ExceedancePercentage = thresholdMs > 0 ? ((durationMs / thresholdMs) - 1.0) * 100.0 : 0;
+        }
+        
+        /// <summary>
+        /// Creates a new SessionAlertMessage without a session ID
+        /// </summary>
+        /// <param name="sessionTag">The session tag</param>
+        /// <param name="durationMs">Duration in milliseconds</param>
+        /// <param name="thresholdMs">Threshold in milliseconds</param>
+        public SessionAlertMessage(ProfilerTag sessionTag, double durationMs, double thresholdMs)
+            : this(sessionTag, Guid.Empty, durationMs, thresholdMs)
+        {
+        }
+        
+        /// <summary>
+        /// Creates a new SessionAlertMessage with default values
+        /// </summary>
+        /// <returns>A new message with automatically generated ID and timestamp</returns>
+        public static SessionAlertMessage CreateDefault(ProfilerTag sessionTag, double durationMs, double thresholdMs)
+        {
+            return new SessionAlertMessage(sessionTag, durationMs, thresholdMs);
         }
     }
 }

@@ -1,7 +1,8 @@
-﻿using Unity.Burst;
+﻿using AhBearStudios.Core.Profiling.Metrics;
+using Unity.Burst;
 using Unity.Jobs;
 
-namespace AhBearStudios.Core.Pooling.Diagnostics
+namespace AhBearStudios.Core.Profiling.Jobs
 {
     /// <summary>
     /// Job that updates pool metrics data atomically
@@ -23,7 +24,7 @@ namespace AhBearStudios.Core.Pooling.Diagnostics
                 return;
                 
             // Call into the static helper method to perform the actual work
-            NativePoolMetricsExtensions.ExecuteUpdate(ref this);
+            NativePoolMetrics.ExecuteUpdate(ref this);
         }
     }
 }

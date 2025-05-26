@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using Unity.Profiling;
 using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.Profiling.Data;
 
 namespace AhBearStudios.Core.Profiling.Interfaces
 {
@@ -43,17 +44,17 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         ProfilerSession BeginScope(ProfilerCategory category, string name);
 
         /// <summary>
-        /// Get stats for a specific profiling tag
+        /// Get metrics for a specific profiling tag
         /// </summary>
-        /// <param name="tag">The tag to get stats for</param>
-        /// <returns>Profile stats for the tag</returns>
-        ProfileStats GetStats(ProfilerTag tag);
+        /// <param name="tag">The tag to get metrics for</param>
+        /// <returns>Metrics for the tag</returns>
+        DefaultMetricsData GetMetrics(ProfilerTag tag);
 
         /// <summary>
-        /// Get all profiling stats
+        /// Get all profiling metrics
         /// </summary>
-        /// <returns>Dictionary of all profiling stats by tag</returns>
-        IReadOnlyDictionary<ProfilerTag, ProfileStats> GetAllStats();
+        /// <returns>Dictionary of all profiling metrics by tag</returns>
+        IReadOnlyDictionary<ProfilerTag, DefaultMetricsData> GetAllMetrics();
 
         /// <summary>
         /// Get history for a specific profiling tag

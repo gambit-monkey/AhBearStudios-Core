@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Threading;
 using AhBearStudios.Core.Profiling.Data;
 using AhBearStudios.Core.Profiling.Interfaces;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.Profiling.Messages;
 using Unity.Collections;
 using UnityEngine;
 
@@ -21,18 +23,32 @@ namespace AhBearStudios.Core.Profiling.Metrics
         private readonly Dictionary<Guid, PoolMetricsData> _poolMetrics;
         private PoolMetricsData _globalMetrics;
         
+        // Alert storage
+        private readonly Dictionary<Guid, Dictionary<string, MetricAlert>> _poolAlerts;
+        
+        // Message bus for alerts
+        private readonly IMessageBus _messageBus;
+        
         // State
         private bool _isCreated;
         
         /// <summary>
+        /// Whether the metrics tracker is created and initialized
+        /// </summary>
+        public bool IsCreated => _isCreated;
+        
+        /// <summary>
         /// Creates a new pool metrics tracker
         /// </summary>
+        /// <param name="messageBus">Message bus for sending alerts</param>
         /// <param name="initialCapacity">Initial capacity for dictionary storage</param>
-        public PoolMetrics(int initialCapacity = 64)
+        public PoolMetrics(IMessageBus messageBus = null, int initialCapacity = 64)
         {
             // Create storage
             _poolMetrics = new Dictionary<Guid, PoolMetricsData>(initialCapacity);
+            _poolAlerts = new Dictionary<Guid, Dictionary<string, MetricAlert>>();
             _metricsLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
+            _messageBus = messageBus;
             
             // Initialize global metrics
             float currentTime = GetCurrentTime();
@@ -52,14 +68,16 @@ namespace AhBearStudios.Core.Profiling.Metrics
         /// <param name="poolName">Pool name</param>
         /// <param name="poolType">Type of pool</param>
         /// <param name="itemType">Type of items in the pool</param>
+        /// <param name="messageBus">Message bus for sending alerts</param>
         /// <param name="estimatedItemSizeBytes">Estimated size of each item in bytes (0 for automatic estimation)</param>
         public PoolMetrics(
             Guid poolId,
             string poolName,
             Type poolType,
             Type itemType,
+            IMessageBus messageBus = null,
             int estimatedItemSizeBytes = 0)
-            : this()
+            : this(messageBus)
         {
             // Configure the initial pool
             string poolTypeName = poolType != null ? poolType.Name : "Unknown";
@@ -95,6 +113,27 @@ namespace AhBearStudios.Core.Profiling.Metrics
                     return metricsData;
                 
                 return default;
+            }
+            finally
+            {
+                _metricsLock.ExitReadLock();
+            }
+        }
+        
+        /// <summary>
+        /// Gets metrics data for a specific pool with nullable return for error handling
+        /// </summary>
+        public PoolMetricsData? GetPoolMetrics(Guid poolId)
+        {
+            CheckInitialized();
+            
+            _metricsLock.EnterReadLock();
+            try
+            {
+                if (_poolMetrics.TryGetValue(poolId, out var metricsData))
+                    return metricsData;
+                
+                return null;
             }
             finally
             {
@@ -142,6 +181,9 @@ namespace AhBearStudios.Core.Profiling.Metrics
                     
                     // Update global metrics
                     UpdateGlobalMetrics();
+                    
+                    // Check alerts
+                    CheckAlerts(poolId, updatedMetrics);
                 }
             }
             finally
@@ -172,6 +214,9 @@ namespace AhBearStudios.Core.Profiling.Metrics
                     
                     // Update global metrics
                     UpdateGlobalMetrics();
+                    
+                    // Check alerts
+                    CheckAlerts(poolId, updatedMetrics);
                 }
             }
             finally
@@ -238,11 +283,22 @@ namespace AhBearStudios.Core.Profiling.Metrics
                 
                 // Update global metrics
                 UpdateGlobalMetrics();
+                
+                // Check alerts
+                CheckAlerts(poolId, metricsData);
             }
             finally
             {
                 _metricsLock.ExitWriteLock();
             }
+        }
+        
+        /// <summary>
+        /// Simplified pool configuration update with just capacity
+        /// </summary>
+        public void UpdatePoolConfiguration(Guid poolId, int capacity)
+        {
+            UpdatePoolConfiguration(poolId, capacity, 0, 0, null, 0);
         }
         
         /// <summary>
@@ -327,6 +383,14 @@ namespace AhBearStudios.Core.Profiling.Metrics
         }
         
         /// <summary>
+        /// Reset all statistics (alias for ResetAllPoolStats)
+        /// </summary>
+        public void ResetStats()
+        {
+            ResetAllPoolStats();
+        }
+        
+        /// <summary>
         /// Gets the cache hit ratio for a specific pool
         /// </summary>
         public float GetPoolHitRatio(Guid poolId)
@@ -402,6 +466,9 @@ namespace AhBearStudios.Core.Profiling.Metrics
                     
                     // Update global metrics
                     UpdateGlobalMetrics();
+                    
+                    // Check alerts
+                    CheckAlerts(poolId, metricsData);
                 }
             }
             finally
@@ -434,6 +501,9 @@ namespace AhBearStudios.Core.Profiling.Metrics
                     
                     // Store updated metrics
                     _poolMetrics[poolId] = metricsData;
+                    
+                    // Check alerts
+                    CheckAlerts(poolId, metricsData);
                 }
             }
             finally
@@ -478,6 +548,9 @@ namespace AhBearStudios.Core.Profiling.Metrics
                     
                     // Update global metrics
                     UpdateGlobalMetrics();
+                    
+                    // Check alerts
+                    CheckAlerts(poolId, metricsData);
                 }
             }
             finally
@@ -525,6 +598,9 @@ namespace AhBearStudios.Core.Profiling.Metrics
                     
                     // Update global metrics
                     UpdateGlobalMetrics();
+                    
+                    // Check alerts
+                    CheckAlerts(poolId, metricsData);
                 }
             }
             finally
@@ -591,9 +667,46 @@ namespace AhBearStudios.Core.Profiling.Metrics
         }
         
         /// <summary>
-        /// Whether the metrics tracker is created and initialized
+        /// Register an alert for a specific pool metric
         /// </summary>
-        public bool IsCreated => _isCreated;
+        public void RegisterAlert(Guid poolId, string metricName, double threshold)
+        {
+            CheckInitialized();
+            
+            if (string.IsNullOrEmpty(metricName))
+                return;
+                
+            _metricsLock.EnterWriteLock();
+            try
+            {
+                // Ensure pool exists
+                EnsurePoolMetricsExists(poolId);
+                
+                // Get or create alerts dictionary for this pool
+                if (!_poolAlerts.TryGetValue(poolId, out var poolAlertDict))
+                {
+                    poolAlertDict = new Dictionary<string, MetricAlert>();
+                    _poolAlerts[poolId] = poolAlertDict;
+                }
+                
+                // Add or update the alert
+                var alert = new MetricAlert 
+                { 
+                    PoolId = poolId,
+                    MetricName = metricName,
+                    Threshold = threshold,
+                    LastTriggeredTime = 0,
+                    CooldownPeriod = 5.0f, // 5 second default cooldown
+                    CurrentCooldown = 0
+                };
+                
+                poolAlertDict[metricName] = alert;
+            }
+            finally
+            {
+                _metricsLock.ExitWriteLock();
+            }
+        }
         
         // Helper methods
         
@@ -682,6 +795,113 @@ namespace AhBearStudios.Core.Profiling.Metrics
         }
         
         /// <summary>
+        /// Checks alerts for a specific pool
+        /// </summary>
+        private void CheckAlerts(Guid poolId, PoolMetricsData metricsData)
+        {
+            // Early return if no message bus or no alerts for this pool
+            if (_messageBus == null || !_poolAlerts.TryGetValue(poolId, out var poolAlerts))
+                return;
+                
+            float currentTime = GetCurrentTime();
+            
+            // Check each alert
+            foreach (var alert in poolAlerts.Values)
+            {
+                // Skip if on cooldown
+                if (alert.CurrentCooldown > 0)
+                    continue;
+                    
+                // Get the metric value
+                double metricValue = GetMetricValue(metricsData, alert.MetricName);
+                
+                // Check threshold
+                if (metricValue >= alert.Threshold)
+                {
+                    // Trigger alert
+                    alert.LastTriggeredTime = currentTime;
+                    alert.CurrentCooldown = alert.CooldownPeriod;
+                    
+                    // Create and publish message
+                    var message = new PoolMetricAlertMessage(
+                        poolId, 
+                        metricsData.Name.ToString(),
+                        alert.MetricName, 
+                        metricValue, 
+                        alert.Threshold);
+                        
+                    _messageBus.PublishMessage(message);
+                }
+            }
+            
+            // Update cooldowns for all alerts
+            UpdateAlertCooldowns(poolId, 1.0f / 30.0f); // Assume approximately 30 fps for cooldown
+        }
+        
+        /// <summary>
+        /// Updates cooldowns for alerts
+        /// </summary>
+        private void UpdateAlertCooldowns(Guid poolId, float deltaTime)
+        {
+            if (!_poolAlerts.TryGetValue(poolId, out var poolAlerts))
+                return;
+                
+            foreach (var alert in poolAlerts.Values)
+            {
+                if (alert.CurrentCooldown > 0)
+                {
+                    alert.CurrentCooldown = Math.Max(0, alert.CurrentCooldown - deltaTime);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Gets a metric value from the metrics data by name
+        /// </summary>
+        private double GetMetricValue(PoolMetricsData metricsData, string metricName)
+        {
+            switch (metricName.ToLowerInvariant())
+            {
+                case "activeitems":
+                case "activecount": 
+                    return metricsData.ActiveCount;
+                case "capacity": 
+                    return metricsData.Capacity;
+                case "freeitems":
+                case "freecount": 
+                    return metricsData.FreeCount;
+                case "usageratio": 
+                    return metricsData.UsageRatio;
+                case "totalcreated": 
+                    return metricsData.TotalCreatedCount;
+                case "totalacquired": 
+                    return metricsData.TotalAcquiredCount;
+                case "totalreleased": 
+                    return metricsData.TotalReleasedCount;
+                case "leakeditems": 
+                    return metricsData.LeakedItemCount;
+                case "peakactive": 
+                    return metricsData.PeakActiveCount;
+                case "resizes": 
+                    return metricsData.TotalResizeOperations;
+                case "acquiretime": 
+                    return metricsData.AverageAcquireTimeMs;
+                case "releasetime": 
+                    return metricsData.AverageReleaseTimeMs;
+                case "itemlifetime": 
+                    return metricsData.AverageLifetimeSeconds;
+                case "cachehitratio": 
+                    return metricsData.CacheHitRatio;
+                case "efficiency": 
+                    return metricsData.PoolEfficiency;
+                case "fragmentationratio": 
+                    return metricsData.FragmentationRatio;
+                default: 
+                    return 0;
+            }
+        }
+        
+        /// <summary>
         /// Checks if the metrics tracker is initialized
         /// </summary>
         private void CheckInitialized()
@@ -753,6 +973,42 @@ namespace AhBearStudios.Core.Profiling.Metrics
             }
             
             return $"{size:F1} {suffixes[order]}";
+        }
+        
+        /// <summary>
+        /// Represents a metric alert for pool metrics
+        /// </summary>
+        private class MetricAlert
+        {
+            /// <summary>
+            /// Pool identifier
+            /// </summary>
+            public Guid PoolId;
+            
+            /// <summary>
+            /// Name of the metric
+            /// </summary>
+            public string MetricName;
+            
+            /// <summary>
+            /// Threshold value
+            /// </summary>
+            public double Threshold;
+            
+            /// <summary>
+            /// Last time this alert was triggered
+            /// </summary>
+            public float LastTriggeredTime;
+            
+            /// <summary>
+            /// Cooldown period in seconds
+            /// </summary>
+            public float CooldownPeriod;
+            
+            /// <summary>
+            /// Current cooldown remaining
+            /// </summary>
+            public float CurrentCooldown;
         }
     }
 }

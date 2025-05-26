@@ -8,9 +8,9 @@ using Unity.Profiling;
 namespace AhBearStudios.Core.Profiling.Sessions
 {
     /// <summary>
-    /// A specialized profiler session for pool operations that captures additional pool metrics
+    /// A specialized profiler session for serialization operations that captures additional serialization metrics
     /// </summary>
-    public class PoolProfilerSession : IProfilerSession
+    public class SerializationProfilerSession : IProfilerSession
     {
         private readonly ProfilerMarker _marker;
         private readonly ProfilerTag _tag;
@@ -22,29 +22,34 @@ namespace AhBearStudios.Core.Profiling.Sessions
         private readonly Guid _sessionId;
         
         /// <summary>
-        /// Pool identifier
+        /// Serializer identifier
         /// </summary>
-        public readonly Guid PoolId;
+        public readonly Guid SerializerId;
         
         /// <summary>
-        /// Pool name
+        /// Serializer name
         /// </summary>
-        public readonly string PoolName;
+        public readonly string SerializerName;
         
         /// <summary>
-        /// Number of active items at the time of profiling
+        /// Message identifier (if applicable)
         /// </summary>
-        public readonly int ActiveCount;
+        public readonly Guid MessageId;
         
         /// <summary>
-        /// Number of free items at the time of profiling
+        /// Message type code (if applicable)
         /// </summary>
-        public readonly int FreeCount;
+        public readonly ushort MessageTypeCode;
         
         /// <summary>
-        /// The pool metrics interface for recording metrics
+        /// Size of the serialized data in bytes
         /// </summary>
-        private readonly IPoolMetrics _poolMetrics;
+        public readonly int DataSize;
+        
+        /// <summary>
+        /// The serializer metrics interface for recording metrics
+        /// </summary>
+        private readonly ISerializerMetrics _serializerMetrics;
         
         /// <summary>
         /// The operation type being profiled
@@ -52,30 +57,33 @@ namespace AhBearStudios.Core.Profiling.Sessions
         private readonly string _operationType;
         
         /// <summary>
-        /// Creates a new pool profiler session
+        /// Creates a new serialization profiler session
         /// </summary>
         /// <param name="tag">Profiler tag</param>
-        /// <param name="poolId">Pool identifier</param>
-        /// <param name="poolName">Pool name</param>
-        /// <param name="activeCount">Active item count</param>
-        /// <param name="freeCount">Free item count</param>
-        /// <param name="poolMetrics">Pool metrics interface for recording</param>
+        /// <param name="serializerId">Serializer identifier</param>
+        /// <param name="serializerName">Serializer name</param>
+        /// <param name="messageId">Message identifier (if applicable)</param>
+        /// <param name="messageTypeCode">Message type code (if applicable)</param>
+        /// <param name="dataSize">Size of the data in bytes</param>
+        /// <param name="serializerMetrics">Serializer metrics interface for recording</param>
         /// <param name="messageBus">Message bus for sending messages</param>
-        public PoolProfilerSession(
+        public SerializationProfilerSession(
             ProfilerTag tag, 
-            Guid poolId, 
-            string poolName, 
-            int activeCount, 
-            int freeCount,
-            IPoolMetrics poolMetrics,
+            Guid serializerId, 
+            string serializerName, 
+            Guid messageId, 
+            ushort messageTypeCode, 
+            int dataSize,
+            ISerializerMetrics serializerMetrics,
             IMessageBus messageBus = null)
         {
             _tag = tag;
-            PoolId = poolId;
-            PoolName = poolName;
-            ActiveCount = activeCount;
-            FreeCount = freeCount;
-            _poolMetrics = poolMetrics;
+            SerializerId = serializerId;
+            SerializerName = serializerName;
+            MessageId = messageId;
+            MessageTypeCode = messageTypeCode;
+            DataSize = dataSize;
+            _serializerMetrics = serializerMetrics;
             _messageBus = messageBus;
             _isDisposed = false;
             _sessionId = Guid.NewGuid();
@@ -89,8 +97,8 @@ namespace AhBearStudios.Core.Profiling.Sessions
             // Notify via message bus that session started
             if (_messageBus != null)
             {
-                var message = new PoolProfilerSessionStartedMessage(
-                    _tag, _sessionId, PoolId, PoolName, ActiveCount, FreeCount);
+                var message = new SerializationProfilerSessionStartedMessage(
+                    _tag, _sessionId, SerializerId, SerializerName, MessageId, MessageTypeCode, DataSize);
                 _messageBus.PublishMessage(message);
             }
         }
@@ -159,51 +167,49 @@ namespace AhBearStudios.Core.Profiling.Sessions
             _endTimeNs = GetHighPrecisionTimestampNs();
             _isDisposed = true;
             
-            // Record pool-specific metrics
-            RecordPoolMetrics();
+            // Record serialization-specific metrics
+            RecordSerializationMetrics();
             
             // Notify via message bus that session ended
             if (_messageBus != null)
             {
-                var message = new PoolProfilerSessionCompletedMessage(
-                    _tag, _sessionId, PoolId, PoolName, ActiveCount, FreeCount, 
-                    ElapsedMilliseconds, _customMetrics, _operationType);
+                var message = new SerializationProfilerSessionCompletedMessage(
+                    _tag, _sessionId, SerializerId, SerializerName, MessageId, MessageTypeCode, 
+                    DataSize, ElapsedMilliseconds, _customMetrics, _operationType);
                 _messageBus.PublishMessage(message);
             }
         }
         
         /// <summary>
-        /// Record metrics specific to pool operations
+        /// Record metrics specific to serialization operations
         /// </summary>
-        private void RecordPoolMetrics()
+        private void RecordSerializationMetrics()
         {
-            // Only record metrics if we have a pool ID and metrics system
-            if (PoolId != Guid.Empty && _poolMetrics != null)
+            // Only record metrics if we have a metrics system
+            if (_serializerMetrics != null)
             {
+                // Calculate duration as TimeSpan for the metrics API
+                var duration = TimeSpan.FromMilliseconds(ElapsedMilliseconds);
+        
                 // Record appropriate metrics based on operation type
+                bool success = true; // Default to success
+        
+                // Check if we have an error flag
+                if (_customMetrics.TryGetValue("Error", out double errorValue))
+                {
+                    // Treat non-zero as error/failure
+                    success = Math.Abs(errorValue) < double.Epsilon;
+                }
+        
                 switch (_operationType.ToLowerInvariant())
                 {
-                    case "acquire":
-                        _poolMetrics.RecordAcquire(PoolId, ActiveCount, (float)ElapsedMilliseconds);
+                    case "serialize":
+                        _serializerMetrics.RecordSerialization(duration, DataSize, success);
                         break;
-                    case "release":
-                        _poolMetrics.RecordRelease(PoolId, ActiveCount, (float)ElapsedMilliseconds);
-                        break;
-                    case "create":
-                        _poolMetrics.RecordCreate(PoolId, FreeCount);
-                        break;
-                    case "expand":
-                        // We don't have old capacity here, so just record the resize
-                        _poolMetrics.RecordResize(PoolId, ActiveCount + FreeCount, ActiveCount + FreeCount, (float)ElapsedMilliseconds);
-                        break;
-                    case "shrink":
-                        // Similar to expand
-                        _poolMetrics.RecordResize(PoolId, ActiveCount + FreeCount, ActiveCount + FreeCount, (float)ElapsedMilliseconds);
+                    case "deserialize":
+                        _serializerMetrics.RecordDeserialization(duration, DataSize, success);
                         break;
                 }
-                
-                // Update pool configuration
-                _poolMetrics.UpdatePoolConfiguration(PoolId, ActiveCount + FreeCount);
             }
         }
         

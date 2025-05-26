@@ -1,7 +1,6 @@
-﻿using System;
-using System.Collections.Generic;
-using AhBearStudios.Core.Profiling.Events;
+﻿using System.Collections.Generic;
 using Unity.Profiling;
+using AhBearStudios.Core.MessageBus.Interfaces;
 
 namespace AhBearStudios.Core.Profiling.Interfaces
 {
@@ -21,14 +20,14 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         bool LogToConsole { get; set; }
         
         /// <summary>
+        /// Gets the message bus used by the profiler manager
+        /// </summary>
+        IMessageBus MessageBus { get; }
+        
+        /// <summary>
         /// System metrics tracker for ProfilerRecorder metrics
         /// </summary>
         SystemMetricsTracker SystemMetrics { get; }
-        
-        /// <summary>
-        /// ThresholdAlerting system for monitoring metrics
-        /// </summary>
-        ThresholdAlertSystem AlertSystem { get; }
         
         /// <summary>
         /// Start profiling
@@ -49,16 +48,6 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         /// Begin a profiling scope with a category and name
         /// </summary>
         IProfilerSession BeginScope(ProfilerCategory category, string name);
-        
-        /// <summary>
-        /// Notifies that a session has started
-        /// </summary>
-        void OnSessionStarted(IProfilerSession session);
-        
-        /// <summary>
-        /// Notifies that a session has ended
-        /// </summary>
-        void OnSessionEnded(IProfilerSession session, double durationMs);
         
         /// <summary>
         /// Get stats for a specific profiling tag
@@ -88,12 +77,16 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         /// <summary>
         /// Register a system metric threshold alert
         /// </summary>
-        void RegisterMetricAlert(ProfilerTag metricTag, double threshold, Action<MetricEventArgs> callback);
+        /// <param name="metricTag">Tag for the metric to monitor</param>
+        /// <param name="threshold">Threshold value to trigger alert</param>
+        void RegisterMetricAlert(ProfilerTag metricTag, double threshold);
         
         /// <summary>
         /// Register a session threshold alert
         /// </summary>
-        void RegisterSessionAlert(ProfilerTag sessionTag, double thresholdMs, Action<ProfilerSessionEventArgs> callback);
+        /// <param name="sessionTag">Tag for the session to monitor</param>
+        /// <param name="thresholdMs">Threshold in milliseconds to trigger alert</param>
+        void RegisterSessionAlert(ProfilerTag sessionTag, double thresholdMs);
         
         /// <summary>
         /// Update the profiler manager (should be called regularly)

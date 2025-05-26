@@ -1,52 +1,58 @@
 ﻿using AhBearStudios.Core.Profiling.Interfaces;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.DependencyInjection.Interfaces;
+using AhBearStudios.Core.Profiling.Profilers;
 
 namespace AhBearStudios.Core.Profiling.Factories
 {
     /// <summary>
     /// Factory for creating IProfiler instances
     /// </summary>
-    public static class ProfilerFactory
+    public class ProfilerFactory
     {
-        private static IProfiler _defaultInstance;
-        private static readonly NullProfiler _nullInstance = new NullProfiler();
+        private readonly IDependencyProvider _dependencyProvider;
+        private static IProfiler _nullInstance;
 
         /// <summary>
-        /// Get the default IProfiler instance
+        /// Creates a new ProfilerFactory instance
         /// </summary>
-        public static IProfiler Default
+        /// <param name="dependencyProvider">Dependency provider for resolving dependencies</param>
+        public ProfilerFactory(IDependencyProvider dependencyProvider)
         {
-            get
-            {
-                if (_defaultInstance == null)
-                {
-                    _defaultInstance = new DefaultProfiler();
-                }
+            _dependencyProvider = dependencyProvider;
+        }
 
-                return _defaultInstance;
-            }
+        /// <summary>
+        /// Create a new profiler instance
+        /// </summary>
+        /// <returns>Configured profiler instance</returns>
+        public IProfiler CreateProfiler()
+        {
+            var messageBus = _dependencyProvider.Resolve<IMessageBus>();
+            return new DefaultProfiler(messageBus);
         }
 
         /// <summary>
         /// Get a null profiler (no-op implementation for when profiling is disabled)
         /// </summary>
-        public static IProfiler Null => _nullInstance;
-
-        /// <summary>
-        /// Create a new DefaultProfiler instance
-        /// </summary>
-        public static IProfiler CreateDefault()
+        public IProfiler GetNullProfiler()
         {
-            return new DefaultProfiler();
+            if (_nullInstance == null)
+            {
+                // Create a NullProfiler that implements IProfiler but does nothing
+                _nullInstance = new NullProfiler();
+            }
+            return _nullInstance;
         }
 
         /// <summary>
         /// Create a profiler based on enabled state
         /// </summary>
         /// <param name="enabled">Whether profiling is enabled</param>
-        /// <returns>Default profiler if enabled, null profiler if disabled</returns>
-        public static IProfiler Create(bool enabled)
+        /// <returns>Real profiler if enabled, null profiler if disabled</returns>
+        public IProfiler Create(bool enabled)
         {
-            return enabled ? CreateDefault() : Null;
+            return enabled ? CreateProfiler() : GetNullProfiler();
         }
     }
 }

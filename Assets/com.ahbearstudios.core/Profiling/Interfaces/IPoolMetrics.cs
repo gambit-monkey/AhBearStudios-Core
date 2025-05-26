@@ -19,6 +19,13 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         PoolMetricsData GetMetricsData(Guid poolId);
         
         /// <summary>
+        /// Gets metrics data for a specific pool with nullable return for error handling
+        /// </summary>
+        /// <param name="poolId">Pool identifier</param>
+        /// <returns>Pool metrics data if found, null otherwise</returns>
+        PoolMetricsData? GetPoolMetrics(Guid poolId);
+        
+        /// <summary>
         /// Gets global metrics data aggregated across all pools
         /// </summary>
         /// <returns>Aggregated global metrics</returns>
@@ -53,6 +60,13 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         void UpdatePoolConfiguration(Guid poolId, int capacity, int minCapacity = 0, int maxCapacity = 0, string poolType = null, int itemSizeBytes = 0);
         
         /// <summary>
+        /// Simplified pool configuration update with just capacity
+        /// </summary>
+        /// <param name="poolId">Pool identifier</param>
+        /// <param name="capacity">Current capacity</param>
+        void UpdatePoolConfiguration(Guid poolId, int capacity);
+        
+        /// <summary>
         /// Gets metrics data for all tracked pools
         /// </summary>
         /// <returns>Dictionary mapping pool IDs to metrics data</returns>
@@ -68,6 +82,11 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         /// Reset statistics for all pools
         /// </summary>
         void ResetAllPoolStats();
+        
+        /// <summary>
+        /// Reset all statistics (alias for ResetAllPoolStats for IProfiler compatibility)
+        /// </summary>
+        void ResetStats();
         
         /// <summary>
         /// Gets the cache hit ratio for a specific pool
@@ -125,5 +144,18 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         /// <param name="poolId">Pool identifier</param>
         /// <returns>Dictionary of formatted metric values</returns>
         Dictionary<string, string> GetPerformanceSnapshot(Guid poolId);
+        
+        /// <summary>
+        /// Register an alert for a specific pool metric
+        /// </summary>
+        /// <param name="poolId">Pool identifier</param>
+        /// <param name="metricName">Name of the metric to monitor</param>
+        /// <param name="threshold">Threshold value that triggers the alert</param>
+        void RegisterAlert(Guid poolId, string metricName, double threshold);
+        
+        /// <summary>
+        /// Whether the metrics tracker is created and initialized
+        /// </summary>
+        bool IsCreated { get; }
     }
 }

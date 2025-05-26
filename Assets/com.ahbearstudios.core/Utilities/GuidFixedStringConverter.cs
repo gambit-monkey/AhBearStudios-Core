@@ -1,13 +1,13 @@
 ﻿using System;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.Pooling.Utilities
+namespace AhBearStudios.Core.Utilities
 {
     /// <summary>
     /// Provides conversion utilities for working with Guid in blittable contexts.
     /// Enables seamless integration between System.Guid and Unity's FixedString types.
     /// </summary>
-    public static class GuidBlittableConverter
+    public static class GuidFixedStringConverter
     {
         /// <summary>
         /// Converts a Guid to a FixedString64Bytes representation.

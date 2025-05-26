@@ -52,6 +52,11 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         void ResetAllPoolStats();
         
         /// <summary>
+        /// Reset all statistics (alias for ResetAllPoolStats for compatibility)
+        /// </summary>
+        void ResetStats();
+        
+        /// <summary>
         /// Gets the cache hit ratio for a specific pool
         /// </summary>
         float GetPoolHitRatio(FixedString64Bytes poolId);
@@ -60,6 +65,11 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         /// Gets the overall efficiency for a specific pool
         /// </summary>
         float GetPoolEfficiency(FixedString64Bytes poolId);
+        
+        /// <summary>
+        /// Register an alert for a specific pool metric
+        /// </summary>
+        void RegisterAlert(FixedString64Bytes poolId, FixedString64Bytes metricName, double threshold);
         
         /// <summary>
         /// Checks if the native container is created

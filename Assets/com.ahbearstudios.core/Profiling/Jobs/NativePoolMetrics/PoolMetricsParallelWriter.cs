@@ -1,7 +1,7 @@
 ﻿using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 
-namespace AhBearStudios.Core.Pooling.Diagnostics
+namespace AhBearStudios.Core.Profiling.Jobs
 {
     /// <summary>
     /// Thread-safe writer for updating pool metrics from parallel jobs

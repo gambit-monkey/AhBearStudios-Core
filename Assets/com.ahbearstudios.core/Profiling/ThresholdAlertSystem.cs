@@ -1,7 +1,7 @@
+// File: Assets/com.ahbearstudios.core/Profiling/ThresholdAlertSystem.cs
 using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.MessageBus.Interfaces;
-using AhBearStudios.Core.Profiling.Events;
 using AhBearStudios.Core.Profiling.Interfaces;
 using AhBearStudios.Core.Profiling.Messages;
 using UnityEngine;
@@ -68,6 +68,9 @@ namespace AhBearStudios.Core.Profiling
             _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
             LogToConsole = logToConsole;
             _isRunning = false;
+            
+            // Subscribe to session completed messages
+            _messageBus.GetSubscriber<ProfilerSessionCompletedMessage>().Subscribe(OnSessionCompleted);
         }
         
         /// <summary>
@@ -107,10 +110,9 @@ namespace AhBearStudios.Core.Profiling
         /// </summary>
         /// <param name="metricTag">The tag identifying the metric to monitor</param>
         /// <param name="threshold">The threshold value to trigger an alert</param>
-        /// <param name="callback">Optional callback to invoke when the threshold is exceeded (for backward compatibility)</param>
         /// <param name="cooldownSeconds">Cooldown period in seconds before allowing another alert</param>
-        public void RegisterMetricThreshold(ProfilerTag metricTag, double threshold, 
-            Action<MetricEventArgs> callback = null, float cooldownSeconds = DefaultAlertCooldown)
+        public void RegisterMetricThreshold(ProfilerTag metricTag, double threshold,
+            float cooldownSeconds = DefaultAlertCooldown)
         {
             if (metricTag == null)
                 throw new ArgumentNullException(nameof(metricTag));
@@ -125,7 +127,6 @@ namespace AhBearStudios.Core.Profiling
             {
                 MetricTag = metricTag,
                 ThresholdValue = threshold,
-                Callback = callback, // Can be null if using MessageBus exclusively
                 CooldownPeriod = cooldownSeconds,
                 CurrentCooldown = 0f
             };
@@ -138,10 +139,9 @@ namespace AhBearStudios.Core.Profiling
         /// </summary>
         /// <param name="sessionTag">The tag identifying the session to monitor</param>
         /// <param name="thresholdMs">The threshold duration in milliseconds to trigger an alert</param>
-        /// <param name="callback">Optional callback to invoke when the threshold is exceeded (for backward compatibility)</param>
         /// <param name="cooldownSeconds">Cooldown period in seconds before allowing another alert</param>
         public void RegisterSessionThreshold(ProfilerTag sessionTag, double thresholdMs, 
-            Action<ProfilerSessionEventArgs> callback = null, float cooldownSeconds = DefaultAlertCooldown)
+            float cooldownSeconds = DefaultAlertCooldown)
         {
             if (sessionTag == null)
                 throw new ArgumentNullException(nameof(sessionTag));
@@ -156,7 +156,6 @@ namespace AhBearStudios.Core.Profiling
             {
                 SessionTag = sessionTag,
                 ThresholdMs = thresholdMs,
-                Callback = callback, // Can be null if using MessageBus exclusively
                 CooldownPeriod = cooldownSeconds,
                 CurrentCooldown = 0f
             };
@@ -219,11 +218,23 @@ namespace AhBearStudios.Core.Profiling
         }
         
         /// <summary>
+        /// Handler for session completed messages
+        /// </summary>
+        private void OnSessionCompleted(ProfilerSessionCompletedMessage message)
+        {
+            if (!_isRunning)
+                return;
+                
+            CheckSessionThreshold(message.Tag, message.DurationMs, message.SessionId);
+        }
+        
+        /// <summary>
         /// Check a completed session against registered thresholds
         /// </summary>
         /// <param name="sessionTag">The tag of the completed session</param>
         /// <param name="durationMs">The duration of the session in milliseconds</param>
-        public void CheckSessionThreshold(ProfilerTag sessionTag, double durationMs)
+        /// <param name="sessionId">The unique identifier of the session</param>
+        private void CheckSessionThreshold(ProfilerTag sessionTag, double durationMs, Guid sessionId)
         {
             if (!_isRunning || sessionTag == null)
                 return;
@@ -238,27 +249,17 @@ namespace AhBearStudios.Core.Profiling
                     // Trigger alert
                     threshold.CurrentCooldown = threshold.CooldownPeriod;
                     
-                    // Create event args for backward compatibility
-                    var eventArgs = new ProfilerSessionEventArgs(sessionTag, durationMs);
-                    
                     // Create and publish message via MessageBus
-                    var message = new SessionAlertMessage(eventArgs, threshold.ThresholdMs);
-                    _messageBus.PublishMessage(message);
+                    _messageBus.PublishMessage(new SessionAlertMessage(
+                        sessionTag, 
+                        sessionId,
+                        durationMs, 
+                        threshold.ThresholdMs));
                     
                     // Log if enabled
                     if (LogToConsole)
                     {
                         Debug.LogWarning($"[Profiler] Session alert: {sessionTag.FullName} took {durationMs:F2}ms (threshold: {threshold.ThresholdMs:F2}ms)");
-                    }
-                    
-                    // Call legacy callback if provided (for backward compatibility)
-                    try
-                    {
-                        threshold.Callback?.Invoke(eventArgs);
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.LogError($"Error in session threshold callback: {e.Message}");
                     }
                 }
             }
@@ -303,27 +304,16 @@ namespace AhBearStudios.Core.Profiling
                     // Trigger alert
                     threshold.CurrentCooldown = threshold.CooldownPeriod;
                     
-                    // Create event args for backward compatibility
-                    var eventArgs = new MetricEventArgs(metricTag, value, threshold.ThresholdValue, unit);
-                    
                     // Create and publish message via MessageBus
-                    var message = new MetricThresholdExceededMessage(metricTag, value, threshold.ThresholdValue, unit);
-                    _messageBus.PublishMessage(message);
+                    _messageBus.PublishMessage(new MetricAlertMessage(
+                        metricTag, 
+                        value, 
+                        threshold.ThresholdValue));
                     
                     // Log if enabled
                     if (LogToConsole)
                     {
                         Debug.LogWarning($"[Profiler] Metric alert: {metricTag.FullName} = {value:F2}{unit} (threshold: {threshold.ThresholdValue:F2}{unit})");
-                    }
-                    
-                    // Call legacy callback if provided (for backward compatibility)
-                    try
-                    {
-                        threshold.Callback?.Invoke(eventArgs);
-                    }
-                    catch (Exception e)
-                    {
-                        Debug.LogError($"Error in metric threshold callback: {e.Message}");
                     }
                 }
             }
@@ -386,11 +376,6 @@ namespace AhBearStudios.Core.Profiling
             public double ThresholdValue;
             
             /// <summary>
-            /// Callback to invoke when the threshold is exceeded (legacy support)
-            /// </summary>
-            public Action<MetricEventArgs> Callback;
-            
-            /// <summary>
             /// Cooldown period in seconds before allowing another alert
             /// </summary>
             public float CooldownPeriod;
@@ -415,11 +400,6 @@ namespace AhBearStudios.Core.Profiling
             /// The threshold duration in milliseconds to trigger an alert
             /// </summary>
             public double ThresholdMs;
-            
-            /// <summary>
-            /// Callback to invoke when the threshold is exceeded (legacy support)
-            /// </summary>
-            public Action<ProfilerSessionEventArgs> Callback;
             
             /// <summary>
             /// Cooldown period in seconds before allowing another alert
