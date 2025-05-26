@@ -1,11 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using Unity.Profiling;
+using AhBearStudios.Core.MessageBus.Interfaces;
 
 namespace AhBearStudios.Core.Profiling.Interfaces
 {
     /// <summary>
-    /// Interface for profiling operations
+    /// Interface for profiling operations using the message bus system
     /// </summary>
     public interface IProfiler
     {
@@ -13,6 +14,11 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         /// Whether profiling is currently enabled
         /// </summary>
         bool IsEnabled { get; }
+
+        /// <summary>
+        /// Gets the message bus used by the profiler
+        /// </summary>
+        IMessageBus MessageBus { get; }
 
         /// <summary>
         /// Begin a profiling sample with a name
@@ -76,47 +82,13 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         /// </summary>
         /// <param name="metricTag">Tag for the metric to monitor</param>
         /// <param name="threshold">Threshold value to trigger alert</param>
-        /// <param name="callback">Optional callback when alert is triggered</param>
-        void RegisterMetricAlert(ProfilerTag metricTag, double threshold, Action<MetricEventArgs> callback);
+        void RegisterMetricAlert(ProfilerTag metricTag, double threshold);
 
         /// <summary>
         /// Register a session threshold alert
         /// </summary>
         /// <param name="sessionTag">Tag for the session to monitor</param>
         /// <param name="thresholdMs">Threshold in milliseconds to trigger alert</param>
-        /// <param name="callback">Optional callback when alert is triggered</param>
-        void RegisterSessionAlert(ProfilerTag sessionTag, double thresholdMs, Action<ProfilerSessionEventArgs> callback);
-
-        /// <summary>
-        /// Event fired when a profiling session ends
-        /// </summary>
-        event EventHandler<ProfilerSessionEventArgs> SessionCompleted;
-
-        /// <summary>
-        /// Event fired when profiling is started
-        /// </summary>
-        event EventHandler ProfilingStarted;
-
-        /// <summary>
-        /// Event fired when profiling is stopped
-        /// </summary>
-        event EventHandler ProfilingStopped;
-
-        /// <summary>
-        /// Event fired when stats are reset
-        /// </summary>
-        event EventHandler StatsReset;
-
-        /// <summary>
-        /// Event fired when a metric alert is triggered
-        /// </summary>
-        event EventHandler<MetricEventArgs> MetricAlertTriggered;
-
-        /// <summary>
-        /// Event fired when a session alert is triggered
-        /// </summary>
-        event EventHandler<ProfilerSessionEventArgs> SessionAlertTriggered;
+        void RegisterSessionAlert(ProfilerTag sessionTag, double thresholdMs);
     }
-
-    
 }

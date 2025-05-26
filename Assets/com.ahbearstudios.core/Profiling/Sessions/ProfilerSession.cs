@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Profiling.Interfaces;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.Profiling.Messages;
 using Unity.Profiling;
 
 namespace AhBearStudios.Core.Profiling
@@ -12,28 +14,35 @@ namespace AhBearStudios.Core.Profiling
     {
         private readonly ProfilerMarker _marker;
         private readonly ProfilerTag _tag;
-        private readonly IProfilerManager _manager;
+        private readonly IMessageBus _messageBus;
         private bool _isDisposed;
         private long _startTimeNs;
         private long _endTimeNs;
         private Dictionary<string, double> _customMetrics = new Dictionary<string, double>();
+        private readonly Guid _sessionId;
 
         /// <summary>
         /// Creates a new ProfilerSession
         /// </summary>
-        internal ProfilerSession(ProfilerTag tag, IProfilerManager manager)
+        /// <param name="tag">The profiler tag</param>
+        /// <param name="messageBus">Message bus for sending profiling messages</param>
+        internal ProfilerSession(ProfilerTag tag, IMessageBus messageBus)
         {
             _tag = tag;
-            _manager = manager;
+            _messageBus = messageBus;
             _marker = new ProfilerMarker(_tag.FullName);
             _isDisposed = false;
+            _sessionId = Guid.NewGuid();
             
             // Begin the profiler marker
             _marker.Begin();
             _startTimeNs = GetHighPrecisionTimestampNs();
             
-            // Notify manager that session started
-            _manager?.OnSessionStarted(this);
+            // Notify that session started via message bus
+            if (_messageBus != null)
+            {
+                _messageBus.PublishMessage(new ProfilerSessionStartedMessage(_tag, _sessionId));
+            }
         }
 
         /// <summary>
@@ -79,6 +88,15 @@ namespace AhBearStudios.Core.Profiling
                 
             _customMetrics[metricName] = value;
         }
+        
+        /// <summary>
+        /// Gets all recorded metrics for this session
+        /// </summary>
+        /// <returns>Dictionary of metric names and values</returns>
+        public IReadOnlyDictionary<string, double> GetMetrics()
+        {
+            return _customMetrics;
+        }
 
         /// <summary>
         /// End the profiler marker and record duration
@@ -95,8 +113,12 @@ namespace AhBearStudios.Core.Profiling
             // Call protected method for derived classes
             OnDispose();
             
-            // Notify manager that session ended
-            _manager?.OnSessionEnded(this, ElapsedMilliseconds);
+            // Notify that session ended via message bus
+            if (_messageBus != null)
+            {
+                _messageBus.PublishMessage(new ProfilerSessionCompletedMessage(_tag, 
+                    ElapsedMilliseconds, _customMetrics, _sessionId));
+            }
         }
         
         /// <summary>
@@ -123,9 +145,9 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Profile a block of code with a custom tag
         /// </summary>
-        public static void Profile(this Action action, ProfilerTag tag)
+        public static void Profile(this Action action, ProfilerTag tag, IMessageBus messageBus = null)
         {
-            using (RuntimeProfilerManager.Instance.BeginScope(tag))
+            using (new ProfilerSession(tag, messageBus))
             {
                 action();
             }
@@ -134,9 +156,9 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Profile a function with a return value
         /// </summary>
-        public static T Profile<T>(this Func<T> func, ProfilerTag tag)
+        public static T Profile<T>(this Func<T> func, ProfilerTag tag, IMessageBus messageBus = null)
         {
-            using (RuntimeProfilerManager.Instance.BeginScope(tag))
+            using (new ProfilerSession(tag, messageBus))
             {
                 return func();
             }
