@@ -1,5 +1,7 @@
-﻿using AhBearStudios.Core.Profiling.Interfaces;
+﻿using System;
+using AhBearStudios.Core.Profiling.Interfaces;
 using AhBearStudios.Core.Profiling.Metrics;
+using AhBearStudios.Core.MessageBus.Interfaces;
 using Unity.Collections;
 
 namespace AhBearStudios.Core.Profiling.Factories
@@ -12,11 +14,39 @@ namespace AhBearStudios.Core.Profiling.Factories
         /// <summary>
         /// Creates a standard pool metrics instance
         /// </summary>
+        /// <param name="messageBus">Optional message bus for alerts</param>
         /// <param name="initialCapacity">Initial capacity for tracking pools</param>
         /// <returns>A new pool metrics instance</returns>
-        public static IPoolMetrics CreateStandard(int initialCapacity = 64)
+        public static IPoolMetrics CreateStandard(IMessageBus messageBus = null, int initialCapacity = 64)
         {
-            return new PoolMetrics(initialCapacity);
+            return new PoolMetrics(messageBus, initialCapacity);
+        }
+        
+        /// <summary>
+        /// Creates a standard pool metrics instance with a specific pool already configured
+        /// </summary>
+        /// <param name="poolId">Pool identifier</param>
+        /// <param name="poolName">Pool name</param>
+        /// <param name="poolType">Type of pool</param>
+        /// <param name="itemType">Type of items in the pool</param>
+        /// <param name="messageBus">Optional message bus for alerts</param>
+        /// <param name="estimatedItemSizeBytes">Estimated size of each item in bytes (0 for automatic estimation)</param>
+        /// <returns>A new pool metrics instance</returns>
+        public static IPoolMetrics CreateStandard(
+            Guid poolId,
+            string poolName,
+            Type poolType,
+            Type itemType,
+            IMessageBus messageBus = null,
+            int estimatedItemSizeBytes = 0)
+        {
+            return new PoolMetrics(
+                poolId,
+                poolName,
+                poolType,
+                itemType,
+                messageBus,
+                estimatedItemSizeBytes);
         }
         
         /// <summary>
