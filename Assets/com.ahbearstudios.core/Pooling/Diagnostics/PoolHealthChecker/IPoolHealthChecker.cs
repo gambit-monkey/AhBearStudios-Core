@@ -154,7 +154,7 @@ namespace AhBearStudios.Core.Pooling.Diagnostics
         int GetIssueCountForPool(Guid poolId);
 
         /// <summary>
-        /// Tags a pool with a category for visualization grouping.
+        /// Tag a pool with a category for visualization grouping.
         /// </summary>
         /// <param name="poolId">ID of the pool to tag</param>
         /// <param name="tag">Tag to apply to the pool</param>

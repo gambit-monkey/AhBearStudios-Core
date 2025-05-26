@@ -1,10 +1,13 @@
 ﻿using System;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Profiling.Data;
+using AhBearStudios.Core.Profiling.Interfaces;
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Jobs;
 
-namespace AhBearStudios.Core.Pooling.Diagnostics
+namespace AhBearStudios.Core.Profiling.Metrics
 {
     /// <summary>
     /// Native implementation of pool metrics tracking for use with Burst and Jobs

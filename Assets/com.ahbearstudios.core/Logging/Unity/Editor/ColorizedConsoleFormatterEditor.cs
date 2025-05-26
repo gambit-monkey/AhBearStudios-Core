@@ -35,7 +35,7 @@ namespace AhBearStudios.Core.Logging.Editor
         private SerializedProperty _levelColorsProp;
         private SerializedProperty _tagColorsProp;
         
-        // Sample tags for previews
+        // Sample tag for previews
         private readonly Tagging.LogTag[] _sampleTags = new[]
         {
             Tagging.LogTag.System,
@@ -162,7 +162,7 @@ namespace AhBearStudios.Core.Logging.Editor
                 descriptionStyle);
                 
             EditorGUILayout.LabelField(
-                "Color coding is applied to log levels and tags.",
+                "Color coding is applied to log levels and tag.",
                 descriptionStyle);
                 
             EditorGUILayout.EndVertical();
@@ -232,7 +232,7 @@ namespace AhBearStudios.Core.Logging.Editor
             EditorGUILayout.LabelField("Color Customization", EditorStyles.boldLabel);
     
             EditorGUILayout.HelpBox(
-                "Use the color editor to customize colors for different log levels and tags.", 
+                "Use the color editor to customize colors for different log levels and tag.", 
                 MessageType.Info);
     
             if (GUILayout.Button("Open Color Editor", GUILayout.Height(30)))

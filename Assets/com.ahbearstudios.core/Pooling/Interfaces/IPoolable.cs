@@ -1,4 +1,4 @@
-﻿namespace AhBearStudios.Core.Pooling
+﻿namespace AhBearStudios.Core.Pooling.Interfaces
 {
     /// <summary>
     /// Interface for objects that can be pooled

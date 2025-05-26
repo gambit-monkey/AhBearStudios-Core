@@ -4,6 +4,7 @@ using System.Linq;
 using AhBearStudios.Core.Pooling.Configurations;
 using AhBearStudios.Core.Pooling.Diagnostics;
 using AhBearStudios.Core.Pooling.Factories;
+using AhBearStudios.Core.Pooling.Interfaces;
 using AhBearStudios.Core.Pooling.Pools.Native;
 
 namespace AhBearStudios.Core.Pooling

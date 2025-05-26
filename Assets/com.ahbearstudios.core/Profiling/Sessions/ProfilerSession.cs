@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AhBearStudios.Core.Profiling.Interfaces;
 using Unity.Profiling;
 
 namespace AhBearStudios.Core.Profiling
@@ -7,13 +8,15 @@ namespace AhBearStudios.Core.Profiling
     /// <summary>
     /// Wrapper for Unity's ProfilerMarker that provides scoped profiling with tagging
     /// </summary>
-    public class ProfilerSession : IDisposable
+    public class ProfilerSession : IProfilerSession
     {
         private readonly ProfilerMarker _marker;
         private readonly ProfilerTag _tag;
         private readonly RuntimeProfilerManager _manager;
         private bool _isDisposed;
         private long _startTimeNs;
+        private long _endTimeNs;
+        private Dictionary<string, double> _customMetrics = new Dictionary<string, double>();
 
         /// <summary>
         /// Creates a new ProfilerSession
@@ -30,13 +33,52 @@ namespace AhBearStudios.Core.Profiling
             _startTimeNs = GetHighPrecisionTimestampNs();
             
             // Notify manager that session started
-            _manager.OnSessionStarted(this);
+            _manager?.OnSessionStarted(this);
         }
 
         /// <summary>
         /// Get the tag associated with this session
         /// </summary>
         public ProfilerTag Tag => _tag;
+        
+        /// <summary>
+        /// Gets the elapsed time in milliseconds
+        /// </summary>
+        public double ElapsedMilliseconds
+        {
+            get
+            {
+                long currentTimeNs = _isDisposed ? _endTimeNs : GetHighPrecisionTimestampNs();
+                return (currentTimeNs - _startTimeNs) / 1000000.0;
+            }
+        }
+        
+        /// <summary>
+        /// Gets the elapsed time in nanoseconds
+        /// </summary>
+        public long ElapsedNanoseconds
+        {
+            get
+            {
+                return _isDisposed ? (_endTimeNs - _startTimeNs) : (GetHighPrecisionTimestampNs() - _startTimeNs);
+            }
+        }
+        
+        /// <summary>
+        /// Gets whether this session has been disposed
+        /// </summary>
+        public bool IsDisposed => _isDisposed;
+        
+        /// <summary>
+        /// Records a custom metric with this session
+        /// </summary>
+        public void RecordMetric(string metricName, double value)
+        {
+            if (string.IsNullOrEmpty(metricName))
+                return;
+                
+            _customMetrics[metricName] = value;
+        }
 
         /// <summary>
         /// End the profiler marker and record duration
@@ -47,15 +89,20 @@ namespace AhBearStudios.Core.Profiling
                 return;
 
             _marker.End();
+            _endTimeNs = GetHighPrecisionTimestampNs();
             _isDisposed = true;
             
-            // Calculate duration in milliseconds
-            long durationNs = GetHighPrecisionTimestampNs() - _startTimeNs;
-            double durationMs = durationNs / 1000000.0;
+            // Call protected method for derived classes
+            OnDispose();
             
             // Notify manager that session ended
-            _manager.OnSessionEnded(this, durationMs);
+            _manager?.OnSessionEnded(this, ElapsedMilliseconds);
         }
+        
+        /// <summary>
+        /// Protected method for session cleanup tasks
+        /// </summary>
+        protected virtual void OnDispose() { }
 
         /// <summary>
         /// Gets high precision timestamp in nanoseconds

@@ -110,7 +110,7 @@ namespace AhBearStudios.Core.Logging.Data
         }
         
         /// <summary>
-        /// Gets the appropriate tag string, handling both enum tags and custom tags.
+        /// Gets the appropriate tag string, handling both enum tag and custom tag.
         /// </summary>
         /// <returns>A string representation of the tag.</returns>
         public FixedString32Bytes GetTagString()

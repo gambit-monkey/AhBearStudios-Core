@@ -1,6 +1,4 @@
 using System;
-using System.Collections.Generic;
-using Unity.Collections;
 using Unity.Profiling;
 
 namespace AhBearStudios.Core.Profiling
@@ -64,8 +62,8 @@ namespace AhBearStudios.Core.Profiling
             return !left.Equals(right);
         }
         
-        #region Common Tags
-        // Pre-defined common tags to prevent string allocations
+        #region Common Tag
+        // Pre-defined common tag to prevent string allocations
         public static readonly ProfilerTag Uncategorized = new ProfilerTag(ProfilerCategory.Internal, "Default");
         public static readonly ProfilerTag RenderingMain = new ProfilerTag(ProfilerCategory.Render, "Main");
         public static readonly ProfilerTag PhysicsUpdate = new ProfilerTag(ProfilerCategory.Physics, "Update");

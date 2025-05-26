@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Interfaces;
 using AhBearStudios.Core.Pooling.Services;
 
 namespace AhBearStudios.Core.Pooling.Configurations

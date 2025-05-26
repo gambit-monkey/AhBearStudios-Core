@@ -1,6 +1,6 @@
 ﻿using AhBearStudios.Core.Pooling.Configurations;
 
-namespace AhBearStudios.Core.Pooling.Builders
+namespace AhBearStudios.Core.Pooling.Interfaces
 {
     /// <summary>
     /// Interface for pool configuration builders that implement the fluent pattern

@@ -1339,7 +1339,7 @@ namespace AhBearStudios.Core.Pooling.Diagnostics
             
             report["Pools"] = poolsData;
             
-            // Add tags mapping
+            // Add tag mapping
             var tagsMapping = new Dictionary<string, List<string>>();
             foreach (var kvp in _taggedPools)
             {
@@ -1359,7 +1359,7 @@ namespace AhBearStudios.Core.Pooling.Diagnostics
                 tagsMapping[kvp.Key] = poolNames;
             }
             
-            report["Tags"] = tagsMapping;
+            report["Tag"] = tagsMapping;
             
             return report;
         }

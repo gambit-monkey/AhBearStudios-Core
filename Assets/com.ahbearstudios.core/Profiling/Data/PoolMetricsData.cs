@@ -2,7 +2,7 @@
 using Unity.Collections;
 using Unity.Mathematics;
 
-namespace AhBearStudios.Core.Pooling.Diagnostics
+namespace AhBearStudios.Core.Profiling.Data
 {
     /// <summary>
     /// Burst-compatible structure containing pool metrics data

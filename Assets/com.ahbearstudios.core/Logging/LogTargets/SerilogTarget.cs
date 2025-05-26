@@ -315,7 +315,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         }
         
         /// <summary>
-        /// Adds a tag filter to this target. Only messages with matching tags will be processed.
+        /// Adds a tag filter to this target. Only messages with matching tag will be processed.
         /// </summary>
         /// <param name="tagCategory">The tag category to include.</param>
         public void AddTagFilter(Tagging.TagCategory tagCategory)

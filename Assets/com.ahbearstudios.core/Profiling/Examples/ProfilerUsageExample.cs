@@ -13,7 +13,7 @@ namespace AhBearStudios.Core.Profiling.Examples
         [Header("System Metrics")]
         [SerializeField] private bool _enableSystemMetrics = true;
         
-        [Header("Profiler Tags")]
+        [Header("Profiler Tag")]
         [SerializeField] private bool _profileUpdate = true;
         [SerializeField] private bool _profileFixedUpdate = true;
         [SerializeField] private bool _profileLateUpdate = true;
@@ -222,7 +222,7 @@ namespace AhBearStudios.Core.Profiling.Examples
             // Example of how to handle profiler events
             // You can use this to log or display profiling data in your own UI
             
-            // Check for specific tags we're interested in
+            // Check for specific tag we're interested in
             if (e.Tag == _simulateTag && e.DurationMs > 100)
             {
                 Debug.LogWarning($"Heavy load simulation took {e.DurationMs:F2} ms");

@@ -1,6 +1,7 @@
 ﻿using System;
 using AhBearStudios.Core.Pooling.Builders;
 using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Interfaces;
 
 namespace AhBearStudios.Core.Pooling
 {

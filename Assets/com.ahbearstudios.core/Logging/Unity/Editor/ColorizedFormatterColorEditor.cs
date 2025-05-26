@@ -222,7 +222,7 @@ namespace AhBearStudios.Core.Logging.Editor
                 {
                     EditorGUI.indentLevel++;
                     
-                    // Get all tags in this category
+                    // Get all tag in this category
                     bool hasTagsInCategory = false;
                     Array tagValues = Enum.GetValues(typeof(Tagging.LogTag));
                     
@@ -258,10 +258,10 @@ namespace AhBearStudios.Core.Logging.Editor
                         }
                     }
                     
-                    // If no tags in this category, show a message
+                    // If no tag in this category, show a message
                     if (!hasTagsInCategory)
                     {
-                        EditorGUILayout.LabelField("No tags in this category", EditorStyles.miniLabel);
+                        EditorGUILayout.LabelField("No tag in this category", EditorStyles.miniLabel);
                     }
                     
                     EditorGUI.indentLevel--;

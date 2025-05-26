@@ -1,5 +1,6 @@
 ﻿using System;
 using AhBearStudios.Core.Pooling.Configurations;
+using AhBearStudios.Core.Pooling.Interfaces;
 using Unity.Burst;
 using Unity.Collections;
 using UnityEngine;

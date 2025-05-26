@@ -18,7 +18,7 @@ namespace AhBearStudios.Core.Logging.Config
         [Tooltip("Whether this target is enabled by default")]
         [SerializeField] protected bool _enabled = true;
         
-        [Tooltip("Tag categories to filter (if empty, all tags will be logged)")]
+        [Tooltip("Tag categories to filter (if empty, all tag will be logged)")]
         [SerializeField] protected Tagging.TagCategory[] _tagFilters = new Tagging.TagCategory[0];
         
         /// <summary>

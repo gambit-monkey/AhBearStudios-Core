@@ -1,10 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading;
+using AhBearStudios.Core.Profiling.Data;
+using AhBearStudios.Core.Profiling.Interfaces;
 using Unity.Collections;
 using UnityEngine;
 
-namespace AhBearStudios.Core.Pooling.Diagnostics
+namespace AhBearStudios.Core.Profiling.Metrics
 {
     /// <summary>
     /// Managed implementation of pool metrics tracking.

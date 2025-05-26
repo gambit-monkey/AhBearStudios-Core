@@ -1,154 +1,123 @@
 ﻿using System;
 using System.Collections.Generic;
-using AhBearStudios.Core.Pooling.Configurations;
-using AhBearStudios.Core.Pooling.Diagnostics;
-using AhBearStudios.Core.Pooling.Services;
-using AhBearStudios.Core.Pooling.Utilities;
 using Unity.Collections;
-using Unity.Mathematics;
 using Unity.Collections.LowLevel.Unsafe;
+using Unity.Mathematics;
 using UnityEngine;
+using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Profiling.Interfaces;
+using AhBearStudios.Core.DependencyInjection;
+using AhBearStudios.Core.Pooling.Interfaces;
+using AhBearStudios.Core.Profiling;
+using Unity.Profiling;
 
 namespace AhBearStudios.Core.Pooling
 {
     /// <summary>
-    /// A modern, optimized pool implementation that serves as a base for specialized pool types.
-    /// Uses composition over inheritance and provides thread-safety with Collections v2.
+    /// Base implementation for object pools using composition and dependency injection.
+    /// Provides core functionality for pool management with full logging and profiling support.
     /// </summary>
-    public class PoolBase : IPool, IShrinkablePool, IDisposable
+    public abstract class PoolBase : IShrinkablePool
     {
-        #region Fields and Properties
+        #region Fields
 
         private readonly IPoolConfig _config;
-        private readonly IPoolLogger _logger;
-        private readonly IPoolProfiler _profiler;
-        private readonly IPoolDiagnostics _diagnostics;
-        private readonly IPoolRegistry _registry;
+        private readonly IBurstLogger _logger;
+        private readonly IProfiler _profiler;
         private readonly Type _itemType;
-
-        private UnsafeParallelHashMap<int, bool> _activeItems;
+        
+        private UnsafeHashMap<int, bool> _activeItems;
         private float _lastShrinkTime;
         private bool _autoShrinkEnabled;
         private bool _isDisposed;
-
-        /// <summary>
-        /// Gets the unique identifier for this pool
-        /// </summary>
-        public Guid Id { get; private set; }
-
-        /// <summary>
-        /// Gets the total number of items in the pool (active + inactive)
-        /// </summary>
-        public int TotalCount { get; protected set; }
-
-        /// <summary>
-        /// Gets the descriptive name of this pool
-        /// </summary>
-        public string PoolName { get; private set; }
-
-        /// <summary>
-        /// Gets whether this pool has been disposed
-        /// </summary>
-        public bool IsDisposed => _isDisposed;
-
-        /// <summary>
-        /// Gets the type of items in the pool
-        /// </summary>
-        public Type ItemType => _itemType;
-
-        /// <summary>
-        /// Gets the number of active items
-        /// </summary>
-        public int ActiveCount { get; protected set; }
-
-        /// <summary>
-        /// Gets the number of inactive items
-        /// </summary>
-        public int InactiveCount => TotalCount - ActiveCount;
-
-        /// <summary>
-        /// Gets the peak number of simultaneously active items
-        /// </summary>
-        public int PeakUsage { get; protected set; }
-
-        /// <summary>
-        /// Gets the total number of items ever created by this pool
-        /// </summary>
-        public int TotalCreated { get; protected set; }
-
-        /// <summary>
-        /// Gets whether this pool has been properly created and initialized
-        /// </summary>
-        public bool IsCreated { get; protected set; }
-
-        /// <summary>
-        /// Gets the number of free items available in the pool
-        /// </summary>
-        public int FreeCount => TotalCount - ActiveCount;
-
-        /// <summary>
-        /// Gets whether the pool supports automatic shrinking
-        /// </summary>
-        public bool SupportsAutoShrink => true;
-
-        /// <summary>
-        /// Gets or sets the minimum capacity that the pool will maintain even when shrinking
-        /// </summary>
-        public int MinimumCapacity { get; set; }
-
-        /// <summary>
-        /// Gets or sets the maximum capacity that the pool can grow to
-        /// </summary>
-        public int MaximumCapacity { get; set; }
-
-        /// <summary>
-        /// Gets or sets the shrink interval in seconds.
-        /// </summary>
-        public float ShrinkInterval { get; set; }
-
-        /// <summary>
-        /// Gets or sets the growth factor when the pool needs to expand.
-        /// </summary>
-        public float GrowthFactor { get; set; }
-
-        /// <summary>
-        /// Gets or sets the shrink threshold.
-        /// </summary>
-        public float ShrinkThreshold { get; set; }
-
-        /// <summary>
-        /// Gets the threading mode for this pool.
-        /// </summary>
-        public PoolThreadingMode ThreadingMode => PoolThreadingMode.ThreadLocal;
+        
+        // Profiler tag
+        private ProfilerTag _shrinkTag;
+        private ProfilerTag _clearTag;
+        private ProfilerTag _expandTag;
+        private ProfilerTag _disposeTag;
 
         #endregion
 
-        #region Constructor and Initialization
+        #region Properties
+
+        /// <inheritdoc/>
+        public Guid Id { get; }
+
+        /// <inheritdoc/>
+        public int TotalCount { get; protected set; }
+
+        /// <inheritdoc/>
+        public string PoolName { get; private set; }
+
+        /// <inheritdoc/>
+        public bool IsDisposed => _isDisposed;
+
+        /// <inheritdoc/>
+        public Type ItemType => _itemType;
+
+        /// <inheritdoc/>
+        public int ActiveCount { get; protected set; }
+
+        /// <inheritdoc/>
+        public int InactiveCount => TotalCount - ActiveCount;
+
+        /// <inheritdoc/>
+        public int PeakUsage { get; protected set; }
+
+        /// <inheritdoc/>
+        public int TotalCreated { get; protected set; }
+
+        /// <inheritdoc/>
+        public bool IsCreated { get; protected set; }
+
+        /// <inheritdoc/>
+        public bool SupportsAutoShrink => true;
+
+        /// <inheritdoc/>
+        public int MinimumCapacity { get; set; }
+
+        /// <inheritdoc/>
+        public int MaximumCapacity { get; set; }
+
+        /// <inheritdoc/>
+        public float ShrinkInterval { get; set; }
+
+        /// <inheritdoc/>
+        public float GrowthFactor { get; set; }
+
+        /// <inheritdoc/>
+        public float ShrinkThreshold { get; set; }
+
+        /// <inheritdoc/>
+        public PoolThreadingMode ThreadingMode { get; protected set; }
+
+        #endregion
+
+        #region Constructor
 
         /// <summary>
-        /// Initializes a new instance of the PoolBase class with the specified configuration and services.
+        /// Initializes a new instance of the PoolBase class with dependency injection.
         /// </summary>
         /// <param name="config">Pool configuration</param>
-        /// <param name="serviceLocator">Service locator for dependencies</param>
+        /// <param name="injector">Dependency injector for resolving services</param>
         /// <param name="name">Optional name for the pool</param>
         /// <param name="itemType">Type of items in the pool</param>
-        public PoolBase(IPoolConfig config, IPoolingServiceLocator serviceLocator = null, string name = null, Type itemType = null)
+        protected PoolBase(IPoolConfig config, IDependencyInjector injector, string name = null, Type itemType = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _itemType = itemType ?? typeof(object);
-
-            // Get services from service locator
-            if (serviceLocator != null)
-            {
-                _logger = serviceLocator.GetService<IPoolLogger>();
-                _profiler = serviceLocator.GetService<IPoolProfiler>();
-                _diagnostics = serviceLocator.GetService<IPoolDiagnostics>();
-                _registry = serviceLocator.GetService<IPoolRegistry>();
-            }
-
+            
+            if (injector == null)
+                throw new ArgumentNullException(nameof(injector));
+            
+            // Resolve dependencies
+            _logger = injector.Resolve<IBurstLogger>();
+            _profiler = injector.Resolve<IProfiler>();
+            
             // Initialize core properties
             Id = Guid.NewGuid();
-            PoolName = string.IsNullOrEmpty(name) ? $"Pool_{Id}" : name;
+            PoolName = string.IsNullOrEmpty(name) ? $"Pool_{Id:N}" : name;
             
             // Initialize config-based properties
             MinimumCapacity = _config.MinimumCapacity;
@@ -157,189 +126,82 @@ namespace AhBearStudios.Core.Pooling
             GrowthFactor = _config.GrowthFactor;
             ShrinkThreshold = _config.ShrinkThreshold;
             _autoShrinkEnabled = _config.EnableAutoShrink;
-
+            ThreadingMode = PoolThreadingMode.ThreadLocal;
+            
             // Initialize tracking collections
-            _activeItems = new UnsafeParallelHashMap<int, bool>(64, Allocator.Persistent);
+            _activeItems = new UnsafeHashMap<int, bool>(64, Allocator.Persistent);
             _lastShrinkTime = Time.realtimeSinceStartup;
             
-            // Register with diagnostics if available
-            _diagnostics?.RegisterPool(this, PoolName);
-            
-            // Register with registry if available
-            _registry?.RegisterPool(this, PoolName);
+            // Create profiler tag
+            _shrinkTag = new ProfilerTag(new ProfilerCategory("Pooling"), $"{PoolName}.Shrink");
+            _clearTag = new ProfilerTag(new ProfilerCategory("Pooling"), $"{PoolName}.Clear");
+            _expandTag = new ProfilerTag(new ProfilerCategory("Pooling"), $"{PoolName}.Expand");
+            _disposeTag = new ProfilerTag(new ProfilerCategory("Pooling"), $"{PoolName}.Dispose");
             
             IsCreated = true;
             
-            _logger?.LogInfoInstance($"Pool '{PoolName}' created with MinCapacity={MinimumCapacity}, MaxCapacity={MaximumCapacity}, ShrinkInterval={ShrinkInterval}s");
+            _logger.Log(LogLevel.Info, 
+                $"Pool '{PoolName}' created with MinCapacity={MinimumCapacity}, MaxCapacity={MaximumCapacity}, ShrinkInterval={ShrinkInterval}s", 
+                "Pooling");
         }
 
         #endregion
 
         #region IDisposable Implementation
 
-        /// <summary>
-        /// Disposes of the pool, cleaning up all unmanaged resources.
-        /// </summary>
+        /// <inheritdoc/>
         public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Disposes of the pool resources
+        /// </summary>
+        /// <param name="disposing">Whether disposing managed resources</param>
+        protected virtual void Dispose(bool disposing)
         {
             if (_isDisposed)
                 return;
 
-            // Use profiler if available
-            using (_profiler?.Sample("Dispose", Id, PoolName, ActiveCount, FreeCount))
+            using (_profiler?.BeginScope(_disposeTag))
             {
-                // Record disposal with diagnostics
-                if (_diagnostics != null)
+                if (disposing)
                 {
-                    _diagnostics.RecordPoolDisposed(Id.ToFixedString64Bytes());
+                    // Dispose managed resources
+                    DisposeItems();
                 }
-
-                // Unregister from registry
-                if (_registry != null)
-                {
-                    _registry.UnregisterPool(this);
-                }
-
+                
                 // Dispose unmanaged resources
                 if (_activeItems.IsCreated)
                 {
                     _activeItems.Dispose();
                 }
-
-                // Log disposal
-                _logger?.LogInfoInstance($"Pool '{PoolName}' disposed. Stats: Created={TotalCreated}, Active={ActiveCount}, Peak={PeakUsage}");
-
-                // Mark as disposed
+                
+                _logger?.Log(LogLevel.Info, 
+                    $"Pool '{PoolName}' disposed. Stats: Created={TotalCreated}, Active={ActiveCount}, Peak={PeakUsage}", 
+                    "Pooling");
+                
                 _isDisposed = true;
             }
         }
+
+        /// <summary>
+        /// Disposes all items in the pool
+        /// </summary>
+        protected abstract void DisposeItems();
 
         #endregion
 
         #region IShrinkablePool Implementation
 
-        /// <summary>
-        /// Determines if the pool can be shrunk based on current usage and thresholds.
-        /// </summary>
-        /// <returns>True if the pool can be shrunk, false otherwise</returns>
-        public bool CanShrink()
-        {
-            if (_isDisposed || !IsCreated)
-                return false;
-
-            // Check if we have enough items to consider shrinking
-            if (TotalCount <= MinimumCapacity)
-                return false;
-
-            // Check if we have a high enough percentage of inactive items
-            float usageRatio = (float)ActiveCount / TotalCount;
-            return usageRatio < ShrinkThreshold;
-        }
-
-        /// <summary>
-        /// Shrinks the pool by removing inactive items.
-        /// </summary>
-        /// <param name="targetSize">Optional target size to shrink to</param>
-        /// <returns>Number of items removed</returns>
-        public int Shrink(int? targetSize = null)
-        {
-            if (_isDisposed || !IsCreated || !CanShrink())
-                return 0;
-
-            using (_profiler?.Sample("Shrink", Id, PoolName, ActiveCount, FreeCount))
-            {
-                int actualTargetSize = targetSize ?? math.max(MinimumCapacity, ActiveCount);
-                actualTargetSize = math.max(actualTargetSize, MinimumCapacity);
-                
-                if (TotalCount <= actualTargetSize)
-                    return 0;
-                
-                int itemsToRemove = TotalCount - actualTargetSize;
-                int itemsRemoved = ShrinkInternal(itemsToRemove);
-                
-                // Update time of last shrink
-                _lastShrinkTime = Time.realtimeSinceStartup;
-                
-                // Record shrink with diagnostics
-                _diagnostics?.RecordPoolShrinkById(Id.ToFixedString64Bytes(), itemsRemoved);
-                
-                _logger?.LogInfoInstance($"Pool '{PoolName}' shrunk: removed {itemsRemoved} items, new size: {TotalCount}");
-                
-                return itemsRemoved;
-            }
-        }
-
-        /// <summary>
-        /// Internal implementation of shrinking logic.
-        /// Must be overridden by derived classes.
-        /// </summary>
-        /// <param name="itemsToRemove">Number of items to remove</param>
-        /// <returns>Actual number of items removed</returns>
-        protected virtual int ShrinkInternal(int itemsToRemove)
-        {
-            // Base implementation doesn't actually remove anything
-            // This needs to be implemented by derived classes based on their storage strategy
-            return 0;
-        }
-
-        /// <summary>
-        /// Checks and performs automatic shrinking if conditions are met.
-        /// </summary>
-        public void CheckAutoShrink()
-        {
-            if (_isDisposed || !IsCreated || !_autoShrinkEnabled)
-                return;
-            
-            float currentTime = Time.realtimeSinceStartup;
-            if (currentTime - _lastShrinkTime >= ShrinkInterval && CanShrink())
-            {
-                Shrink();
-            }
-        }
-
-        /// <summary>
-        /// Enables or disables automatic shrinking of the pool.
-        /// </summary>
-        /// <param name="enabled">Whether to enable automatic shrinking</param>
-        public void SetAutoShrink(bool enabled)
-        {
-            _autoShrinkEnabled = enabled;
-            
-            if (enabled)
-            {
-                _lastShrinkTime = Time.realtimeSinceStartup;
-            }
-            
-            _logger?.LogInfoInstance($"Auto-shrink for pool '{PoolName}' {(enabled ? "enabled" : "disabled")}");
-        }
-
-        /// <summary>
-        /// Explicitly shrinks the pool to the specified capacity.
-        /// </summary>
-        /// <param name="targetCapacity">The target capacity to shrink to</param>
-        /// <returns>True if the pool was shrunk, false otherwise</returns>
-        public bool ShrinkTo(int targetCapacity)
-        {
-            if (_isDisposed || !IsCreated)
-                return false;
-            
-            targetCapacity = math.max(targetCapacity, MinimumCapacity);
-            targetCapacity = math.max(targetCapacity, ActiveCount);
-            
-            if (TotalCount <= targetCapacity)
-                return false;
-            
-            return InternalShrinkTo(targetCapacity);
-        }
-
-        /// <summary>
-        /// Attempts to shrink the pool based on a threshold ratio.
-        /// </summary>
-        /// <param name="threshold">Threshold factor (0-1) determining when shrinking occurs</param>
-        /// <returns>True if the pool was shrunk, false otherwise</returns>
+        /// <inheritdoc/>
         public bool TryShrink(float threshold)
         {
-            if (_isDisposed || !IsCreated)
+            ThrowIfDisposed();
+            
+            if (!IsCreated)
                 return false;
             
             // Calculate current usage ratio
@@ -358,31 +220,86 @@ namespace AhBearStudios.Core.Pooling
             return false;
         }
 
-        /// <summary>
-        /// Internal implementation of targeted shrinking.
-        /// </summary>
-        /// <param name="targetCapacity">Target capacity</param>
-        /// <returns>True if shrinking occurred</returns>
-        protected virtual bool InternalShrinkTo(int targetCapacity)
+        /// <inheritdoc/>
+        public bool ShrinkTo(int targetCapacity)
         {
-            int itemsToRemove = TotalCount - targetCapacity;
-            if (itemsToRemove <= 0)
+            ThrowIfDisposed();
+            
+            if (!IsCreated)
                 return false;
             
-            int removed = ShrinkInternal(itemsToRemove);
-            return removed > 0;
+            targetCapacity = math.max(targetCapacity, MinimumCapacity);
+            targetCapacity = math.max(targetCapacity, ActiveCount);
+            
+            if (TotalCount <= targetCapacity)
+                return false;
+            
+            using (_profiler.BeginScope(_shrinkTag))
+            {
+                int itemsToRemove = TotalCount - targetCapacity;
+                int itemsRemoved = ShrinkInternal(itemsToRemove);
+                
+                if (itemsRemoved > 0)
+                {
+                    _lastShrinkTime = Time.realtimeSinceStartup;
+                    
+                    _logger.Log(LogLevel.Debug, 
+                        $"Pool '{PoolName}' shrunk: removed {itemsRemoved} items, new size: {TotalCount}", 
+                        "Pooling");
+                    
+                    return true;
+                }
+                
+                return false;
+            }
         }
+
+        /// <inheritdoc/>
+        public void SetAutoShrink(bool enabled)
+        {
+            _autoShrinkEnabled = enabled;
+            
+            if (enabled)
+            {
+                _lastShrinkTime = Time.realtimeSinceStartup;
+            }
+            
+            _logger.Log(LogLevel.Debug, 
+                $"Auto-shrink for pool '{PoolName}' {(enabled ? "enabled" : "disabled")}", 
+                "Pooling");
+        }
+
+        /// <summary>
+        /// Checks and performs automatic shrinking if conditions are met
+        /// </summary>
+        public void CheckAutoShrink()
+        {
+            if (!_autoShrinkEnabled || _isDisposed || !IsCreated)
+                return;
+            
+            float currentTime = Time.realtimeSinceStartup;
+            if (currentTime - _lastShrinkTime >= ShrinkInterval)
+            {
+                TryShrink(ShrinkThreshold);
+            }
+        }
+
+        /// <summary>
+        /// Internal implementation of shrinking logic
+        /// </summary>
+        /// <param name="itemsToRemove">Number of items to remove</param>
+        /// <returns>Actual number of items removed</returns>
+        protected abstract int ShrinkInternal(int itemsToRemove);
 
         #endregion
 
         #region IPool Implementation
 
-        /// <summary>
-        /// Gets metrics for this pool.
-        /// </summary>
-        /// <returns>Dictionary of pool metrics</returns>
+        /// <inheritdoc/>
         public Dictionary<string, object> GetMetrics()
         {
+            ThrowIfDisposed();
+            
             var metrics = new Dictionary<string, object>
             {
                 { "Id", Id.ToString() },
@@ -398,84 +315,132 @@ namespace AhBearStudios.Core.Pooling
                 { "AutoShrink", _autoShrinkEnabled },
                 { "ShrinkThreshold", ShrinkThreshold },
                 { "ShrinkInterval", ShrinkInterval },
-                { "GrowthFactor", GrowthFactor }
+                { "GrowthFactor", GrowthFactor },
+                { "ThreadingMode", ThreadingMode.ToString() }
             };
             
             return metrics;
         }
 
-        /// <summary>
-        /// Clears the pool, returning all active items to the inactive state.
-        /// </summary>
+        /// <inheritdoc/>
         public void Clear()
         {
-            if (_isDisposed || !IsCreated)
+            ThrowIfDisposed();
+            
+            if (!IsCreated)
                 return;
             
-            using (_profiler?.Sample("Clear", Id, PoolName, ActiveCount, FreeCount))
+            using (_profiler.BeginScope(_clearTag))
             {
-                // Record pool reset with diagnostics
-                _diagnostics?.RecordPoolReset(Id.ToFixedString64Bytes());
-                
                 InternalClear();
                 
-                _logger?.LogInfoInstance($"Pool '{PoolName}' cleared. TotalCount={TotalCount}");
+                _logger.Log(LogLevel.Debug, 
+                    $"Pool '{PoolName}' cleared. TotalCount={TotalCount}", 
+                    "Pooling");
             }
         }
 
-        /// <summary>
-        /// Ensures the pool has at least the specified capacity.
-        /// </summary>
-        /// <param name="capacity">Required capacity</param>
+        /// <inheritdoc/>
         public void EnsureCapacity(int capacity)
         {
-            if (_isDisposed || !IsCreated)
+            ThrowIfDisposed();
+            
+            if (!IsCreated)
                 return;
             
-            capacity = math.min(capacity, MaximumCapacity);
+            capacity = math.clamp(capacity, MinimumCapacity, MaximumCapacity);
             
             if (TotalCount >= capacity)
                 return;
             
-            int additionalCapacity = capacity - TotalCount;
-            InternalExpand(additionalCapacity);
+            using (_profiler.BeginScope(_expandTag))
+            {
+                int additionalCapacity = capacity - TotalCount;
+                InternalExpand(additionalCapacity);
+                
+                _logger.Log(LogLevel.Debug, 
+                    $"Pool '{PoolName}' expanded by {additionalCapacity} items. New capacity: {TotalCount}", 
+                    "Pooling");
+            }
         }
 
-        /// <summary>
-        /// Sets the pool name. Used primarily for resolving naming conflicts during registration.
-        /// </summary>
-        /// <param name="newName">The new name for the pool</param>
+        /// <inheritdoc/>
         public void SetPoolName(string newName)
         {
             if (string.IsNullOrEmpty(newName))
-                return;
+                throw new ArgumentNullException(nameof(newName));
             
             string oldName = PoolName;
             PoolName = newName;
             
-            _logger?.LogInfoInstance($"Pool renamed from '{oldName}' to '{newName}'");
+            // Update profiler tag
+            _shrinkTag = new ProfilerTag(new ProfilerCategory("Pooling"), $"{PoolName}.Shrink");
+            _clearTag = new ProfilerTag(new ProfilerCategory("Pooling"), $"{PoolName}.Clear");
+            _expandTag = new ProfilerTag(new ProfilerCategory("Pooling"), $"{PoolName}.Expand");
+            _disposeTag = new ProfilerTag(new ProfilerCategory("Pooling"), $"{PoolName}.Dispose");
+            
+            _logger.Log(LogLevel.Debug, 
+                $"Pool renamed from '{oldName}' to '{newName}'", 
+                "Pooling");
         }
 
+        #endregion
+
+        #region Protected Methods
+
         /// <summary>
-        /// Internal implementation of clearing logic.
-        /// Must be overridden by derived classes.
+        /// Internal implementation of clearing logic
         /// </summary>
         protected virtual void InternalClear()
         {
-            // Base implementation just resets tracking
             ActiveCount = 0;
             _activeItems.Clear();
         }
 
         /// <summary>
-        /// Internal implementation of expansion logic.
-        /// Must be overridden by derived classes.
+        /// Internal implementation of expansion logic
         /// </summary>
         /// <param name="additionalCapacity">Additional capacity needed</param>
-        protected virtual void InternalExpand(int additionalCapacity)
+        protected abstract void InternalExpand(int additionalCapacity);
+
+        /// <summary>
+        /// Marks an item as active
+        /// </summary>
+        /// <param name="index">Index of the item</param>
+        protected void MarkItemActive(int index)
         {
-            // Base implementation doesn't create any new items
-            // This needs to be implemented by derived classes
+            if (_activeItems.IsCreated)
+            {
+                _activeItems[index] = true;
+            }
+            
+            ActiveCount++;
+            PeakUsage = math.max(PeakUsage, ActiveCount);
+        }
+
+        /// <summary>
+        /// Marks an item as inactive
+        /// </summary>
+        /// <param name="index">Index of the item</param>
+        protected void MarkItemInactive(int index)
+        {
+            if (_activeItems.IsCreated)
+            {
+                _activeItems.Remove(index);
+            }
+            
+            ActiveCount--;
+        }
+
+        /// <summary>
+        /// Throws if the pool is disposed
+        /// </summary>
+        protected void ThrowIfDisposed()
+        {
+            if (_isDisposed)
+            {
+                throw new ObjectDisposedException(nameof(PoolBase), $"Pool '{PoolName}' has been disposed");
+            }
         }
 
         #endregion

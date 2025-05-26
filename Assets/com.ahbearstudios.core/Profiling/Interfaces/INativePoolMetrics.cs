@@ -1,8 +1,9 @@
 ﻿using System;
 using Unity.Collections;
 using Unity.Jobs;
+using AhBearStudios.Core.Profiling.Data;
 
-namespace AhBearStudios.Core.Pooling.Diagnostics
+namespace AhBearStudios.Core.Profiling.Interfaces
 {
     /// <summary>
     /// Burst-compatible interface for pool metrics tracking.

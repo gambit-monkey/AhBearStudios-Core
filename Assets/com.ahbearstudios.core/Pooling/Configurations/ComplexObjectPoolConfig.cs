@@ -1,6 +1,7 @@
 ﻿using System;
 using AhBearStudios.Core.Pooling.Builders;
 using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Interfaces;
 using AhBearStudios.Core.Pooling.Services;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;

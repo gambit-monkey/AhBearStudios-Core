@@ -1,5 +1,6 @@
 ﻿using System;
 using AhBearStudios.Core.Pooling.Builders;
+using AhBearStudios.Core.Pooling.Interfaces;
 using Unity.Collections;
 
 namespace AhBearStudios.Core.Pooling.Configurations

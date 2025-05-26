@@ -334,16 +334,16 @@ namespace AhBearStudios.Core.Logging.Editor
             
                     EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             
-                    // Include tags
+                    // Include tag
                     EditorGUILayout.PropertyField(_includeTagsProp, 
-                        new GUIContent("Include Tags", "Only log messages with these tags will be processed. Leave empty to include all tags."), 
+                        new GUIContent("Include Tag", "Only log messages with these tag will be processed. Leave empty to include all tag."), 
                         true); // true to show children
             
                     EditorGUILayout.Space(4);
             
-                    // Exclude tags
+                    // Exclude tag
                     EditorGUILayout.PropertyField(_excludeTagsProp, 
-                        new GUIContent("Exclude Tags", "Log messages with these tags will be ignored."), 
+                        new GUIContent("Exclude Tag", "Log messages with these tag will be ignored."), 
                         true); // true to show children
             
                     // Warning about conflicting filters

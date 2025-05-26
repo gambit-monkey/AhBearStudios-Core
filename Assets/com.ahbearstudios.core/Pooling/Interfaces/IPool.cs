@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace AhBearStudios.Core.Pooling
+namespace AhBearStudios.Core.Pooling.Interfaces
 {
     /// <summary>
     /// Base interface for all pool implementations with shared functionality

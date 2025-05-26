@@ -1,8 +1,9 @@
-﻿
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using AhBearStudios.Core.Pooling.Diagnostics;
+using AhBearStudios.Core.Pooling.Interfaces;
 using Unity.Profiling;
 
 namespace AhBearStudios.Core.Pooling

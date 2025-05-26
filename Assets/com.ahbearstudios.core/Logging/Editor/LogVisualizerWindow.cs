@@ -51,7 +51,7 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
             public string FilterText;
 
             /// <summary>
-            /// Collection of tags to include in the filter.
+            /// Collection of tag to include in the filter.
             /// </summary>
             public NativeList<FixedString32Bytes> IncludedTags;
 
@@ -591,27 +591,27 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
             EditorGUILayout.EndHorizontal();
 
             // Tag filters
-            EditorGUILayout.LabelField("Tags:", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Tag:", EditorStyles.boldLabel);
 
             EditorGUILayout.BeginHorizontal();
 
             if (GUILayout.Button("Select All", GUILayout.Width(80)))
             {
-                // Implement Select All tags
+                // Implement Select All tag
                 SelectAllTags(true);
                 _needsRefiltering = true;
             }
 
             if (GUILayout.Button("Select None", GUILayout.Width(80)))
             {
-                // Implement Select None tags
+                // Implement Select None tag
                 SelectAllTags(false);
                 _needsRefiltering = true;
             }
 
             EditorGUILayout.EndHorizontal();
 
-            // Tag grid (in scroll view if many tags)
+            // Tag grid (in scroll view if many tag)
             float height = Mathf.Min(100, (_tagCounts.Count() / 4 + 1) * 20);
             _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition, GUILayout.Height(height));
 
@@ -684,10 +684,10 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
 
             EditorGUILayout.Space();
 
-            // Top tags
-            EditorGUILayout.LabelField("Top Tags:", EditorStyles.boldLabel);
+            // Top tag
+            EditorGUILayout.LabelField("Top Tag:", EditorStyles.boldLabel);
 
-            // Sort tags by count and display top 5
+            // Sort tag by count and display top 5
             using (var tagEnumerator = _tagCounts.GetEnumerator())
             {
                 var topTags = new List<KeyValuePair<FixedString32Bytes, int>>();
@@ -1043,7 +1043,7 @@ private bool MessageMatchesFilter(LogMessage message, string filterText)
         /// <returns>True if the tag is included in the filter.</returns>
         private bool IsTagIncluded(FixedString32Bytes tag)
         {
-            // If no tags are explicitly included, show all tags
+            // If no tag are explicitly included, show all tag
             if (_profiles[_currentProfileIndex].IncludedTags.Length == 0)
                 return true;
 
@@ -1073,7 +1073,7 @@ private bool MessageMatchesFilter(LogMessage message, string filterText)
             }
             else if (!included && isCurrentlyIncluded)
             {
-                // Get a direct reference to the tags in the current profile
+                // Get a direct reference to the tag in the current profile
                 var includedTags = _profiles[_currentProfileIndex].IncludedTags;
         
                 // Remove the tag from the included list
@@ -1089,17 +1089,17 @@ private bool MessageMatchesFilter(LogMessage message, string filterText)
         }
 
         /// <summary>
-        /// Sets all tags to be included or excluded.
+        /// Sets all tag to be included or excluded.
         /// </summary>
-        /// <param name="included">Whether all tags should be included.</param>
+        /// <param name="included">Whether all tag should be included.</param>
         private void SelectAllTags(bool included)
         {
-            // Clear the current included tags
+            // Clear the current included tag
             _profiles[_currentProfileIndex].IncludedTags.Clear();
 
             if (included)
             {
-                // Add all known tags to the included list
+                // Add all known tag to the included list
                 using var tagEnumerator = _tagCounts.GetEnumerator();
                 while (tagEnumerator.MoveNext())
                 {

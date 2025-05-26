@@ -8,9 +8,9 @@ using System.Collections.Generic;
 namespace AhBearStudios.Core.Logging.Formatters
 {
     /// <summary>
-    /// A formatter that adds colorization to console output using Unity's rich text tags.
+    /// A formatter that adds colorization to console output using Unity's rich text tag.
     /// This formatter is specifically designed for the Unity Editor Console and provides
-    /// customizable color coding for different log levels and tags.
+    /// customizable color coding for different log levels and tag.
     /// </summary>
     [CreateAssetMenu(fileName = "ColorizedConsoleFormatter", menuName = "AhBearStudios/Logging/Formatters/Colorized Console Formatter")]
     public class ColorizedConsoleFormatter : ScriptableObject, ILogFormatter
@@ -182,7 +182,7 @@ namespace AhBearStudios.Core.Logging.Formatters
             _tagColors[(int)Tagging.LogTag.Performance] = "#BA55D3"; // Medium Orchid
             _tagColors[(int)Tagging.LogTag.Analytics] = "#9370DB";  // Medium Purple
             
-            // Severity tags with warm colors
+            // Severity tag with warm colors
             _tagColors[(int)Tagging.LogTag.Debug] = "#888888";      // Gray
             _tagColors[(int)Tagging.LogTag.Info] = "#00AAFF";       // Light Blue
             _tagColors[(int)Tagging.LogTag.Warning] = "#FFFF00";    // Yellow
@@ -191,7 +191,7 @@ namespace AhBearStudios.Core.Logging.Formatters
             _tagColors[(int)Tagging.LogTag.Exception] = "#FF1493";  // Deep Pink
             _tagColors[(int)Tagging.LogTag.Assert] = "#FF00FF";     // Magenta
             
-            // Special tags
+            // Special tag
             _tagColors[(int)Tagging.LogTag.Custom] = "#FFA500";     // Orange
             _tagColors[(int)Tagging.LogTag.Default] = "#FFFFFF";    // White
             _tagColors[(int)Tagging.LogTag.Undefined] = "#FFFFFF";  // White
@@ -202,11 +202,11 @@ namespace AhBearStudios.Core.Logging.Formatters
         }
         
         /// <summary>
-        /// Formats a log message with colorization based on log level and tags.
+        /// Formats a log message with colorization based on log level and tag.
         /// This is the main method implementing the ILogFormatter interface.
         /// </summary>
         /// <param name="message">The log message to format.</param>
-        /// <returns>A formatted log message string with color tags.</returns>
+        /// <returns>A formatted log message string with color tag.</returns>
         public FixedString512Bytes Format(LogMessage message)
         {
             InitializeIfNeeded();

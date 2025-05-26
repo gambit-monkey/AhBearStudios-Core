@@ -10,7 +10,7 @@ namespace AhBearStudios.Core.Logging.Tags
     public static class Tagging
     {
         /// <summary>
-        /// Enumeration of all available log tags for categorizing log messages.
+        /// Enumeration of all available log tag for categorizing log messages.
         /// </summary>
         public enum LogTag : byte
         {
@@ -55,7 +55,7 @@ namespace AhBearStudios.Core.Logging.Tags
             Build = 51,
             Tests = 52,
             
-            // Severity-related tags (90-97)
+            // Severity-related tag (90-97)
             Debug = 90,
             Info = 91,
             Warning = 92,
@@ -65,7 +65,7 @@ namespace AhBearStudios.Core.Logging.Tags
             Assert = 96,
             Trace = 97,
             
-            // Special tags
+            // Special tag
             Custom = 100,
             Default = 255,
             Undefined = 254
@@ -432,7 +432,7 @@ namespace AhBearStudios.Core.Logging.Tags
         }
         
         /// <summary>
-        /// Combines two tags, preferring the more specific one.
+        /// Combines two tag, preferring the more specific one.
         /// </summary>
         /// <param name="primaryTag">The primary tag.</param>
         /// <param name="secondaryTag">The secondary tag.</param>
@@ -446,14 +446,14 @@ namespace AhBearStudios.Core.Logging.Tags
             if (secondaryTag == LogTag.None || secondaryTag == LogTag.Default || secondaryTag == LogTag.Undefined)
                 return primaryTag;
             
-            // Prefer error-level tags
+            // Prefer error-level tag
             if (IsError(secondaryTag) && !IsError(primaryTag))
                 return secondaryTag;
                 
             if (IsError(primaryTag))
                 return primaryTag;
             
-            // Prefer warning tags
+            // Prefer warning tag
             if (secondaryTag == LogTag.Warning && primaryTag != LogTag.Warning)
                 return secondaryTag;
                 

@@ -1,7 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using AhBearStudios.Core.Profiling.Data;
 
-namespace AhBearStudios.Core.Pooling.Diagnostics
+namespace AhBearStudios.Core.Profiling.Interfaces
 {
     /// <summary>
     /// Interface for pool metrics tracking for managed object pools.

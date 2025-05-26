@@ -326,17 +326,17 @@ namespace AhBearStudios.Core.Logging.Editor
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 
                 EditorGUILayout.HelpBox(
-                    "Configure which tags to include or exclude. If no tags are specified in either list, all tags are logged.",
+                    "Configure which tag to include or exclude. If no tag are specified in either list, all tag are logged.",
                     MessageType.Info);
                 
                 // Safe access to properties
                 EditorGUILayout.PropertyField(_includeTagsProp, 
-                    new GUIContent("Include Tags", "Only logs with these tags will be processed (if list is not empty)"), true);
+                    new GUIContent("Include Tag", "Only logs with these tag will be processed (if list is not empty)"), true);
                 
                 EditorGUILayout.Space(5);
                 
                 EditorGUILayout.PropertyField(_excludeTagsProp, 
-                    new GUIContent("Exclude Tags", "Logs with these tags will be ignored"), true);
+                    new GUIContent("Exclude Tag", "Logs with these tag will be ignored"), true);
                 
                 EditorGUILayout.EndVertical();
             }
