@@ -1,47 +1,72 @@
 using System;
 using System.Collections.Generic;
+using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling.Events;
+using AhBearStudios.Core.Profiling.Interfaces;
+using AhBearStudios.Core.Profiling.Messages;
 using UnityEngine;
 
 namespace AhBearStudios.Core.Profiling
 {
     /// <summary>
-    /// System for monitoring and alerting on metric thresholds
+    /// System for monitoring and alerting on metric and session thresholds
+    /// using the MessageBus for communication
     /// </summary>
     public class ThresholdAlertSystem : IDisposable
     {
-        // Reference to the RuntimeProfilerManager
-        private readonly RuntimeProfilerManager _profilerManager;
+        /// <summary>
+        /// Reference to the profiler manager
+        /// </summary>
+        private readonly IProfilerManager _profilerManager;
         
-        // Metric alerts
-        private readonly Dictionary<SystemMetric, List<MetricAlert>> _metricAlerts = new Dictionary<SystemMetric, List<MetricAlert>>();
+        /// <summary>
+        /// Reference to the message bus for publishing alerts
+        /// </summary>
+        private readonly IMessageBus _messageBus;
         
-        // Session alerts
-        private readonly Dictionary<ProfilerTag, List<SessionAlert>> _sessionAlerts = new Dictionary<ProfilerTag, List<SessionAlert>>();
+        /// <summary>
+        /// Metric alerts mapped by ProfilerTag
+        /// </summary>
+        private readonly Dictionary<ProfilerTag, List<MetricThreshold>> _metricThresholds = 
+            new Dictionary<ProfilerTag, List<MetricThreshold>>();
         
-        // Cooldown period for alerts
+        /// <summary>
+        /// Session alerts mapped by ProfilerTag
+        /// </summary>
+        private readonly Dictionary<ProfilerTag, List<SessionThreshold>> _sessionThresholds = 
+            new Dictionary<ProfilerTag, List<SessionThreshold>>();
+        
+        /// <summary>
+        /// Default cooldown period for alerts in seconds
+        /// </summary>
         private const float DefaultAlertCooldown = 5.0f;
         
-        // Is the alert system running
+        /// <summary>
+        /// Is the alert system running
+        /// </summary>
         private bool _isRunning = false;
         
         /// <summary>
-        /// Create a new threshold alert system
+        /// Whether to log alert events to the console
         /// </summary>
-        /// <param name="profilerManager">Reference to the RuntimeProfilerManager</param>
-        public ThresholdAlertSystem(RuntimeProfilerManager profilerManager)
-        {
-            _profilerManager = profilerManager;
-            _isRunning = false;
-        }
+        public bool LogToConsole { get; set; }
         
         /// <summary>
-        /// Create a new threshold alert system without a manager reference
-        /// (for backward compatibility)
+        /// Gets whether the alert system is currently enabled
         /// </summary>
-        public ThresholdAlertSystem()
+        public bool IsEnabled => _isRunning;
+        
+        /// <summary>
+        /// Creates a new threshold alert system connected to a profiler manager
+        /// </summary>
+        /// <param name="profilerManager">Reference to the profiler manager implementation</param>
+        /// <param name="messageBus">Reference to the message bus for publishing alerts</param>
+        /// <param name="logToConsole">Whether to log alerts to the console</param>
+        public ThresholdAlertSystem(IProfilerManager profilerManager, IMessageBus messageBus, bool logToConsole = true)
         {
-            _profilerManager = null;
+            _profilerManager = profilerManager ?? throw new ArgumentNullException(nameof(profilerManager));
+            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            LogToConsole = logToConsole;
             _isRunning = false;
         }
         
@@ -64,222 +89,346 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Update the alert system
         /// </summary>
+        /// <param name="deltaTime">Time in seconds since the last update</param>
         public void Update(float deltaTime)
         {
             if (!_isRunning)
                 return;
                 
             // Check for metric alerts
-            CheckMetricAlerts();
+            CheckMetricThresholds();
             
             // Update cooldowns
             UpdateCooldowns(deltaTime);
         }
         
         /// <summary>
-        /// Register a metric alert
+        /// Register a metric threshold for alerting
         /// </summary>
-        public void RegisterMetricAlert(SystemMetric metric, double threshold, Action<MetricEventArgs> callback, float cooldownSeconds = DefaultAlertCooldown)
+        /// <param name="metricTag">The tag identifying the metric to monitor</param>
+        /// <param name="threshold">The threshold value to trigger an alert</param>
+        /// <param name="callback">Optional callback to invoke when the threshold is exceeded (for backward compatibility)</param>
+        /// <param name="cooldownSeconds">Cooldown period in seconds before allowing another alert</param>
+        public void RegisterMetricThreshold(ProfilerTag metricTag, double threshold, 
+            Action<MetricEventArgs> callback = null, float cooldownSeconds = DefaultAlertCooldown)
         {
-            if (!_metricAlerts.TryGetValue(metric, out var alerts))
+            if (metricTag == null)
+                throw new ArgumentNullException(nameof(metricTag));
+                
+            if (!_metricThresholds.TryGetValue(metricTag, out var thresholds))
             {
-                alerts = new List<MetricAlert>();
-                _metricAlerts[metric] = alerts;
+                thresholds = new List<MetricThreshold>();
+                _metricThresholds[metricTag] = thresholds;
             }
             
-            var alert = new MetricAlert
+            var alert = new MetricThreshold
             {
-                Metric = metric,
-                Threshold = threshold,
-                Callback = callback,
-                Cooldown = cooldownSeconds,
+                MetricTag = metricTag,
+                ThresholdValue = threshold,
+                Callback = callback, // Can be null if using MessageBus exclusively
+                CooldownPeriod = cooldownSeconds,
                 CurrentCooldown = 0f
             };
             
-            alerts.Add(alert);
+            thresholds.Add(alert);
         }
         
         /// <summary>
-        /// Register a session alert
+        /// Register a session threshold for alerting
         /// </summary>
-        public void RegisterSessionAlert(ProfilerTag tag, double thresholdMs, Action<ProfilerSessionEventArgs> callback, float cooldownSeconds = DefaultAlertCooldown)
+        /// <param name="sessionTag">The tag identifying the session to monitor</param>
+        /// <param name="thresholdMs">The threshold duration in milliseconds to trigger an alert</param>
+        /// <param name="callback">Optional callback to invoke when the threshold is exceeded (for backward compatibility)</param>
+        /// <param name="cooldownSeconds">Cooldown period in seconds before allowing another alert</param>
+        public void RegisterSessionThreshold(ProfilerTag sessionTag, double thresholdMs, 
+            Action<ProfilerSessionEventArgs> callback = null, float cooldownSeconds = DefaultAlertCooldown)
         {
-            if (!_sessionAlerts.TryGetValue(tag, out var alerts))
+            if (sessionTag == null)
+                throw new ArgumentNullException(nameof(sessionTag));
+                
+            if (!_sessionThresholds.TryGetValue(sessionTag, out var thresholds))
             {
-                alerts = new List<SessionAlert>();
-                _sessionAlerts[tag] = alerts;
+                thresholds = new List<SessionThreshold>();
+                _sessionThresholds[sessionTag] = thresholds;
             }
             
-            var alert = new SessionAlert
+            var alert = new SessionThreshold
             {
-                Tag = tag,
+                SessionTag = sessionTag,
                 ThresholdMs = thresholdMs,
-                Callback = callback,
-                Cooldown = cooldownSeconds,
+                Callback = callback, // Can be null if using MessageBus exclusively
+                CooldownPeriod = cooldownSeconds,
                 CurrentCooldown = 0f
             };
             
-            alerts.Add(alert);
+            thresholds.Add(alert);
         }
         
         /// <summary>
-        /// Check a session against registered alerts
+        /// Retrieves the threshold value for a specific session tag
         /// </summary>
-        public void CheckSessionAlert(ProfilerTag tag, double durationMs)
+        /// <param name="sessionTag">The session tag to lookup</param>
+        /// <param name="thresholdMs">Output parameter that will contain the threshold value in ms</param>
+        /// <returns>True if a threshold was found, false otherwise</returns>
+        public bool GetSessionThreshold(ProfilerTag sessionTag, out double thresholdMs)
         {
-            if (!_isRunning)
-                return;
+            thresholdMs = 0;
+            
+            if (sessionTag == null || !_sessionThresholds.TryGetValue(sessionTag, out var thresholds) || thresholds.Count == 0)
+                return false;
                 
-            if (!_sessionAlerts.TryGetValue(tag, out var alerts))
-                return;
-                
-            foreach (var alert in alerts)
+            // Return the lowest threshold value (most sensitive)
+            double lowestThreshold = double.MaxValue;
+            foreach (var threshold in thresholds)
             {
-                if (alert.CurrentCooldown <= 0f && durationMs >= alert.ThresholdMs)
+                if (threshold.ThresholdMs < lowestThreshold)
+                {
+                    lowestThreshold = threshold.ThresholdMs;
+                }
+            }
+            
+            thresholdMs = lowestThreshold;
+            return true;
+        }
+        
+        /// <summary>
+        /// Retrieves the threshold value for a specific metric tag
+        /// </summary>
+        /// <param name="metricTag">The metric tag to lookup</param>
+        /// <param name="thresholdValue">Output parameter that will contain the threshold value</param>
+        /// <returns>True if a threshold was found, false otherwise</returns>
+        public bool GetMetricThreshold(ProfilerTag metricTag, out double thresholdValue)
+        {
+            thresholdValue = 0;
+            
+            if (metricTag == null || !_metricThresholds.TryGetValue(metricTag, out var thresholds) || thresholds.Count == 0)
+                return false;
+                
+            // Return the lowest threshold value (most sensitive)
+            double lowestThreshold = double.MaxValue;
+            foreach (var threshold in thresholds)
+            {
+                if (threshold.ThresholdValue < lowestThreshold)
+                {
+                    lowestThreshold = threshold.ThresholdValue;
+                }
+            }
+            
+            thresholdValue = lowestThreshold;
+            return true;
+        }
+        
+        /// <summary>
+        /// Check a completed session against registered thresholds
+        /// </summary>
+        /// <param name="sessionTag">The tag of the completed session</param>
+        /// <param name="durationMs">The duration of the session in milliseconds</param>
+        public void CheckSessionThreshold(ProfilerTag sessionTag, double durationMs)
+        {
+            if (!_isRunning || sessionTag == null)
+                return;
+                
+            if (!_sessionThresholds.TryGetValue(sessionTag, out var thresholds))
+                return;
+                
+            foreach (var threshold in thresholds)
+            {
+                if (threshold.CurrentCooldown <= 0f && durationMs >= threshold.ThresholdMs)
                 {
                     // Trigger alert
-                    alert.CurrentCooldown = alert.Cooldown;
+                    threshold.CurrentCooldown = threshold.CooldownPeriod;
                     
-                    // Create event args
-                    var eventArgs = new ProfilerSessionEventArgs(tag, durationMs);
+                    // Create event args for backward compatibility
+                    var eventArgs = new ProfilerSessionEventArgs(sessionTag, durationMs);
                     
+                    // Create and publish message via MessageBus
+                    var message = new SessionAlertMessage(eventArgs, threshold.ThresholdMs);
+                    _messageBus.PublishMessage(message);
+                    
+                    // Log if enabled
+                    if (LogToConsole)
+                    {
+                        Debug.LogWarning($"[Profiler] Session alert: {sessionTag.FullName} took {durationMs:F2}ms (threshold: {threshold.ThresholdMs:F2}ms)");
+                    }
+                    
+                    // Call legacy callback if provided (for backward compatibility)
                     try
                     {
-                        // If using the new event system, notify the profiler manager
-                        if (_profilerManager != null)
-                        {
-                            _profilerManager.OnSessionAlertTriggered(eventArgs);
-                        }
-                        
-                        // Call the direct callback (legacy method)
-                        alert.Callback?.Invoke(eventArgs);
+                        threshold.Callback?.Invoke(eventArgs);
                     }
                     catch (Exception e)
                     {
-                        Debug.LogError($"Error in session alert callback: {e.Message}");
-                    }
-                    
-                    // This log will be redundant with the new system, but kept for backward compatibility
-                    // when _profilerManager is null
-                    if (_profilerManager == null)
-                    {
-                        Debug.LogWarning($"[Profiler Alert] Session {tag.FullName} exceeded threshold: {durationMs:F2}ms > {alert.ThresholdMs:F2}ms");
+                        Debug.LogError($"Error in session threshold callback: {e.Message}");
                     }
                 }
             }
         }
         
         /// <summary>
-        /// Check all metrics against registered alerts
+        /// Check all metric values against registered thresholds
         /// </summary>
-        private void CheckMetricAlerts()
+        private void CheckMetricThresholds()
         {
             if (!_isRunning)
                 return;
                 
-            foreach (var kvp in _metricAlerts)
+            // Check system metrics against thresholds
+            if (_profilerManager?.SystemMetrics != null)
             {
-                var metric = kvp.Key;
-                var alerts = kvp.Value;
-                
-                foreach (var alert in alerts)
+                foreach (var metric in _profilerManager.SystemMetrics.GetAllMetrics())
                 {
-                    if (alert.CurrentCooldown <= 0f && metric.LastValue >= alert.Threshold)
+                    CheckMetricValue(metric.Tag, metric.LastValue, metric.Unit);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Check a metric value against registered thresholds
+        /// </summary>
+        /// <param name="metricTag">The tag of the metric</param>
+        /// <param name="value">The current value of the metric</param>
+        /// <param name="unit">The unit of the metric value (e.g., "MB", "ms")</param>
+        public void CheckMetricValue(ProfilerTag metricTag, double value, string unit = "")
+        {
+            if (!_isRunning || metricTag == null)
+                return;
+            
+            if (!_metricThresholds.TryGetValue(metricTag, out var thresholds))
+                return;
+            
+            foreach (var threshold in thresholds)
+            {
+                if (threshold.CurrentCooldown <= 0f && value >= threshold.ThresholdValue)
+                {
+                    // Trigger alert
+                    threshold.CurrentCooldown = threshold.CooldownPeriod;
+                    
+                    // Create event args for backward compatibility
+                    var eventArgs = new MetricEventArgs(metricTag, value, threshold.ThresholdValue, unit);
+                    
+                    // Create and publish message via MessageBus
+                    var message = new MetricThresholdExceededMessage(metricTag, value, threshold.ThresholdValue, unit);
+                    _messageBus.PublishMessage(message);
+                    
+                    // Log if enabled
+                    if (LogToConsole)
                     {
-                        // Trigger alert
-                        alert.CurrentCooldown = alert.Cooldown;
-                        
-                        // Create event args
-                        var eventArgs = new MetricEventArgs(metric, metric.LastValue);
-                        
-                        try
-                        {
-                            // If using the new event system, notify the profiler manager
-                            if (_profilerManager != null)
-                            {
-                                _profilerManager.OnMetricAlertTriggered(eventArgs);
-                            }
-                            
-                            // Call the direct callback (legacy method)
-                            alert.Callback?.Invoke(eventArgs);
-                        }
-                        catch (Exception e)
-                        {
-                            Debug.LogError($"Error in metric alert callback: {e.Message}");
-                        }
-                        
-                        // This log will be redundant with the new system, but kept for backward compatibility
-                        // when _profilerManager is null
-                        if (_profilerManager == null)
-                        {
-                            Debug.LogWarning($"[Profiler Alert] Metric {metric.Tag.FullName} exceeded threshold: {metric.GetFormattedLastValue()} > {alert.Threshold:F2} {metric.Unit}");
-                        }
+                        Debug.LogWarning($"[Profiler] Metric alert: {metricTag.FullName} = {value:F2}{unit} (threshold: {threshold.ThresholdValue:F2}{unit})");
+                    }
+                    
+                    // Call legacy callback if provided (for backward compatibility)
+                    try
+                    {
+                        threshold.Callback?.Invoke(eventArgs);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.LogError($"Error in metric threshold callback: {e.Message}");
                     }
                 }
             }
         }
         
         /// <summary>
-        /// Update cooldowns for all alerts
+        /// Update cooldowns for all alert thresholds
         /// </summary>
+        /// <param name="deltaTime">Time elapsed since last update in seconds</param>
         private void UpdateCooldowns(float deltaTime)
         {
-            // Update metric alert cooldowns
-            foreach (var alerts in _metricAlerts.Values)
+            // Update metric threshold cooldowns
+            foreach (var thresholds in _metricThresholds.Values)
             {
-                foreach (var alert in alerts)
+                foreach (var threshold in thresholds)
                 {
-                    if (alert.CurrentCooldown > 0f)
+                    if (threshold.CurrentCooldown > 0f)
                     {
-                        alert.CurrentCooldown -= deltaTime;
+                        threshold.CurrentCooldown -= deltaTime;
                     }
                 }
             }
             
-            // Update session alert cooldowns
-            foreach (var alerts in _sessionAlerts.Values)
+            // Update session threshold cooldowns
+            foreach (var thresholds in _sessionThresholds.Values)
             {
-                foreach (var alert in alerts)
+                foreach (var threshold in thresholds)
                 {
-                    if (alert.CurrentCooldown > 0f)
+                    if (threshold.CurrentCooldown > 0f)
                     {
-                        alert.CurrentCooldown -= deltaTime;
+                        threshold.CurrentCooldown -= deltaTime;
                     }
                 }
             }
         }
         
         /// <summary>
-        /// Dispose resources
+        /// Dispose all resources used by the threshold alert system
         /// </summary>
         public void Dispose()
         {
             Stop();
-            _metricAlerts.Clear();
-            _sessionAlerts.Clear();
+            _metricThresholds.Clear();
+            _sessionThresholds.Clear();
         }
         
         /// <summary>
-        /// Metric alert configuration
+        /// Configuration for a metric threshold
         /// </summary>
-        private class MetricAlert
+        private class MetricThreshold
         {
-            public SystemMetric Metric;
-            public double Threshold;
+            /// <summary>
+            /// The tag identifying the metric to monitor
+            /// </summary>
+            public ProfilerTag MetricTag;
+            
+            /// <summary>
+            /// The threshold value to trigger an alert
+            /// </summary>
+            public double ThresholdValue;
+            
+            /// <summary>
+            /// Callback to invoke when the threshold is exceeded (legacy support)
+            /// </summary>
             public Action<MetricEventArgs> Callback;
-            public float Cooldown;
+            
+            /// <summary>
+            /// Cooldown period in seconds before allowing another alert
+            /// </summary>
+            public float CooldownPeriod;
+            
+            /// <summary>
+            /// Current cooldown time remaining
+            /// </summary>
             public float CurrentCooldown;
         }
         
         /// <summary>
-        /// Session alert configuration
+        /// Configuration for a session threshold
         /// </summary>
-        private class SessionAlert
+        private class SessionThreshold
         {
-            public ProfilerTag Tag;
+            /// <summary>
+            /// The tag identifying the session to monitor
+            /// </summary>
+            public ProfilerTag SessionTag;
+            
+            /// <summary>
+            /// The threshold duration in milliseconds to trigger an alert
+            /// </summary>
             public double ThresholdMs;
+            
+            /// <summary>
+            /// Callback to invoke when the threshold is exceeded (legacy support)
+            /// </summary>
             public Action<ProfilerSessionEventArgs> Callback;
-            public float Cooldown;
+            
+            /// <summary>
+            /// Cooldown period in seconds before allowing another alert
+            /// </summary>
+            public float CooldownPeriod;
+            
+            /// <summary>
+            /// Current cooldown time remaining
+            /// </summary>
             public float CurrentCooldown;
         }
     }

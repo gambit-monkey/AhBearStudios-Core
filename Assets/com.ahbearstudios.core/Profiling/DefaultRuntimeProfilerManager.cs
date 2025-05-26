@@ -98,6 +98,7 @@ namespace AhBearStudios.Core.Profiling
             registry.RegisterMessageType(typeof(StatsResetMessage), 1004);
             registry.RegisterMessageType(typeof(MetricAlertMessage), 1005);
             registry.RegisterMessageType(typeof(SessionAlertMessage), 1006);
+            registry.RegisterMessageType(typeof(MetricThresholdExceededMessage), 1007);
             
             if (LogToConsole)
             {

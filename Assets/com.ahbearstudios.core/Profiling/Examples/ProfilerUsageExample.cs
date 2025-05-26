@@ -1,5 +1,4 @@
 using System;
-using AhBearStudios.Core.Profiling.Events;
 using UnityEngine;
 using Unity.Profiling;
 

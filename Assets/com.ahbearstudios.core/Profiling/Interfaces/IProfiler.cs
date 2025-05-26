@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using Unity.Profiling;
-using AhBearStudios.Core.Profiling.Events;
 
 namespace AhBearStudios.Core.Profiling.Interfaces
 {

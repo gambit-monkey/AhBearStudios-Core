@@ -12,7 +12,7 @@ namespace AhBearStudios.Core.Profiling
     {
         private readonly ProfilerMarker _marker;
         private readonly ProfilerTag _tag;
-        private readonly RuntimeProfilerManager _manager;
+        private readonly IProfilerManager _manager;
         private bool _isDisposed;
         private long _startTimeNs;
         private long _endTimeNs;
@@ -21,7 +21,7 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Creates a new ProfilerSession
         /// </summary>
-        internal ProfilerSession(ProfilerTag tag, RuntimeProfilerManager manager)
+        internal ProfilerSession(ProfilerTag tag, IProfilerManager manager)
         {
             _tag = tag;
             _manager = manager;
