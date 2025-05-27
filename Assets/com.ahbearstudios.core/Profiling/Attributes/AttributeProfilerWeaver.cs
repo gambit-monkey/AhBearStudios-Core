@@ -1,6 +1,7 @@
 using System.Reflection;
 using Unity.Profiling;
 using System.Collections.Concurrent;
+using AhBearStudios.Core.Profiling.Unity;
 
 namespace AhBearStudios.Core.Profiling.Attributes
 {
@@ -17,7 +18,7 @@ namespace AhBearStudios.Core.Profiling.Attributes
             new ConcurrentDictionary<string, ProfilerMarker>();
             
         // Reference to profiler manager
-        private readonly RuntimeProfilerManager _profilerManager;
+        private readonly ProfileManager _profileManager;
         
         /// <summary>
         /// Get singleton instance
@@ -40,7 +41,7 @@ namespace AhBearStudios.Core.Profiling.Attributes
         /// </summary>
         private AttributeProfilerWeaver()
         {
-            _profilerManager = RuntimeProfilerManager.Instance;
+            _profileManager = ProfileManager.Instance;
         }
         
         /// <summary>
@@ -50,12 +51,16 @@ namespace AhBearStudios.Core.Profiling.Attributes
         /// <returns>Profiler session to be disposed</returns>
         public ProfilerSession BeginMethodProfile(MethodBase methodBase)
         {
+            // Skip if profiling is not enabled
+            if (!_profileManager.IsEnabled)
+                return null;
+                
             // Try to get method attribute
             var methodAttr = methodBase.GetCustomAttribute<ProfileMethodAttribute>();
             if (methodAttr != null)
             {
                 var tag = CreateTagForMethod(methodBase, methodAttr);
-                return _profilerManager.BeginScope(tag);
+                return _profileManager.BeginScope(tag);
             }
             
             // Try to get class attribute
@@ -69,7 +74,7 @@ namespace AhBearStudios.Core.Profiling.Attributes
                     if (methodBase.GetCustomAttribute<DoNotProfileAttribute>() == null)
                     {
                         var tag = CreateTagForMethodFromClass(methodBase, classAttr);
-                        return _profilerManager.BeginScope(tag);
+                        return _profileManager.BeginScope(tag);
                     }
                 }
             }

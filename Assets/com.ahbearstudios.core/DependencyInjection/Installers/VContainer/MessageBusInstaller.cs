@@ -8,7 +8,6 @@ using AhBearStudios.Core.MessageBus.Serialization;
 using AhBearStudios.Core.MessageBus.Services;
 using AhBearStudios.Core.Profiling.Interfaces;
 using AhBearStudios.Core.Profiling.Metrics.Serialization;
-using MessagePipe;
 using VContainer;
 using VContainer.Unity;
 
