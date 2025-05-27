@@ -1,114 +1,204 @@
-using System;
-using AhBearStudios.Core.MessageBus.Configuration;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.Pooling.Interfaces;
 
-namespace AhBearStudios.Core.MessageBus.Builders
+namespace AhBearStudios.Core.MessageBus.Configuration
 {
     /// <summary>
-    /// Builder for configuring the message bus system.
+    /// Builder for creating MessageBus configurations using fluent API pattern.
     /// </summary>
-    public sealed class MessageBusConfigBuilder
+    public sealed class MessageBusConfigBuilder : IPoolConfigBuilder<IMessageBusConfig, MessageBusConfigBuilder>
     {
-        private readonly MessageBusConfig _config = new MessageBusConfig();
+        private readonly MessageBusConfig config;
         
         /// <summary>
-        /// Enables diagnostic logging.
+        /// Initializes a new instance of the MessageBusConfigBuilder.
         /// </summary>
-        /// <returns>The builder for method chaining.</returns>
-        public MessageBusConfigBuilder WithDiagnosticLogging()
+        public MessageBusConfigBuilder()
         {
-            _config.EnableDiagnosticLogging = true;
+            config = new MessageBusConfig();
+        }
+        
+        /// <summary>
+        /// Sets the configuration identifier.
+        /// </summary>
+        /// <param name="configId">The unique identifier for this configuration.</param>
+        /// <returns>This builder instance for method chaining.</returns>
+        public MessageBusConfigBuilder WithConfigId(string configId)
+        {
+            config.ConfigId = configId;
             return this;
         }
         
         /// <summary>
-        /// Disables diagnostic logging.
+        /// Sets the maximum messages per frame.
         /// </summary>
-        /// <returns>The builder for method chaining.</returns>
-        public MessageBusConfigBuilder WithoutDiagnosticLogging()
+        /// <param name="maxMessages">The maximum number of messages to process per frame.</param>
+        /// <returns>This builder instance for method chaining.</returns>
+        public MessageBusConfigBuilder WithMaxMessagesPerFrame(int maxMessages)
         {
-            _config.EnableDiagnosticLogging = false;
+            config.MaxMessagesPerFrame = maxMessages;
             return this;
         }
         
         /// <summary>
-        /// Enables performance profiling.
+        /// Sets the initial message queue capacity.
         /// </summary>
-        /// <returns>The builder for method chaining.</returns>
-        public MessageBusConfigBuilder WithPerformanceProfiling()
+        /// <param name="capacity">The initial capacity for message queues.</param>
+        /// <returns>This builder instance for method chaining.</returns>
+        public MessageBusConfigBuilder WithInitialQueueCapacity(int capacity)
         {
-            _config.EnablePerformanceProfiling = true;
+            config.InitialMessageQueueCapacity = capacity;
             return this;
         }
         
         /// <summary>
-        /// Disables performance profiling.
+        /// Sets the message processing time slice.
         /// </summary>
-        /// <returns>The builder for method chaining.</returns>
-        public MessageBusConfigBuilder WithoutPerformanceProfiling()
+        /// <param name="timeSliceMs">The time slice in milliseconds for message processing per frame.</param>
+        /// <returns>This builder instance for method chaining.</returns>
+        public MessageBusConfigBuilder WithProcessingTimeSlice(float timeSliceMs)
         {
-            _config.EnablePerformanceProfiling = false;
+            config.MessageProcessingTimeSliceMs = timeSliceMs;
             return this;
         }
         
         /// <summary>
-        /// Enables capturing stack traces for debugging.
+        /// Configures message pooling settings.
         /// </summary>
-        /// <returns>The builder for method chaining.</returns>
-        public MessageBusConfigBuilder WithStackTraceCapture()
+        /// <param name="enabled">Whether message pooling is enabled.</param>
+        /// <param name="initialSize">The initial size of the message pool.</param>
+        /// <param name="maxSize">The maximum size of the message pool.</param>
+        /// <returns>This builder instance for method chaining.</returns>
+        public MessageBusConfigBuilder WithMessagePooling(bool enabled, int initialSize = 100, int maxSize = 1000)
         {
-            _config.EnableCaptureStackTrace = true;
+            config.EnableMessagePooling = enabled;
+            config.MessagePoolInitialSize = initialSize;
+            config.MessagePoolMaxSize = maxSize;
             return this;
         }
         
         /// <summary>
-        /// Disables capturing stack traces for debugging.
+        /// Configures serialization settings.
         /// </summary>
-        /// <returns>The builder for method chaining.</returns>
-        public MessageBusConfigBuilder WithoutStackTraceCapture()
+        /// <param name="enableBurst">Whether Burst-compatible serialization is enabled.</param>
+        /// <param name="enableNetwork">Whether network serialization is enabled.</param>
+        /// <param name="enableCompression">Whether compression is enabled for network serialization.</param>
+        /// <returns>This builder instance for method chaining.</returns>
+        public MessageBusConfigBuilder WithSerialization(bool enableBurst = true, bool enableNetwork = false, bool enableCompression = true)
         {
-            _config.EnableCaptureStackTrace = false;
+            config.EnableBurstSerialization = enableBurst;
+            config.EnableNetworkSerialization = enableNetwork;
+            config.EnableCompressionForNetwork = enableCompression;
             return this;
         }
         
         /// <summary>
-        /// Sets the maximum number of subscribers to a single message type.
+        /// Configures reliable delivery settings.
         /// </summary>
-        /// <param name="maxCount">The maximum number of subscribers.</param>
-        /// <returns>The builder for method chaining.</returns>
-        public MessageBusConfigBuilder WithMaxSubscribers(int maxCount)
+        /// <param name="enabled">Whether reliable delivery is enabled.</param>
+        /// <param name="maxRetries">The maximum number of delivery retry attempts.</param>
+        /// <param name="timeoutSeconds">The timeout in seconds for message delivery.</param>
+        /// <param name="backoffMultiplier">The backoff multiplier for retry attempts.</param>
+        /// <returns>This builder instance for method chaining.</returns>
+        public MessageBusConfigBuilder WithReliableDelivery(bool enabled, int maxRetries = 3, float timeoutSeconds = 5f, float backoffMultiplier = 2f)
         {
-            if (maxCount < 0) throw new ArgumentOutOfRangeException(nameof(maxCount), "Maximum subscriber count cannot be negative.");
-            _config.MaxSubscribersPerMessage = maxCount;
+            config.EnableReliableDelivery = enabled;
+            config.MaxDeliveryRetries = maxRetries;
+            config.DeliveryTimeoutSeconds = timeoutSeconds;
+            config.RetryBackoffMultiplier = backoffMultiplier;
             return this;
         }
         
         /// <summary>
-        /// Enables validation of message handlers at registration time.
+        /// Configures statistics and monitoring settings.
         /// </summary>
-        /// <returns>The builder for method chaining.</returns>
-        public MessageBusConfigBuilder WithValidation()
+        /// <param name="enableStats">Whether statistics collection is enabled.</param>
+        /// <param name="enableTracking">Whether delivery tracking is enabled.</param>
+        /// <param name="enableMetrics">Whether performance metrics collection is enabled.</param>
+        /// <returns>This builder instance for method chaining.</returns>
+        public MessageBusConfigBuilder WithStatistics(bool enableStats = true, bool enableTracking = true, bool enableMetrics = true)
         {
-            _config.ValidateOnRegistration = true;
+            config.EnableStatisticsCollection = enableStats;
+            config.EnableDeliveryTracking = enableTracking;
+            config.EnablePerformanceMetrics = enableMetrics;
             return this;
         }
         
         /// <summary>
-        /// Disables validation of message handlers at registration time.
+        /// Configures logging settings.
         /// </summary>
-        /// <returns>The builder for method chaining.</returns>
-        public MessageBusConfigBuilder WithoutValidation()
+        /// <param name="enableMessageLogging">Whether message logging is enabled for debugging.</param>
+        /// <param name="enableVerbose">Whether verbose logging is enabled.</param>
+        /// <param name="logFailures">Whether failed deliveries should be logged.</param>
+        /// <returns>This builder instance for method chaining.</returns>
+        public MessageBusConfigBuilder WithLogging(bool enableMessageLogging = false, bool enableVerbose = false, bool logFailures = true)
         {
-            _config.ValidateOnRegistration = false;
+            config.EnableMessageLogging = enableMessageLogging;
+            config.EnableVerboseLogging = enableVerbose;
+            config.LogFailedDeliveries = logFailures;
             return this;
         }
         
         /// <summary>
-        /// Builds the message bus configuration.
+        /// Configures threading settings.
         /// </summary>
-        /// <returns>The configured MessageBusConfig instance.</returns>
-        public MessageBusConfig Build()
+        /// <param name="enableMultithreading">Whether multithreading is enabled for message processing.</param>
+        /// <param name="workerThreadCount">The number of worker threads for message processing.</param>
+        /// <param name="useJobSystem">Whether the Unity Job System should be used for processing.</param>
+        /// <returns>This builder instance for method chaining.</returns>
+        public MessageBusConfigBuilder WithThreading(bool enableMultithreading = true, int workerThreadCount = 2, bool useJobSystem = true)
         {
-            return _config;
+            config.EnableMultithreading = enableMultithreading;
+            config.WorkerThreadCount = workerThreadCount;
+            config.UseJobSystemForProcessing = useJobSystem;
+            return this;
+        }
+        
+        /// <summary>
+        /// Applies mobile-optimized settings.
+        /// </summary>
+        /// <returns>This builder instance for method chaining.</returns>
+        public MessageBusConfigBuilder WithMobileOptimizations()
+        {
+            return WithMaxMessagesPerFrame(50)
+                .WithProcessingTimeSlice(0.020f)
+                .WithMessagePooling(true, 50, 500)
+                .WithStatistics(false, false, false)
+                .WithLogging(false, false, true)
+                .WithThreading(false, 1, true);
+        }
+        
+        /// <summary>
+        /// Applies console-optimized settings.
+        /// </summary>
+        /// <returns>This builder instance for method chaining.</returns>
+        public MessageBusConfigBuilder WithConsoleOptimizations()
+        {
+            return WithMaxMessagesPerFrame(200)
+                .WithProcessingTimeSlice(0.008f)
+                .WithMessagePooling(true, 200, 2000)
+                .WithStatistics(true, true, true)
+                .WithThreading(true, 4, true);
+        }
+        
+        /// <summary>
+        /// Applies development-optimized settings.
+        /// </summary>
+        /// <returns>This builder instance for method chaining.</returns>
+        public MessageBusConfigBuilder WithDevelopmentOptimizations()
+        {
+            return WithLogging(true, true, true)
+                .WithStatistics(true, true, true)
+                .WithReliableDelivery(true, 5, 10f, 1.5f);
+        }
+        
+        /// <summary>
+        /// Builds the final configuration.
+        /// </summary>
+        /// <returns>The configured MessageBus configuration.</returns>
+        public IMessageBusConfig Build()
+        {
+            return config.Clone();
         }
     }
 }
