@@ -13,7 +13,7 @@ namespace AhBearStudios.Core.MessageBus.Configuration
         [Header("Configuration")]
         [SerializeField]
         private string configId = "DefaultMessageBusConfig";
-    {
+        
         [Header("Performance")]
         [SerializeField, Range(10, 10000)]
         private int maxMessagesPerFrame = 100;
@@ -236,6 +236,45 @@ namespace AhBearStudios.Core.MessageBus.Configuration
             set => useJobSystemForProcessing = value; 
         }
         
+        // Additional properties for bootstrapping
+        public bool EnableMobileOptimizations => enableMobileOptimizations;
+        public bool EnableConsoleOptimizations => enableConsoleOptimizations;
+        public bool EnableEditorDebugging => enableEditorDebugging;
+        
+        public IMessageBusConfig Clone()
+        {
+            var clone = CreateInstance<MessageBusConfig>();
+            
+            clone.configId = configId;
+            clone.maxMessagesPerFrame = maxMessagesPerFrame;
+            clone.initialMessageQueueCapacity = initialMessageQueueCapacity;
+            clone.messageProcessingTimeSliceMs = messageProcessingTimeSliceMs;
+            clone.enableMessagePooling = enableMessagePooling;
+            clone.messagePoolInitialSize = messagePoolInitialSize;
+            clone.messagePoolMaxSize = messagePoolMaxSize;
+            clone.enableBurstSerialization = enableBurstSerialization;
+            clone.enableNetworkSerialization = enableNetworkSerialization;
+            clone.enableCompressionForNetwork = enableCompressionForNetwork;
+            clone.enableReliableDelivery = enableReliableDelivery;
+            clone.maxDeliveryRetries = maxDeliveryRetries;
+            clone.deliveryTimeoutSeconds = deliveryTimeoutSeconds;
+            clone.retryBackoffMultiplier = retryBackoffMultiplier;
+            clone.enableStatisticsCollection = enableStatisticsCollection;
+            clone.enableDeliveryTracking = enableDeliveryTracking;
+            clone.enablePerformanceMetrics = enablePerformanceMetrics;
+            clone.enableMessageLogging = enableMessageLogging;
+            clone.enableVerboseLogging = enableVerboseLogging;
+            clone.logFailedDeliveries = logFailedDeliveries;
+            clone.enableMultithreading = enableMultithreading;
+            clone.workerThreadCount = workerThreadCount;
+            clone.useJobSystemForProcessing = useJobSystemForProcessing;
+            clone.enableMobileOptimizations = enableMobileOptimizations;
+            clone.enableConsoleOptimizations = enableConsoleOptimizations;
+            clone.enableEditorDebugging = enableEditorDebugging;
+            
+            return clone;
+        }
+        
         private void OnValidate()
         {
             ValidateConfiguration();
@@ -279,6 +318,12 @@ namespace AhBearStudios.Core.MessageBus.Configuration
                 Debug.LogWarning("WorkerThreadCount cannot be less than 1. Reset to 1.");
             }
             
+            if (string.IsNullOrEmpty(configId))
+            {
+                configId = "DefaultMessageBusConfig";
+                Debug.LogWarning("ConfigId cannot be empty. Reset to 'DefaultMessageBusConfig'.");
+            }
+            
             // Auto-adjust thread count based on platform
 #if UNITY_ANDROID || UNITY_IOS
             if (workerThreadCount > 2)
@@ -294,7 +339,7 @@ namespace AhBearStudios.Core.MessageBus.Configuration
         /// </summary>
         public MessageBusConfig GetPlatformOptimizedConfig()
         {
-            var optimized = Instantiate(this);
+            var optimized = (MessageBusConfig)Clone();
             
 #if UNITY_EDITOR
             if (enableEditorDebugging)

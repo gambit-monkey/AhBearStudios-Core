@@ -17,7 +17,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         private readonly HashSet<Tagging.TagCategory> _tagFilters;
         private bool _isDisposed;
         private bool _isEnabled = true;
-        private byte _minimumLevel = LogLevel.Debug;
+        private LogLevel _minimumLevel = LogLevel.Debug;
         private ILogFormatter _formatter;
         
         /// <summary>
@@ -28,7 +28,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <summary>
         /// Gets or sets the minimum level this target will process.
         /// </summary>
-        public byte MinimumLevel 
+        public LogLevel MinimumLevel 
         { 
             get => _minimumLevel;
             set => _minimumLevel = value;
@@ -48,7 +48,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// </summary>
         /// <param name="name">The name of this target.</param>
         /// <param name="minimumLevel">The minimum level of messages to log.</param>
-        public UnityConsoleTarget(string name = "UnityConsole", byte minimumLevel = LogLevel.Debug)
+        public UnityConsoleTarget(string name = "UnityConsole", LogLevel minimumLevel = LogLevel.Debug)
         {
             Name = string.IsNullOrEmpty(name) ? "UnityConsole" : name;
             _tagFilters = new HashSet<Tagging.TagCategory>();
@@ -103,7 +103,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// </summary>
         /// <param name="level">The log level to check.</param>
         /// <returns>True if the level is enabled; otherwise, false.</returns>
-        public bool IsLevelEnabled(byte level)
+        public bool IsLevelEnabled(LogLevel level)
         {
             if (!_isEnabled)
                 return false;
@@ -167,7 +167,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <param name="level">The message level.</param>
         /// <param name="tag">The message tag.</param>
         /// <returns>True if the message should be logged; otherwise, false.</returns>
-        private bool ShouldLog(byte level, Tagging.LogTag tag)
+        private bool ShouldLog(LogLevel level, Tagging.LogTag tag)
         {
             // Check level first
             if (level < MinimumLevel)

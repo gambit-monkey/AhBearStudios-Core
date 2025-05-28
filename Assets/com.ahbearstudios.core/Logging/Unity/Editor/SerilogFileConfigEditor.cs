@@ -1,7 +1,7 @@
 using UnityEngine;
 using UnityEditor;
 using System.IO;
-using AhBearStudios.Core.Logging.Config;
+using AhBearStudios.Core.Logging.Configuration;
 
 namespace AhBearStudios.Core.Logging.Editor
 {
@@ -12,6 +12,8 @@ namespace AhBearStudios.Core.Logging.Editor
     [CustomEditor(typeof(SerilogFileConfig))]
     public class SerilogFileConfigEditor : UnityEditor.Editor
     {
+        #region Private Fields
+        
         // SerializedProperty references
         private SerializedProperty _targetNameProp;
         private SerializedProperty _enabledProp;
@@ -37,6 +39,10 @@ namespace AhBearStudios.Core.Logging.Editor
         // Constants
         private const int MIN_RETAINED_DAYS = 1;
         private const int MAX_RETAINED_DAYS = 90;
+        
+        #endregion
+        
+        #region Unity Lifecycle
         
         /// <summary>
         /// Initialize the editor when it's first loaded
@@ -99,21 +105,29 @@ namespace AhBearStudios.Core.Logging.Editor
             serializedObject.ApplyModifiedProperties();
         }
         
+        #endregion
+        
+        #region Drawing Methods
+        
         /// <summary>
         /// Draw the config header
         /// </summary>
         private void DrawHeader()
         {
-            GUIStyle headerStyle = new GUIStyle(EditorStyles.boldLabel);
-            headerStyle.fontSize = 16;
-            headerStyle.alignment = TextAnchor.MiddleCenter;
-            headerStyle.margin = new RectOffset(0, 0, 10, 10);
+            GUIStyle headerStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 16,
+                alignment = TextAnchor.MiddleCenter,
+                margin = new RectOffset(0, 0, 10, 10)
+            };
             
             EditorGUILayout.LabelField("Serilog File Configuration", headerStyle);
             
-            GUIStyle descriptionStyle = new GUIStyle(EditorStyles.label);
-            descriptionStyle.wordWrap = true;
-            descriptionStyle.alignment = TextAnchor.MiddleCenter;
+            GUIStyle descriptionStyle = new GUIStyle(EditorStyles.label)
+            {
+                wordWrap = true,
+                alignment = TextAnchor.MiddleCenter
+            };
             
             EditorGUILayout.LabelField(
                 "Configure settings for Serilog file-based logging.",
@@ -151,26 +165,8 @@ namespace AhBearStudios.Core.Logging.Editor
                 
                 EditorGUILayout.Space(4);
                 
-                // Log level as an enum popup for better UX
-                EditorGUILayout.BeginHorizontal();
-                EditorGUILayout.LabelField(_logLevelContent, GUILayout.Width(EditorGUIUtility.labelWidth));
-                
-                EditorGUI.BeginChangeCheck();
-                
-                // Create popup for log levels
-                string[] logLevelNames = new string[] { "Debug", "Info", "Warning", "Error", "Critical" };
-                int[] logLevelValues = new int[] { LogLevel.Debug, LogLevel.Info, LogLevel.Warning, LogLevel.Error, LogLevel.Critical };
-                
-                int currentLevel = _minimumLevelProp.intValue;
-                int selectedIndex = System.Array.IndexOf(logLevelValues, currentLevel);
-                if (selectedIndex < 0) selectedIndex = 2; // Default to Info if not found
-                
-                selectedIndex = EditorGUILayout.Popup(selectedIndex, logLevelNames);
-                if (EditorGUI.EndChangeCheck())
-                {
-                    _minimumLevelProp.intValue = (byte)logLevelValues[selectedIndex];
-                }
-                EditorGUILayout.EndHorizontal();
+                // Log level enum popup
+                EditorGUILayout.PropertyField(_minimumLevelProp, _logLevelContent);
                 
                 EditorGUILayout.EndVertical();
                 
@@ -286,9 +282,11 @@ namespace AhBearStudios.Core.Logging.Editor
                 EditorGUILayout.LabelField("Format Preview:", EditorStyles.boldLabel);
                 
                 string previewText;
-                GUIStyle previewStyle = new GUIStyle(EditorStyles.textArea);
-                previewStyle.wordWrap = true;
-                previewStyle.richText = true;
+                GUIStyle previewStyle = new GUIStyle(EditorStyles.textArea)
+                {
+                    wordWrap = true,
+                    richText = true
+                };
                 
                 if (_useJsonFormatProp.boolValue)
                 {
@@ -315,7 +313,6 @@ namespace AhBearStudios.Core.Logging.Editor
             EditorGUILayout.EndFoldoutHeaderGroup();
         }
         
-        
         /// <summary>
         /// Draw tag filter settings
         /// </summary>
@@ -336,14 +333,14 @@ namespace AhBearStudios.Core.Logging.Editor
             
                     // Include tag
                     EditorGUILayout.PropertyField(_includeTagsProp, 
-                        new GUIContent("Include Tag", "Only log messages with these tag will be processed. Leave empty to include all tag."), 
+                        new GUIContent("Include Tags", "Only log messages with these tags will be processed. Leave empty to include all tags."), 
                         true); // true to show children
             
                     EditorGUILayout.Space(4);
             
                     // Exclude tag
                     EditorGUILayout.PropertyField(_excludeTagsProp, 
-                        new GUIContent("Exclude Tag", "Log messages with these tag will be ignored."), 
+                        new GUIContent("Exclude Tags", "Log messages with these tags will be ignored."), 
                         true); // true to show children
             
                     // Warning about conflicting filters
@@ -387,6 +384,10 @@ namespace AhBearStudios.Core.Logging.Editor
             
             EditorGUILayout.EndHorizontal();
         }
+        
+        #endregion
+        
+        #region Helper Methods
         
         /// <summary>
         /// Validates the configuration and shows any warnings or errors
@@ -483,14 +484,16 @@ namespace AhBearStudios.Core.Logging.Editor
                     Directory.CreateDirectory(directory);
                 }
                 
-                // Create sample log content
+                // Create sample log content with proper log level
+                string logLevelName = GetLogLevelDisplayName(config.MinimumLevel);
                 string logContent;
+                
                 if (config.UseJsonFormat)
                 {
                     logContent = 
                         "{\n" +
                         "  \"Timestamp\": \"" + System.DateTime.Now.ToString("o") + "\",\n" +
-                        "  \"Level\": \"Information\",\n" +
+                        "  \"Level\": \"" + logLevelName + "\",\n" +
                         "  \"Message\": \"This is a test log entry created from the Unity Editor\",\n" +
                         "  \"Tag\": \"Test\",\n" +
                         "  \"Properties\": { \"Source\": \"UnityEditor\", \"ConfigName\": \"" + config.name + "\" }\n" +
@@ -500,7 +503,7 @@ namespace AhBearStudios.Core.Logging.Editor
                 {
                     logContent = 
                         "[" + System.DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + "] " +
-                        "[Information] " +
+                        "[" + logLevelName + "] " +
                         "[Test] " +
                         "This is a test log entry created from the Unity Editor " +
                         "{ Source: UnityEditor, ConfigName: " + config.name + " }\n";
@@ -520,6 +523,26 @@ namespace AhBearStudios.Core.Logging.Editor
                 EditorUtility.DisplayDialog("Error Creating Test Log", 
                     $"Failed to create test log file: {ex.Message}", "OK");
             }
+        }
+        
+        /// <summary>
+        /// Get a display-friendly name for a log level
+        /// </summary>
+        /// <param name="level">The log level to convert</param>
+        /// <returns>A display-friendly name</returns>
+        private string GetLogLevelDisplayName(LogLevel level)
+        {
+            return level switch
+            {
+                LogLevel.Trace => "Trace",
+                LogLevel.Debug => "Debug",
+                LogLevel.Info => "Information",
+                LogLevel.Warning => "Warning",
+                LogLevel.Error => "Error",
+                LogLevel.Critical => "Critical",
+                LogLevel.None => "None",
+                _ => "Unknown"
+            };
         }
         
         /// <summary>
@@ -569,5 +592,7 @@ namespace AhBearStudios.Core.Logging.Editor
                     $"Failed to create directory: {ex.Message}", "OK");
             }
         }
+        
+        #endregion
     }
 }

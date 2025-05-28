@@ -24,7 +24,7 @@ namespace AhBearStudios.Core.Logging.Data
         /// <summary>
         /// The logging severity level.
         /// </summary>
-        public byte Level;
+        public LogLevel Level;
         
         /// <summary>
         /// The message content.
@@ -45,7 +45,7 @@ namespace AhBearStudios.Core.Logging.Data
         /// <param name="message">The message content.</param>
         /// <param name="level">The severity level.</param>
         /// <param name="tag">The log tag.</param>
-        public LogMessage(FixedString512Bytes message, byte level, Tagging.LogTag tag, LogProperties properties)
+        public LogMessage(FixedString512Bytes message, LogLevel level, Tagging.LogTag tag, LogProperties properties)
         {
             Message = message;
             Level = level;
@@ -62,7 +62,7 @@ namespace AhBearStudios.Core.Logging.Data
         /// <param name="level">The severity level.</param>
         /// <param name="customTag">A custom tag string.</param>
         /// <param name="properties">Log Properties</param>
-        public LogMessage(FixedString512Bytes message, byte level, FixedString32Bytes customTag, LogProperties properties)
+        public LogMessage(FixedString512Bytes message, LogLevel level, FixedString32Bytes customTag, LogProperties properties)
         {
             Message = message;
             Level = level;
@@ -78,7 +78,7 @@ namespace AhBearStudios.Core.Logging.Data
         /// <param name="message">The message content.</param>
         /// <param name="level">The severity level.</param>
         /// <param name="properties">Structured Log Properties</param>
-        public LogMessage(FixedString512Bytes message, byte level, LogProperties properties)
+        public LogMessage(FixedString512Bytes message, LogLevel level, LogProperties properties)
         {
             Message = message;
             Level = level;

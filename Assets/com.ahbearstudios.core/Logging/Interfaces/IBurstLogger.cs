@@ -14,7 +14,7 @@ namespace AhBearStudios.Core.Logging
         /// <param name="level">The severity level of the log (0-255 with higher values indicating more severity).</param>
         /// <param name="message">The message content.</param>
         /// <param name="tag">The tag identifying the source or category of the log.</param>
-        void Log(byte level, string message, string tag);
+        void Log(LogLevel level, string message, string tag);
         
         /// <summary>
         /// Logs a structured message with properties.
@@ -23,7 +23,7 @@ namespace AhBearStudios.Core.Logging
         /// <param name="message">The message content.</param>
         /// <param name="tag">The tag identifying the source or category of the log.</param>
         /// <param name="properties">Key-value properties providing structured context.</param>
-        void Log(byte level, string message, string tag, LogProperties properties);
+        void Log(LogLevel level, string message, string tag, LogProperties properties);
         
         /// <summary>
         /// Checks if logging is enabled for the specified log level.
@@ -32,6 +32,6 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         /// <param name="level">The log level to check.</param>
         /// <returns>True if messages at this level would be logged; otherwise, false.</returns>
-        bool IsEnabled(byte level);
+        bool IsEnabled(LogLevel level);
     }
 }

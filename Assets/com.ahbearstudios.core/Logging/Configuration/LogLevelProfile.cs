@@ -1,7 +1,7 @@
 using AhBearStudios.Core.Logging.Data;
 using UnityEngine;
 
-namespace AhBearStudios.Core.Logging.Config
+namespace AhBearStudios.Core.Logging.Configuration
 {
     /// <summary>
     /// Represents a log level profile that can be saved and loaded.
@@ -10,7 +10,7 @@ namespace AhBearStudios.Core.Logging.Config
     public class LogLevelProfile : ScriptableObject
     {
         [SerializeField, Tooltip("Global minimum log level")]
-        private byte _globalMinimumLevel = LogLevel.Debug;
+        private LogLevel _globalMinimumLevel = LogLevel.Debug;
         
         [SerializeField, Tooltip("Tag-specific level overrides")]
         private TagLevelOverride[] _tagLevelOverrides = new TagLevelOverride[0];
@@ -21,7 +21,7 @@ namespace AhBearStudios.Core.Logging.Config
         /// <summary>
         /// Global minimum log level.
         /// </summary>
-        public byte GlobalMinimumLevel => _globalMinimumLevel;
+        public LogLevel GlobalMinimumLevel => _globalMinimumLevel;
         
         /// <summary>
         /// Tag-specific level overrides.

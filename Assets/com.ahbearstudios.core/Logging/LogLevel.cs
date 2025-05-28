@@ -1,67 +1,72 @@
+using System;
+
 namespace AhBearStudios.Core.Logging
 {
     /// <summary>
-    /// Defines standard log levels as byte constants.
+    /// Defines standard log severity levels.
     /// Higher values indicate more severe log levels.
     /// </summary>
-    public static class LogLevel
+    public enum LogLevel : byte
     {
         /// <summary>
         /// Trace level - most detailed information, typically only enabled during development.
         /// </summary>
-        public const byte Trace = 0;
+        Trace = 0,
 
         /// <summary>
         /// Debug level - detailed information for debugging purposes.
         /// </summary>
-        public const byte Debug = 10;
+        Debug = 10,
 
         /// <summary>
         /// Info level - informational messages that highlight progress or state.
         /// </summary>
-        public const byte Info = 20;
+        Info = 20,
 
         /// <summary>
         /// Warning level - potentially harmful situations or unexpected behavior.
         /// </summary>
-        public const byte Warning = 30;
+        Warning = 30,
 
         /// <summary>
         /// Error level - error events that might still allow the application to continue.
         /// </summary>
-        public const byte Error = 40;
+        Error = 40,
 
         /// <summary>
         /// Critical level - very severe error events that will likely cause the application to abort.
         /// </summary>
-        public const byte Critical = 50;
+        Critical = 50,
 
         /// <summary>
         /// None level - logging is disabled.
         /// </summary>
-        public const byte None = byte.MaxValue;
-
+        None = byte.MaxValue
+    }
+    
+    /// <summary>
+    /// Extension methods for LogLevel enum.
+    /// </summary>
+    public static class LogLevelExtensions
+    {
         /// <summary>
         /// Gets the name of a log level.
         /// </summary>
         /// <param name="level">The log level.</param>
         /// <returns>The name of the log level.</returns>
-        public static string GetName(byte level)
+        public static string GetName(this LogLevel level)
         {
-            if (level >= Critical)
-                return "CRITICAL";
-            if (level >= Error)
-                return "ERROR";
-            if (level >= Warning)
-                return "WARNING";
-            if (level >= Info)
-                return "INFO";
-            if (level >= Debug)
-                return "DEBUG";
-            if (level >= Trace)
-                return "TRACE";
-            
-            return "UNKNOWN";
+            return level switch
+            {
+                LogLevel.Trace => "TRACE",
+                LogLevel.Debug => "DEBUG",
+                LogLevel.Info => "INFO",
+                LogLevel.Warning => "WARNING",
+                LogLevel.Error => "ERROR",
+                LogLevel.Critical => "CRITICAL",
+                LogLevel.None => "NONE",
+                _ => "UNKNOWN"
+            };
         }
 
         /// <summary>
@@ -69,22 +74,57 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         /// <param name="level">The log level.</param>
         /// <returns>A 3-character abbreviation of the log level.</returns>
-        public static string GetShortName(byte level)
+        public static string GetShortName(this LogLevel level)
         {
-            if (level >= Critical)
-                return "CRT";
-            if (level >= Error)
-                return "ERR";
-            if (level >= Warning)
-                return "WRN";
-            if (level >= Info)
-                return "INF";
-            if (level >= Debug)
-                return "DBG";
-            if (level >= Trace)
-                return "TRC";
-            
-            return "UNK";
+            return level switch
+            {
+                LogLevel.Trace => "TRC",
+                LogLevel.Debug => "DBG",
+                LogLevel.Info => "INF",
+                LogLevel.Warning => "WRN",
+                LogLevel.Error => "ERR",
+                LogLevel.Critical => "CRT",
+                LogLevel.None => "NON",
+                _ => "UNK"
+            };
+        }
+        
+        /// <summary>
+        /// Checks if a log level is at or above the specified minimum level.
+        /// </summary>
+        /// <param name="level">The log level to check.</param>
+        /// <param name="minimumLevel">The minimum log level threshold.</param>
+        /// <returns>True if the level is at or above the minimum, false otherwise.</returns>
+        public static bool IsAtLeast(this LogLevel level, LogLevel minimumLevel)
+        {
+            return (byte)level >= (byte)minimumLevel;
+        }
+        
+        /// <summary>
+        /// Converts a string to a log level.
+        /// </summary>
+        /// <param name="levelName">The name of the log level.</param>
+        /// <param name="defaultLevel">The default level to return if parsing fails.</param>
+        /// <returns>The parsed log level or the default if parsing fails.</returns>
+        public static LogLevel ParseLogLevel(string levelName, LogLevel defaultLevel = LogLevel.Info)
+        {
+            if (string.IsNullOrEmpty(levelName))
+                return defaultLevel;
+                
+            return levelName.ToUpperInvariant() switch
+            {
+                "TRACE" => LogLevel.Trace,
+                "DEBUG" => LogLevel.Debug,
+                "INFO" => LogLevel.Info,
+                "WARNING" => LogLevel.Warning,
+                "WARN" => LogLevel.Warning,
+                "ERROR" => LogLevel.Error,
+                "ERR" => LogLevel.Error,
+                "CRITICAL" => LogLevel.Critical,
+                "FATAL" => LogLevel.Critical,
+                "NONE" => LogLevel.None,
+                _ => defaultLevel
+            };
         }
     }
 }

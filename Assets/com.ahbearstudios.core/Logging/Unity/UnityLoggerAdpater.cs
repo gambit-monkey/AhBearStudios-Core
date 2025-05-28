@@ -1,7 +1,7 @@
 using System;
 using UnityEngine;
 using AhBearStudios.Core.Logging.Tags;
-using AhBearStudios.Core.Logging.Config;
+using AhBearStudios.Core.Logging.Configuration;
 using Object = UnityEngine.Object;
 
 namespace AhBearStudios.Core.Logging.Unity
@@ -110,7 +110,7 @@ namespace AhBearStudios.Core.Logging.Unity
             {
                 string message = string.Format(format, args);
                 Tagging.LogTag tag = MapUnityLogTypeToTag(logType);
-                byte level = MapUnityLogTypeToLogLevel(logType);
+                LogLevel level = MapUnityLogTypeToLogLevel(logType);
 
                 // Add context information if available
                 if (context != null)
@@ -175,7 +175,7 @@ namespace AhBearStudios.Core.Logging.Unity
         /// </summary>
         /// <param name="type">The Unity log type.</param>
         /// <returns>The corresponding log level byte value.</returns>
-        private byte MapUnityLogTypeToLogLevel(LogType type)
+        private LogLevel MapUnityLogTypeToLogLevel(LogType type)
         {
             switch (type)
             {

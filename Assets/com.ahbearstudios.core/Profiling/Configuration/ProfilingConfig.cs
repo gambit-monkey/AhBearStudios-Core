@@ -13,7 +13,7 @@ namespace AhBearStudios.Core.Profiling.Configuration
         [Header("Configuration")]
         [SerializeField]
         private string configId = "DefaultProfilingConfig";
-    {
+        
         [Header("General")]
         [SerializeField]
         private bool enableProfiling = true;
@@ -253,3 +253,129 @@ namespace AhBearStudios.Core.Profiling.Configuration
             get => autoExportOnStop; 
             set => autoExportOnStop = value; 
         }
+        
+        // Additional properties for bootstrapping  
+        public bool EnableMobileOptimizations => enableMobileOptimizations;
+        public bool EnableConsoleOptimizations => enableConsoleOptimizations;
+        public bool EnableEditorDebugging => enableEditorDebugging;
+        
+        public IProfilingConfig Clone()
+        {
+            var clone = CreateInstance<ProfilingConfig>();
+            
+            clone.configId = configId;
+            clone.enableProfiling = enableProfiling;
+            clone.enableOnStartup = enableOnStartup;
+            clone.logToConsole = logToConsole;
+            clone.updateInterval = updateInterval;
+            clone.maxSamplesPerFrame = maxSamplesPerFrame;
+            clone.historyBufferSize = historyBufferSize;
+            clone.enableMemoryProfiling = enableMemoryProfiling;
+            clone.trackGCAllocations = trackGCAllocations;
+            clone.enablePoolMetrics = enablePoolMetrics;
+            clone.maxPoolMetricsEntries = maxPoolMetricsEntries;
+            clone.enableSystemMetrics = enableSystemMetrics;
+            clone.trackCPUUsage = trackCPUUsage;
+            clone.trackMemoryUsage = trackMemoryUsage;
+            clone.trackFrameTime = trackFrameTime;
+            clone.trackRenderTime = trackRenderTime;
+            clone.enableAlerts = enableAlerts;
+            clone.defaultMetricThreshold = defaultMetricThreshold;
+            clone.defaultSessionThreshold = defaultSessionThreshold;
+            clone.enableDetailedMetrics = enableDetailedMetrics;
+            clone.enableHierarchicalProfiling = enableHierarchicalProfiling;
+            clone.enableBurstCompatibleProfiling = enableBurstCompatibleProfiling;
+            clone.enableDataExport = enableDataExport;
+            clone.exportPath = exportPath;
+            clone.autoExportOnStop = autoExportOnStop;
+            clone.enableMobileOptimizations = enableMobileOptimizations;
+            clone.enableConsoleOptimizations = enableConsoleOptimizations;
+            clone.enableEditorDebugging = enableEditorDebugging;
+            
+            return clone;
+        }
+        
+        private void OnValidate()
+        {
+            ValidateConfiguration();
+        }
+        
+        private void ValidateConfiguration()
+        {
+            if (string.IsNullOrEmpty(configId))
+            {
+                configId = "DefaultProfilingConfig";
+                Debug.LogWarning("ConfigId cannot be empty. Reset to 'DefaultProfilingConfig'.");
+            }
+            
+            if (maxSamplesPerFrame < 1)
+            {
+                maxSamplesPerFrame = 1;
+                Debug.LogWarning("MaxSamplesPerFrame cannot be less than 1. Reset to 1.");
+            }
+            
+            if (historyBufferSize < 1)
+            {
+                historyBufferSize = 1;
+                Debug.LogWarning("HistoryBufferSize cannot be less than 1. Reset to 1.");
+            }
+            
+            if (updateInterval < 0.001f)
+            {
+                updateInterval = 0.001f;
+                Debug.LogWarning("UpdateInterval cannot be less than 0.001. Reset to 0.001.");
+            }
+            
+            if (string.IsNullOrEmpty(exportPath))
+            {
+                exportPath = "ProfilingData";
+                Debug.LogWarning("ExportPath cannot be empty. Reset to 'ProfilingData'.");
+            }
+        }
+        
+        /// <summary>
+        /// Creates a platform-optimized version of this configuration.
+        /// </summary>
+        public ProfilingConfig GetPlatformOptimizedConfig()
+        {
+            var optimized = (ProfilingConfig)Clone();
+            
+#if UNITY_EDITOR
+            if (enableEditorDebugging)
+            {
+                optimized.enableProfiling = true;
+                optimized.logToConsole = true;
+                optimized.enableDetailedMetrics = true;
+                optimized.enableMemoryProfiling = true;
+                optimized.trackGCAllocations = true;
+            }
+#elif UNITY_ANDROID || UNITY_IOS
+            if (enableMobileOptimizations)
+            {
+                // Mobile optimizations for performance and battery
+                optimized.updateInterval = Mathf.Max(updateInterval, 0.033f);
+                optimized.maxSamplesPerFrame = Mathf.Min(maxSamplesPerFrame, 50);
+                optimized.historyBufferSize = Mathf.Min(historyBufferSize, 50);
+                optimized.enableMemoryProfiling = false;
+                optimized.trackGCAllocations = false;
+                optimized.enableDetailedMetrics = false;
+                optimized.enableDataExport = false;
+                optimized.maxPoolMetricsEntries = Mathf.Min(maxPoolMetricsEntries, 100);
+            }
+#elif UNITY_GAMECORE || UNITY_PS4 || UNITY_PS5 || UNITY_SWITCH
+            if (enableConsoleOptimizations)
+            {
+                // Console optimizations
+                optimized.updateInterval = Mathf.Min(updateInterval, 0.016f);
+                optimized.maxSamplesPerFrame = Mathf.Max(maxSamplesPerFrame, 200);
+                optimized.historyBufferSize = Mathf.Max(historyBufferSize, 200);
+                optimized.enableMemoryProfiling = true;
+                optimized.enableDetailedMetrics = true;
+                optimized.maxPoolMetricsEntries = Mathf.Max(maxPoolMetricsEntries, 2000);
+            }
+#endif
+            
+            return optimized;
+        }
+    }
+}

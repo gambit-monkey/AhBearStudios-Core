@@ -2,18 +2,17 @@ using System.Collections.Generic;
 using AhBearStudios.Core.Logging.Middleware;
 using AhBearStudios.Core.Logging.Data;
 using AhBearStudios.Core.Logging.Tags;
-using UnityEngine;
 
-namespace AhBearStudios.Core.Logging.Config
+namespace AhBearStudios.Core.Logging.Configuration
 {
     /// <summary>
     /// Manages dynamic log level configuration at runtime.
     /// </summary>
     public class DynamicLogLevelManager : ILogMiddleware
     {
-        private readonly Dictionary<Tagging.LogTag, byte> _tagLevelOverrides = new Dictionary<Tagging.LogTag, byte>();
-        private readonly Dictionary<string, byte> _categoryLevelOverrides = new Dictionary<string, byte>();
-        private byte _globalMinimumLevel;
+        private readonly Dictionary<Tagging.LogTag, LogLevel> _tagLevelOverrides = new Dictionary<Tagging.LogTag, LogLevel>();
+        private readonly Dictionary<string, LogLevel> _categoryLevelOverrides = new Dictionary<string, LogLevel>();
+        private LogLevel _globalMinimumLevel;
         
         /// <summary>
         /// The next middleware in the chain.
@@ -23,7 +22,7 @@ namespace AhBearStudios.Core.Logging.Config
         /// <summary>
         /// Gets or sets the global minimum log level. Messages below this level will be filtered out.
         /// </summary>
-        public byte GlobalMinimumLevel
+        public LogLevel GlobalMinimumLevel
         {
             get => _globalMinimumLevel;
             set => _globalMinimumLevel = value;
@@ -34,7 +33,7 @@ namespace AhBearStudios.Core.Logging.Config
         /// </summary>
         /// <param name="tag">The tag to override.</param>
         /// <param name="level">The minimum level to log for this tag.</param>
-        public void SetTagLevelOverride(Tagging.LogTag tag, byte level)
+        public void SetTagLevelOverride(Tagging.LogTag tag, LogLevel level)
         {
             _tagLevelOverrides[tag] = level;
         }
@@ -54,7 +53,7 @@ namespace AhBearStudios.Core.Logging.Config
         /// </summary>
         /// <param name="category">The category to override.</param>
         /// <param name="level">The minimum level to log for this category.</param>
-        public void SetCategoryLevelOverride(string category, byte level)
+        public void SetCategoryLevelOverride(string category, LogLevel level)
         {
             _categoryLevelOverrides[category] = level;
         }
@@ -107,7 +106,7 @@ namespace AhBearStudios.Core.Logging.Config
                 return false;
                 
             // Check tag-specific overrides
-            if (_tagLevelOverrides.TryGetValue((Tagging.LogTag)message.Tag, out byte tagLevel) && 
+            if (_tagLevelOverrides.TryGetValue((Tagging.LogTag)message.Tag, out LogLevel tagLevel) && 
                 message.Level < tagLevel)
             {
                 return false;
@@ -121,7 +120,7 @@ namespace AhBearStudios.Core.Logging.Config
                     if (prop.Key == LogPropertyKeys.Category)
                     {
                         string category = prop.Value.ToString();
-                        if (_categoryLevelOverrides.TryGetValue(category, out byte categoryLevel) &&
+                        if (_categoryLevelOverrides.TryGetValue(category, out LogLevel categoryLevel) &&
                             message.Level < categoryLevel)
                         {
                             return false;

@@ -1,7 +1,7 @@
 using UnityEngine;
 using AhBearStudios.Core.Logging.Tags;
 
-namespace AhBearStudios.Core.Logging.Config
+namespace AhBearStudios.Core.Logging.Configuration
 {
     /// <summary>
     /// ScriptableObject that implements ILoggerConfig for configuring the overall logging system.
@@ -13,7 +13,7 @@ namespace AhBearStudios.Core.Logging.Config
     public class LogManagerConfig : ScriptableObject, ILoggerConfig
     {
         [Tooltip("The minimum log level that will be processed")]
-        [SerializeField] private byte _minimumLevel = LogLevel.Info;
+        [SerializeField] private LogLevel _minimumLevel = LogLevel.Info;
         
         [Tooltip("Maximum number of messages to process per batch")]
         [SerializeField] private int _maxMessagesPerBatch = 200;
@@ -33,7 +33,7 @@ namespace AhBearStudios.Core.Logging.Config
         /// <summary>
         /// The minimum log level that will be processed.
         /// </summary>
-        public byte MinimumLevel => _minimumLevel;
+        public LogLevel MinimumLevel => _minimumLevel;
         
         /// <summary>
         /// Maximum number of messages to process per batch.

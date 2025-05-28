@@ -51,7 +51,7 @@ namespace AhBearStudios.Core.Logging.Middleware
         /// </summary>
         /// <param name="level">Log level to include.</param>
         /// <returns>This interceptor (for fluent chaining).</returns>
-        public LogFilterInterceptor WithLevel(byte level)
+        public LogFilterInterceptor WithLevel(LogLevel level)
         {
             return Include(msg => msg.Level == level);
         }

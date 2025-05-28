@@ -15,14 +15,14 @@ namespace AhBearStudios.Core.Logging
         private readonly List<ILogTarget> _targets;
         private readonly object _syncLock = new object();
         private readonly string _loggerName;
-        private byte _minimumLevel;
+        private LogLevel _minimumLevel;
         private bool _isEnabled;
         private bool _disposed;
 
         /// <summary>
         /// Gets or sets the minimum log level that will be processed by this logger.
         /// </summary>
-        public byte MinimumLevel
+        public LogLevel MinimumLevel
         {
             get
             {
@@ -67,7 +67,7 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         /// <param name="loggerName">The name of this logger instance.</param>
         /// <param name="minimumLevel">The minimum log level to process.</param>
-        public BurstLogger(string loggerName = "BurstLogger", byte minimumLevel = LogLevel.Debug)
+        public BurstLogger(string loggerName = "BurstLogger", LogLevel minimumLevel = LogLevel.Debug)
         {
             _loggerName = loggerName ?? "BurstLogger";
             _minimumLevel = minimumLevel;
@@ -76,7 +76,7 @@ namespace AhBearStudios.Core.Logging
         }
 
         /// <inheritdoc />
-        public void Log(byte level, string message, string tag)
+        public void Log(LogLevel level, string message, string tag)
         {
             if (_disposed)
                 throw new ObjectDisposedException(_loggerName);
@@ -118,7 +118,7 @@ namespace AhBearStudios.Core.Logging
         }
 
         /// <inheritdoc />
-        public void Log(byte level, string message, string tag, LogProperties properties)
+        public void Log(LogLevel level, string message, string tag, LogProperties properties)
         {
             if (_disposed)
                 throw new ObjectDisposedException(_loggerName);
@@ -188,7 +188,7 @@ namespace AhBearStudios.Core.Logging
         }
 
         /// <inheritdoc />
-        public bool IsEnabled(byte level)
+        public bool IsEnabled(LogLevel level)
         {
             if (_disposed)
                 return false;

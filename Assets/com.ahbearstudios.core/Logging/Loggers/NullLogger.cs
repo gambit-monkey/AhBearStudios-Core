@@ -23,20 +23,20 @@ namespace AhBearStudios.Core.Logging
         }
 
         /// <inheritdoc />
-        public void Log(byte level, string message, string tag)
+        public void Log(LogLevel level, string message, string tag)
         {
             // No-op: discard the message
         }
 
         /// <inheritdoc />
-        public void Log(byte level, string message, string tag, LogProperties properties)
+        public void Log(LogLevel level, string message, string tag, LogProperties properties)
         {
             // No-op: discard the message
             // Note: Caller is responsible for disposing properties if needed
         }
 
         /// <inheritdoc />
-        public bool IsEnabled(byte level)
+        public bool IsEnabled(LogLevel level)
         {
             // Always return false since we don't log anything
             return false;

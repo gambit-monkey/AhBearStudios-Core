@@ -12,9 +12,9 @@ namespace AhBearStudios.Core.Logging.Data
         private string _category;
         
         [SerializeField]
-        private byte _level;
+        private LogLevel _level;
         
         public string Category => _category;
-        public byte Level => _level;
+        public LogLevel Level => _level;
     }
 }

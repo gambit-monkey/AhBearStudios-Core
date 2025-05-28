@@ -1,8 +1,9 @@
 using UnityEngine;
 using UnityEditor;
-using AhBearStudios.Core.Logging.Config;
 using AhBearStudios.Core.Logging.Tags;
 using System;
+using AhBearStudios.Core.Logging.Configuration;
+using AhBearStudios.Core.Logging.Extensions;
 
 namespace AhBearStudios.Core.Logging.Editor
 {
@@ -244,7 +245,7 @@ namespace AhBearStudios.Core.Logging.Editor
         /// </summary>
         private void ResetToDefaults()
         {
-            _minimumLevelProp.intValue = LogLevel.Info;
+            _minimumLevelProp.intValue = LogLevel.Info.ToInt();
             _maxMessagesPerBatchProp.intValue = 200;
             _initialQueueCapacityProp.intValue = 64;
             _enableAutoFlushProp.boolValue = true;

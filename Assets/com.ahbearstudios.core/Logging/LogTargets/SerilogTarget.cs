@@ -32,7 +32,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// Gets or sets the minimum log level that this target will process.
         /// Messages with lower severity will be ignored.
         /// </summary>
-        public byte MinimumLevel 
+        public LogLevel MinimumLevel 
         { 
             get => ConvertLevelSwitchToLogLevel(_levelSwitch.MinimumLevel);
             set => _levelSwitch.MinimumLevel = ConvertLogLevelToLogEventLevel(value);
@@ -54,7 +54,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <param name="name">The name of this target.</param>
         /// <param name="logFilePath">The path where log files will be created.</param>
         /// <param name="minimumLevel">The minimum level of messages to log.</param>
-        public SerilogTarget(string name, string logFilePath, byte minimumLevel = LogLevel.Info)
+        public SerilogTarget(string name, string logFilePath, LogLevel minimumLevel = LogLevel.Info)
         {
             Name = string.IsNullOrEmpty(name) ? "SerilogFile" : name;
             _tagFilters = new HashSet<Tagging.TagCategory>();
@@ -102,7 +102,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <param name="logFilePath">The path where log files will be created.</param>
         /// <param name="minimumLevel">The minimum level of messages to log.</param>
         /// <returns>A new SerilogTarget configured for both file and console output with JSON formatting.</returns>
-        public static SerilogTarget CreateFileAndConsoleTarget(string name, string logFilePath, byte minimumLevel = LogLevel.Info)
+        public static SerilogTarget CreateFileAndConsoleTarget(string name, string logFilePath, LogLevel minimumLevel = LogLevel.Info)
         {
             string directory = Path.GetDirectoryName(logFilePath);
             if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
@@ -133,7 +133,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <param name="name">The name of this target.</param>
         /// <param name="minimumLevel">The minimum level of messages to log.</param>
         /// <returns>A new SerilogTarget configured for console output.</returns>
-        public static SerilogTarget CreateConsoleTarget(string name, byte minimumLevel = LogLevel.Info)
+        public static SerilogTarget CreateConsoleTarget(string name, LogLevel minimumLevel = LogLevel.Info)
         {
             var levelSwitch = new LoggingLevelSwitch(ConvertLogLevelToLogEventLevel(minimumLevel));
             
@@ -154,7 +154,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <param name="minimumLevel">The minimum level of messages to log.</param>
         /// <param name="useJsonFormat">Whether to use JSON formatting for the log files.</param>
         /// <returns>A new SerilogTarget configured for file output.</returns>
-        public static SerilogTarget CreateFileTarget(string name, string logFilePath, byte minimumLevel = LogLevel.Info,
+        public static SerilogTarget CreateFileTarget(string name, string logFilePath, LogLevel minimumLevel = LogLevel.Info,
             bool useJsonFormat = false)
         {
             string directory = Path.GetDirectoryName(logFilePath);
@@ -256,7 +256,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// </summary>
         /// <param name="messageLevel">The byte log level from the logging system.</param>
         /// <returns>The corresponding Serilog LogEventLevel.</returns>
-        private LogEventLevel ConvertLogLevel(byte messageLevel)
+        private LogEventLevel ConvertLogLevel(LogLevel messageLevel)
         {
             // Map our byte-based log levels to Serilog's LogEventLevel
             if (messageLevel >= LogLevel.Critical)
@@ -306,7 +306,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// </summary>
         /// <param name="level">The log level to check.</param>
         /// <returns>True if messages with this level would be logged; otherwise, false.</returns>
-        public bool IsLevelEnabled(byte level)
+        public bool IsLevelEnabled(LogLevel level)
         {
             if (!_isEnabled)
                 return false;
@@ -372,7 +372,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <param name="level">The message level.</param>
         /// <param name="tag">The message tag.</param>
         /// <returns>True if the message should be logged; otherwise, false.</returns>
-        private bool ShouldLog(byte level, Tagging.LogTag tag)
+        private bool ShouldLog(LogLevel level, Tagging.LogTag tag)
         {
             if (level < MinimumLevel)
                 return false;
@@ -448,7 +448,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// </summary>
         /// <param name="level">The LogLevel value to convert.</param>
         /// <returns>The equivalent LogEventLevel.</returns>
-        private static LogEventLevel ConvertLogLevelToLogEventLevel(byte level)
+        private static LogEventLevel ConvertLogLevelToLogEventLevel(LogLevel level)
         {
             if (level == LogLevel.Debug)
                 return LogEventLevel.Debug;
@@ -469,7 +469,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// </summary>
         /// <param name="level">The LogEventLevel value to convert.</param>
         /// <returns>The equivalent LogLevel.</returns>
-        private static byte ConvertLevelSwitchToLogLevel(LogEventLevel level)
+        private static LogLevel ConvertLevelSwitchToLogLevel(LogEventLevel level)
         {
             switch (level)
             {

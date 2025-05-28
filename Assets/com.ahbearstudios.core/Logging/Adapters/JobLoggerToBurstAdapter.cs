@@ -12,13 +12,13 @@ namespace AhBearStudios.Core.Logging.Adapters
     {
         private readonly JobLoggerManager _manager;
         private readonly object _syncLock = new object();
-        private byte _minimumLevel;
+        private LogLevel _minimumLevel;
         private bool _isEnabled;
         
         /// <summary>
         /// Gets or sets the minimum log level that will be processed by this adapter.
         /// </summary>
-        public byte MinimumLevel
+        public LogLevel MinimumLevel
         {
             get
             {
@@ -62,7 +62,7 @@ namespace AhBearStudios.Core.Logging.Adapters
         /// </summary>
         /// <param name="manager">The JobLoggerManager to adapt.</param>
         /// <param name="minimumLevel">The minimum log level to process.</param>
-        public JobLoggerToBurstAdapter(JobLoggerManager manager, byte minimumLevel = LogLevel.Debug)
+        public JobLoggerToBurstAdapter(JobLoggerManager manager, LogLevel minimumLevel = LogLevel.Debug)
         {
             _manager = manager ?? throw new ArgumentNullException(nameof(manager));
             _minimumLevel = minimumLevel;
@@ -70,7 +70,7 @@ namespace AhBearStudios.Core.Logging.Adapters
         }
         
         /// <inheritdoc />
-        public void Log(byte level, string message, string tag)
+        public void Log(LogLevel level, string message, string tag)
         {
             if (!IsEnabled(level))
                 return;
@@ -93,7 +93,7 @@ namespace AhBearStudios.Core.Logging.Adapters
         }
         
         /// <inheritdoc />
-        public void Log(byte level, string message, string tag, LogProperties properties)
+        public void Log(LogLevel level, string message, string tag, LogProperties properties)
         {
             if (!IsEnabled(level))
                 return;
@@ -116,7 +116,7 @@ namespace AhBearStudios.Core.Logging.Adapters
         }
         
         /// <inheritdoc />
-        public bool IsEnabled(byte level)
+        public bool IsEnabled(LogLevel level)
         {
             lock (_syncLock)
             {

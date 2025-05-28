@@ -1,23 +1,24 @@
 using UnityEngine;
 using UnityEditor;
-using AhBearStudios.Core.Logging.Config;
-using AhBearStudios.Core.Logging.Data;
-using AhBearStudios.Core.Logging.Tags;
-using AhBearStudios.Core.Logging.Formatters;
 using System;
+using System.Collections.Generic;
+using AhBearStudios.Core.Logging.Configuration;
 
 namespace AhBearStudios.Core.Logging.Editor
 {
     /// <summary>
     /// Custom editor for Unity Console Log Configuration.
+    /// Provides a rich UI for configuring the Unity Console log target.
     /// </summary>
     [CustomEditor(typeof(UnityConsoleLogConfig))]
     public class UnityConsoleLogConfigEditor : UnityEditor.Editor
     {
+        #region Private Fields
+        
         // Configuration object
         private UnityConsoleLogConfig _config;
         
-        // Serialized properties - use field names, not property names
+        // Serialized properties
         private SerializedProperty _enabledProp;
         private SerializedProperty _targetNameProp;
         private SerializedProperty _minimumLevelProp;
@@ -32,6 +33,22 @@ namespace AhBearStudios.Core.Logging.Editor
         private bool _tagFiltersFoldout = false;
         private bool _debugSettingsFoldout = false;
         
+        // Level colors for UI
+        private readonly Dictionary<LogLevel, Color> _levelColors = new Dictionary<LogLevel, Color>
+        {
+            { LogLevel.Trace, Color.gray },
+            { LogLevel.Debug, Color.white },
+            { LogLevel.Info, Color.cyan },
+            { LogLevel.Warning, Color.yellow },
+            { LogLevel.Error, new Color(1, 0.5f, 0) },
+            { LogLevel.Critical, Color.red },
+            { LogLevel.None, Color.gray }
+        };
+        
+        #endregion
+        
+        #region Unity Lifecycle
+        
         /// <summary>
         /// Initialize when the editor is enabled
         /// </summary>
@@ -39,7 +56,7 @@ namespace AhBearStudios.Core.Logging.Editor
         {
             _config = (UnityConsoleLogConfig)target;
             
-            // Important: Use field names, not property names
+            // Find serialized properties
             _enabledProp = serializedObject.FindProperty("Enabled");
             _targetNameProp = serializedObject.FindProperty("TargetName");
             _minimumLevelProp = serializedObject.FindProperty("MinimumLevel");
@@ -51,7 +68,11 @@ namespace AhBearStudios.Core.Logging.Editor
             // Validate all properties were found
             ValidateSerializedProperties();
         }
-
+        
+        #endregion
+        
+        #region Property Validation
+        
         /// <summary>
         /// Validates that all serialized properties were found
         /// </summary>
@@ -73,6 +94,10 @@ namespace AhBearStudios.Core.Logging.Editor
             if (_useColorizedOutputProp == null)
                 Debug.LogWarning("Property '_useColorizedOutput' not found in UnityConsoleLogConfig");
         }
+        
+        #endregion
+        
+        #region GUI Drawing
         
         /// <summary>
         /// Draw the custom inspector GUI
@@ -118,15 +143,19 @@ namespace AhBearStudios.Core.Logging.Editor
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             
-            GUIStyle headerStyle = new GUIStyle(EditorStyles.boldLabel);
-            headerStyle.fontSize = 14;
-            headerStyle.alignment = TextAnchor.MiddleCenter;
+            GUIStyle headerStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 14,
+                alignment = TextAnchor.MiddleCenter
+            };
             
             EditorGUILayout.LabelField("Unity Console Log Configuration", headerStyle);
             
-            GUIStyle descStyle = new GUIStyle(EditorStyles.label);
-            descStyle.wordWrap = true;
-            descStyle.alignment = TextAnchor.MiddleCenter;
+            GUIStyle descStyle = new GUIStyle(EditorStyles.label)
+            {
+                wordWrap = true,
+                alignment = TextAnchor.MiddleCenter
+            };
             
             EditorGUILayout.LabelField(
                 "Configure how logs are displayed in the Unity Console.",
@@ -159,18 +188,10 @@ namespace AhBearStudios.Core.Logging.Editor
                 
                 if (_minimumLevelProp != null)
                 {
-                    EditorGUILayout.BeginHorizontal();
-                    EditorGUILayout.LabelField(new GUIContent("Minimum Level", "The minimum log level to capture"), GUILayout.Width(120));
+                    EditorGUILayout.PropertyField(_minimumLevelProp, 
+                        new GUIContent("Minimum Level", "The minimum log level to capture"));
                     
-                    int currentLevel = _minimumLevelProp.intValue;
-                    EditorGUI.BeginChangeCheck();
-                    int newLevel = EditorGUILayout.IntSlider(currentLevel, 0, 4);
-                    if (EditorGUI.EndChangeCheck())
-                    {
-                        _minimumLevelProp.intValue = newLevel;
-                    }
-                    
-                    EditorGUILayout.EndHorizontal();
+                    LogLevel currentLevel = (LogLevel)_minimumLevelProp.enumValueIndex;
                     
                     // Draw level indicator
                     DrawLogLevelIndicator(currentLevel);
@@ -223,15 +244,22 @@ namespace AhBearStudios.Core.Logging.Editor
                         {
                             try
                             {
-                                // Show formatter editor button
-                                ColorizedConsoleFormatter formatter = (ColorizedConsoleFormatter)_formatterProp.objectReferenceValue;
+                                var formatter = _formatterProp.objectReferenceValue;
                                 
                                 EditorGUILayout.Space(5);
                                 
                                 if (GUILayout.Button("Edit Formatter Colors"))
                                 {
                                     // Open the color editor window
-                                    ColorizedFormatterColorEditor.OpenWindow(formatter);
+                                    var editorWindowType = Type.GetType("AhBearStudios.Core.Logging.Editor.ColorizedFormatterColorEditor, Assembly-CSharp-Editor");
+                                    if (editorWindowType != null)
+                                    {
+                                        var openWindowMethod = editorWindowType.GetMethod("OpenWindow");
+                                        if (openWindowMethod != null)
+                                        {
+                                            openWindowMethod.Invoke(null, new object[] { formatter });
+                                        }
+                                    }
                                 }
                                 
                                 // Show formatter preview
@@ -241,24 +269,8 @@ namespace AhBearStudios.Core.Logging.Editor
                                 // Only show preview if formatter is valid
                                 if (formatter != null)
                                 {
-                                    // Create a sample message for preview
-                                    var previewMessage = new LogMessage
-                                    {
-                                        Level = LogLevel.Info,
-                                        Tag = Tagging.LogTag.System,
-                                        TimestampTicks = DateTime.Now.Ticks,
-                                        Message = "Sample log message preview"
-                                    };
-                                    
-                                    // Format and display
-                                    string formattedMessage = formatter.Format(previewMessage).ToString();
-                                    
-                                    // Create style that supports rich text
-                                    GUIStyle richTextStyle = new GUIStyle(EditorStyles.textField);
-                                    richTextStyle.richText = true;
-                                    richTextStyle.wordWrap = true;
-                                    
-                                    EditorGUILayout.SelectableLabel(formattedMessage, richTextStyle, GUILayout.Height(40));
+                                    // Create sample messages for preview (one for each log level)
+                                    DrawFormatterPreview();
                                 }
                             }
                             catch (Exception ex)
@@ -278,40 +290,74 @@ namespace AhBearStudios.Core.Logging.Editor
         }
         
         /// <summary>
+        /// Draw a preview of formatted log messages
+        /// </summary>
+        private void DrawFormatterPreview()
+        {
+            // Create a style that supports rich text
+            GUIStyle richTextStyle = new GUIStyle(EditorStyles.textField)
+            {
+                richText = true,
+                wordWrap = true
+            };
+            
+            // Preview for info level
+            string infoPreview = "<color=cyan>[INFO]</color> Sample info message";
+            EditorGUILayout.SelectableLabel(infoPreview, richTextStyle, GUILayout.Height(20));
+            
+            // Preview for warning level
+            string warnPreview = "<color=yellow>[WARNING]</color> Sample warning message";
+            EditorGUILayout.SelectableLabel(warnPreview, richTextStyle, GUILayout.Height(20));
+            
+            // Preview for error level
+            string errorPreview = "<color=red>[ERROR]</color> Sample error message";
+            EditorGUILayout.SelectableLabel(errorPreview, richTextStyle, GUILayout.Height(20));
+        }
+        
+        /// <summary>
         /// Draw log level indicator with colored labels
         /// </summary>
         /// <param name="currentLevel">Current log level</param>
-        private void DrawLogLevelIndicator(int currentLevel)
+        private void DrawLogLevelIndicator(LogLevel currentLevel)
         {
+            EditorGUILayout.BeginVertical(EditorStyles.helpBox);
+            
+            EditorGUILayout.LabelField("Levels that will be logged:", EditorStyles.miniLabel);
+            
             EditorGUILayout.BeginHorizontal();
             
-            GUIStyle levelStyle = new GUIStyle(EditorStyles.miniLabel);
-            levelStyle.fontStyle = FontStyle.Bold;
+            // Get all log levels except None
+            var levels = new[]
+            {
+                LogLevel.Trace,
+                LogLevel.Debug,
+                LogLevel.Info,
+                LogLevel.Warning,
+                LogLevel.Error,
+                LogLevel.Critical
+            };
             
-            // Debug level
-            levelStyle.normal.textColor = currentLevel <= 0 ? Color.white : Color.gray;
-            EditorGUILayout.LabelField("Debug", levelStyle, GUILayout.Width(60));
-            
-            // Info level
-            levelStyle.normal.textColor = currentLevel <= 1 ? Color.cyan : Color.gray;
-            EditorGUILayout.LabelField("Info", levelStyle, GUILayout.Width(60));
-            
-            // Warning level
-            levelStyle.normal.textColor = currentLevel <= 2 ? Color.yellow : Color.gray;
-            EditorGUILayout.LabelField("Warning", levelStyle, GUILayout.Width(60));
-            
-            // Error level
-            levelStyle.normal.textColor = currentLevel <= 3 ? new Color(1, 0.5f, 0) : Color.gray;
-            EditorGUILayout.LabelField("Error", levelStyle, GUILayout.Width(60));
-            
-            // Critical level
-            levelStyle.normal.textColor = currentLevel <= 4 ? Color.red : Color.gray;
-            EditorGUILayout.LabelField("Critical", levelStyle, GUILayout.Width(60));
+            foreach (var level in levels)
+            {
+                bool isActive = level >= currentLevel && currentLevel != LogLevel.None;
+                
+                GUIStyle levelStyle = new GUIStyle(EditorStyles.miniLabel)
+                {
+                    fontStyle = FontStyle.Bold,
+                    normal = { textColor = isActive ? _levelColors[level] : Color.gray },
+                    alignment = TextAnchor.MiddleCenter
+                };
+                
+                GUILayout.Label(level.GetName(), levelStyle, GUILayout.ExpandWidth(true));
+            }
             
             EditorGUILayout.EndHorizontal();
             
-            // Show current level name
-            EditorGUILayout.LabelField($"Current level: {LogLevelToString((byte)currentLevel)}", EditorStyles.miniLabel);
+            // Description of current level
+            string levelDescription = GetLogLevelDescription(currentLevel);
+            EditorGUILayout.LabelField(levelDescription, EditorStyles.wordWrappedMiniLabel);
+            
+            EditorGUILayout.EndVertical();
         }
         
         /// <summary>
@@ -326,17 +372,17 @@ namespace AhBearStudios.Core.Logging.Editor
                 EditorGUILayout.BeginVertical(EditorStyles.helpBox);
                 
                 EditorGUILayout.HelpBox(
-                    "Configure which tag to include or exclude. If no tag are specified in either list, all tag are logged.",
+                    "Configure which tags to include or exclude. If no tags are specified in either list, all tags are logged.",
                     MessageType.Info);
                 
                 // Safe access to properties
                 EditorGUILayout.PropertyField(_includeTagsProp, 
-                    new GUIContent("Include Tag", "Only logs with these tag will be processed (if list is not empty)"), true);
+                    new GUIContent("Include Tags", "Only logs with these tags will be processed (if list is not empty)"), true);
                 
                 EditorGUILayout.Space(5);
                 
                 EditorGUILayout.PropertyField(_excludeTagsProp, 
-                    new GUIContent("Exclude Tag", "Logs with these tag will be ignored"), true);
+                    new GUIContent("Exclude Tags", "Logs with these tags will be ignored"), true);
                 
                 EditorGUILayout.EndVertical();
             }
@@ -408,27 +454,36 @@ namespace AhBearStudios.Core.Logging.Editor
             if (GUILayout.Button("Clear Console"))
             {
                 // Clear the console using reflection
-                try
-                {
-                    var logEntries = System.Type.GetType("UnityEditor.LogEntries, UnityEditor.dll");
-                    if (logEntries != null)
-                    {
-                        var clearMethod = logEntries.GetMethod("Clear", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
-                        if (clearMethod != null)
-                        {
-                            clearMethod.Invoke(null, null);
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"Failed to clear console: {ex.Message}");
-                }
+                ClearConsole();
             }
             
             EditorGUILayout.EndHorizontal();
             
             EditorGUILayout.EndVertical();
+        }
+        
+        #endregion
+        
+        #region Helper Methods
+        
+        /// <summary>
+        /// Get a descriptive text for a log level
+        /// </summary>
+        /// <param name="level">The log level</param>
+        /// <returns>A user-friendly description of the log level</returns>
+        private string GetLogLevelDescription(LogLevel level)
+        {
+            return level switch
+            {
+                LogLevel.Trace => "Trace: Most detailed information, typically only enabled during development.",
+                LogLevel.Debug => "Debug: Detailed information useful for debugging purposes.",
+                LogLevel.Info => "Info: Informational messages that highlight progress or application state.",
+                LogLevel.Warning => "Warning: Potentially harmful situations or unexpected behavior.",
+                LogLevel.Error => "Error: Error events that might still allow the application to continue.",
+                LogLevel.Critical => "Critical: Very severe error events that will likely cause the application to abort.",
+                LogLevel.None => "None: No logs will be processed (logging is disabled).",
+                _ => $"Unknown level ({level})"
+            };
         }
         
         /// <summary>
@@ -503,7 +558,7 @@ namespace AhBearStudios.Core.Logging.Editor
                 _targetNameProp.stringValue = "Unity Console";
                 
             if (_minimumLevelProp != null)
-                _minimumLevelProp.intValue = LogLevel.Debug;
+                _minimumLevelProp.enumValueIndex = (int)LogLevel.Debug;
                 
             if (_includeTagsProp != null)
                 _includeTagsProp.ClearArray();
@@ -542,8 +597,16 @@ namespace AhBearStudios.Core.Logging.Editor
             {
                 try
                 {
+                    // Get the formatter type using reflection
+                    var formatterType = Type.GetType("AhBearStudios.Core.Logging.Formatters.ColorizedConsoleFormatter, Assembly-CSharp");
+                    if (formatterType == null)
+                    {
+                        Debug.LogError("ColorizedConsoleFormatter type not found");
+                        return;
+                    }
+                    
                     // Create the formatter asset
-                    ColorizedConsoleFormatter formatter = CreateInstance<ColorizedConsoleFormatter>();
+                    ScriptableObject formatter = CreateInstance(formatterType);
                     
                     // Save the asset
                     AssetDatabase.CreateAsset(formatter, path);
@@ -563,27 +626,28 @@ namespace AhBearStudios.Core.Logging.Editor
         }
         
         /// <summary>
-        /// Convert a log level byte to a string representation
+        /// Clears the Unity console
         /// </summary>
-        /// <param name="level">Log level</param>
-        /// <returns>String representation of the log level</returns>
-        private string LogLevelToString(byte level)
+        private void ClearConsole()
         {
-            switch (level)
+            try
             {
-                case LogLevel.Debug:
-                    return "Debug";
-                case LogLevel.Info:
-                    return "Info";
-                case LogLevel.Warning:
-                    return "Warning";
-                case LogLevel.Error:
-                    return "Error";
-                case LogLevel.Critical:
-                    return "Critical";
-                default:
-                    return $"Level ({level})";
+                var logEntries = Type.GetType("UnityEditor.LogEntries, UnityEditor.dll");
+                if (logEntries != null)
+                {
+                    var clearMethod = logEntries.GetMethod("Clear", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public);
+                    if (clearMethod != null)
+                    {
+                        clearMethod.Invoke(null, null);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to clear console: {ex.Message}");
             }
         }
+        
+        #endregion
     }
 }

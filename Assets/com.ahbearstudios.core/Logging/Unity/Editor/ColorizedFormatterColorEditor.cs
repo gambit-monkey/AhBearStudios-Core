@@ -4,77 +4,62 @@ using AhBearStudios.Core.Logging.Formatters;
 using AhBearStudios.Core.Logging.Tags;
 using System.Collections.Generic;
 using System;
+using System.Linq;
+using AhBearStudios.Core.Logging.Interfaces;
 
 namespace AhBearStudios.Core.Logging.Editor
 {
     /// <summary>
-    /// Custom editor window for customizing the colors used in ColorizedConsoleFormatter
+    /// Custom editor window for customizing the colors used in ColorizedConsoleFormatter.
+    /// Provides a UI for configuring colors for different log levels and tags.
     /// </summary>
     public class ColorizedFormatterColorEditor : EditorWindow
     {
-        // Reference to the formatter being edited
+        // Dependencies
         private ColorizedConsoleFormatter _formatter;
+        private IColorManager _colorManager;
         
-        // Scroll position for level colors
+        // UI state
         private Vector2 _levelColorScroll;
         private Vector2 _tagColorScroll;
-        
-        // Color maps
-        private Dictionary<byte, Color> _levelColors = new Dictionary<byte, Color>();
-        private Dictionary<Tagging.LogTag, Color> _tagColors = new Dictionary<Tagging.LogTag, Color>();
-        
-        // Level names for display
-        private static readonly string[] LevelNames = new string[]
-        {
-            "Debug", "Info", "Warning", "Error", "Critical"
-        };
-        
-        // Category foldouts
+        private int _selectedTab = 0;
         private bool[] _categoryFoldouts;
         
-        // Selected tab index
-        private int _selectedTab = 0;
+        // Log level display configuration
+        private readonly LogLevel[] _displayLevels = new[]
+        {
+            LogLevel.Trace,
+            LogLevel.Debug,
+            LogLevel.Info,
+            LogLevel.Warning,
+            LogLevel.Error,
+            LogLevel.Critical
+        };
         
         /// <summary>
-        /// Opens the color editor window for a formatter
+        /// Opens the color editor window for a formatter.
         /// </summary>
-        /// <param name="formatter">The formatter to edit</param>
+        /// <param name="formatter">The formatter to edit.</param>
         public static void OpenWindow(ColorizedConsoleFormatter formatter)
         {
+            if (formatter == null)
+                throw new ArgumentNullException(nameof(formatter));
+                
             ColorizedFormatterColorEditor window = GetWindow<ColorizedFormatterColorEditor>("Formatter Colors");
             window._formatter = formatter;
-            window.InitializeColors();
+            window._colorManager = new ColorManager(formatter);
+            window.InitializeState();
             window.Show();
         }
         
         /// <summary>
-        /// Initialize colors from formatter
+        /// Initialize the editor window state.
         /// </summary>
-        private void InitializeColors()
+        private void InitializeState()
         {
-            if (_formatter == null)
-                return;
-                
-            // Initialize level colors
-            _levelColors.Clear();
-            for (byte i = 0; i < LevelNames.Length; i++)
-            {
-                string colorHex = _formatter.GetColorForLevel(i);
-                _levelColors[i] = HexToColor(colorHex);
-            }
+            _colorManager.InitializeColors();
             
-            // Initialize tag colors
-            _tagColors.Clear();
-            
-            // Get all tag values
-            Array tagValues = Enum.GetValues(typeof(Tagging.LogTag));
-            foreach (Tagging.LogTag tag in tagValues)
-            {
-                string colorHex = _formatter.GetColorForTag(tag);
-                _tagColors[tag] = HexToColor(colorHex);
-            }
-            
-            // Initialize category foldouts
+            // Initialize category foldouts if needed
             if (_categoryFoldouts == null || _categoryFoldouts.Length == 0)
             {
                 _categoryFoldouts = new bool[Enum.GetValues(typeof(Tagging.TagCategory)).Length];
@@ -87,7 +72,7 @@ namespace AhBearStudios.Core.Logging.Editor
         }
         
         /// <summary>
-        /// Draw the editor window
+        /// Draw the editor window.
         /// </summary>
         private void OnGUI()
         {
@@ -107,7 +92,7 @@ namespace AhBearStudios.Core.Logging.Editor
             
             EditorGUILayout.Space(10);
             
-            // Draw tabbed interface - fixed version
+            // Draw tabbed interface
             string[] tabNames = new string[] { "Level Colors", "Tag Colors" };
             _selectedTab = GUILayout.Toolbar(_selectedTab, tabNames);
             
@@ -131,25 +116,26 @@ namespace AhBearStudios.Core.Logging.Editor
         }
         
         /// <summary>
-        /// Draw the header section
+        /// Draw the header section.
         /// </summary>
         private void DrawHeader()
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
             
-            GUIStyle headerStyle = new GUIStyle(EditorStyles.boldLabel);
-            headerStyle.fontSize = 14;
-            headerStyle.alignment = TextAnchor.MiddleCenter;
+            GUIStyle headerStyle = new GUIStyle(EditorStyles.boldLabel)
+            {
+                fontSize = 14,
+                alignment = TextAnchor.MiddleCenter
+            };
             
             EditorGUILayout.LabelField("Colorized Formatter Color Editor", headerStyle);
-            
             EditorGUILayout.LabelField("Formatter: " + _formatter.name, EditorStyles.centeredGreyMiniLabel);
             
             EditorGUILayout.EndVertical();
         }
         
         /// <summary>
-        /// Draw the level color section
+        /// Draw the level color section.
         /// </summary>
         private void DrawLevelColorSection()
         {
@@ -162,20 +148,21 @@ namespace AhBearStudios.Core.Logging.Editor
             
             _levelColorScroll = EditorGUILayout.BeginScrollView(_levelColorScroll);
             
-            for (byte i = 0; i < LevelNames.Length; i++)
+            foreach (LogLevel level in _displayLevels)
             {
                 EditorGUILayout.BeginHorizontal();
                 
-                EditorGUILayout.LabelField(LevelNames[i], GUILayout.Width(100));
+                // Display the level name
+                EditorGUILayout.LabelField(level.GetName(), GUILayout.Width(100));
                 
-                Color oldColor = _levelColors[i];
+                // Get current color and display color picker
+                Color oldColor = _colorManager.GetLevelColor(level);
                 Color newColor = EditorGUILayout.ColorField(oldColor);
                 
+                // Update color if changed
                 if (oldColor != newColor)
                 {
-                    _levelColors[i] = newColor;
-                    // Save color to formatter
-                    _formatter.SetLevelColor(i, "#" + ColorUtility.ToHtmlStringRGB(newColor));
+                    _colorManager.SetLevelColor(level, newColor);
                     EditorUtility.SetDirty(_formatter);
                 }
                 
@@ -183,12 +170,11 @@ namespace AhBearStudios.Core.Logging.Editor
             }
             
             EditorGUILayout.EndScrollView();
-            
             EditorGUILayout.EndVertical();
         }
         
         /// <summary>
-        /// Draw the tag color section
+        /// Draw the tag color section.
         /// </summary>
         private void DrawTagColorSection()
         {
@@ -213,8 +199,10 @@ namespace AhBearStudios.Core.Logging.Editor
                     continue;
                 
                 // Draw category foldout with a more visible style
-                GUIStyle foldoutStyle = new GUIStyle(EditorStyles.foldout);
-                foldoutStyle.fontStyle = FontStyle.Bold;
+                GUIStyle foldoutStyle = new GUIStyle(EditorStyles.foldout)
+                {
+                    fontStyle = FontStyle.Bold
+                };
                 
                 _categoryFoldouts[c] = EditorGUILayout.Foldout(_categoryFoldouts[c], category.ToString(), true, foldoutStyle);
                 
@@ -222,46 +210,34 @@ namespace AhBearStudios.Core.Logging.Editor
                 {
                     EditorGUI.indentLevel++;
                     
-                    // Get all tag in this category
+                    // Get all tags in this category
                     bool hasTagsInCategory = false;
-                    Array tagValues = Enum.GetValues(typeof(Tagging.LogTag));
+                    var tagsInCategory = _colorManager.GetTagsInCategory(category);
                     
-                    foreach (Tagging.LogTag tag in tagValues)
+                    foreach (Tagging.LogTag tag in tagsInCategory)
                     {
-                        if (Tagging.GetTagCategory(tag) == category)
+                        hasTagsInCategory = true;
+                        
+                        EditorGUILayout.BeginHorizontal();
+                        
+                        EditorGUILayout.LabelField(tag.ToString(), GUILayout.Width(150));
+                        
+                        Color oldColor = _colorManager.GetTagColor(tag);
+                        Color newColor = EditorGUILayout.ColorField(oldColor);
+                        
+                        if (oldColor != newColor)
                         {
-                            hasTagsInCategory = true;
-                            
-                            EditorGUILayout.BeginHorizontal();
-                            
-                            EditorGUILayout.LabelField(tag.ToString(), GUILayout.Width(150));
-                            
-                            // Make sure we have this color in our dictionary
-                            if (!_tagColors.ContainsKey(tag))
-                            {
-                                string colorHex = _formatter.GetColorForTag(tag);
-                                _tagColors[tag] = HexToColor(colorHex);
-                            }
-                            
-                            Color oldColor = _tagColors[tag];
-                            Color newColor = EditorGUILayout.ColorField(oldColor);
-                            
-                            if (oldColor != newColor)
-                            {
-                                _tagColors[tag] = newColor;
-                                // Save color to formatter
-                                _formatter.SetTagColor(tag, "#" + ColorUtility.ToHtmlStringRGB(newColor));
-                                EditorUtility.SetDirty(_formatter);
-                            }
-                            
-                            EditorGUILayout.EndHorizontal();
+                            _colorManager.SetTagColor(tag, newColor);
+                            EditorUtility.SetDirty(_formatter);
                         }
+                        
+                        EditorGUILayout.EndHorizontal();
                     }
                     
                     // If no tag in this category, show a message
                     if (!hasTagsInCategory)
                     {
-                        EditorGUILayout.LabelField("No tag in this category", EditorStyles.miniLabel);
+                        EditorGUILayout.LabelField("No tags in this category", EditorStyles.miniLabel);
                     }
                     
                     EditorGUI.indentLevel--;
@@ -269,12 +245,11 @@ namespace AhBearStudios.Core.Logging.Editor
             }
             
             EditorGUILayout.EndScrollView();
-            
             EditorGUILayout.EndVertical();
         }
         
         /// <summary>
-        /// Draw action buttons
+        /// Draw action buttons.
         /// </summary>
         private void DrawActionButtons()
         {
@@ -287,7 +262,7 @@ namespace AhBearStudios.Core.Logging.Editor
                     "Reset", "Cancel"))
                 {
                     _formatter.ResetColorsToDefaults();
-                    InitializeColors();
+                    _colorManager.InitializeColors();
                 }
             }
             
@@ -297,24 +272,6 @@ namespace AhBearStudios.Core.Logging.Editor
             }
             
             EditorGUILayout.EndHorizontal();
-        }
-        
-        /// <summary>
-        /// Convert hex color string to Color
-        /// </summary>
-        /// <param name="hex">Hex color string</param>
-        /// <returns>Color object</returns>
-        private Color HexToColor(string hex)
-        {
-            // Remove # if present
-            if (hex.StartsWith("#"))
-                hex = hex.Substring(1);
-                
-            // Parse the hex string
-            if (ColorUtility.TryParseHtmlString("#" + hex, out Color color))
-                return color;
-                
-            return Color.white;
         }
     }
 }

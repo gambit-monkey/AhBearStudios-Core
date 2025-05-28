@@ -12,7 +12,7 @@ namespace AhBearStudios.Core.Logging
         /// The minimum log level that will be processed.
         /// Messages below this level will be ignored.
         /// </summary>
-        byte MinimumLevel { get; }
+        LogLevel MinimumLevel { get; }
         
         /// <summary>
         /// Maximum number of messages to process per batch.

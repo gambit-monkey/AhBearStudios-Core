@@ -22,7 +22,7 @@ namespace AhBearStudios.Core.Logging.Jobs
         /// The minimum severity level for logs to be recorded.
         /// Messages with lower severity will be ignored.
         /// </summary>
-        public readonly byte MinimumLevel;
+        public readonly LogLevel MinimumLevel;
 
         /// <summary>
         /// Default tag to apply when no tag is specified.
@@ -35,7 +35,7 @@ namespace AhBearStudios.Core.Logging.Jobs
         /// <param name="writer">The parallel writer for log messages.</param>
         /// <param name="minimumLevel">The minimum severity level to log.</param>
         /// <param name="defaultTag">Default tag to use when none is specified.</param>
-        public JobLogger(NativeQueue<LogMessage>.ParallelWriter writer, byte minimumLevel,
+        public JobLogger(NativeQueue<LogMessage>.ParallelWriter writer, LogLevel minimumLevel,
             Tagging.LogTag defaultTag = Tagging.LogTag.Job)
         {
             LogWriter = writer;
@@ -50,7 +50,7 @@ namespace AhBearStudios.Core.Logging.Jobs
         /// <param name="message">The message content.</param>
         /// <param name="properties">Structured properties to attach to the log message.</param>
         /// <param name="tag">The tag to categorize the log message.</param>
-        public void Log(byte level, in FixedString512Bytes message, in LogProperties properties,
+        public void Log(LogLevel level, in FixedString512Bytes message, in LogProperties properties,
             Tagging.LogTag tag = Tagging.LogTag.Undefined)
         {
             if (level < MinimumLevel)
@@ -71,7 +71,7 @@ namespace AhBearStudios.Core.Logging.Jobs
         /// <param name="message">The message content.</param>
         /// <param name="properties">Structured properties to attach to the log message.</param>
         /// <param name="customTag">A custom tag string.</param>
-        public void Log(byte level, in FixedString512Bytes message, in LogProperties properties,
+        public void Log(LogLevel level, in FixedString512Bytes message, in LogProperties properties,
             in FixedString32Bytes customTag)
         {
             if (level < MinimumLevel || customTag.IsEmpty)
@@ -91,7 +91,7 @@ namespace AhBearStudios.Core.Logging.Jobs
         public void LogDebug(in FixedString512Bytes message, in LogProperties properties,
             Tagging.LogTag tag = Tagging.LogTag.Undefined)
         {
-            Log((byte)Tagging.LogTag.Debug, message, properties, tag);
+            Log(LogLevel.Debug, message, properties, tag);
         }
 
         /// <summary>
@@ -103,7 +103,7 @@ namespace AhBearStudios.Core.Logging.Jobs
         public void LogInfo(in FixedString512Bytes message, in LogProperties properties,
             Tagging.LogTag tag = Tagging.LogTag.Undefined)
         {
-            Log((byte)Tagging.LogTag.Info, message, properties, tag);
+            Log(LogLevel.Info, message, properties, tag);
         }
 
         /// <summary>
@@ -115,7 +115,7 @@ namespace AhBearStudios.Core.Logging.Jobs
         public void LogWarning(in FixedString512Bytes message, in LogProperties properties,
             Tagging.LogTag tag = Tagging.LogTag.Undefined)
         {
-            Log((byte)Tagging.LogTag.Warning, message, properties, tag);
+            Log(LogLevel.Warning, message, properties, tag);
         }
 
         /// <summary>
@@ -127,7 +127,7 @@ namespace AhBearStudios.Core.Logging.Jobs
         public void LogError(in FixedString512Bytes message, in LogProperties properties,
             Tagging.LogTag tag = Tagging.LogTag.Undefined)
         {
-            Log((byte)Tagging.LogTag.Error, message, properties, tag);
+            Log(LogLevel.Error, message, properties, tag);
         }
 
         /// <summary>
@@ -139,7 +139,7 @@ namespace AhBearStudios.Core.Logging.Jobs
         public void LogCritical(in FixedString512Bytes message, in LogProperties properties,
             Tagging.LogTag tag = Tagging.LogTag.Undefined)
         {
-            Log((byte)Tagging.LogTag.Critical, message, properties, tag);
+            Log(LogLevel.Critical, message, properties, tag);
         }
     }
 }

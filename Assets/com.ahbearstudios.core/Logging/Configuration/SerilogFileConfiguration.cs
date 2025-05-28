@@ -2,7 +2,7 @@ using UnityEngine;
 using AhBearStudios.Core.Logging.LogTargets;
 using System.IO;
 
-namespace AhBearStudios.Core.Logging.Config
+namespace AhBearStudios.Core.Logging.Configuration
 {
     /// <summary>
     /// Configuration for Serilog file log targets.

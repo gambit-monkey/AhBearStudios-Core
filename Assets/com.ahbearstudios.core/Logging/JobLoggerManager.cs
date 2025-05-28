@@ -7,6 +7,8 @@ using AhBearStudios.Core.Logging.Data;
 using AhBearStudios.Core.Logging.Formatters;
 using AhBearStudios.Core.Logging.Jobs;
 using AhBearStudios.Core.Logging.Tags;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.MessageBus.Factories;
 
 namespace AhBearStudios.Core.Logging
 {
@@ -46,11 +48,16 @@ namespace AhBearStudios.Core.Logging
         /// The formatter used to format log messages.
         /// </summary>
         private readonly ILogFormatter _formatter;
+        
+        /// <summary>
+        /// The message bus used for publishing log-related events.
+        /// </summary>
+        private readonly IMessageBus _messageBus;
 
         /// <summary>
         /// Current global minimum log level across all targets.
         /// </summary>
-        private volatile byte _globalMinimumLevel;
+        private volatile LogLevel _globalMinimumLevel;
 
         /// <summary>
         /// Maximum messages to process per flush operation.
@@ -90,7 +97,7 @@ namespace AhBearStudios.Core.Logging
         /// <summary>
         /// Gets or sets the global minimum log level that will be processed.
         /// </summary>
-        public byte GlobalMinimumLevel
+        public LogLevel GlobalMinimumLevel
         {
             get => _globalMinimumLevel;
             set
@@ -120,10 +127,11 @@ namespace AhBearStudios.Core.Logging
         /// <param name="initialCapacity">Initial capacity of the log queue.</param>
         /// <param name="maxMessagesPerFlush">Maximum messages to process per flush operation.</param>
         /// <param name="globalMinimumLevel">Global minimum log level.</param>
+        /// <param name="messageBus">Optional message bus for publishing log-related events. If null, a default one will be created.</param>
         /// <exception cref="ArgumentNullException">Thrown when formatter is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when native resources cannot be initialized.</exception>
         public JobLoggerManager(ILogFormatter formatter, int initialCapacity = 64, int maxMessagesPerFlush = 200,
-            byte globalMinimumLevel = LogLevel.Info)
+            LogLevel globalMinimumLevel = LogLevel.Info, IMessageBus messageBus = null)
         {
             if (formatter == null)
                 throw new ArgumentNullException(nameof(formatter));
@@ -135,12 +143,15 @@ namespace AhBearStudios.Core.Logging
             _autoFlushEnabled = false;
             _autoFlushInterval = 1.0f;
             _timeSinceLastAutoFlush = 0f;
+            
+            // Initialize or use provided message bus
+            _messageBus = messageBus ?? CreateDefaultMessageBus();
 
             // Initialize native queue
             InitializeNativeQueue(initialCapacity);
 
             // Create the batch processor
-            _batchProcessor = new LogBatchProcessor(_logTargets, _logQueue, _formatter, _maxMessagesPerFlush);
+            _batchProcessor = new LogBatchProcessor(_logTargets, _logQueue, _formatter, _messageBus, _maxMessagesPerFlush);
         }
 
         /// <summary>
@@ -151,11 +162,13 @@ namespace AhBearStudios.Core.Logging
         /// <param name="initialCapacity">Initial capacity of the log queue.</param>
         /// <param name="maxMessagesPerFlush">Maximum messages to process per flush operation.</param>
         /// <param name="globalMinimumLevel">Global minimum log level.</param>
+        /// <param name="messageBus">Optional message bus for publishing log-related events. If null, a default one will be created.</param>
         /// <exception cref="ArgumentNullException">Thrown when formatter is null.</exception>
         /// <exception cref="ArgumentException">Thrown when initialTargets is null or empty.</exception>
         /// <exception cref="InvalidOperationException">Thrown when native resources cannot be initialized.</exception>
         public JobLoggerManager(IEnumerable<ILogTarget> initialTargets, ILogFormatter formatter,
-            int initialCapacity = 64, int maxMessagesPerFlush = 200, byte globalMinimumLevel = LogLevel.Info)
+            int initialCapacity = 64, int maxMessagesPerFlush = 200, LogLevel globalMinimumLevel = LogLevel.Info,
+            IMessageBus messageBus = null)
         {
             if (formatter == null)
                 throw new ArgumentNullException(nameof(formatter));
@@ -171,12 +184,15 @@ namespace AhBearStudios.Core.Logging
             _autoFlushEnabled = false;
             _autoFlushInterval = 1.0f;
             _timeSinceLastAutoFlush = 0f;
+            
+            // Initialize or use provided message bus
+            _messageBus = messageBus ?? CreateDefaultMessageBus();
 
             // Initialize native queue
             InitializeNativeQueue(initialCapacity);
 
             // Create the batch processor with the initial targets
-            _batchProcessor = new LogBatchProcessor(_logTargets, _logQueue, _formatter, _maxMessagesPerFlush);
+            _batchProcessor = new LogBatchProcessor(_logTargets, _logQueue, _formatter, _messageBus, _maxMessagesPerFlush);
 
             // Set minimum levels for all targets
             UpdateTargetMinimumLevels();
@@ -189,6 +205,7 @@ namespace AhBearStudios.Core.Logging
         /// <param name="initialCapacity">Initial capacity of the log queue.</param>
         /// <param name="maxMessagesPerFlush">Maximum messages to process per flush operation.</param>
         /// <param name="globalMinimumLevel">Global minimum log level.</param>
+        /// <param name="messageBus">Optional message bus for publishing log-related events. If null, a default one will be created.</param>
         /// <returns>A configured JobLoggerManager instance.</returns>
         /// <exception cref="ArgumentException">Thrown when targets is empty.</exception>
         /// <exception cref="InvalidOperationException">Thrown when native resources cannot be initialized.</exception>
@@ -196,10 +213,11 @@ namespace AhBearStudios.Core.Logging
             IEnumerable<ILogTarget> initialTargets,
             int initialCapacity = 64,
             int maxMessagesPerFlush = 200,
-            byte globalMinimumLevel = LogLevel.Info)
+            LogLevel globalMinimumLevel = LogLevel.Info,
+            IMessageBus messageBus = null)
         {
             return new JobLoggerManager(initialTargets, new DefaultLogFormatter(), initialCapacity, maxMessagesPerFlush,
-                globalMinimumLevel);
+                globalMinimumLevel, messageBus);
         }
 
         /// <summary>
@@ -208,13 +226,25 @@ namespace AhBearStudios.Core.Logging
         /// <param name="initialCapacity">Initial capacity of the log queue.</param>
         /// <param name="maxMessagesPerFlush">Maximum messages to process per flush operation.</param>
         /// <param name="globalMinimumLevel">Global minimum log level.</param>
+        /// <param name="messageBus">Optional message bus for publishing log-related events. If null, a default one will be created.</param>
         /// <returns>A configured JobLoggerManager instance.</returns>
         /// <exception cref="InvalidOperationException">Thrown when native resources cannot be initialized.</exception>
         public static JobLoggerManager CreateWithDefaultFormatter(int initialCapacity = 64,
-            int maxMessagesPerFlush = 200, byte globalMinimumLevel = LogLevel.Info)
+            int maxMessagesPerFlush = 200, LogLevel globalMinimumLevel = LogLevel.Info,
+            IMessageBus messageBus = null)
         {
             return new JobLoggerManager(new DefaultLogFormatter(), initialCapacity, maxMessagesPerFlush,
-                globalMinimumLevel);
+                globalMinimumLevel, messageBus);
+        }
+
+        /// <summary>
+        /// Creates a default message bus for logging.
+        /// </summary>
+        /// <returns>A configured message bus instance.</returns>
+        private static IMessageBus CreateDefaultMessageBus()
+        {
+            var config = MessageBusConfigFactory.CreateMinimalConfig("LoggingMessageBus");
+            return MessageBusFactory.CreateMessageBus(config);
         }
 
         /// <summary>
@@ -305,13 +335,13 @@ namespace AhBearStudios.Core.Logging
         /// <param name="defaultTag">Default tag to use when none is specified.</param>
         /// <returns>A configured JobLogger ready for use in jobs.</returns>
         /// <exception cref="ObjectDisposedException">Thrown if the manager has been disposed.</exception>
-        public JobLogger CreateJobLogger(byte? minimumLevel = null, Tagging.LogTag defaultTag = default)
+        public JobLogger CreateJobLogger(LogLevel? minimumLevel = null, Tagging.LogTag defaultTag = default)
         {
             if (_isDisposed)
                 throw new ObjectDisposedException(nameof(JobLoggerManager));
 
             // Determine the actual minimum level to use
-            byte actualMinLevel = minimumLevel.HasValue ? minimumLevel.Value : _globalMinimumLevel;
+            LogLevel actualMinLevel = minimumLevel ?? _globalMinimumLevel;
 
             // Use a default tag if none is provided
             if (defaultTag == default)
@@ -482,7 +512,7 @@ namespace AhBearStudios.Core.Logging
         /// <param name="tag">The log tag.</param>
         /// <param name="message">The message text.</param>
         /// <param name="properties">Optional structured log properties.</param>
-        public void Log(byte level, Tagging.LogTag tag, string message, LogProperties properties = default)
+        public void Log(LogLevel level, Tagging.LogTag tag, string message, LogProperties properties = default)
         {
             // Early exits for common conditions to avoid unnecessary work
             if (_isDisposed || level < _globalMinimumLevel || string.IsNullOrEmpty(message))

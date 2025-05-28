@@ -4,9 +4,10 @@ using System.Diagnostics;
 using Unity.Collections;
 using Unity.Burst;
 using AhBearStudios.Core.Logging.Data;
-using AhBearStudios.Core.Logging.Events;
 using AhBearStudios.Core.Logging.Formatters;
 using AhBearStudios.Core.Logging.Tags;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.Logging.Messages;
 
 namespace AhBearStudios.Core.Logging
 {
@@ -72,6 +73,11 @@ namespace AhBearStudios.Core.Logging
         /// Size of the last processed batch, used for adaptive buffer sizing.
         /// </summary>
         private int _lastBatchSize;
+
+        /// <summary>
+        /// Message bus for publishing log-related messages.
+        /// </summary>
+        private readonly IMessageBus _messageBus;
         
         #region Multi-target Constructors
 
@@ -80,11 +86,12 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         /// <param name="targets">Collection of log targets to receive messages.</param>
         /// <param name="formatter">Custom formatter to format log messages.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
         /// <param name="initialCapacity">Initial capacity for the internal queue.</param>
         /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation.</param>
-        /// <exception cref="ArgumentNullException">Thrown if targets or formatter is null.</exception>
+        /// <exception cref="ArgumentNullException">Thrown if targets, formatter, or messageBus is null.</exception>
         /// <exception cref="ArgumentException">Thrown if targets collection is empty.</exception>
-        public LogBatchProcessor(IEnumerable<ILogTarget> targets, ILogFormatter formatter, int initialCapacity = 64, int maxMessagesPerFlush = 200)
+        public LogBatchProcessor(IEnumerable<ILogTarget> targets, ILogFormatter formatter, IMessageBus messageBus, int initialCapacity = 64, int maxMessagesPerFlush = 200)
         {
             if (formatter == null)
                 throw new ArgumentNullException(nameof(formatter));
@@ -92,10 +99,14 @@ namespace AhBearStudios.Core.Logging
             if (targets == null)
                 throw new ArgumentNullException(nameof(targets));
 
+            if (messageBus == null)
+                throw new ArgumentNullException(nameof(messageBus));
+
             _isLegacyMode = false;
             _burstLogger = null;
             _formatter = formatter;
             _lastBatchSize = 0;
+            _messageBus = messageBus;
             
             // Create owned collections
             _targets = new List<ILogTarget>();
@@ -123,10 +134,11 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         /// <param name="target">Log target to receive messages.</param>
         /// <param name="formatter">Custom formatter to format log messages.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
         /// <param name="initialCapacity">Initial capacity for the internal queue.</param>
         /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation.</param>
-        /// <exception cref="ArgumentNullException">Thrown if target or formatter is null.</exception>
-        public LogBatchProcessor(ILogTarget target, ILogFormatter formatter, int initialCapacity = 64, int maxMessagesPerFlush = 200)
+        /// <exception cref="ArgumentNullException">Thrown if target, formatter, or messageBus is null.</exception>
+        public LogBatchProcessor(ILogTarget target, ILogFormatter formatter, IMessageBus messageBus, int initialCapacity = 64, int maxMessagesPerFlush = 200)
         {
             if (target == null)
                 throw new ArgumentNullException(nameof(target));
@@ -134,10 +146,14 @@ namespace AhBearStudios.Core.Logging
             if (formatter == null)
                 throw new ArgumentNullException(nameof(formatter));
 
+            if (messageBus == null)
+                throw new ArgumentNullException(nameof(messageBus));
+
             _isLegacyMode = false;
             _burstLogger = null;
             _formatter = formatter;
             _lastBatchSize = 0;
+            _messageBus = messageBus;
             
             // Create owned collections
             _targets = new List<ILogTarget> { target };
@@ -156,10 +172,11 @@ namespace AhBearStudios.Core.Logging
         /// <param name="targets">Collection of log targets to receive messages.</param>
         /// <param name="queue">Queue of messages to process.</param>
         /// <param name="formatter">Custom formatter to format log messages.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
         /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation.</param>
-        /// <exception cref="ArgumentNullException">Thrown if targets or formatter is null.</exception>
+        /// <exception cref="ArgumentNullException">Thrown if targets, formatter, or messageBus is null.</exception>
         /// <exception cref="ArgumentException">Thrown if targets collection is empty.</exception>
-        public LogBatchProcessor(IEnumerable<ILogTarget> targets, NativeQueue<LogMessage> queue, ILogFormatter formatter, int maxMessagesPerFlush = 200)
+        public LogBatchProcessor(IEnumerable<ILogTarget> targets, NativeQueue<LogMessage> queue, ILogFormatter formatter, IMessageBus messageBus, int maxMessagesPerFlush = 200)
         {
             if (formatter == null)
                 throw new ArgumentNullException(nameof(formatter));
@@ -167,10 +184,14 @@ namespace AhBearStudios.Core.Logging
             if (targets == null)
                 throw new ArgumentNullException(nameof(targets));
 
+            if (messageBus == null)
+                throw new ArgumentNullException(nameof(messageBus));
+
             _isLegacyMode = false;
             _burstLogger = null;
             _formatter = formatter;
             _lastBatchSize = 0;
+            _messageBus = messageBus;
             
             // Create owned targets list
             _targets = new List<ILogTarget>();
@@ -205,12 +226,14 @@ namespace AhBearStudios.Core.Logging
         /// <param name="burstLogger">Legacy logger to send processed messages to.</param>
         /// <param name="queue">Queue of messages to process.</param>
         /// <param name="formatter">Custom formatter to format log messages.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
         /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation.</param>
-        /// <exception cref="ArgumentNullException">Thrown if burstLogger or formatter is null.</exception>
-        public LogBatchProcessor(IBurstLogger burstLogger, NativeQueue<LogMessage> queue, ILogFormatter formatter, int maxMessagesPerFlush = 200)
+        /// <exception cref="ArgumentNullException">Thrown if burstLogger, formatter, or messageBus is null.</exception>
+        public LogBatchProcessor(IBurstLogger burstLogger, NativeQueue<LogMessage> queue, ILogFormatter formatter, IMessageBus messageBus, int maxMessagesPerFlush = 200)
         {
             _burstLogger = burstLogger ?? throw new ArgumentNullException(nameof(burstLogger));
             _formatter = formatter ?? throw new ArgumentNullException(nameof(formatter));
+            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
             
             _isLegacyMode = true;
             _targets = new List<ILogTarget>();
@@ -229,13 +252,15 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         /// <param name="burstLogger">Legacy logger to send processed messages to.</param>
         /// <param name="formatter">Custom formatter to format log messages.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
         /// <param name="initialCapacity">Initial capacity for the internal queue.</param>
         /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation.</param>
-        /// <exception cref="ArgumentNullException">Thrown if burstLogger or formatter is null.</exception>
-        public LogBatchProcessor(IBurstLogger burstLogger, ILogFormatter formatter, int initialCapacity = 64, int maxMessagesPerFlush = 200)
+        /// <exception cref="ArgumentNullException">Thrown if burstLogger, formatter, or messageBus is null.</exception>
+        public LogBatchProcessor(IBurstLogger burstLogger, ILogFormatter formatter, IMessageBus messageBus, int initialCapacity = 64, int maxMessagesPerFlush = 200)
         {
             _burstLogger = burstLogger ?? throw new ArgumentNullException(nameof(burstLogger));
             _formatter = formatter ?? throw new ArgumentNullException(nameof(formatter));
+            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
             
             _isLegacyMode = true;
             _targets = new List<ILogTarget>();
@@ -256,34 +281,38 @@ namespace AhBearStudios.Core.Logging
         /// Creates a new LogBatchProcessor instance with multiple targets and default formatter.
         /// </summary>
         /// <param name="targets">Collection of log targets to receive messages.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
         /// <param name="initialCapacity">Initial capacity for the internal queue.</param>
         /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation.</param>
         /// <exception cref="ArgumentException">Thrown if targets collection is empty.</exception>
         /// <returns>A new LogBatchProcessor instance.</returns>
         public static LogBatchProcessor CreateWithDefaultFormatter(
             IEnumerable<ILogTarget> targets,
+            IMessageBus messageBus,
             int initialCapacity = 64, 
             int maxMessagesPerFlush = 200)
         {
             var defaultFormatter = new DefaultLogFormatter();
-            return new LogBatchProcessor(targets, defaultFormatter, initialCapacity, maxMessagesPerFlush);
+            return new LogBatchProcessor(targets, defaultFormatter, messageBus, initialCapacity, maxMessagesPerFlush);
         }
         
         /// <summary>
         /// Creates a new LogBatchProcessor instance with a single target and default formatter.
         /// </summary>
         /// <param name="target">Log target to receive messages.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
         /// <param name="initialCapacity">Initial capacity for the internal queue.</param>
         /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation.</param>
         /// <exception cref="ArgumentNullException">Thrown if target is null.</exception>
         /// <returns>A new LogBatchProcessor instance.</returns>
         public static LogBatchProcessor CreateWithDefaultFormatter(
             ILogTarget target,
+            IMessageBus messageBus,
             int initialCapacity = 64, 
             int maxMessagesPerFlush = 200)
         {
             var defaultFormatter = new DefaultLogFormatter();
-            return new LogBatchProcessor(target, defaultFormatter, initialCapacity, maxMessagesPerFlush);
+            return new LogBatchProcessor(target, defaultFormatter, messageBus, initialCapacity, maxMessagesPerFlush);
         }
         
         /// <summary>
@@ -293,16 +322,18 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         /// <param name="burstLogger">Legacy logger to send processed messages to.</param>
         /// <param name="queue">Queue of messages to process.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
         /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation.</param>
         /// <exception cref="ArgumentNullException">Thrown if burstLogger is null.</exception>
         /// <returns>A new LogBatchProcessor instance.</returns>
         public static LogBatchProcessor CreateWithDefaultFormatter(
             IBurstLogger burstLogger, 
-            NativeQueue<LogMessage> queue, 
+            NativeQueue<LogMessage> queue,
+            IMessageBus messageBus,
             int maxMessagesPerFlush = 200)
         {
             var defaultFormatter = new DefaultLogFormatter();
-            return new LogBatchProcessor(burstLogger, queue, defaultFormatter, maxMessagesPerFlush);
+            return new LogBatchProcessor(burstLogger, queue, defaultFormatter, messageBus, maxMessagesPerFlush);
         }
         
         /// <summary>
@@ -311,17 +342,19 @@ namespace AhBearStudios.Core.Logging
         /// Uses legacy IBurstLogger interface for backward compatibility.
         /// </summary>
         /// <param name="burstLogger">Legacy logger to send processed messages to.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
         /// <param name="initialCapacity">Initial capacity for the internal queue.</param>
         /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation.</param>
         /// <exception cref="ArgumentNullException">Thrown if burstLogger is null.</exception>
         /// <returns>A new LogBatchProcessor instance.</returns>
         public static LogBatchProcessor CreateWithDefaultFormatter(
-            IBurstLogger burstLogger, 
+            IBurstLogger burstLogger,
+            IMessageBus messageBus,
             int initialCapacity = 64, 
             int maxMessagesPerFlush = 200)
         {
             var defaultFormatter = new DefaultLogFormatter();
-            return new LogBatchProcessor(burstLogger, defaultFormatter, initialCapacity, maxMessagesPerFlush);
+            return new LogBatchProcessor(burstLogger, defaultFormatter, messageBus, initialCapacity, maxMessagesPerFlush);
         }
         
         #endregion
@@ -381,14 +414,14 @@ namespace AhBearStudios.Core.Logging
                 
             _queue.Enqueue(message);
             
-            // Notify about message received
+            // Publish a message about message received
             try
             {
-                LogEvents.RaiseMessageReceived(this, message);
+                _messageBus.PublishMessage(new LogEntryReceivedMessage(message));
             }
             catch
             {
-                // Silently continue if event handling fails
+                // Silently continue if message publishing fails
             }
         }
         
@@ -446,14 +479,14 @@ namespace AhBearStudios.Core.Logging
             stopwatch.Stop();
             float processingTimeMs = stopwatch.ElapsedMilliseconds;
             
-            // Notify about batch processing
+            // Publish a message about batch processing
             try
             {
-                LogEvents.RaiseBatchProcessed(this, count, _queue.Count, processingTimeMs);
+                _messageBus.PublishMessage(new LogProcessingMessage(count, _queue.Count, processingTimeMs));
             }
             catch
             {
-                // Silently continue if event handling fails
+                // Silently continue if message publishing fails
             }
             
             return count;
@@ -493,16 +526,16 @@ namespace AhBearStudios.Core.Logging
                     }
                 }
         
-                // Notify about each processed message
+                // Publish message for each processed log message
                 foreach (var message in _batchBuffer)
                 {
                     try
                     {
-                        LogEvents.RaiseMessageProcessed(message);
+                        _messageBus.PublishMessage(new LogEntryWrittenMessage(message, _targets.Count));
                     }
                     catch
                     {
-                        // Silently continue if event handling fails
+                        // Silently continue if message publishing fails
                     }
                 }
             }
@@ -530,14 +563,14 @@ namespace AhBearStudios.Core.Logging
                     // Convert to string for the burstLogger interface
                     _burstLogger.Log(log.Level, formattedMessage.ToString(), log.GetTagString().ToString());
                     
-                    // Notify that message was processed
+                    // Publish message about processing
                     try
                     {
-                        LogEvents.RaiseMessageProcessed(log);
+                        _messageBus.PublishMessage(new LogEntryWrittenMessage(log, 1));
                     }
                     catch
                     {
-                        // Silently continue if event handling fails
+                        // Silently continue if message publishing fails
                     }
                     
                     count++;

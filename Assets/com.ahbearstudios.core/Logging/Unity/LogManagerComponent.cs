@@ -1,13 +1,12 @@
-
 using System;
 using System.Collections.Generic;
-using System.IO;
-using AhBearStudios.Core.Logging.Adapters;
 using UnityEngine;
-using AhBearStudios.Core.Logging.Config;
-using AhBearStudios.Core.Logging.LogTargets;
-using AhBearStudios.Core.Logging.Unity;
+using AhBearStudios.Core.Logging.Adapters;
+using AhBearStudios.Core.Logging.Configuration;
 using AhBearStudios.Core.Logging.Formatters;
+using AhBearStudios.Core.Logging.LogTargets;
+using AhBearStudios.Core.Logging.Tags;
+using AhBearStudios.Core.Logging.Unity;
 
 namespace AhBearStudios.Core.Logging
 {
@@ -17,12 +16,18 @@ namespace AhBearStudios.Core.Logging
     /// </summary>
     public class LogManagerComponent : MonoBehaviour
     {
-        [Tooltip("Main configuration for the log manager")] [SerializeField]
-        private LogManagerConfig _config;
+        #region Serialized Fields
+        
+        [Tooltip("Main configuration for the log manager")]
+        [SerializeField] private LogManagerConfig _config;
 
-        [Tooltip("Log target configurations to initialize")] [SerializeField]
-        private LogTargetConfig[] _logTargetConfigs = new LogTargetConfig[0];
-
+        [Tooltip("Log target configurations to initialize")]
+        [SerializeField] private LogTargetConfig[] _logTargetConfigs = Array.Empty<LogTargetConfig>();
+        
+        #endregion
+        
+        #region Private Fields
+        
         /// <summary>
         /// The logger manager instance.
         /// </summary>
@@ -37,17 +42,51 @@ namespace AhBearStudios.Core.Logging
         /// List of log targets added to the manager.
         /// </summary>
         private readonly List<ILogTarget> _ownedTargets = new List<ILogTarget>();
-
+        
+        /// <summary>
+        /// Auto-flush timer.
+        /// </summary>
+        private float _autoFlushTimer;
+        
+        /// <summary>
+        /// Auto-flush interval.
+        /// </summary>
+        private float _autoFlushInterval;
+        
+        /// <summary>
+        /// Flag indicating if auto-flush is enabled.
+        /// </summary>
+        private bool _autoFlushEnabled;
+        
+        /// <summary>
+        /// The default log formatter.
+        /// </summary>
+        private ILogFormatter _defaultFormatter;
+        
+        #endregion
+        
+        #region Public Properties
+        
         /// <summary>
         /// Gets the logger manager instance.
         /// </summary>
         public JobLoggerManager LoggerManager => _loggerManager;
-
+        
+        /// <summary>
+        /// Gets the Unity logger adapter instance.
+        /// </summary>
+        public UnityLoggerAdapter UnityLoggerAdapter => _unityLoggerAdapter;
+        
+        #endregion
+        
+        #region Unity Lifecycle Methods
+        
         /// <summary>
         /// Initialize the log manager and its targets.
         /// </summary>
         private void Awake()
         {
+            _defaultFormatter = new DefaultLogFormatter();
             InitializeLogManager();
         }
 
@@ -56,12 +95,38 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         private void Update()
         {
-            if (_loggerManager != null)
+            if (_loggerManager != null && _autoFlushEnabled)
             {
-                _loggerManager.Update(Time.deltaTime);
+                _autoFlushTimer += Time.deltaTime;
+                
+                if (_autoFlushTimer >= _autoFlushInterval)
+                {
+                    _loggerManager.Flush();
+                    _autoFlushTimer = 0f;
+                }
             }
         }
-
+        
+        /// <summary>
+        /// Clean up resources when the component is destroyed.
+        /// </summary>
+        private void OnDestroy()
+        {
+            CleanupLogManager();
+        }
+        
+        /// <summary>
+        /// Ensure cleanup when application quits.
+        /// </summary>
+        private void OnApplicationQuit()
+        {
+            CleanupLogManager();
+        }
+        
+        #endregion
+        
+        #region Initialization Methods
+        
         /// <summary>
         /// Initialize the log manager and configure its targets.
         /// </summary>
@@ -70,104 +135,108 @@ namespace AhBearStudios.Core.Logging
             // Create a list to hold initial targets
             var initialTargets = new List<ILogTarget>();
 
-            // Track if we've created a manager that needs to be disposed in case of exception
-            JobLoggerManager tempManager = null;
-
             try
             {
-                // Check if we have a config
-                if (_config == null)
+                // Create default target if no config or no targets
+                if (_config == null || _logTargetConfigs == null || _logTargetConfigs.Length == 0)
                 {
-                    UnityEngine.Debug.LogWarning("No LogManagerConfig assigned. Using default settings.");
-
+                    Debug.LogWarning("No LogManagerConfig or targets assigned. Using default settings.");
+                    
                     // Create a Unity Console target as the default target
-                    var defaultTarget = new UnityConsoleTarget("DefaultUnityConsole", LogLevel.Error);
+                    var defaultTarget = CreateDefaultTarget();
                     initialTargets.Add(defaultTarget);
                     _ownedTargets.Add(defaultTarget);
                 }
                 
-                // If no targets are configured, add a default Unity console target
-                if (initialTargets.Count == 0)
-                {
-                    var defaultTarget = new UnityConsoleTarget("DefaultUnityConsole",
-                        _config != null ? _config.MinimumLevel : LogLevel.Error);
-                    initialTargets.Add(defaultTarget);
-                    _ownedTargets.Add(defaultTarget);
-                    UnityEngine.Debug.LogWarning("No log targets were enabled. Adding default Unity console target.");
-                }
-
-                // Create the formatter
-                var formatter = new DefaultLogFormatter();
-
-                // Get configuration values
-                int initialCapacity = _config?.InitialQueueCapacity ?? 64;
-                int maxMessagesPerBatch = _config?.MaxMessagesPerBatch ?? 200;
-                byte minimumLevel = _config?.MinimumLevel ?? LogLevel.Info;
-
-                // Create the log manager with initial targets
-                try
-                {
-                    tempManager = new JobLoggerManager(
-                        initialTargets,
-                        formatter,
-                        initialCapacity,
-                        maxMessagesPerBatch,
-                        minimumLevel
-                    );
-
-                    // Configure auto-flush
-                    if (_config?.EnableAutoFlush ?? true)
-                    {
-                        float autoFlushInterval = _config?.AutoFlushInterval ?? 0.5f;
-                        tempManager.EnableAutoFlush(autoFlushInterval);
-                    }
-
-                    // Only assign to the member variable after successful initialization
-                    _loggerManager = tempManager;
-                    tempManager = null; // Clear temp reference so we don't dispose it
-
-                    // Initialize custom log targets from configurations after manager is successfully created
-                    InitializeCustomLogTargets();
-                    
-                    // Initialize Unity Logger Adapter
-                    InitializeUnityLoggerIntegration();
-                }
-                catch (Exception ex)
-                {
-                    // Specific handling for manager creation failure
-                    UnityEngine.Debug.LogError($"Failed to create JobLoggerManager: {ex.Message}");
-
-                    // Clean up any targets we've already created
-                    CleanupTargets(initialTargets);
-
-                    throw; // Re-throw to be caught by outer try/catch
-                }
+                // Create the log manager
+                CreateLoggerManager(initialTargets);
+                
+                // Initialize custom log targets from configurations
+                InitializeCustomLogTargets();
+                
+                // Initialize Unity Logger Integration
+                InitializeUnityLoggerIntegration();
+                
+                // Configure auto-flush
+                ConfigureAutoFlush();
             }
             catch (Exception ex)
             {
                 // Clean up any resources that might have been created
                 CleanupTargets(initialTargets);
+                
+                Debug.LogError($"Failed to initialize log system: {ex.Message}");
 
-                // Dispose the temporary manager if it was created and not assigned to _loggerManager
-                if (tempManager != null)
-                {
-                    try
-                    {
-                        tempManager.Dispose();
-                    }
-                    catch (Exception disposeEx)
-                    {
-                        UnityEngine.Debug.LogError($"Error disposing temporary log manager: {disposeEx.Message}");
-                    }
-                }
-
-                UnityEngine.Debug.LogError($"Failed to initialize log system: {ex.Message}");
-
-                // Instead of rethrowing, create a fallback minimal logger for critical messages
+                // Create a fallback minimal logger for critical messages
                 CreateFallbackLogger();
             }
         }
-
+        
+        /// <summary>
+        /// Creates the JobLoggerManager instance.
+        /// </summary>
+        /// <param name="initialTargets">Initial log targets to use.</param>
+        private void CreateLoggerManager(List<ILogTarget> initialTargets)
+        {
+            // Get configuration values
+            int initialCapacity = _config?.InitialQueueCapacity ?? 64;
+            int maxMessagesPerBatch = _config?.MaxMessagesPerBatch ?? 200;
+            LogLevel minimumLevel = _config?.MinimumLevel ?? LogLevel.Info;
+            
+            try
+            {
+                _loggerManager = new JobLoggerManager(
+                    _defaultFormatter, 
+                    initialCapacity,
+                    maxMessagesPerBatch,
+                    minimumLevel
+                );
+                
+                // Add initial targets
+                foreach (var target in initialTargets)
+                {
+                    _loggerManager.AddTarget(target);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to create JobLoggerManager: {ex.Message}");
+                
+                // Clean up any targets we've already created
+                CleanupTargets(initialTargets);
+                
+                throw; // Re-throw to be caught by outer try/catch
+            }
+        }
+        
+        /// <summary>
+        /// Creates a default console target when no configuration is provided.
+        /// </summary>
+        /// <returns>A default console log target.</returns>
+        private ILogTarget CreateDefaultTarget()
+        {
+            return new UnityConsoleTarget(
+                "DefaultUnityConsole",
+                _config?.MinimumLevel ?? LogLevel.Error
+            );
+        }
+        
+        /// <summary>
+        /// Configures auto-flush settings from the configuration.
+        /// </summary>
+        private void ConfigureAutoFlush()
+        {
+            if (_config == null || !_config.EnableAutoFlush) 
+            {
+                _autoFlushEnabled = false;
+                return;
+            }
+            
+            _autoFlushEnabled = true;
+            _autoFlushInterval = _config.AutoFlushInterval;
+            _autoFlushTimer = 0f;
+        }
+        
         /// <summary>
         /// Initializes integration with Unity's logging system by setting up the UnityLoggerAdapter.
         /// </summary>
@@ -179,30 +248,7 @@ namespace AhBearStudios.Core.Logging
             try
             {
                 // Find any UnityConsoleLogConfig in the target configs
-                UnityConsoleLogConfig unityConfig = null;
-                foreach (var config in _logTargetConfigs)
-                {
-                    if (config is UnityConsoleLogConfig consoleConfig)
-                    {
-                        unityConfig = consoleConfig;
-                        break;
-                    }
-                }
-                
-                // If no config was found among targets, try to find one in the project
-                if (unityConfig == null)
-                {
-                    unityConfig = Resources.FindObjectsOfTypeAll<UnityConsoleLogConfig>().Length > 0 
-                        ? Resources.FindObjectsOfTypeAll<UnityConsoleLogConfig>()[0] 
-                        : null;
-                }
-                
-                // If still no config, create a default one
-                if (unityConfig == null)
-                {
-                    Debug.Log("No UnityConsoleLogConfig found. Using default settings for Unity log integration.");
-                    // We don't create a ScriptableObject here to avoid editor-only functionality at runtime
-                }
+                UnityConsoleLogConfig unityConfig = FindUnityConsoleLogConfig();
                 
                 // Create an adapter from JobLogger to IBurstLogger
                 var burstLoggerAdapter = new JobLoggerToBurstAdapter(_loggerManager);
@@ -221,7 +267,34 @@ namespace AhBearStudios.Core.Logging
                 Debug.LogError($"Failed to initialize Unity logger integration: {ex.Message}");
             }
         }
-
+        
+        /// <summary>
+        /// Finds or creates a UnityConsoleLogConfig to use for Unity logger integration.
+        /// </summary>
+        /// <returns>A UnityConsoleLogConfig instance or null.</returns>
+        private UnityConsoleLogConfig FindUnityConsoleLogConfig()
+        {
+            // Find in target configs first
+            foreach (var config in _logTargetConfigs)
+            {
+                if (config is UnityConsoleLogConfig consoleConfig)
+                {
+                    return consoleConfig;
+                }
+            }
+            
+            // Then try to find one in the project
+            var foundConfigs = Resources.FindObjectsOfTypeAll<UnityConsoleLogConfig>();
+            if (foundConfigs.Length > 0)
+            {
+                return foundConfigs[0];
+            }
+            
+            // None found
+            Debug.Log("No UnityConsoleLogConfig found. Using default settings for Unity log integration.");
+            return null;
+        }
+        
         /// <summary>
         /// Creates a minimal fallback logger when normal initialization fails.
         /// This ensures we have at least a basic logging capability even after errors.
@@ -235,28 +308,124 @@ namespace AhBearStudios.Core.Logging
                 _ownedTargets.Add(fallbackTarget);
 
                 // Create a very simple logger with minimal configuration
-                var targets = new List<ILogTarget> { fallbackTarget };
                 _loggerManager = new JobLoggerManager(
-                    targets,
                     new DefaultLogFormatter(),
-                    16, // Small queue size
-                    50, // Small batch size
-                    LogLevel.Error // Only log errors and critical messages
+                    16,  // Small queue size
+                    50,  // Small batch size
+                    LogLevel.Error  // Only log errors and critical messages
                 );
+                
+                _loggerManager.AddTarget(fallbackTarget);
+                
+                // Configure minimal auto-flush
+                _autoFlushEnabled = true;
+                _autoFlushInterval = 1.0f;
+                _autoFlushTimer = 0f;
 
-                _loggerManager.EnableAutoFlush(1.0f);
-
-                UnityEngine.Debug.LogWarning("Using fallback logger due to initialization errors.");
+                Debug.LogWarning("Using fallback logger due to initialization errors.");
             }
             catch (Exception ex)
             {
-                UnityEngine.Debug.LogError($"Failed to create fallback logger: {ex.Message}");
+                Debug.LogError($"Failed to create fallback logger: {ex.Message}");
                 // At this point we give up on logging
             }
         }
-
+        
         /// <summary>
-        /// Helper method to clean up targets in case of initialization failure.
+        /// Initializes custom log targets from configurations.
+        /// </summary>
+        private void InitializeCustomLogTargets()
+        {
+            if (_logTargetConfigs == null || _logTargetConfigs.Length == 0 || _loggerManager == null)
+            {
+                return;
+            }
+
+            foreach (var config in _logTargetConfigs)
+            {
+                if (config == null)
+                    continue;
+
+                try
+                {
+                    // Create the target from configuration
+                    var target = config.CreateTarget();
+                    if (target == null)
+                        continue;
+
+                    // Add it to the manager
+                    _loggerManager.AddTarget(target);
+                    _ownedTargets.Add(target);
+
+                    Debug.Log($"Initialized custom log target: {target.Name}");
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"Failed to initialize log target from config {config.name}: {ex.Message}");
+                }
+            }
+        }
+        
+        #endregion
+        
+        #region Cleanup Methods
+        
+        /// <summary>
+        /// Clean up the log manager and its targets.
+        /// </summary>
+        private void CleanupLogManager()
+        {
+            // Avoid multiple cleanup calls
+            if (_loggerManager == null)
+                return;
+                
+            // Dispose the Unity logger adapter if it exists
+            if (_unityLoggerAdapter != null)
+            {
+                try
+                {
+                    _unityLoggerAdapter.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"Error disposing Unity logger adapter: {ex.Message}");
+                }
+                finally
+                {
+                    _unityLoggerAdapter = null;
+                }
+            }
+            
+            // Flush any remaining logs
+            try
+            {
+                _loggerManager.Flush();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error during final log flush: {ex.Message}");
+            }
+
+            // Create a copy of the owned targets for safe cleanup
+            CleanupTargets(_ownedTargets);
+
+            // Dispose the manager - this will release the native resources
+            try
+            {
+                _loggerManager.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Error disposing logger manager: {ex.Message}");
+            }
+            finally
+            {
+                _loggerManager = null;
+            }
+        }
+        
+        /// <summary>
+        /// Helper method to clean up targets.
         /// </summary>
         /// <param name="targets">List of targets to dispose.</param>
         private void CleanupTargets(List<ILogTarget> targets)
@@ -283,142 +452,21 @@ namespace AhBearStudios.Core.Logging
                 }
                 catch (Exception ex)
                 {
-                    UnityEngine.Debug.LogError($"Error disposing log target {target?.GetType().Name}: {ex.Message}");
-                }
-            }
-        }
-
-        /// <summary>
-        /// Clean up the log manager and its targets.
-        /// </summary>
-        private void CleanupLogManager()
-        {
-            // Dispose the Unity logger adapter if it exists
-            if (_unityLoggerAdapter != null)
-            {
-                try
-                {
-                    _unityLoggerAdapter.Dispose();
-                    _unityLoggerAdapter = null;
-                }
-                catch (Exception ex)
-                {
-                    UnityEngine.Debug.LogError($"Error disposing Unity logger adapter: {ex.Message}");
+                    Debug.LogError($"Error disposing log target {target?.GetType().Name}: {ex.Message}");
                 }
             }
             
-            if (_loggerManager != null)
+            // If we're cleaning up _ownedTargets, ensure it's cleared
+            if (targets == _ownedTargets)
             {
-                // Flush any remaining logs
-                try
-                {
-                    _loggerManager.Flush();
-                }
-                catch (Exception ex)
-                {
-                    UnityEngine.Debug.LogError($"Error during final log flush: {ex.Message}");
-                }
-
-                // Create a copy of the owned targets for safe cleanup
-                var targetsToCleanup = new List<ILogTarget>(_ownedTargets);
-
-                // Dispose owned targets - using a copy to avoid modification during enumeration
-                foreach (var target in targetsToCleanup)
-                {
-                    try
-                    {
-                        if (target != null)
-                        {
-                            target.Dispose();
-                            _ownedTargets.Remove(target);
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        UnityEngine.Debug.LogError(
-                            $"Error disposing log target {target?.GetType().Name}: {ex.Message}");
-                    }
-                }
-
-                // Ensure _ownedTargets is now empty
                 _ownedTargets.Clear();
-
-                // Dispose the manager - this will release the native resources
-                try
-                {
-                    _loggerManager.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    UnityEngine.Debug.LogError($"Error disposing logger manager: {ex.Message}");
-                }
-                finally
-                {
-                    _loggerManager = null;
-                }
             }
         }
-
-        /// <summary>
-        /// Clean up resources when the component is destroyed.
-        /// </summary>
-        private void OnDestroy()
-        {
-            CleanupLogManager();
-        }
-
-        /// <summary>
-        /// Resolves a file path, making it absolute if it's relative.
-        /// </summary>
-        /// <param name="path">The file path to resolve.</param>
-        /// <returns>The resolved absolute path.</returns>
-        private string ResolveFilePath(string path)
-        {
-            if (string.IsNullOrEmpty(path))
-                return Path.Combine(Application.persistentDataPath, "Logs/app.log");
-
-            // If the path is relative, combine it with the application's persistent data path
-            if (!Path.IsPathRooted(path))
-            {
-                return Path.Combine(Application.persistentDataPath, path);
-            }
-
-            return path;
-        }
-
-        /// <summary>
-        /// Initializes custom log targets from configurations.
-        /// </summary>
-        private void InitializeCustomLogTargets()
-        {
-            if (_logTargetConfigs == null || _logTargetConfigs.Length == 0)
-            {
-                return;
-            }
-
-            foreach (var config in _logTargetConfigs)
-            {
-                if (config == null)
-                    continue;
-
-                try
-                {
-                    // Create the target from configuration
-                    var target = config.CreateTarget();
-
-                    // Add it to the manager
-                    _loggerManager.AddTarget(target);
-                    _ownedTargets.Add(target);
-
-                    Debug.Log($"Initialized custom log target: {target.Name}");
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"Failed to initialize log target from config {config.name}: {ex.Message}");
-                }
-            }
-        }
-
+        
+        #endregion
+        
+        #region Public API
+        
         /// <summary>
         /// Manually flushes any queued log messages.
         /// </summary>
@@ -460,8 +508,11 @@ namespace AhBearStudios.Core.Logging
             if (_loggerManager != null)
             {
                 var target = config.CreateTarget();
-                _loggerManager.AddTarget(target);
-                _ownedTargets.Add(target);
+                if (target != null)
+                {
+                    _loggerManager.AddTarget(target);
+                    _ownedTargets.Add(target);
+                }
             }
         }
 
@@ -498,7 +549,7 @@ namespace AhBearStudios.Core.Logging
         /// Sets the global minimum log level for all targets.
         /// </summary>
         /// <param name="level">The new minimum log level.</param>
-        public void SetGlobalMinimumLevel(byte level)
+        public void SetGlobalMinimumLevel(LogLevel level)
         {
             if (_loggerManager != null)
             {
@@ -512,7 +563,7 @@ namespace AhBearStudios.Core.Logging
         /// <param name="minimumLevel">Optional minimum level override for this logger.</param>
         /// <param name="defaultTag">Default tag to use when none is specified.</param>
         /// <returns>A configured JobLogger.</returns>
-        public Jobs.JobLogger CreateJobLogger(byte? minimumLevel = null, Tags.Tagging.LogTag defaultTag = default)
+        public Jobs.JobLogger CreateJobLogger(LogLevel? minimumLevel = null, Tagging.LogTag defaultTag = default)
         {
             if (_loggerManager == null)
             {
@@ -526,7 +577,7 @@ namespace AhBearStudios.Core.Logging
             }
             else if (defaultTag == default)
             {
-                defaultTag = Tags.Tagging.LogTag.Job; // Fallback default
+                defaultTag = Tagging.LogTag.Job; // Fallback default
             }
 
             return _loggerManager.CreateJobLogger(minimumLevel, defaultTag);
@@ -550,8 +601,81 @@ namespace AhBearStudios.Core.Logging
         }
         
         /// <summary>
-        /// Gets the Unity logger adapter instance.
+        /// Enables or disables auto-flush with the specified interval.
         /// </summary>
-        public UnityLoggerAdapter UnityLoggerAdapter => _unityLoggerAdapter;
+        /// <param name="enabled">Whether auto-flush should be enabled.</param>
+        /// <param name="interval">The auto-flush interval in seconds.</param>
+        public void SetAutoFlush(bool enabled, float interval = 0.5f)
+        {
+            _autoFlushEnabled = enabled;
+            if (enabled && interval > 0)
+            {
+                _autoFlushInterval = interval;
+                _autoFlushTimer = 0f;
+            }
+        }
+        
+        /// <summary>
+        /// Log a message directly through the logger manager.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <param name="tag">The log tag.</param>
+        /// <param name="message">The message to log.</param>
+        public void Log(LogLevel level, Tagging.LogTag tag, string message)
+        {
+            _loggerManager?.Log(level, tag, message);
+        }
+        
+        /// <summary>
+        /// Log a debug message.
+        /// </summary>
+        /// <param name="message">The message to log.</param>
+        /// <param name="tag">The log tag.</param>
+        public void LogDebug(string message, Tagging.LogTag tag = Tagging.LogTag.Debug)
+        {
+            _loggerManager?.Debug(message, tag);
+        }
+        
+        /// <summary>
+        /// Log an info message.
+        /// </summary>
+        /// <param name="message">The message to log.</param>
+        /// <param name="tag">The log tag.</param>
+        public void LogInfo(string message, Tagging.LogTag tag = Tagging.LogTag.Info)
+        {
+            _loggerManager?.Info(message, tag);
+        }
+        
+        /// <summary>
+        /// Log a warning message.
+        /// </summary>
+        /// <param name="message">The message to log.</param>
+        /// <param name="tag">The log tag.</param>
+        public void LogWarning(string message, Tagging.LogTag tag = Tagging.LogTag.Warning)
+        {
+            _loggerManager?.Warning(message, tag);
+        }
+        
+        /// <summary>
+        /// Log an error message.
+        /// </summary>
+        /// <param name="message">The message to log.</param>
+        /// <param name="tag">The log tag.</param>
+        public void LogError(string message, Tagging.LogTag tag = Tagging.LogTag.Error)
+        {
+            _loggerManager?.Error(message, tag);
+        }
+        
+        /// <summary>
+        /// Log a critical message.
+        /// </summary>
+        /// <param name="message">The message to log.</param>
+        /// <param name="tag">The log tag.</param>
+        public void LogCritical(string message, Tagging.LogTag tag = Tagging.LogTag.Critical)
+        {
+            _loggerManager?.Critical(message, tag);
+        }
+        
+        #endregion
     }
 }

@@ -20,7 +20,7 @@ namespace AhBearStudios.Core.Logging
         /// Gets or sets the minimum log level that this target will process.
         /// Messages with lower severity will be ignored.
         /// </summary>
-        byte MinimumLevel { get; set; }
+        LogLevel MinimumLevel { get; set; }
         
         /// <summary>
         /// Gets or sets whether this target is currently enabled.
@@ -51,7 +51,7 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         /// <param name="level">The log level to check.</param>
         /// <returns>True if messages with this level would be logged; otherwise, false.</returns>
-        bool IsLevelEnabled(byte level);
+        bool IsLevelEnabled(LogLevel level);
         
         /// <summary>
         /// Adds a tag filter to this target. Only messages with matching tag will be processed.

@@ -19,7 +19,7 @@ namespace AhBearStudios.Core.Logging
         /// <param name="defaultTag">Default tag to use when none is specified.</param>
         /// <returns>A JobLogger configured for parallel job use.</returns>
         /// <exception cref="InvalidOperationException">Thrown if queue is not created.</exception>
-        public static JobLogger CreateParallel(NativeQueue<LogMessage> queue, byte minimumLevel, Tagging.LogTag defaultTag = Tagging.LogTag.Job)
+        public static JobLogger CreateParallel(NativeQueue<LogMessage> queue, LogLevel minimumLevel, Tagging.LogTag defaultTag = Tagging.LogTag.Job)
         {
             // NativeQueue is a struct, so we can only check if it's created
             if (!queue.IsCreated)
@@ -36,7 +36,7 @@ namespace AhBearStudios.Core.Logging
         /// <returns>A JobLogger configured for all log levels.</returns>
         public static JobLogger CreateDebugLogger(NativeQueue<LogMessage> queue, Tagging.LogTag defaultTag = Tagging.LogTag.Job)
         {
-            return CreateParallel(queue, (byte)Tagging.LogTag.Debug, defaultTag);
+            return CreateParallel(queue, LogLevel.Debug, defaultTag);
         }
         
         /// <summary>
@@ -47,7 +47,7 @@ namespace AhBearStudios.Core.Logging
         /// <returns>A JobLogger configured for info and higher log levels.</returns>
         public static JobLogger CreateInfoLogger(NativeQueue<LogMessage> queue, Tagging.LogTag defaultTag = Tagging.LogTag.Job)
         {
-            return CreateParallel(queue, (byte)Tagging.LogTag.Info, defaultTag);
+            return CreateParallel(queue, LogLevel.Info, defaultTag);
         }
         
         /// <summary>
@@ -58,7 +58,7 @@ namespace AhBearStudios.Core.Logging
         /// <returns>A JobLogger configured for warning and higher log levels.</returns>
         public static JobLogger CreateWarningLogger(NativeQueue<LogMessage> queue, Tagging.LogTag defaultTag = Tagging.LogTag.Job)
         {
-            return CreateParallel(queue, (byte)Tagging.LogTag.Warning, defaultTag);
+            return CreateParallel(queue, LogLevel.Warning, defaultTag);
         }
         
         /// <summary>
@@ -69,7 +69,7 @@ namespace AhBearStudios.Core.Logging
         /// <returns>A JobLogger configured for error and higher log levels.</returns>
         public static JobLogger CreateErrorLogger(NativeQueue<LogMessage> queue, Tagging.LogTag defaultTag = Tagging.LogTag.Job)
         {
-            return CreateParallel(queue, (byte)Tagging.LogTag.Error, defaultTag);
+            return CreateParallel(queue, LogLevel.Error, defaultTag);
         }
     }
 }

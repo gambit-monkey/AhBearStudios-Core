@@ -23,7 +23,7 @@ namespace AhBearStudios.Core.Logging.Formatters
         private string _tagColorsJson = string.Empty;
         
         // Color dictionaries used at runtime (non-serialized)
-        private Dictionary<byte, string> _levelColors = new Dictionary<byte, string>();
+        private Dictionary<LogLevel, string> _levelColors = new Dictionary<LogLevel, string>();
         private Dictionary<int, string> _tagColors = new Dictionary<int, string>();
         
         // Format template options
@@ -72,26 +72,27 @@ namespace AhBearStudios.Core.Logging.Formatters
             // Don't deserialize if the JSON strings are empty
             if (string.IsNullOrEmpty(_levelColorsJson) || string.IsNullOrEmpty(_tagColorsJson))
                 return;
-                
+        
             try
             {
                 // Deserialize level colors
                 Dictionary<string, string> levelColorDict = 
                     JsonUtility.FromJson<SerializableDictionary>(_levelColorsJson).ToDictionary();
-                    
+            
                 _levelColors.Clear();
                 foreach (var pair in levelColorDict)
                 {
-                    if (byte.TryParse(pair.Key, out byte level))
+                    // Fix: First parse to byte, then cast to LogLevel
+                    if (byte.TryParse(pair.Key, out byte levelByte))
                     {
-                        _levelColors[level] = pair.Value;
+                        _levelColors[(LogLevel)levelByte] = pair.Value;
                     }
                 }
-                
+        
                 // Deserialize tag colors
                 Dictionary<string, string> tagColorDict = 
                     JsonUtility.FromJson<SerializableDictionary>(_tagColorsJson).ToDictionary();
-                    
+            
                 _tagColors.Clear();
                 foreach (var pair in tagColorDict)
                 {
@@ -263,7 +264,7 @@ namespace AhBearStudios.Core.Logging.Formatters
         /// </summary>
         /// <param name="level">The log level.</param>
         /// <returns>A hexadecimal color code.</returns>
-        public string GetColorForLevel(byte level)
+        public string GetColorForLevel(LogLevel level)
         {
             // Check if we have a specific color for this level
             if (_levelColors.TryGetValue(level, out string color))
@@ -309,7 +310,7 @@ namespace AhBearStudios.Core.Logging.Formatters
         /// </summary>
         /// <param name="level">The log level</param>
         /// <param name="colorHex">Hexadecimal color code (e.g., "#FF0000")</param>
-        public void SetLevelColor(byte level, string colorHex)
+        public void SetLevelColor(LogLevel level, string colorHex)
         {
             InitializeIfNeeded();
             _levelColors[level] = colorHex;
@@ -361,7 +362,7 @@ namespace AhBearStudios.Core.Logging.Formatters
         /// </summary>
         /// <param name="level">The log level.</param>
         /// <returns>A string representation of the log level.</returns>
-        private string GetLevelName(byte level)
+        private string GetLevelName(LogLevel level)
         {
             if (level == LogLevel.Debug)
                 return "DEBUG";

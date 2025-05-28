@@ -2,7 +2,7 @@ using UnityEngine;
 using AhBearStudios.Core.Logging.LogTargets;
 using AhBearStudios.Core.Logging.Formatters;
 
-namespace AhBearStudios.Core.Logging.Config
+namespace AhBearStudios.Core.Logging.Configuration
 {
     /// <summary>
     /// Configuration for Unity Console log targets.

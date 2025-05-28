@@ -1,5 +1,4 @@
 using System;
-using UnityEngine;
 using AhBearStudios.Core.Logging.Tags;
 
 namespace AhBearStudios.Core.Logging.Unity.Attributes
@@ -13,7 +12,7 @@ namespace AhBearStudios.Core.Logging.Unity.Attributes
         /// <summary>
         /// Gets or sets the minimum log level.
         /// </summary>
-        public byte MinimumLevel { get; }
+        public LogLevel MinimumLevel { get; }
         
         /// <summary>
         /// Gets or sets the tag for log messages.
@@ -61,7 +60,7 @@ namespace AhBearStudios.Core.Logging.Unity.Attributes
         /// <param name="logReturnValue">Whether to log method return value.</param>
         /// <param name="trackTime">Whether to track method execution time.</param>
         public WithLogAttribute(
-            byte minimumLevel = LogLevel.Debug,
+            LogLevel minimumLevel = LogLevel.Debug,
             Tagging.LogTag tag = Tagging.LogTag.Info,
             bool logEntry = true,
             bool logExit = true,
@@ -91,7 +90,7 @@ namespace AhBearStudios.Core.Logging.Unity.Attributes
         /// <param name="trackTime">Whether to track method execution time.</param>
         public WithLogAttribute(
             string customTag,
-            byte minimumLevel = LogLevel.Debug,
+            LogLevel minimumLevel = LogLevel.Debug,
             bool logEntry = true,
             bool logExit = true,
             bool logParameters = false,

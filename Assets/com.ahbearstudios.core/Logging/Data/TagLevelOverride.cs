@@ -13,9 +13,9 @@ namespace AhBearStudios.Core.Logging.Data
         private Tagging.LogTag _tag;
         
         [SerializeField]
-        private byte _level;
+        private LogLevel _level;
         
         public Tagging.LogTag Tag => _tag;
-        public byte Level => _level;
+        public LogLevel Level => _level;
     }
 }
