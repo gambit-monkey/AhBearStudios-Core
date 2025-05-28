@@ -544,27 +544,29 @@ namespace AhBearStudios.Core.Logging.Editor
         private void FilterMessages()
         {
             _filteredMessages.Clear();
-            
+    
             foreach (var message in _allMessages)
             {
                 LogLevel level = (LogLevel)message.Level;
-                
+        
                 // Skip if level is not visible
                 if (!IsLevelVisible(level))
                     continue;
-                
+        
                 // Skip if level is below selected minimum
                 if (level < _selectedLogLevel)
                     continue;
-                
+        
                 // Skip if tag is not included
-                if (!IsTagIncluded(message.Tag))
+                // Convert LogTag to FixedString32Bytes before passing to IsTagIncluded
+                FixedString32Bytes tagString = new FixedString32Bytes(message.Tag.ToString());
+                if (!IsTagIncluded(tagString))
                     continue;
-                
+        
                 // Skip if doesn't match text filter
                 if (!string.IsNullOrEmpty(_filterText) && !MessageMatchesFilter(message, _filterText))
                     continue;
-                
+        
                 _filteredMessages.Add(message);
             }
         }
@@ -603,13 +605,29 @@ namespace AhBearStudios.Core.Logging.Editor
         /// <summary>
         /// Checks if properties contain the filter text.
         /// </summary>
+        
+        /// <summary>
+        /// Checks if properties contain the filter text.
+        /// </summary>
         private bool PropertiesContainText(LogProperties properties, string searchText)
         {
-            if (!properties.IsCreated || properties.Count == 0)
+            if (!properties.IsCreated)
                 return false;
-            
-            string propsText = LogPropertyFormatter.FormatProperties(properties);
-            return propsText.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0;
+    
+            // Create a buffer for properties to search in
+            var buffer = new System.Text.StringBuilder();
+    
+            // Iterate through properties and add them to the buffer
+            foreach (var property in properties)
+            {
+                buffer.Append(property.Key);
+                buffer.Append('=');
+                buffer.Append(property.Value);
+                buffer.Append(' ');
+            }
+    
+            // Check if the buffer contains the search text
+            return buffer.ToString().IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         /// <summary>
