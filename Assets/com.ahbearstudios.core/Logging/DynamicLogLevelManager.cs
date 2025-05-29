@@ -1,15 +1,16 @@
 using System.Collections.Generic;
 using AhBearStudios.Core.Logging.Middleware;
 using AhBearStudios.Core.Logging.Data;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.Logging.Messages;
 using AhBearStudios.Core.Logging.Tags;
 
-namespace AhBearStudios.Core.Logging.Configuration
+namespace AhBearStudios.Core.Logging
 {
     /// <summary>
     /// Manages dynamic log level configuration at runtime.
     /// </summary>
-    public class DynamicLogLevelManager : ILogMiddleware
+    public class DynamicLogLevelManager : ILogLevelManager
     {
         private readonly Dictionary<Tagging.LogTag, LogLevel> _tagLevelOverrides = new Dictionary<Tagging.LogTag, LogLevel>();
         private readonly Dictionary<string, LogLevel> _categoryLevelOverrides = new Dictionary<string, LogLevel>();
