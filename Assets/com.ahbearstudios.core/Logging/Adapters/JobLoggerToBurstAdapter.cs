@@ -8,12 +8,13 @@ namespace AhBearStudios.Core.Logging.Adapters
     /// Adapter that bridges JobLogger functionality to the IBurstLogger interface.
     /// Provides seamless integration between job-based logging and the standard logging infrastructure.
     /// </summary>
-    public sealed class JobLoggerToBurstAdapter : IBurstLogger
+    public sealed class JobLoggerToBurstAdapter : IBurstLogger, IDisposable
     {
         private readonly JobLoggerManager _manager;
         private readonly object _syncLock = new object();
         private LogLevel _minimumLevel;
         private bool _isEnabled;
+        private bool _disposed;
         
         /// <summary>
         /// Gets or sets the minimum log level that will be processed by this adapter.
@@ -45,14 +46,17 @@ namespace AhBearStudios.Core.Logging.Adapters
             {
                 lock (_syncLock)
                 {
-                    return _isEnabled;
+                    return _isEnabled && !_disposed;
                 }
             }
             set
             {
                 lock (_syncLock)
                 {
-                    _isEnabled = value;
+                    if (!_disposed)
+                    {
+                        _isEnabled = value;
+                    }
                 }
             }
         }
@@ -67,6 +71,7 @@ namespace AhBearStudios.Core.Logging.Adapters
             _manager = manager ?? throw new ArgumentNullException(nameof(manager));
             _minimumLevel = minimumLevel;
             _isEnabled = true;
+            _disposed = false;
         }
         
         /// <inheritdoc />
@@ -120,6 +125,10 @@ namespace AhBearStudios.Core.Logging.Adapters
         {
             lock (_syncLock)
             {
+                // Check if disposed
+                if (_disposed)
+                    return false;
+                    
                 // Check if globally enabled
                 if (!_isEnabled)
                     return false;
@@ -222,14 +231,42 @@ namespace AhBearStudios.Core.Logging.Adapters
         /// </summary>
         public void Flush()
         {
+            if (_disposed)
+                return;
+                
             try
             {
-                // If JobLoggerManager has a flush method, call it here
-                // For now, we'll assume it auto-flushes or doesn't need explicit flushing
+                _manager?.Flush();
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"Error flushing JobLoggerToBurstAdapter: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Disposes the adapter and disables further logging operations.
+        /// </summary>
+        public void Dispose()
+        {
+            lock (_syncLock)
+            {
+                if (_disposed)
+                    return;
+                    
+                try
+                {
+                    // Flush any remaining messages before disposing
+                    Flush();
+                    
+                    // Disable the adapter
+                    _isEnabled = false;
+                    _disposed = true;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error disposing JobLoggerToBurstAdapter: {ex.Message}");
+                }
             }
         }
     }

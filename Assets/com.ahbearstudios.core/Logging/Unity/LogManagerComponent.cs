@@ -1,53 +1,83 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using AhBearStudios.Core.DependencyInjection;
 using UnityEngine;
-using Unity.Collections;
 using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.Logging.Configuration;
-using AhBearStudios.Core.Logging.Builders;
 using AhBearStudios.Core.Logging.Jobs;
 using AhBearStudios.Core.Logging.Messages;
 using AhBearStudios.Core.Logging.Tags;
-using AhBearStudios.Core.Logging.Unity;
+using AhBearStudios.Core.Logging.Adapters;
+using AhBearStudios.Core.Logging.Data;
+using AhBearStudios.Core.Logging.Formatters;
 using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.MessageBus.MessageBuses;
+using Unity.Collections;
 
-namespace AhBearStudios.Core.Logging.Components
+namespace AhBearStudios.Core.Logging.Unity
 {
     /// <summary>
     /// Unity component that manages the logging system lifecycle using JobLoggerManager and factory patterns.
     /// Provides centralized logging management with dependency injection support and robust configuration.
+    /// This component orchestrates all logging subsystems and provides a unified interface for logging operations.
     /// </summary>
     [DisallowMultipleComponent]
-    public sealed class LogManagerComponent : MonoBehaviour
+    public sealed class LogManagerComponent : MonoBehaviour, IDisposable
     {
         #region Inspector Fields
         
         [Header("Initialization")]
-        [SerializeField] private bool _initializeOnAwake = true;
-        [SerializeField] private LogLevel _globalMinimumLevel = LogLevel.Debug;
+        [SerializeField, Tooltip("Initialize the logging system when this component awakens")]
+        private bool _initializeOnAwake = true;
+        
+        [SerializeField, Tooltip("Global minimum log level that will be processed by all targets")]
+        private LogLevel _globalMinimumLevel = LogLevel.Debug;
         
         [Header("Performance Settings")]
-        [SerializeField] private int _initialCapacity = 128;
-        [SerializeField] private int _maxMessagesPerFlush = 200;
-        [SerializeField] private int _maxMessagesPerFrame = 100;
+        [SerializeField, Tooltip("Initial capacity for the internal log message queue")]
+        private int _initialCapacity = 128;
+        
+        [SerializeField, Tooltip("Maximum number of messages to process in a single flush operation")]
+        private int _maxMessagesPerFlush = 200;
+        
+        [SerializeField, Tooltip("Maximum number of messages to process per frame to avoid hitches")]
+        private int _maxMessagesPerFrame = 100;
         
         [Header("Auto-Flush Configuration")]
-        [SerializeField] private bool _enableAutoFlush = true;
-        [SerializeField] private float _autoFlushInterval = 1.0f;
+        [SerializeField, Tooltip("Enable automatic flushing of log messages on a timer")]
+        private bool _enableAutoFlush = true;
+        
+        [SerializeField, Tooltip("Interval in seconds between automatic flush operations")]
+        private float _autoFlushInterval = 1.0f;
         
         [Header("Development Presets")]
-        [SerializeField] private bool _useDevelopmentPreset = false;
-        [SerializeField] private bool _useProductionPreset = false;
-        [SerializeField] private bool _useHighPerformancePreset = false;
+        [SerializeField, Tooltip("Use development logging preset (debug level, console + file)")]
+        private bool _useDevelopmentPreset = false;
+        
+        [SerializeField, Tooltip("Use production logging preset (warning level, optimized file)")]
+        private bool _useProductionPreset = false;
+        
+        [SerializeField, Tooltip("Use high performance preset (minimal overhead, error level only)")]
+        private bool _useHighPerformancePreset = false;
         
         [Header("Default Target Creation")]
-        [SerializeField] private bool _createDefaultUnityConsole = true;
-        [SerializeField] private bool _createDefaultFileLogger = false;
-        [SerializeField] private string _defaultLogFilePath = "Logs/app.log";
+        [SerializeField, Tooltip("Create a default Unity console logger target")]
+        private bool _createDefaultUnityConsole = true;
+        
+        [SerializeField, Tooltip("Create a default file logger target")]
+        private bool _createDefaultFileLogger = false;
+        
+        [SerializeField, Tooltip("Default path for file logger relative to persistent data path")]
+        private string _defaultLogFilePath = "Logs/app.log";
         
         [Header("Target Configurations")]
-        [SerializeField] private ScriptableObject[] _targetConfigs = new ScriptableObject[0];
+        [SerializeField, Tooltip("ScriptableObject configurations for log targets")]
+        private ScriptableObject[] _targetConfigs = new ScriptableObject[0];
+        
+        [Header("Dependency Injection")]
+        [SerializeField, Tooltip("Use dependency injection to resolve logging dependencies")]
+        private bool _useDependencyInjection = true;
         
         #endregion
         
@@ -55,12 +85,14 @@ namespace AhBearStudios.Core.Logging.Components
         
         private JobLoggerManager _loggerManager;
         private UnityLoggerAdapter _unityLoggerAdapter;
-        private JobLoggerFactory _jobLoggerFactory;
+        private JobLoggerToBurstAdapter _burstLoggerAdapter;
         private IMessageBus _messageBus;
         private ILogFormatter _logFormatter;
-        private IDependencyProvider _dependencyProvider;
+        private IDependencyInjector _dependencyInjector;
+        private ILogConfigRegistry _configRegistry;
         
         private readonly List<ILogTargetConfig> _validatedConfigs = new List<ILogTargetConfig>();
+        private readonly List<IDisposable> _disposables = new List<IDisposable>();
         
         private bool _isInitialized;
         private bool _isDisposing;
@@ -70,17 +102,22 @@ namespace AhBearStudios.Core.Logging.Components
         private JobLogger _cachedJobLogger;
         private bool _hasDefaultJobLogger;
         
+        // Performance tracking
+        private int _totalMessagesProcessed;
+        private float _lastFlushTime;
+        private int _flushCount;
+        
         #endregion
         
         #region Public Properties
         
         /// <summary>
-        /// Gets whether the logging system has been initialized.
+        /// Gets whether the logging system has been initialized successfully.
         /// </summary>
-        public bool IsInitialized => _isInitialized && _loggerManager != null;
+        public bool IsInitialized => _isInitialized && _loggerManager != null && !_isDisposing;
         
         /// <summary>
-        /// Gets the number of active log targets.
+        /// Gets the number of active log targets currently registered.
         /// </summary>
         public int TargetCount => _loggerManager?.TargetCount ?? 0;
         
@@ -90,17 +127,24 @@ namespace AhBearStudios.Core.Logging.Components
         public int QueuedMessageCount => _loggerManager?.QueuedMessageCount ?? 0;
         
         /// <summary>
-        /// Gets or sets the global minimum log level.
+        /// Gets or sets the global minimum log level for all targets.
+        /// Changes to this property are applied immediately to the underlying logger manager.
         /// </summary>
         public LogLevel GlobalMinimumLevel
         {
             get => _globalMinimumLevel;
             set
             {
-                _globalMinimumLevel = value;
-                if (_isInitialized && _loggerManager != null)
+                if (_globalMinimumLevel != value)
                 {
-                    _loggerManager.GlobalMinimumLevel = value;
+                    var oldLevel = _globalMinimumLevel;
+                    _globalMinimumLevel = value;
+                    
+                    if (IsInitialized)
+                    {
+                        _loggerManager.GlobalMinimumLevel = value;
+                        PublishLogLevelChanged(oldLevel, value);
+                    }
                 }
             }
         }
@@ -116,9 +160,24 @@ namespace AhBearStudios.Core.Logging.Components
         public UnityLoggerAdapter UnityLoggerAdapter => _unityLoggerAdapter;
         
         /// <summary>
-        /// Gets the job logger factory instance.
+        /// Gets the burst logger adapter instance.
         /// </summary>
-        public JobLoggerFactory JobLoggerFactory => _jobLoggerFactory;
+        public IBurstLogger BurstLoggerAdapter => _burstLoggerAdapter;
+        
+        /// <summary>
+        /// Gets the message bus instance used by the logging system.
+        /// </summary>
+        public IMessageBus MessageBus => _messageBus;
+        
+        /// <summary>
+        /// Gets the total number of messages processed since initialization.
+        /// </summary>
+        public int TotalMessagesProcessed => _totalMessagesProcessed;
+        
+        /// <summary>
+        /// Gets the total number of flush operations performed.
+        /// </summary>
+        public int FlushCount => _flushCount;
         
         #endregion
         
@@ -134,13 +193,14 @@ namespace AhBearStudios.Core.Logging.Components
         
         private void Update()
         {
-            if (!_isInitialized || _isDisposing || _loggerManager == null)
+            if (!IsInitialized)
                 return;
                 
-            _accumulatedDeltaTime += Time.deltaTime;
+            _accumulatedDeltaTime += Time.unscaledDeltaTime;
             
             // Process pending log messages with frame limiting
-            _loggerManager.Update(_accumulatedDeltaTime);
+            var processedCount = _loggerManager.Update(_accumulatedDeltaTime);
+            _totalMessagesProcessed += processedCount;
             
             // Reset accumulated time after processing
             _accumulatedDeltaTime = 0f;
@@ -148,15 +208,33 @@ namespace AhBearStudios.Core.Logging.Components
         
         private void OnDestroy()
         {
-            CleanupLoggingSystem();
+            Dispose();
         }
         
         private void OnApplicationQuit()
         {
-            if (_isInitialized)
+            if (IsInitialized)
             {
                 Flush();
-                CleanupLoggingSystem();
+                Dispose();
+            }
+        }
+        
+        private void OnApplicationPause(bool pauseStatus)
+        {
+            if (IsInitialized && pauseStatus)
+            {
+                // Flush logs when pausing to ensure nothing is lost
+                Flush();
+            }
+        }
+        
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            if (IsInitialized && !hasFocus)
+            {
+                // Flush logs when losing focus
+                Flush();
             }
         }
         
@@ -166,29 +244,61 @@ namespace AhBearStudios.Core.Logging.Components
         
         /// <summary>
         /// Initializes the logging system asynchronously.
+        /// This method is safe to call multiple times - subsequent calls will be ignored.
         /// </summary>
         public void InitializeAsync()
         {
-            if (_isInitialized)
+            if (_isInitialized || _isDisposing)
             {
-                Debug.LogWarning("[LogManagerComponent] Already initialized", this);
+                Debug.LogWarning($"[{nameof(LogManagerComponent)}] Already initialized or disposing", this);
                 return;
             }
             
             try
             {
+                ValidateConfiguration();
                 ResolveDependencies();
                 ValidateAndCacheConfigs();
                 InitializeLoggingSystem();
+                SubscribeToMessages();
                 
                 _isInitialized = true;
+                _lastFlushTime = Time.unscaledTime;
                 
-                Debug.Log($"[LogManagerComponent] Logging system initialized with {TargetCount} targets", this);
+                Debug.Log($"[{nameof(LogManagerComponent)}] Logging system initialized successfully with {TargetCount} targets", this);
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[LogManagerComponent] Failed to initialize: {ex.Message}", this);
+                Debug.LogError($"[{nameof(LogManagerComponent)}] Failed to initialize: {ex.Message}\n{ex.StackTrace}", this);
                 CreateFallbackLogger();
+            }
+        }
+        
+        /// <summary>
+        /// Validates the configuration settings before initialization.
+        /// </summary>
+        private void ValidateConfiguration()
+        {
+            // Ensure only one preset is selected
+            var presetCount = new[] { _useDevelopmentPreset, _useProductionPreset, _useHighPerformancePreset }.Count(p => p);
+            if (presetCount > 1)
+            {
+                Debug.LogWarning($"[{nameof(LogManagerComponent)}] Multiple presets selected, using development preset", this);
+                _useDevelopmentPreset = true;
+                _useProductionPreset = false;
+                _useHighPerformancePreset = false;
+            }
+            
+            // Validate performance settings
+            _initialCapacity = Mathf.Max(16, _initialCapacity);
+            _maxMessagesPerFlush = Mathf.Max(1, _maxMessagesPerFlush);
+            _maxMessagesPerFrame = Mathf.Max(1, _maxMessagesPerFrame);
+            _autoFlushInterval = Mathf.Max(0.1f, _autoFlushInterval);
+            
+            // Validate file path
+            if (_createDefaultFileLogger && string.IsNullOrWhiteSpace(_defaultLogFilePath))
+            {
+                _defaultLogFilePath = "Logs/app.log";
             }
         }
         
@@ -197,10 +307,11 @@ namespace AhBearStudios.Core.Logging.Components
         /// </summary>
         private void ResolveDependencies()
         {
-            // Try to resolve from dependency container first
-            TryResolveDependenciesFromContainer();
+            if (_useDependencyInjection)
+            {
+                TryResolveDependenciesFromContainer();
+            }
             
-            // Create defaults for any missing dependencies
             CreateDefaultDependencies();
         }
         
@@ -209,12 +320,23 @@ namespace AhBearStudios.Core.Logging.Components
         /// </summary>
         private void TryResolveDependenciesFromContainer()
         {
-            _dependencyProvider = FindObjectOfType<MonoBehaviour>() as IDependencyProvider;
-            
-            if (_dependencyProvider != null)
+            try
             {
-                _messageBus ??= _dependencyProvider.TryResolve<IMessageBus>();
-                _logFormatter ??= _dependencyProvider.TryResolve<ILogFormatter>();
+                // Try to find a dependency injector in the scene
+                var injectorComponent = FindObjectOfType<MonoBehaviour>() as IDependencyInjector;
+                if (injectorComponent != null)
+                {
+                    _dependencyInjector = injectorComponent;
+                    
+                    // Resolve optional dependencies
+                    try { _messageBus ??= _dependencyInjector.Resolve<IMessageBus>(); } catch { }
+                    try { _logFormatter ??= _dependencyInjector.Resolve<ILogFormatter>(); } catch { }
+                    try { _configRegistry ??= _dependencyInjector.Resolve<ILogConfigRegistry>(); } catch { }
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[{nameof(LogManagerComponent)}] Failed to resolve dependencies: {ex.Message}", this);
             }
         }
         
@@ -223,9 +345,14 @@ namespace AhBearStudios.Core.Logging.Components
         /// </summary>
         private void CreateDefaultDependencies()
         {
-            _messageBus ??= CreateDefaultMessageBus();
-            _logFormatter ??= CreateDefaultLogFormatter();
-            _jobLoggerFactory = new JobLoggerFactory();
+            // Create null message bus if none was resolved
+            _messageBus ??= new NullMessageBus();
+            
+            // Create default log formatter if none was resolved
+            _logFormatter ??= new DefaultLogFormatter();
+            
+            // Create default config registry if none was resolved
+            _configRegistry ??= DefaultLogConfigRegistry.Instance;
         }
         
         /// <summary>
@@ -235,13 +362,23 @@ namespace AhBearStudios.Core.Logging.Components
         {
             _validatedConfigs.Clear();
             
-            if (_targetConfigs != null)
+            if (_targetConfigs != null && _targetConfigs.Length > 0)
             {
                 foreach (var configObject in _targetConfigs)
                 {
                     if (ValidateTargetConfig(configObject, out var validConfig))
                     {
                         _validatedConfigs.Add(validConfig);
+                        
+                        // Register with config registry if available
+                        try
+                        {
+                            _configRegistry?.RegisterConfig(validConfig.TargetName, validConfig);
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.LogWarning($"[{nameof(LogManagerComponent)}] Failed to register config {validConfig.TargetName}: {ex.Message}", this);
+                        }
                     }
                 }
             }
@@ -258,18 +395,21 @@ namespace AhBearStudios.Core.Logging.Components
             validConfig = null;
             
             if (configObject == null)
+            {
+                Debug.LogWarning($"[{nameof(LogManagerComponent)}] Null config object found", this);
                 return false;
+            }
                 
             validConfig = configObject as ILogTargetConfig;
             if (validConfig == null)
             {
-                Debug.LogWarning($"[LogManagerComponent] Config object {configObject.name} does not implement ILogTargetConfig", this);
+                Debug.LogWarning($"[{nameof(LogManagerComponent)}] Config object {configObject.name} does not implement ILogTargetConfig", this);
                 return false;
             }
             
             if (string.IsNullOrEmpty(validConfig.TargetName))
             {
-                Debug.LogWarning($"[LogManagerComponent] Config {configObject.name} has empty target name", this);
+                Debug.LogWarning($"[{nameof(LogManagerComponent)}] Config {configObject.name} has empty target name", this);
                 return false;
             }
             
@@ -281,62 +421,126 @@ namespace AhBearStudios.Core.Logging.Components
         /// </summary>
         private void InitializeLoggingSystem()
         {
-            // Use preset creation patterns from JobLoggerFactory if specified
+            // Use preset creation patterns if specified
             if (_useDevelopmentPreset)
             {
-                var (manager, logger) = _jobLoggerFactory.CreateForDevelopment(_defaultLogFilePath, Tagging.LogTag.Unity, _messageBus);
-                _loggerManager = manager;
-                _cachedJobLogger = logger;
-                _hasDefaultJobLogger = true;
+                InitializeDevelopmentPreset();
             }
             else if (_useProductionPreset)
             {
-                var (manager, logger) = _jobLoggerFactory.CreateForProduction(_defaultLogFilePath, Tagging.LogTag.Unity, _messageBus);
-                _loggerManager = manager;
-                _cachedJobLogger = logger;
-                _hasDefaultJobLogger = true;
+                InitializeProductionPreset();
             }
             else if (_useHighPerformancePreset)
             {
-                var (manager, logger) = _jobLoggerFactory.CreateHighPerformance(_defaultLogFilePath, Tagging.LogTag.Unity, _messageBus);
-                _loggerManager = manager;
-                _cachedJobLogger = logger;
-                _hasDefaultJobLogger = true;
+                InitializeHighPerformancePreset();
             }
             else
             {
-                CreateCustomLoggerManager();
+                InitializeCustomConfiguration();
             }
             
             ConfigureAutoFlush();
-            InitializeUnityLoggerIntegration();
+            InitializeAdapters();
         }
         
         /// <summary>
-        /// Creates a custom logger manager using configurations or defaults.
+        /// Initializes the development preset configuration.
         /// </summary>
-        private void CreateCustomLoggerManager()
+        private void InitializeDevelopmentPreset()
+        {
+            var (manager, logger) = JobLoggerFactory.CreateForDevelopment(
+                _defaultLogFilePath, 
+                Tagging.LogTag.Unity, 
+                _messageBus
+            );
+            
+            _loggerManager = manager;
+            _cachedJobLogger = logger;
+            _hasDefaultJobLogger = true;
+            
+            _disposables.Add(_loggerManager);
+        }
+        
+        /// <summary>
+        /// Initializes the production preset configuration.
+        /// </summary>
+        private void InitializeProductionPreset()
+        {
+            var (manager, logger) = JobLoggerFactory.CreateForProduction(
+                _defaultLogFilePath, 
+                Tagging.LogTag.Unity, 
+                _messageBus
+            );
+            
+            _loggerManager = manager;
+            _cachedJobLogger = logger;
+            _hasDefaultJobLogger = true;
+            
+            _disposables.Add(_loggerManager);
+        }
+        
+        /// <summary>
+        /// Initializes the high performance preset configuration.
+        /// </summary>
+        private void InitializeHighPerformancePreset()
+        {
+            var (manager, logger) = JobLoggerFactory.CreateHighPerformance(
+                _defaultLogFilePath, 
+                Tagging.LogTag.Unity, 
+                _messageBus
+            );
+            
+            _loggerManager = manager;
+            _cachedJobLogger = logger;
+            _hasDefaultJobLogger = true;
+            
+            _disposables.Add(_loggerManager);
+        }
+        
+        /// <summary>
+        /// Initializes custom configuration using ScriptableObject configs or defaults.
+        /// </summary>
+        private void InitializeCustomConfiguration()
         {
             if (_validatedConfigs.Count > 0)
             {
-                // Use builder pattern with configurations
-                var (manager, logger) = _jobLoggerFactory.CreateComplete(
-                    builderCollection => ConfigureTargetsFromConfigs(builderCollection),
-                    _logFormatter,
-                    _globalMinimumLevel,
-                    Tagging.LogTag.Unity,
-                    _messageBus
-                );
-                
-                _loggerManager = manager;
-                _cachedJobLogger = logger;
-                _hasDefaultJobLogger = true;
+                InitializeFromConfigurations();
+            }
+            else if (_createDefaultUnityConsole || _createDefaultFileLogger)
+            {
+                InitializeDefaultConfiguration();
             }
             else
             {
-                // Create with default targets
-                CreateDefaultLoggerManager();
+                // Ultimate fallback - create basic logger manager
+                _loggerManager = JobLoggerManager.CreateWithDefaultFormatter(
+                    _initialCapacity,
+                    _maxMessagesPerFlush,
+                    _globalMinimumLevel,
+                    _messageBus
+                );
+                _disposables.Add(_loggerManager);
             }
+        }
+        
+        /// <summary>
+        /// Initializes from validated configurations using the builder pattern.
+        /// </summary>
+        private void InitializeFromConfigurations()
+        {
+            var (manager, logger) = JobLoggerFactory.CreateComplete(
+                builderCollection => ConfigureTargetsFromConfigs(builderCollection),
+                _logFormatter,
+                _globalMinimumLevel,
+                Tagging.LogTag.Unity,
+                _messageBus
+            );
+            
+            _loggerManager = manager;
+            _cachedJobLogger = logger;
+            _hasDefaultJobLogger = true;
+            
+            _disposables.Add(_loggerManager);
         }
         
         /// <summary>
@@ -349,91 +553,100 @@ namespace AhBearStudios.Core.Logging.Components
             {
                 try
                 {
-                    if (config is SerilogFileTargetConfig serilogConfig)
+                    // Create target directly from config and add to collection
+                    var target = config.CreateTarget(_messageBus);
+                    if (target != null)
                     {
-                        var builder = new SerilogFileConfigBuilder()
-                            .WithTargetName(serilogConfig.TargetName)
-                            .WithEnabled(serilogConfig.Enabled)
-                            .WithMinimumLevel(serilogConfig.MinimumLevel)
-                            .WithLogFilePath(serilogConfig.LogFilePath)
-                            .WithJsonFormat(serilogConfig.UseJsonFormat)
-                            .WithTagFilters(serilogConfig.IncludedTags, serilogConfig.ExcludedTags, serilogConfig.ProcessUntaggedMessages)
-                            .WithTimestamps(serilogConfig.IncludeTimestamps, serilogConfig.TimestampFormat)
-                            .WithPerformance(serilogConfig.AutoFlush, serilogConfig.BufferSize, serilogConfig.FlushIntervalSeconds)
-                            .WithUnityIntegration(serilogConfig.CaptureUnityLogs)
-                            .WithMessageFormatting(serilogConfig.IncludeStackTraces, serilogConfig.IncludeSourceContext, serilogConfig.IncludeThreadId)
-                            .WithStructuredLogging(serilogConfig.EnableStructuredLogging)
-                            .WithMessageLengthLimit(serilogConfig.LimitMessageLength, serilogConfig.MaxMessageLength);
-                            
-                        builderCollection.AddSerilogFile(builder);
-                    }
-                    else if (config is UnityConsoleTargetConfig consoleConfig)
-                    {
-                        var builder = new UnityConsoleConfigBuilder()
-                            .WithTargetName(consoleConfig.TargetName)
-                            .WithEnabled(consoleConfig.Enabled)
-                            .WithMinimumLevel(consoleConfig.MinimumLevel)
-                            .WithColorizedOutput(consoleConfig.UseColorizedOutput)
-                            .WithUnityLogHandlerRegistration(consoleConfig.RegisterUnityLogHandler, consoleConfig.DuplicateToOriginalHandler)
-                            .WithTagFilters(consoleConfig.IncludedTags, consoleConfig.ExcludedTags, consoleConfig.ProcessUntaggedMessages)
-                            .WithTimestamps(consoleConfig.IncludeTimestamps, consoleConfig.TimestampFormat)
-                            .WithPerformance(consoleConfig.AutoFlush, consoleConfig.BufferSize, consoleConfig.FlushIntervalSeconds)
-                            .WithUnityIntegration(consoleConfig.CaptureUnityLogs)
-                            .WithMessageFormatting(consoleConfig.IncludeStackTraces, consoleConfig.IncludeSourceContext, consoleConfig.IncludeThreadId)
-                            .WithStructuredLogging(consoleConfig.EnableStructuredLogging)
-                            .WithMessageLengthLimit(consoleConfig.LimitMessageLength, consoleConfig.MaxMessageLength);
-                            
-                        builderCollection.AddUnityConsole(builder);
+                        builderCollection.AddTarget(target);
+                        _disposables.Add(target);
                     }
                     else
                     {
-                        // Try to create target directly from config
-                        var target = CreateTargetFromConfig(config);
-                        if (target != null)
-                        {
-                            builderCollection.AddTarget(target);
-                        }
+                        Debug.LogWarning($"[{nameof(LogManagerComponent)}] Failed to create target from config {config.TargetName}", this);
                     }
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[LogManagerComponent] Failed to configure target from {config.TargetName}: {ex.Message}", this);
+                    Debug.LogError($"[{nameof(LogManagerComponent)}] Failed to configure target from {config.TargetName}: {ex.Message}", this);
                 }
             }
         }
         
         /// <summary>
-        /// Creates a default logger manager when no configurations are provided.
+        /// Initializes default configuration when no custom configs are provided.
         /// </summary>
-        private void CreateDefaultLoggerManager()
+        private void InitializeDefaultConfiguration()
         {
-            if (_createDefaultUnityConsole && _createDefaultFileLogger)
+            // Create default targets based on inspector settings
+            var targets = new List<ILogTarget>();
+            
+            if (_createDefaultUnityConsole)
             {
-                // Create both console and file logger
-                var (manager, logger) = _jobLoggerFactory.CreateForDevelopment(_defaultLogFilePath, Tagging.LogTag.Unity, _messageBus);
-                _loggerManager = manager;
-                _cachedJobLogger = logger;
-                _hasDefaultJobLogger = true;
+                try
+                {
+                    var consoleConfig = ScriptableObject.CreateInstance<UnityConsoleTargetConfig>();
+                    consoleConfig.TargetName = "DefaultUnityConsole";
+                    consoleConfig.Enabled = true;
+                    consoleConfig.MinimumLevel = _globalMinimumLevel;
+                    consoleConfig.UseColorizedOutput = true;
+                    consoleConfig.CaptureUnityLogs = true;
+                    
+                    var consoleTarget = consoleConfig.CreateTarget(_messageBus);
+                    if (consoleTarget != null)
+                    {
+                        targets.Add(consoleTarget);
+                        _disposables.Add(consoleTarget);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[{nameof(LogManagerComponent)}] Failed to create default Unity console target: {ex.Message}", this);
+                }
             }
-            else if (_createDefaultUnityConsole)
+            
+            if (_createDefaultFileLogger)
             {
-                // Console only
-                var (manager, logger) = _jobLoggerFactory.CreateConsoleOnly(_globalMinimumLevel, true, Tagging.LogTag.Unity, _messageBus);
-                _loggerManager = manager;
-                _cachedJobLogger = logger;
-                _hasDefaultJobLogger = true;
+                try
+                {
+                    var fileConfig = ScriptableObject.CreateInstance<SerilogFileTargetConfig>();
+                    fileConfig.TargetName = "DefaultFileLogger";
+                    fileConfig.Enabled = true;
+                    fileConfig.MinimumLevel = _globalMinimumLevel;
+                    fileConfig.LogFilePath = _defaultLogFilePath;
+                    fileConfig.UseJsonFormat = false;
+                    fileConfig.AutoFlush = true;
+                    
+                    var fileTarget = fileConfig.CreateTarget(_messageBus);
+                    if (fileTarget != null)
+                    {
+                        targets.Add(fileTarget);
+                        _disposables.Add(fileTarget);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[{nameof(LogManagerComponent)}] Failed to create default file target: {ex.Message}", this);
+                }
             }
-            else if (_createDefaultFileLogger)
+            
+            // Create logger manager with the targets
+            if (targets.Count > 0)
             {
-                // File only
-                var (manager, logger) = _jobLoggerFactory.CreateFileOnly(_defaultLogFilePath, _globalMinimumLevel, Tagging.LogTag.Unity, _messageBus);
-                _loggerManager = manager;
-                _cachedJobLogger = logger;
+                _loggerManager = JobLoggerManager.CreateWithTargetsAndDefaultFormatter(
+                    targets,
+                    _initialCapacity,
+                    _maxMessagesPerFlush,
+                    _globalMinimumLevel,
+                    _messageBus
+                );
+                
+                // Create a default job logger
+                _cachedJobLogger = _loggerManager.CreateJobLogger(_globalMinimumLevel, Tagging.LogTag.Unity);
                 _hasDefaultJobLogger = true;
             }
             else
             {
-                // Ultimate fallback - use JobLoggerManager directly
+                // Ultimate fallback - create basic logger manager
                 _loggerManager = JobLoggerManager.CreateWithDefaultFormatter(
                     _initialCapacity,
                     _maxMessagesPerFlush,
@@ -441,27 +654,8 @@ namespace AhBearStudios.Core.Logging.Components
                     _messageBus
                 );
             }
-        }
-        
-        /// <summary>
-        /// Creates a log target from a configuration.
-        /// </summary>
-        /// <param name="config">The configuration to create a target from.</param>
-        /// <returns>The created log target or null if creation failed.</returns>
-        private ILogTarget CreateTargetFromConfig(ILogTargetConfig config)
-        {
-            if (config == null)
-                return null;
-                
-            try
-            {
-                return _loggerManager.CreateTargetFromConfig(config);
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[LogManagerComponent] Failed to create target from config {config.TargetName}: {ex.Message}", this);
-                return null;
-            }
+            
+            _disposables.Add(_loggerManager);
         }
         
         /// <summary>
@@ -480,27 +674,47 @@ namespace AhBearStudios.Core.Logging.Components
         }
         
         /// <summary>
-        /// Initializes Unity logger integration.
+        /// Initializes adapters for Unity and Burst integration.
         /// </summary>
-        private void InitializeUnityLoggerIntegration()
+        private void InitializeAdapters()
         {
-            var consoleConfig = FindUnityConsoleConfig();
-            if (consoleConfig?.CaptureUnityLogs == true)
+            try
             {
-                // Unity logger adapter would be initialized here
-                // This depends on the actual UnityLoggerAdapter implementation
-                // _unityLoggerAdapter = new UnityLoggerAdapter(_loggerManager);
-                // _unityLoggerAdapter.Initialize(consoleConfig);
+                // Initialize Unity logger adapter if Unity console is configured
+                var unityConsoleConfig = _validatedConfigs.OfType<UnityConsoleTargetConfig>().FirstOrDefault() ??
+                                        (_createDefaultUnityConsole ? CreateDefaultUnityConsoleConfig() : null);
+                
+                if (unityConsoleConfig?.CaptureUnityLogs == true)
+                {
+                    _burstLoggerAdapter = new JobLoggerToBurstAdapter(_loggerManager, _globalMinimumLevel);
+                    _unityLoggerAdapter = new UnityLoggerAdapter(_burstLoggerAdapter, unityConsoleConfig);
+                    
+                    _disposables.Add(_burstLoggerAdapter);
+                    _disposables.Add(_unityLoggerAdapter);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[{nameof(LogManagerComponent)}] Failed to initialize adapters: {ex.Message}", this);
             }
         }
         
         /// <summary>
-        /// Finds the Unity console configuration from validated configs.
+        /// Creates a default Unity console configuration for adapter initialization.
         /// </summary>
-        /// <returns>Unity console configuration or null if not found.</returns>
-        private UnityConsoleTargetConfig FindUnityConsoleConfig()
+        /// <returns>Default Unity console configuration.</returns>
+        private UnityConsoleTargetConfig CreateDefaultUnityConsoleConfig()
         {
-            return _validatedConfigs.OfType<UnityConsoleTargetConfig>().FirstOrDefault();
+            var config = ScriptableObject.CreateInstance<UnityConsoleTargetConfig>();
+            config.TargetName = "AdapterUnityConsole";
+            config.Enabled = true;
+            config.MinimumLevel = _globalMinimumLevel;
+            config.UseColorizedOutput = true;
+            config.CaptureUnityLogs = true;
+            config.RegisterUnityLogHandler = true;
+            config.DuplicateToOriginalHandler = false;
+            
+            return config;
         }
         
         /// <summary>
@@ -510,55 +724,86 @@ namespace AhBearStudios.Core.Logging.Components
         {
             try
             {
-                var (manager, logger) = _jobLoggerFactory.CreateConsoleOnly(LogLevel.Warning, false, Tagging.LogTag.Unity, null);
+                var (manager, logger) = JobLoggerFactory.CreateConsoleOnly(LogLevel.Warning, false, Tagging.LogTag.Unity, new NullMessageBus());
                 _loggerManager = manager;
                 _cachedJobLogger = logger;
                 _hasDefaultJobLogger = true;
                 _isInitialized = true;
                 
-                Debug.LogWarning("[LogManagerComponent] Fallback logger created", this);
+                _disposables.Add(_loggerManager);
+                
+                Debug.LogWarning($"[{nameof(LogManagerComponent)}] Fallback logger created", this);
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[LogManagerComponent] Failed to create fallback logger: {ex.Message}", this);
+                Debug.LogError($"[{nameof(LogManagerComponent)}] Failed to create fallback logger: {ex.Message}", this);
             }
         }
         
         #endregion
         
-        #region Cleanup
+        #region Message Subscription
         
         /// <summary>
-        /// Cleans up the logging system and disposes resources.
+        /// Subscribes to relevant messages from the message bus.
         /// </summary>
-        private void CleanupLoggingSystem()
+        private void SubscribeToMessages()
         {
-            if (_isDisposing)
+            if (_messageBus == null)
                 return;
                 
-            _isDisposing = true;
-            
             try
             {
-                Flush();
+                // Subscribe to log processing messages for metrics
+                var processingSubscription = _messageBus.SubscribeToMessage<LogProcessingMessage>(OnLogProcessingMessage);
+                if (processingSubscription != null)
+                {
+                    _disposables.Add(processingSubscription);
+                }
                 
-                _unityLoggerAdapter?.Dispose();
-                _unityLoggerAdapter = null;
-                
-                _loggerManager?.Dispose();
-                _loggerManager = null;
-                
-                _cachedJobLogger = default;
-                _hasDefaultJobLogger = false;
+                // Subscribe to flush messages for tracking
+                var flushSubscription = _messageBus.SubscribeToMessage<LogFlushMessage>(OnLogFlushMessage);
+                if (flushSubscription != null)
+                {
+                    _disposables.Add(flushSubscription);
+                }
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[LogManagerComponent] Error during cleanup: {ex.Message}", this);
+                Debug.LogWarning($"[{nameof(LogManagerComponent)}] Failed to subscribe to some messages: {ex.Message}", this);
             }
-            finally
+        }
+        
+        /// <summary>
+        /// Handles log processing messages for metrics tracking.
+        /// </summary>
+        private void OnLogProcessingMessage(LogProcessingMessage message)
+        {
+            _totalMessagesProcessed += message.ProcessedCount;
+        }
+        
+        /// <summary>
+        /// Handles log flush messages for tracking.
+        /// </summary>
+        private void OnLogFlushMessage(LogFlushMessage message)
+        {
+            _flushCount++;
+            _lastFlushTime = Time.unscaledTime;
+        }
+        
+        /// <summary>
+        /// Publishes a log level changed message.
+        /// </summary>
+        private void PublishLogLevelChanged(LogLevel oldLevel, LogLevel newLevel)
+        {
+            try
             {
-                _isInitialized = false;
-                _isDisposing = false;
+                var message = new LogLevelChangedMessage(oldLevel, newLevel);
+                _messageBus?.PublishMessage(message);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[{nameof(LogManagerComponent)}] Failed to publish log level changed message: {ex.Message}", this);
             }
         }
         
@@ -568,55 +813,85 @@ namespace AhBearStudios.Core.Logging.Components
         
         /// <summary>
         /// Flushes all log targets and returns the number of messages flushed.
+        /// This operation is thread-safe and can be called from any thread.
         /// </summary>
-        /// <returns>Number of messages flushed.</returns>
+        /// <returns>Number of messages flushed, or 0 if the system is not initialized.</returns>
         public int Flush()
         {
-            if (!_isInitialized || _loggerManager == null)
+            if (!IsInitialized)
                 return 0;
                 
             try
             {
-                return _loggerManager.Flush();
+                var flushedCount = _loggerManager.Flush();
+                
+                // Publish flush message
+                try
+                {
+                    var flushMessage = new LogFlushMessage(flushedCount, Time.unscaledTime - _lastFlushTime);
+                    _messageBus?.PublishMessage(flushMessage);
+                }
+                catch
+                {
+                    // Ignore message publishing errors
+                }
+                
+                return flushedCount;
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[LogManagerComponent] Error during flush: {ex.Message}", this);
+                Debug.LogError($"[{nameof(LogManagerComponent)}] Error during flush: {ex.Message}", this);
                 return 0;
             }
         }
         
         /// <summary>
         /// Adds a custom log target to the manager.
+        /// The target will be automatically disposed when this component is destroyed.
         /// </summary>
         /// <param name="target">The target to add.</param>
+        /// <exception cref="ArgumentNullException">Thrown if target is null.</exception>
+        /// <exception cref="InvalidOperationException">Thrown if the system is not initialized.</exception>
         public void AddCustomTarget(ILogTarget target)
         {
             if (target == null)
                 throw new ArgumentNullException(nameof(target));
                 
-            if (!_isInitialized || _loggerManager == null)
-            {
-                Debug.LogWarning("[LogManagerComponent] Cannot add target - system not initialized", this);
-                return;
-            }
+            if (!IsInitialized)
+                throw new InvalidOperationException("LogManagerComponent is not initialized");
             
             _loggerManager.AddTarget(target);
+            _disposables.Add(target);
         }
         
         /// <summary>
         /// Creates and adds a target from configuration.
         /// </summary>
         /// <param name="config">The configuration to create a target from.</param>
+        /// <exception cref="ArgumentNullException">Thrown if config is null.</exception>
+        /// <exception cref="InvalidOperationException">Thrown if the system is not initialized.</exception>
         public void AddTargetFromConfig(ILogTargetConfig config)
         {
             if (config == null)
                 throw new ArgumentNullException(nameof(config));
                 
-            var target = CreateTargetFromConfig(config);
+            if (!IsInitialized)
+                throw new InvalidOperationException("LogManagerComponent is not initialized");
+                
+            var target = config.CreateTarget(_messageBus);
             if (target != null)
             {
                 AddCustomTarget(target);
+                
+                // Register with config registry
+                try
+                {
+                    _configRegistry?.RegisterConfig(config.TargetName, config);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[{nameof(LogManagerComponent)}] Failed to register config: {ex.Message}", this);
+                }
             }
         }
         
@@ -627,24 +902,16 @@ namespace AhBearStudios.Core.Logging.Components
         /// <returns>True if the target was removed; otherwise, false.</returns>
         public bool RemoveTarget(ILogTarget target)
         {
-            if (target == null || !_isInitialized || _loggerManager == null)
+            if (target == null || !IsInitialized)
                 return false;
                 
-            return _loggerManager.RemoveTarget(target);
-        }
-        
-        /// <summary>
-        /// Sets the global minimum log level for all targets.
-        /// </summary>
-        /// <param name="level">The minimum log level to set.</param>
-        public void SetGlobalMinimumLevel(LogLevel level)
-        {
-            _globalMinimumLevel = level;
-            
-            if (_isInitialized && _loggerManager != null)
+            var removed = _loggerManager.RemoveTarget(target);
+            if (removed)
             {
-                _loggerManager.GlobalMinimumLevel = level;
+                _disposables.Remove(target);
             }
+            
+            return removed;
         }
         
         /// <summary>
@@ -653,9 +920,10 @@ namespace AhBearStudios.Core.Logging.Components
         /// <param name="minimumLevel">Optional minimum level override.</param>
         /// <param name="defaultTag">Default tag for messages.</param>
         /// <returns>A configured job logger.</returns>
+        /// <exception cref="InvalidOperationException">Thrown if the system is not initialized.</exception>
         public JobLogger CreateJobLogger(LogLevel? minimumLevel = null, Tagging.LogTag defaultTag = default)
         {
-            if (!_isInitialized || _loggerManager == null)
+            if (!IsInitialized)
                 throw new InvalidOperationException("LogManagerComponent is not initialized");
                 
             return _loggerManager.CreateJobLogger(minimumLevel, defaultTag);
@@ -665,6 +933,7 @@ namespace AhBearStudios.Core.Logging.Components
         /// Gets the default job logger created during initialization.
         /// </summary>
         /// <returns>The default job logger if available.</returns>
+        /// <exception cref="InvalidOperationException">Thrown if no default job logger is available.</exception>
         public JobLogger GetDefaultJobLogger()
         {
             if (!_hasDefaultJobLogger)
@@ -680,24 +949,46 @@ namespace AhBearStudios.Core.Logging.Components
         /// <param name="minimumLevel">Minimum log level.</param>
         /// <param name="defaultTag">Default tag for messages.</param>
         /// <returns>A parallel job logger.</returns>
+        /// <exception cref="InvalidOperationException">Thrown if the system is not initialized.</exception>
+        /// <exception cref="ArgumentException">Thrown if the queue is not created.</exception>
         public JobLogger CreateParallelJobLogger(NativeQueue<LogMessage> queue, LogLevel minimumLevel, Tagging.LogTag defaultTag = default)
         {
-            if (_jobLoggerFactory == null)
-                throw new InvalidOperationException("JobLoggerFactory is not available");
+            if (!IsInitialized)
+                throw new InvalidOperationException("LogManagerComponent is not initialized");
                 
-            return _jobLoggerFactory.CreateParallel(queue, minimumLevel, defaultTag);
+            if (!queue.IsCreated)
+                throw new ArgumentException("Queue must be created before creating a JobLogger", nameof(queue));
+                
+            return JobLoggerFactory.CreateParallel(queue, minimumLevel, defaultTag);
         }
         
         /// <summary>
         /// Updates Unity logger configuration.
         /// </summary>
         /// <param name="config">The new configuration to apply.</param>
+        /// <exception cref="ArgumentNullException">Thrown if config is null.</exception>
         public void UpdateUnityLoggerConfig(UnityConsoleTargetConfig config)
         {
             if (config == null)
                 throw new ArgumentNullException(nameof(config));
                 
-            _unityLoggerAdapter?.UpdateConfiguration(config);
+            // Update the adapter if it exists
+            if (_unityLoggerAdapter != null)
+            {
+                // Dispose old adapter and create new one
+                _disposables.Remove(_unityLoggerAdapter);
+                _unityLoggerAdapter.Dispose();
+                
+                try
+                {
+                    _unityLoggerAdapter = new UnityLoggerAdapter(_burstLoggerAdapter, config);
+                    _disposables.Add(_unityLoggerAdapter);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[{nameof(LogManagerComponent)}] Failed to update Unity logger config: {ex.Message}", this);
+                }
+            }
         }
         
         /// <summary>
@@ -710,7 +1001,7 @@ namespace AhBearStudios.Core.Logging.Components
             _enableAutoFlush = enabled;
             _autoFlushInterval = Mathf.Max(0.1f, interval);
             
-            if (_isInitialized && _loggerManager != null)
+            if (IsInitialized)
             {
                 if (enabled)
                 {
@@ -723,22 +1014,77 @@ namespace AhBearStudios.Core.Logging.Components
             }
         }
         
+        /// <summary>
+        /// Gets logging performance metrics.
+        /// </summary>
+        /// <returns>Dictionary containing performance metrics.</returns>
+        public Dictionary<string, object> GetPerformanceMetrics()
+        {
+            var metrics = new Dictionary<string, object>
+            {
+                ["IsInitialized"] = IsInitialized,
+                ["TargetCount"] = TargetCount,
+                ["QueuedMessageCount"] = QueuedMessageCount,
+                ["TotalMessagesProcessed"] = _totalMessagesProcessed,
+                ["FlushCount"] = _flushCount,
+                ["LastFlushTime"] = _lastFlushTime,
+                ["GlobalMinimumLevel"] = _globalMinimumLevel.ToString(),
+                ["AutoFlushEnabled"] = _enableAutoFlush,
+                ["AutoFlushInterval"] = _autoFlushInterval
+            };
+            
+            if (IsInitialized)
+            {
+                try
+                {
+                    // Add additional metrics from the logger manager if available
+                    metrics["ManagerTargetCount"] = _loggerManager.TargetCount;
+                    metrics["ManagerQueuedMessages"] = _loggerManager.QueuedMessageCount;
+                }
+                catch (Exception ex)
+                {
+                    metrics["MetricsError"] = ex.Message;
+                }
+            }
+            
+            return metrics;
+        }
+        
+        /// <summary>
+        /// Resets performance metrics counters.
+        /// </summary>
+        public void ResetPerformanceMetrics()
+        {
+            _totalMessagesProcessed = 0;
+            _flushCount = 0;
+            _lastFlushTime = Time.unscaledTime;
+        }
+        
         #endregion
         
         #region Logging Methods
         
         /// <summary>
         /// Logs a message with the specified level and tag.
+        /// This method is thread-safe and can be called from any thread.
         /// </summary>
         /// <param name="level">The log level.</param>
         /// <param name="tag">The log tag.</param>
         /// <param name="message">The message to log.</param>
         public void Log(LogLevel level, Tagging.LogTag tag, string message)
         {
-            if (!_isInitialized || _loggerManager == null)
+            if (!IsInitialized || string.IsNullOrEmpty(message))
                 return;
                 
-            _loggerManager.Log(level, tag, message);
+            try
+            {
+                _loggerManager.Log(level, tag, message);
+            }
+            catch (Exception ex)
+            {
+                // Fallback to Unity's built-in logging if our system fails
+                Debug.LogError($"[{nameof(LogManagerComponent)}] Failed to log message: {ex.Message}");
+            }
         }
         
         /// <summary>
@@ -748,10 +1094,8 @@ namespace AhBearStudios.Core.Logging.Components
         /// <param name="tag">Optional tag for the message.</param>
         public void LogDebug(string message, Tagging.LogTag tag = default)
         {
-            if (!_isInitialized || _loggerManager == null)
-                return;
-                
-            _loggerManager.Debug(message, tag.IsValid ? tag : Tagging.LogTag.Debug);
+            var actualTag = tag == default ? Tagging.LogTag.Debug : tag;
+            Log(LogLevel.Debug, actualTag, message);
         }
         
         /// <summary>
@@ -761,10 +1105,8 @@ namespace AhBearStudios.Core.Logging.Components
         /// <param name="tag">Optional tag for the message.</param>
         public void LogInfo(string message, Tagging.LogTag tag = default)
         {
-            if (!_isInitialized || _loggerManager == null)
-                return;
-                
-            _loggerManager.Info(message, tag.IsValid ? tag : Tagging.LogTag.Info);
+            var actualTag = tag == default ? Tagging.LogTag.Info : tag;
+            Log(LogLevel.Info, actualTag, message);
         }
         
         /// <summary>
@@ -774,10 +1116,8 @@ namespace AhBearStudios.Core.Logging.Components
         /// <param name="tag">Optional tag for the message.</param>
         public void LogWarning(string message, Tagging.LogTag tag = default)
         {
-            if (!_isInitialized || _loggerManager == null)
-                return;
-                
-            _loggerManager.Warning(message, tag.IsValid ? tag : Tagging.LogTag.Warning);
+            var actualTag = tag == default ? Tagging.LogTag.Warning : tag;
+            Log(LogLevel.Warning, actualTag, message);
         }
         
         /// <summary>
@@ -787,10 +1127,8 @@ namespace AhBearStudios.Core.Logging.Components
         /// <param name="tag">Optional tag for the message.</param>
         public void LogError(string message, Tagging.LogTag tag = default)
         {
-            if (!_isInitialized || _loggerManager == null)
-                return;
-                
-            _loggerManager.Error(message, tag.IsValid ? tag : Tagging.LogTag.Error);
+            var actualTag = tag == default ? Tagging.LogTag.Error : tag;
+            Log(LogLevel.Error, actualTag, message);
         }
         
         /// <summary>
@@ -800,35 +1138,158 @@ namespace AhBearStudios.Core.Logging.Components
         /// <param name="tag">Optional tag for the message.</param>
         public void LogCritical(string message, Tagging.LogTag tag = default)
         {
-            if (!_isInitialized || _loggerManager == null)
+            var actualTag = tag == default ? Tagging.LogTag.Critical : tag;
+            Log(LogLevel.Critical, actualTag, message);
+        }
+        
+        /// <summary>
+        /// Logs an exception with full stack trace.
+        /// </summary>
+        /// <param name="exception">The exception to log.</param>
+        /// <param name="message">Optional additional message.</param>
+        /// <param name="tag">Optional tag for the message.</param>
+        public void LogException(Exception exception, string message = null, Tagging.LogTag tag = default)
+        {
+            if (exception == null)
                 return;
                 
-            _loggerManager.Critical(message, tag.IsValid ? tag : Tagging.LogTag.Critical);
+            var actualTag = tag == default ? Tagging.LogTag.Exception : tag;
+            var fullMessage = string.IsNullOrEmpty(message) 
+                ? exception.ToString() 
+                : $"{message}\n{exception}";
+                
+            Log(LogLevel.Critical, actualTag, fullMessage);
+        }
+        
+        /// <summary>
+        /// Logs a message with structured properties.
+        /// </summary>
+        /// <param name="level">The log level.</param>
+        /// <param name="tag">The log tag.</param>
+        /// <param name="message">The message to log.</param>
+        /// <param name="properties">Structured properties to include.</param>
+        public void LogWithProperties(LogLevel level, Tagging.LogTag tag, string message, LogProperties properties)
+        {
+            if (!IsInitialized || string.IsNullOrEmpty(message))
+                return;
+                
+            try
+            {
+                _loggerManager.Log(level, tag, message, properties);
+            }
+            catch (Exception ex)
+            {
+                // Fallback to simple logging
+                Debug.LogError($"[{nameof(LogManagerComponent)}] Failed to log structured message: {ex.Message}");
+                Log(level, tag, message);
+            }
         }
         
         #endregion
         
-        #region Helper Methods
+        #region Configuration Management
         
         /// <summary>
-        /// Creates a default message bus implementation.
+        /// Gets the configuration registry used by this component.
         /// </summary>
-        /// <returns>A default message bus instance.</returns>
-        private IMessageBus CreateDefaultMessageBus()
+        /// <returns>The configuration registry instance.</returns>
+        public ILogConfigRegistry GetConfigRegistry()
         {
-            // Use the JobLoggerManager's null message bus factory
-            return _loggerManager?.CreateNullMessageBus();
+            return _configRegistry;
         }
         
         /// <summary>
-        /// Creates a default log formatter implementation.
+        /// Registers a configuration with the registry.
         /// </summary>
-        /// <returns>A default log formatter instance.</returns>
-        private ILogFormatter CreateDefaultLogFormatter()
+        /// <param name="name">Name for the configuration.</param>
+        /// <param name="config">Configuration to register.</param>
+        /// <exception cref="ArgumentNullException">Thrown if parameters are null.</exception>
+        public void RegisterConfig(string name, ILogTargetConfig config)
         {
-            // This would typically create a DefaultLogFormatter instance
-            // Return null for now and let the system handle defaults
-            return null;
+            if (string.IsNullOrEmpty(name))
+                throw new ArgumentNullException(nameof(name));
+            if (config == null)
+                throw new ArgumentNullException(nameof(config));
+                
+            _configRegistry?.RegisterConfig(name, config);
+        }
+        
+        /// <summary>
+        /// Gets a configuration by name.
+        /// </summary>
+        /// <param name="name">Name of the configuration.</param>
+        /// <returns>The configuration if found, null otherwise.</returns>
+        public ILogTargetConfig GetConfig(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return null;
+                
+            return _configRegistry?.GetConfig(name);
+        }
+        
+        /// <summary>
+        /// Gets a strongly-typed configuration by name.
+        /// </summary>
+        /// <typeparam name="TConfig">Type of configuration to retrieve.</typeparam>
+        /// <param name="name">Name of the configuration.</param>
+        /// <returns>The typed configuration if found, null otherwise.</returns>
+        public TConfig GetConfig<TConfig>(string name) where TConfig : class, ILogTargetConfig
+        {
+            return _configRegistry?.GetConfig<TConfig>(name);
+        }
+        
+        #endregion
+        
+        #region IDisposable Implementation
+        
+        /// <summary>
+        /// Disposes of all resources and cleans up the logging system.
+        /// This method is safe to call multiple times.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_isDisposing)
+                return;
+                
+            _isDisposing = true;
+            
+            try
+            {
+                // Final flush before disposal
+                Flush();
+                
+                // Dispose all registered disposables in reverse order
+                for (int i = _disposables.Count - 1; i >= 0; i--)
+                {
+                    try
+                    {
+                        _disposables[i]?.Dispose();
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogError($"[{nameof(LogManagerComponent)}] Error disposing resource: {ex.Message}", this);
+                    }
+                }
+                
+                _disposables.Clear();
+                _validatedConfigs.Clear();
+                
+                // Clear references
+                _loggerManager = null;
+                _unityLoggerAdapter = null;
+                _burstLoggerAdapter = null;
+                _cachedJobLogger = default;
+                _hasDefaultJobLogger = false;
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[{nameof(LogManagerComponent)}] Error during disposal: {ex.Message}", this);
+            }
+            finally
+            {
+                _isInitialized = false;
+                _isDisposing = false;
+            }
         }
         
         #endregion
@@ -837,51 +1298,34 @@ namespace AhBearStudios.Core.Logging.Components
         
         private void OnValidate()
         {
-            _autoFlushInterval = Mathf.Max(0.1f, _autoFlushInterval);
-            _initialCapacity = Mathf.Max(16, _initialCapacity);
-            _maxMessagesPerFlush = Mathf.Max(1, _maxMessagesPerFlush);
-            _maxMessagesPerFrame = Mathf.Max(1, _maxMessagesPerFrame);
+            ValidateConfiguration();
+        }
+        
+        /// <summary>
+        /// Gets debug information about the current state of the logging system.
+        /// </summary>
+        /// <returns>Debug information string.</returns>
+        public string GetDebugInfo()
+        {
+            var info = new System.Text.StringBuilder();
+            info.AppendLine($"LogManagerComponent Debug Info:");
+            info.AppendLine($"  Initialized: {IsInitialized}");
+            info.AppendLine($"  Disposing: {_isDisposing}");
+            info.AppendLine($"  Target Count: {TargetCount}");
+            info.AppendLine($"  Queued Messages: {QueuedMessageCount}");
+            info.AppendLine($"  Total Processed: {_totalMessagesProcessed}");
+            info.AppendLine($"  Flush Count: {_flushCount}");
+            info.AppendLine($"  Global Min Level: {_globalMinimumLevel}");
+            info.AppendLine($"  Auto Flush: {_enableAutoFlush} ({_autoFlushInterval}s)");
+            info.AppendLine($"  Has Default Logger: {_hasDefaultJobLogger}");
+            info.AppendLine($"  Unity Adapter: {(_unityLoggerAdapter != null ? "Active" : "None")}");
+            info.AppendLine($"  Burst Adapter: {(_burstLoggerAdapter != null ? "Active" : "None")}");
+            info.AppendLine($"  Validated Configs: {_validatedConfigs.Count}");
+            info.AppendLine($"  Disposables: {_disposables.Count}");
             
-            if (!string.IsNullOrEmpty(_defaultLogFilePath) && !_defaultLogFilePath.EndsWith(".log"))
-            {
-                _defaultLogFilePath += ".log";
-            }
-            
-            // Ensure only one preset is selected
-            if (_useDevelopmentPreset)
-            {
-                _useProductionPreset = false;
-                _useHighPerformancePreset = false;
-            }
-            else if (_useProductionPreset)
-            {
-                _useDevelopmentPreset = false;
-                _useHighPerformancePreset = false;
-            }
-            else if (_useHighPerformancePreset)
-            {
-                _useDevelopmentPreset = false;
-                _useProductionPreset = false;
-            }
+            return info.ToString();
         }
         
         #endregion
     }
-    
-    #region Supporting Interfaces
-    
-    /// <summary>
-    /// Interface for dependency injection providers.
-    /// </summary>
-    public interface IDependencyProvider
-    {
-        /// <summary>
-        /// Attempts to resolve a dependency of the specified type.
-        /// </summary>
-        /// <typeparam name="T">The type to resolve.</typeparam>
-        /// <returns>The resolved instance or null if not available.</returns>
-        T TryResolve<T>() where T : class;
-    }
-    
-    #endregion
 }

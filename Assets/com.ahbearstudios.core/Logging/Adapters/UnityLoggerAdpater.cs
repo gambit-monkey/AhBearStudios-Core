@@ -4,24 +4,25 @@ using AhBearStudios.Core.Logging.Tags;
 using AhBearStudios.Core.Logging.Configuration;
 using Object = UnityEngine.Object;
 
-namespace AhBearStudios.Core.Logging.Unity
+namespace AhBearStudios.Core.Logging.Adapters
 {
     /// <summary>
     /// Adapter class that connects Unity's logging system to the core logging framework.
     /// Implements UnityEngine.ILogHandler to intercept Unity's log messages and can be registered
     /// with Debug.unityLogger to capture all Unity engine logs.
     /// </summary>
-    public class UnityLoggerAdapter : ILogHandler
+    public class UnityLoggerAdapter : ILogHandler, IDisposable
     {
         private readonly IBurstLogger _coreLogger;
         private readonly ILogHandler _originalLogHandler;
         private readonly bool _isRegisteredWithUnity;
         private readonly UnityConsoleTargetConfig _config;
+        private bool _disposed;
         
         /// <summary>
         /// Gets whether this adapter is registered with the Unity logger.
         /// </summary>
-        public bool IsRegisteredWithUnity => _isRegisteredWithUnity;
+        public bool IsRegisteredWithUnity => _isRegisteredWithUnity && !_disposed;
 
         /// <summary>
         /// Creates a new UnityLoggerAdapter with the specified core logger.
@@ -32,6 +33,7 @@ namespace AhBearStudios.Core.Logging.Unity
         {
             _coreLogger = coreLogger ?? throw new ArgumentNullException(nameof(coreLogger));
             _config = config;
+            _disposed = false;
             
             // Store original log handler for cleanup
             _originalLogHandler = Debug.unityLogger.logHandler;
@@ -53,6 +55,9 @@ namespace AhBearStudios.Core.Logging.Unity
         /// </summary>
         public void RegisterWithUnity()
         {
+            if (_disposed)
+                return;
+                
             try
             {
                 // Register this adapter as Unity's log handler
@@ -72,7 +77,7 @@ namespace AhBearStudios.Core.Logging.Unity
         /// </summary>
         public void RestoreOriginalHandler()
         {
-            if (_isRegisteredWithUnity && _originalLogHandler != null)
+            if (_isRegisteredWithUnity && _originalLogHandler != null && !_disposed)
             {
                 try
                 {
@@ -97,6 +102,21 @@ namespace AhBearStudios.Core.Logging.Unity
         }
 
         /// <summary>
+        /// Updates the configuration for this adapter.
+        /// </summary>
+        /// <param name="config">The new configuration to apply.</param>
+        public void UpdateConfiguration(UnityConsoleTargetConfig config)
+        {
+            if (_disposed)
+                return;
+                
+            // This would be used to update runtime configuration
+            // For now, we'll just store the reference for future use
+            // In a more complete implementation, you might want to
+            // re-register with Unity if the registration setting changed
+        }
+
+        /// <summary>
         /// Handles formatted log messages from Unity's logging system.
         /// Forwards them to the core logger with appropriate level and tag.
         /// </summary>
@@ -106,6 +126,13 @@ namespace AhBearStudios.Core.Logging.Unity
         /// <param name="args">Format arguments.</param>
         public void LogFormat(LogType logType, Object context, string format, params object[] args)
         {
+            if (_disposed)
+            {
+                // If disposed, just pass to original handler
+                _originalLogHandler?.LogFormat(logType, context, format, args);
+                return;
+            }
+            
             try
             {
                 string message = string.Format(format, args);
@@ -142,6 +169,13 @@ namespace AhBearStudios.Core.Logging.Unity
         /// <param name="context">The Unity object context.</param>
         public void LogException(Exception exception, Object context)
         {
+            if (_disposed)
+            {
+                // If disposed, just pass to original handler
+                _originalLogHandler?.LogException(exception, context);
+                return;
+            }
+            
             try
             {
                 // Build message with stack trace
@@ -212,7 +246,19 @@ namespace AhBearStudios.Core.Logging.Unity
         /// </summary>
         public void Dispose()
         {
-            RestoreOriginalHandler();
+            if (_disposed)
+                return;
+                
+            try
+            {
+                RestoreOriginalHandler();
+                _disposed = true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error disposing UnityLoggerAdapter: {ex.Message}");
+                _disposed = true;
+            }
         }
     }
 }

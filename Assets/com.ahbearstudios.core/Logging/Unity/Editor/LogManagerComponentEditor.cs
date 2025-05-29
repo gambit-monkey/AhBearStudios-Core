@@ -11,7 +11,7 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
 {
     /// <summary>
     /// Custom Unity Editor for the LogManagerComponent.
-    /// Provides a rich interface for configuring and managing log settings.
+    /// Provides a rich interface for configuring and managing log settings with enhanced adapter monitoring.
     /// Uses compositional approach with ILogTargetConfig for better flexibility.
     /// </summary>
     [CustomEditor(typeof(LogManagerComponent))]
@@ -28,6 +28,8 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
         private bool _showTargetConfigs = true;
         private bool _showAdvancedSettings;
         private bool _showRuntimeInfo;
+        private bool _showAdapterInfo;
+        private bool _showPerformanceMetrics;
         
         // Component reference
         private LogManagerComponent _logManagerComponent;
@@ -37,6 +39,7 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
         private int _lastTargetCount;
         private LogLevel _lastMinimumLevel;
         private double _lastUpdateTime;
+        private Dictionary<string, object> _lastPerformanceMetrics;
         
         // UI Styles - memory-optimized
         private EditorStylesCache _stylesCache;
@@ -61,8 +64,9 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
             // Cache component reference
             _logManagerComponent = target as LogManagerComponent;
             
-            // Initialize update time
+            // Initialize update time and performance cache
             _lastUpdateTime = EditorApplication.timeSinceStartup;
+            _lastPerformanceMetrics = new Dictionary<string, object>();
             
             // Initialize styles cache
             _stylesCache = new EditorStylesCache();
@@ -100,16 +104,20 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
             // Ensure styles are ready
             _stylesCache.EnsureInitialized();
             
-            // Header
+            // Header with initialization status
             using (new EditorGUILayout.HorizontalScope())
             {
                 EditorGUILayout.LabelField("Log Manager Configuration", _stylesCache.HeaderStyle);
                 GUILayout.FlexibleSpace();
                 
-                if (Application.isPlaying && _logManagerComponent.LoggerManager != null)
+                if (Application.isPlaying)
                 {
-                    var status = _logManagerComponent.LoggerManager.QueuedMessageCount > 0 ? "Active" : "Idle";
+                    var status = _logManagerComponent.IsInitialized ? "Initialized" : "Initializing";
+                    var statusColor = _logManagerComponent.IsInitialized ? Color.green : Color.yellow;
+                    var previousColor = GUI.color;
+                    GUI.color = statusColor;
                     EditorGUILayout.LabelField($"Status: {status}", _stylesCache.StatusStyle);
+                    GUI.color = previousColor;
                 }
             }
             
@@ -125,10 +133,14 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
             DrawAdvancedSettings();
             
             // Runtime section (play mode only)
-            if (Application.isPlaying && _logManagerComponent.LoggerManager != null)
+            if (Application.isPlaying && _logManagerComponent.IsInitialized)
             {
                 EditorGUILayout.Space();
                 DrawRuntimeInfo();
+                EditorGUILayout.Space();
+                DrawAdapterInfo();
+                EditorGUILayout.Space();
+                DrawPerformanceMetrics();
             }
             
             serializedObject.ApplyModifiedProperties();
@@ -311,11 +323,24 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
                         ResetToScene();
                     }
                 }
+                
+                EditorGUILayout.Space();
+                
+                // Debug information
+                if (Application.isPlaying && _logManagerComponent.IsInitialized)
+                {
+                    EditorGUILayout.LabelField("Debug Information", _stylesCache.SectionHeaderStyle);
+                    using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+                    {
+                        string debugInfo = _logManagerComponent.GetDebugInfo();
+                        EditorGUILayout.TextArea(debugInfo, EditorStyles.wordWrappedLabel, GUILayout.Height(60));
+                    }
+                }
             }
         }
         
         /// <summary>
-        /// Draw the runtime information section with performance monitoring.
+        /// Draw the runtime information section with enhanced monitoring.
         /// </summary>
         private void DrawRuntimeInfo()
         {
@@ -341,6 +366,178 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
                     DrawRuntimeActions(loggerManager);
                     EditorGUILayout.Space();
                     DrawTestMessageSection(loggerManager);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Draw adapter information section showing Unity and Burst logger adapter status.
+        /// </summary>
+        private void DrawAdapterInfo()
+        {
+            _showAdapterInfo = EditorGUILayout.Foldout(_showAdapterInfo, "Adapter Information", true, _stylesCache.FoldoutStyle);
+            
+            if (!_showAdapterInfo)
+                return;
+                
+            using (new EditorGUI.IndentLevelScope())
+            {
+                using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+                {
+                    EditorGUILayout.LabelField("Logging Adapters:", _stylesCache.SectionHeaderStyle);
+                    
+                    // Unity Logger Adapter Status
+                    var unityAdapter = _logManagerComponent.UnityLoggerAdapter;
+                    if (unityAdapter != null)
+                    {
+                        using (new EditorGUILayout.HorizontalScope())
+                        {
+                            EditorGUILayout.LabelField("Unity Logger Adapter:", _stylesCache.RuntimeInfoStyle);
+                            GUILayout.FlexibleSpace();
+                            
+                            string status = unityAdapter.IsRegisteredWithUnity ? "Registered" : "Not Registered";
+                            var statusColor = unityAdapter.IsRegisteredWithUnity ? Color.green : Color.red;
+                            var previousColor = GUI.color;
+                            GUI.color = statusColor;
+                            EditorGUILayout.LabelField(status, _stylesCache.StatusStyle);
+                            GUI.color = previousColor;
+                        }
+                    }
+                    else
+                    {
+                        EditorGUILayout.LabelField("Unity Logger Adapter: Not Available", _stylesCache.RuntimeInfoStyle);
+                    }
+                    
+                    // Burst Logger Adapter Status
+                    var burstAdapter = _logManagerComponent.BurstLoggerAdapter;
+                    if (burstAdapter != null)
+                    {
+                        using (new EditorGUILayout.HorizontalScope())
+                        {
+                            EditorGUILayout.LabelField("Burst Logger Adapter:", _stylesCache.RuntimeInfoStyle);
+                            GUILayout.FlexibleSpace();
+                            
+                            string status = burstAdapter.IsEnabledGlobal ? "Enabled" : "Disabled";
+                            var statusColor = burstAdapter.IsEnabledGlobal ? Color.green : Color.yellow;
+                            var previousColor = GUI.color;
+                            GUI.color = statusColor;
+                            EditorGUILayout.LabelField(status, _stylesCache.StatusStyle);
+                            GUI.color = previousColor;
+                        }
+                        
+                        EditorGUILayout.LabelField($"Minimum Level: {burstAdapter.MinimumLevel}", _stylesCache.RuntimeInfoStyle);
+                    }
+                    else
+                    {
+                        EditorGUILayout.LabelField("Burst Logger Adapter: Not Available", _stylesCache.RuntimeInfoStyle);
+                    }
+                    
+                    EditorGUILayout.Space();
+                    
+                    // Adapter Control Buttons
+                    EditorGUILayout.LabelField("Adapter Controls:", _stylesCache.SectionHeaderStyle);
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        if (unityAdapter != null)
+                        {
+                            if (GUILayout.Button("Re-register Unity Logger", _stylesCache.ButtonStyle))
+                            {
+                                unityAdapter.RegisterWithUnity();
+                            }
+                            
+                            if (GUILayout.Button("Restore Original Handler", _stylesCache.ButtonStyle))
+                            {
+                                unityAdapter.RestoreOriginalHandler();
+                            }
+                        }
+                    }
+                    
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        if (burstAdapter != null)
+                        {
+                            if (GUILayout.Button(burstAdapter.IsEnabledGlobal ? "Disable Burst Adapter" : "Enable Burst Adapter", _stylesCache.ButtonStyle))
+                            {
+                                burstAdapter.IsEnabledGlobal = !burstAdapter.IsEnabledGlobal;
+                            }
+                            
+                            if (GUILayout.Button("Flush Burst Adapter", _stylesCache.ButtonStyle))
+                            {
+                                burstAdapter.Flush();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Draw performance metrics section showing detailed logging statistics.
+        /// </summary>
+        private void DrawPerformanceMetrics()
+        {
+            _showPerformanceMetrics = EditorGUILayout.Foldout(_showPerformanceMetrics, "Performance Metrics", true, _stylesCache.FoldoutStyle);
+            
+            if (!_showPerformanceMetrics)
+                return;
+                
+            using (new EditorGUI.IndentLevelScope())
+            {
+                using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+                {
+                    EditorGUILayout.LabelField("Logging Performance:", _stylesCache.SectionHeaderStyle);
+                    
+                    var metrics = _logManagerComponent.GetPerformanceMetrics();
+                    if (metrics != null && metrics.Count > 0)
+                    {
+                        // Display core metrics
+                        DisplayMetric(metrics, "TotalMessagesProcessed", "Total Messages Processed");
+                        DisplayMetric(metrics, "FlushCount", "Flush Count");
+                        DisplayMetric(metrics, "QueuedMessageCount", "Queued Messages");
+                        DisplayMetric(metrics, "TargetCount", "Active Targets");
+                        
+                        // Display performance ratios if available
+                        if (metrics.ContainsKey("TotalMessagesProcessed") && metrics.ContainsKey("FlushCount"))
+                        {
+                            var totalMessages = Convert.ToInt32(metrics["TotalMessagesProcessed"]);
+                            var flushCount = Convert.ToInt32(metrics["FlushCount"]);
+                            if (flushCount > 0)
+                            {
+                                float avgMessagesPerFlush = (float)totalMessages / flushCount;
+                                EditorGUILayout.LabelField($"Avg Messages per Flush: {avgMessagesPerFlush:F1}", _stylesCache.RuntimeInfoStyle);
+                            }
+                        }
+                        
+                        // Display any custom metrics
+                        foreach (var metric in metrics)
+                        {
+                            if (!IsStandardMetric(metric.Key))
+                            {
+                                EditorGUILayout.LabelField($"{metric.Key}: {metric.Value}", _stylesCache.RuntimeInfoStyle);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        EditorGUILayout.LabelField("No performance metrics available", _stylesCache.RuntimeInfoStyle);
+                    }
+                    
+                    EditorGUILayout.Space();
+                    
+                    // Performance control buttons
+                    using (new EditorGUILayout.HorizontalScope())
+                    {
+                        if (GUILayout.Button("Reset Metrics", _stylesCache.ButtonStyle))
+                        {
+                            _logManagerComponent.ResetPerformanceMetrics();
+                        }
+                        
+                        if (GUILayout.Button("Force Flush", _stylesCache.ButtonStyle))
+                        {
+                            var processed = _logManagerComponent.Flush();
+                            EditorUtility.DisplayDialog("Flush Complete", $"Processed {processed} messages.", "OK");
+                        }
+                    }
                 }
             }
         }
@@ -376,9 +573,10 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
                     FlushLogsWithFeedback(loggerManager);
                 }
                 
-                if (GUILayout.Button("Clear Queue", _stylesCache.ButtonStyle))
+                if (GUILayout.Button("Update Targets", _stylesCache.ButtonStyle))
                 {
-                    ClearLogQueue(loggerManager);
+                    loggerManager.UpdateTargetMinimumLevels();
+                    EditorUtility.DisplayDialog("Update Complete", "Target minimum levels have been updated.", "OK");
                 }
             }
         }
@@ -430,20 +628,39 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
                 
             _lastUpdateTime = EditorApplication.timeSinceStartup;
             
-            if (!Application.isPlaying || _logManagerComponent?.LoggerManager == null)
+            if (!Application.isPlaying || !_logManagerComponent?.IsInitialized == true)
                 return;
                 
             var loggerManager = _logManagerComponent.LoggerManager;
+            if (loggerManager == null)
+                return;
             
             // Cache current values
             int queueCount = loggerManager.QueuedMessageCount;
             int targetCount = loggerManager.TargetCount;
             LogLevel minimumLevel = loggerManager.GlobalMinimumLevel;
+            var currentMetrics = _logManagerComponent.GetPerformanceMetrics();
+            
+            // Check if performance metrics changed
+            bool metricsChanged = false;
+            if (currentMetrics != null && _lastPerformanceMetrics != null)
+            {
+                metricsChanged = !MetricsEqual(currentMetrics, _lastPerformanceMetrics);
+                if (metricsChanged)
+                {
+                    _lastPerformanceMetrics.Clear();
+                    foreach (var metric in currentMetrics)
+                    {
+                        _lastPerformanceMetrics[metric.Key] = metric.Value;
+                    }
+                }
+            }
             
             // Only repaint if something changed
             if (_lastQueueCount != queueCount || 
                 _lastTargetCount != targetCount || 
-                _lastMinimumLevel != minimumLevel)
+                _lastMinimumLevel != minimumLevel ||
+                metricsChanged)
             {
                 _lastQueueCount = queueCount;
                 _lastTargetCount = targetCount;
@@ -455,6 +672,53 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
         #endregion
         
         #region Helper Methods
+        
+        /// <summary>
+        /// Displays a performance metric with proper formatting.
+        /// </summary>
+        /// <param name="metrics">The metrics dictionary.</param>
+        /// <param name="key">The metric key.</param>
+        /// <param name="displayName">The display name for the metric.</param>
+        private void DisplayMetric(Dictionary<string, object> metrics, string key, string displayName)
+        {
+            if (metrics.ContainsKey(key))
+            {
+                EditorGUILayout.LabelField($"{displayName}: {metrics[key]}", _stylesCache.RuntimeInfoStyle);
+            }
+        }
+        
+        /// <summary>
+        /// Checks if a metric key is a standard metric.
+        /// </summary>
+        /// <param name="key">The metric key to check.</param>
+        /// <returns>True if it's a standard metric, false otherwise.</returns>
+        private static bool IsStandardMetric(string key)
+        {
+            return key == "TotalMessagesProcessed" || 
+                   key == "FlushCount" || 
+                   key == "QueuedMessageCount" || 
+                   key == "TargetCount";
+        }
+        
+        /// <summary>
+        /// Compares two metrics dictionaries for equality.
+        /// </summary>
+        /// <param name="metrics1">First metrics dictionary.</param>
+        /// <param name="metrics2">Second metrics dictionary.</param>
+        /// <returns>True if the dictionaries are equal, false otherwise.</returns>
+        private static bool MetricsEqual(Dictionary<string, object> metrics1, Dictionary<string, object> metrics2)
+        {
+            if (metrics1.Count != metrics2.Count)
+                return false;
+                
+            foreach (var kvp in metrics1)
+            {
+                if (!metrics2.ContainsKey(kvp.Key) || !Equals(kvp.Value, metrics2[kvp.Key]))
+                    return false;
+            }
+            
+            return true;
+        }
         
         /// <summary>
         /// Ensures the type cache for ILogTargetConfig implementations is initialized.
@@ -751,16 +1015,6 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
             {
                 Debug.LogError($"Failed to flush logs: {ex.Message}");
             }
-        }
-        
-        /// <summary>
-        /// Clears the log queue (if supported).
-        /// </summary>
-        /// <param name="manager">The logger manager instance.</param>
-        private void ClearLogQueue(JobLoggerManager manager)
-        {
-            // Note: This would require additional API on JobLoggerManager
-            EditorUtility.DisplayDialog("Clear Queue", "Queue clearing is not implemented yet.", "OK");
         }
         
         /// <summary>
