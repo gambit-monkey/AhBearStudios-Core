@@ -3,6 +3,10 @@ using AhBearStudios.Core.Logging.Tags;
 
 namespace AhBearStudios.Core.Logging.Interfaces
 {
+    /// <summary>
+    /// Interface for managing dynamic log level configuration at runtime.
+    /// Supports both Unity ScriptableObject profiles and runtime profiles.
+    /// </summary>
     public interface ILogLevelManager
     {
         /// <summary>
@@ -31,13 +35,35 @@ namespace AhBearStudios.Core.Logging.Interfaces
         bool RemoveCategoryLevelOverride(string category);
     
         /// <summary>
-        /// Applies a log level profile
+        /// Applies a Unity ScriptableObject log level profile
         /// </summary>
         void ApplyProfile(LogLevelProfile profile);
+        
+        /// <summary>
+        /// Applies a runtime log level profile
+        /// </summary>
+        void ApplyProfile(RuntimeLogLevelProfile profile);
     
         /// <summary>
         /// Resets all overrides to defaults
         /// </summary>
         void ResetToDefaults();
+        
+        /// <summary>
+        /// Checks if a message should be logged based on current level configuration
+        /// </summary>
+        /// <param name="level">The log level of the message</param>
+        /// <param name="tag">The tag of the message</param>
+        /// <param name="category">The category of the message (optional)</param>
+        /// <returns>True if the message should be logged, false otherwise</returns>
+        bool ShouldLog(LogLevel level, Tagging.LogTag tag, string category = null);
+        
+        /// <summary>
+        /// Gets the effective minimum level for a specific tag and category combination
+        /// </summary>
+        /// <param name="tag">The tag to check</param>
+        /// <param name="category">The category to check (optional)</param>
+        /// <returns>The effective minimum log level</returns>
+        LogLevel GetEffectiveLevel(Tagging.LogTag tag, string category = null);
     }
 }
