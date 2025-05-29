@@ -4,6 +4,7 @@ using UnityEngine;
 using AhBearStudios.Core.Logging.Adapters;
 using AhBearStudios.Core.Logging.Configuration;
 using AhBearStudios.Core.Logging.Formatters;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.Logging.LogTargets;
 using AhBearStudios.Core.Logging.Tags;
 using AhBearStudios.Core.Logging.Unity;

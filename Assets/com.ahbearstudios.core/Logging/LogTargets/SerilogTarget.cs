@@ -1,7 +1,9 @@
+
 using System;
 using System.Collections.Generic;
 using System.IO;
 using AhBearStudios.Core.Logging.Data;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.Logging.Tags;
 using Serilog;
 using Serilog.Core;
@@ -19,7 +21,9 @@ namespace AhBearStudios.Core.Logging.LogTargets
     {
         private readonly ILogger _logger;
         private readonly LoggingLevelSwitch _levelSwitch;
-        private readonly HashSet<Tagging.TagCategory> _tagFilters;
+        private readonly HashSet<Tagging.TagCategory> _includedTagFilters;
+        private readonly HashSet<Tagging.TagCategory> _excludedTagFilters;
+        private bool _processUntaggedMessages = true;
         private bool _isDisposed;
         private bool _isEnabled = true;
         
@@ -57,7 +61,9 @@ namespace AhBearStudios.Core.Logging.LogTargets
         public SerilogTarget(string name, string logFilePath, LogLevel minimumLevel = LogLevel.Info)
         {
             Name = string.IsNullOrEmpty(name) ? "SerilogFile" : name;
-            _tagFilters = new HashSet<Tagging.TagCategory>();
+            _includedTagFilters = new HashSet<Tagging.TagCategory>();
+            _excludedTagFilters = new HashSet<Tagging.TagCategory>();
+            _processUntaggedMessages = true;
             _levelSwitch = new LoggingLevelSwitch(ConvertLogLevelToLogEventLevel(minimumLevel));
             
             // Ensure directory exists
@@ -90,7 +96,9 @@ namespace AhBearStudios.Core.Logging.LogTargets
         public SerilogTarget(string name, ILogger logger, LoggingLevelSwitch levelSwitch)
         {
             Name = string.IsNullOrEmpty(name) ? "SerilogCustom" : name;
-            _tagFilters = new HashSet<Tagging.TagCategory>();
+            _includedTagFilters = new HashSet<Tagging.TagCategory>();
+            _excludedTagFilters = new HashSet<Tagging.TagCategory>();
+            _processUntaggedMessages = true;
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _levelSwitch = levelSwitch ?? new LoggingLevelSwitch(LogEventLevel.Information);
         }
@@ -323,7 +331,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
             if (tagCategory == Tagging.TagCategory.None)
                 return;
                 
-            _tagFilters.Add(tagCategory);
+            _includedTagFilters.Add(tagCategory);
         }
         
         /// <summary>
@@ -332,7 +340,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <param name="tagCategory">The tag category to remove from filtering.</param>
         public void RemoveTagFilter(Tagging.TagCategory tagCategory)
         {
-            _tagFilters.Remove(tagCategory);
+            _includedTagFilters.Remove(tagCategory);
         }
         
         /// <summary>
@@ -340,7 +348,95 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// </summary>
         public void ClearTagFilters()
         {
-            _tagFilters.Clear();
+            _includedTagFilters.Clear();
+            _excludedTagFilters.Clear();
+            _processUntaggedMessages = true;
+        }
+        
+        /// <summary>
+        /// Sets comprehensive tag filters for this target.
+        /// This provides a configuration-friendly way to set up filtering.
+        /// </summary>
+        /// <param name="includedTags">Tags that should be included (null or empty means include all).</param>
+        /// <param name="excludedTags">Tags that should be excluded.</param>
+        /// <param name="processUntaggedMessages">Whether to process messages without tags.</param>
+        public void SetTagFilters(string[] includedTags, string[] excludedTags, bool processUntaggedMessages)
+        {
+            // Clear existing filters
+            _includedTagFilters.Clear();
+            _excludedTagFilters.Clear();
+            _processUntaggedMessages = processUntaggedMessages;
+            
+            // Convert and add included tags
+            if (includedTags != null && includedTags.Length > 0)
+            {
+                foreach (var tagString in includedTags)
+                {
+                    if (!string.IsNullOrEmpty(tagString) && TryParseTagCategory(tagString, out var category))
+                    {
+                        _includedTagFilters.Add(category);
+                    }
+                }
+            }
+            
+            // Convert and add excluded tags
+            if (excludedTags != null && excludedTags.Length > 0)
+            {
+                foreach (var tagString in excludedTags)
+                {
+                    if (!string.IsNullOrEmpty(tagString) && TryParseTagCategory(tagString, out var category))
+                    {
+                        _excludedTagFilters.Add(category);
+                    }
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Attempts to parse a string tag into a TagCategory.
+        /// </summary>
+        /// <param name="tagString">The tag string to parse.</param>
+        /// <param name="tagCategory">The parsed TagCategory.</param>
+        /// <returns>True if parsing succeeded, false otherwise.</returns>
+        private bool TryParseTagCategory(string tagString, out Tagging.TagCategory tagCategory)
+        {
+            // Try direct enum parsing first
+            if (Enum.TryParse<Tagging.TagCategory>(tagString, true, out tagCategory))
+            {
+                return true;
+            }
+            
+            // Add custom mappings for common string names
+            switch (tagString.ToLowerInvariant())
+            {
+                case "system":
+                case "core":
+                    tagCategory = Tagging.TagCategory.System;
+                    return true;
+                case "gameplay":
+                case "game":
+                    tagCategory = Tagging.TagCategory.Gameplay;
+                    return true;
+                case "ui":
+                case "interface":
+                    tagCategory = Tagging.TagCategory.UI;
+                    return true;
+                case "network":
+                case "networking":
+                    tagCategory = Tagging.TagCategory.Gameplay;
+                    return true;
+                case "audio":
+                case "sound":
+                    tagCategory = Tagging.TagCategory.Gameplay;
+                    return true;
+                case "graphics":
+                case "rendering":
+                    tagCategory = Tagging.TagCategory.Gameplay;
+                    return true;
+                default:
+                    tagCategory = Tagging.TagCategory.None;
+                    return false;
+            }
         }
         
         /// <summary>
@@ -376,20 +472,24 @@ namespace AhBearStudios.Core.Logging.LogTargets
         {
             if (level < MinimumLevel)
                 return false;
-                
-            // If no tag filters are set, log everything
-            if (_tagFilters.Count == 0)
-                return true;
-                
-            // Check if the tag matches any of our filters
-            Tagging.TagCategory category = Tagging.GetTagCategory(tag);
-            foreach (var filter in _tagFilters)
-            {
-                if ((category & filter) != 0)
-                    return true;
-            }
             
-            return false;
+            // Get the tag category for filtering
+            var category = Tagging.GetTagCategory(tag);
+            
+            // Check if tag is explicitly excluded
+            if (_excludedTagFilters.Contains(category))
+                return false;
+            
+            // Handle untagged messages
+            if (category == Tagging.TagCategory.None)
+                return _processUntaggedMessages;
+            
+            // If no include filters are set, allow all (except excluded)
+            if (_includedTagFilters.Count == 0)
+                return true;
+            
+            // Check if this tag's category is in our include filters
+            return _includedTagFilters.Contains(category);
         }
         
         /// <summary>

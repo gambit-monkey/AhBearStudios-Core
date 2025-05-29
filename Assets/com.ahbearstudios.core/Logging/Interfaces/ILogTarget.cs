@@ -3,7 +3,7 @@ using AhBearStudios.Core.Logging.Data;
 using AhBearStudios.Core.Logging.Tags;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.Logging
+namespace AhBearStudios.Core.Logging.Interfaces
 {
     /// <summary>
     /// Defines a target that can receive and process log messages.
@@ -69,5 +69,14 @@ namespace AhBearStudios.Core.Logging
         /// Clears all tag filters from this target.
         /// </summary>
         void ClearTagFilters();
+        
+        /// <summary>
+        /// Sets comprehensive tag filters for this target.
+        /// This provides a configuration-friendly way to set up filtering.
+        /// </summary>
+        /// <param name="includedTags">Tags that should be included (null or empty means include all).</param>
+        /// <param name="excludedTags">Tags that should be excluded.</param>
+        /// <param name="processUntaggedMessages">Whether to process messages without tags.</param>
+        void SetTagFilters(string[] includedTags, string[] excludedTags, bool processUntaggedMessages);
     }
 }

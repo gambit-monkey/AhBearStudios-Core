@@ -5,10 +5,10 @@ using System.Threading;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Data;
 using AhBearStudios.Core.Logging.Formatters;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.Logging.Jobs;
 using AhBearStudios.Core.Logging.Tags;
 using AhBearStudios.Core.MessageBus.Interfaces;
-using AhBearStudios.Core.MessageBus.Factories;
 
 namespace AhBearStudios.Core.Logging
 {
@@ -127,7 +127,7 @@ namespace AhBearStudios.Core.Logging
         /// <param name="initialCapacity">Initial capacity of the log queue.</param>
         /// <param name="maxMessagesPerFlush">Maximum messages to process per flush operation.</param>
         /// <param name="globalMinimumLevel">Global minimum log level.</param>
-        /// <param name="messageBus">Optional message bus for publishing log-related events. If null, a default one will be created.</param>
+        /// <param name="messageBus">Optional message bus for publishing log-related events. If null, a no-op implementation will be used.</param>
         /// <exception cref="ArgumentNullException">Thrown when formatter is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when native resources cannot be initialized.</exception>
         public JobLoggerManager(ILogFormatter formatter, int initialCapacity = 64, int maxMessagesPerFlush = 200,
@@ -144,8 +144,8 @@ namespace AhBearStudios.Core.Logging
             _autoFlushInterval = 1.0f;
             _timeSinceLastAutoFlush = 0f;
             
-            // Initialize or use provided message bus
-            _messageBus = messageBus ?? CreateDefaultMessageBus();
+            // Use provided message bus or create a no-op implementation
+            _messageBus = messageBus ?? CreateNullMessageBus();
 
             // Initialize native queue
             InitializeNativeQueue(initialCapacity);
@@ -162,7 +162,7 @@ namespace AhBearStudios.Core.Logging
         /// <param name="initialCapacity">Initial capacity of the log queue.</param>
         /// <param name="maxMessagesPerFlush">Maximum messages to process per flush operation.</param>
         /// <param name="globalMinimumLevel">Global minimum log level.</param>
-        /// <param name="messageBus">Optional message bus for publishing log-related events. If null, a default one will be created.</param>
+        /// <param name="messageBus">Optional message bus for publishing log-related events. If null, a no-op implementation will be used.</param>
         /// <exception cref="ArgumentNullException">Thrown when formatter is null.</exception>
         /// <exception cref="ArgumentException">Thrown when initialTargets is null or empty.</exception>
         /// <exception cref="InvalidOperationException">Thrown when native resources cannot be initialized.</exception>
@@ -185,8 +185,8 @@ namespace AhBearStudios.Core.Logging
             _autoFlushInterval = 1.0f;
             _timeSinceLastAutoFlush = 0f;
             
-            // Initialize or use provided message bus
-            _messageBus = messageBus ?? CreateDefaultMessageBus();
+            // Use provided message bus or create a no-op implementation
+            _messageBus = messageBus ?? CreateNullMessageBus();
 
             // Initialize native queue
             InitializeNativeQueue(initialCapacity);
@@ -205,7 +205,7 @@ namespace AhBearStudios.Core.Logging
         /// <param name="initialCapacity">Initial capacity of the log queue.</param>
         /// <param name="maxMessagesPerFlush">Maximum messages to process per flush operation.</param>
         /// <param name="globalMinimumLevel">Global minimum log level.</param>
-        /// <param name="messageBus">Optional message bus for publishing log-related events. If null, a default one will be created.</param>
+        /// <param name="messageBus">Optional message bus for publishing log-related events. If null, a no-op implementation will be used.</param>
         /// <returns>A configured JobLoggerManager instance.</returns>
         /// <exception cref="ArgumentException">Thrown when targets is empty.</exception>
         /// <exception cref="InvalidOperationException">Thrown when native resources cannot be initialized.</exception>
@@ -226,7 +226,7 @@ namespace AhBearStudios.Core.Logging
         /// <param name="initialCapacity">Initial capacity of the log queue.</param>
         /// <param name="maxMessagesPerFlush">Maximum messages to process per flush operation.</param>
         /// <param name="globalMinimumLevel">Global minimum log level.</param>
-        /// <param name="messageBus">Optional message bus for publishing log-related events. If null, a default one will be created.</param>
+        /// <param name="messageBus">Optional message bus for publishing log-related events. If null, a no-op implementation will be used.</param>
         /// <returns>A configured JobLoggerManager instance.</returns>
         /// <exception cref="InvalidOperationException">Thrown when native resources cannot be initialized.</exception>
         public static JobLoggerManager CreateWithDefaultFormatter(int initialCapacity = 64,
@@ -238,13 +238,13 @@ namespace AhBearStudios.Core.Logging
         }
 
         /// <summary>
-        /// Creates a default message bus for logging.
+        /// Creates a no-op message bus implementation for when messaging is not needed.
+        /// This prevents the logging system from failing when no message bus is configured.
         /// </summary>
-        /// <returns>A configured message bus instance.</returns>
-        private static IMessageBus CreateDefaultMessageBus()
+        /// <returns>A no-op message bus instance.</returns>
+        private static IMessageBus CreateNullMessageBus()
         {
-            var config = MessageBusConfigFactory.CreateMinimalConfig("LoggingMessageBus");
-            return MessageBusFactory.CreateMessageBus(config);
+            return new NullMessageBus();
         }
 
         /// <summary>
@@ -641,6 +641,72 @@ namespace AhBearStudios.Core.Logging
                         _logTargets.Clear();
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// No-op implementation of IMessageBus for scenarios where messaging is not needed.
+        /// This prevents the logging system from failing when no message bus is configured.
+        /// </summary>
+        private class NullMessageBus : IMessageBus
+        {
+            public IMessagePublisher<TMessage> GetPublisher<TMessage>() => new NullPublisher<TMessage>();
+            public IMessageSubscriber<TMessage> GetSubscriber<TMessage>() => new NullSubscriber<TMessage>();
+            public IKeyedMessagePublisher<TKey, TMessage> GetPublisher<TKey, TMessage>() => new NullKeyedPublisher<TKey, TMessage>();
+            public IKeyedMessageSubscriber<TKey, TMessage> GetSubscriber<TKey, TMessage>() => new NullKeyedSubscriber<TKey, TMessage>();
+            public void ClearCaches() { }
+            public void PublishMessage<TMessage>(TMessage message) where TMessage : IMessage { }
+            public IDisposable SubscribeToMessage<TMessage>(Action<TMessage> handler) where TMessage : IMessage => new NullDisposable();
+            public IDisposable SubscribeToAllMessages(Action<IMessage> handler) => new NullDisposable();
+            public IMessageRegistry GetMessageRegistry() => new NullMessageRegistry();
+
+            private class NullPublisher<TMessage> : IMessagePublisher<TMessage>
+            {
+                public void Publish(TMessage message) { }
+                public IDisposable PublishAsync(TMessage message) => new NullDisposable();
+            }
+
+            private class NullSubscriber<TMessage> : IMessageSubscriber<TMessage>
+            {
+                public IDisposable Subscribe(Action<TMessage> handler) => new NullDisposable();
+                public IDisposable Subscribe(Action<TMessage> handler, Func<TMessage, bool> filter) => new NullDisposable();
+            }
+
+            private class NullKeyedPublisher<TKey, TMessage> : IKeyedMessagePublisher<TKey, TMessage>
+            {
+                public void Publish(TKey key, TMessage message) { }
+                public IDisposable PublishAsync(TKey key, TMessage message) => new NullDisposable();
+            }
+
+            private class NullKeyedSubscriber<TKey, TMessage> : IKeyedMessageSubscriber<TKey, TMessage>
+            {
+                public IDisposable Subscribe(TKey key, Action<TMessage> handler) => new NullDisposable();
+                public IDisposable Subscribe(Action<TKey, TMessage> handler) => new NullDisposable();
+                public IDisposable Subscribe(TKey key, Action<TMessage> handler, Func<TMessage, bool> filter) => new NullDisposable();
+            }
+
+            private class NullMessageRegistry : IMessageRegistry
+            {
+                public void DiscoverMessages() { }
+                public void RegisterMessageType(Type messageType) { }
+                public void RegisterMessageType(Type messageType, ushort typeCode) { }
+                public IReadOnlyDictionary<Type, IMessageInfo> GetAllMessageTypes() => new Dictionary<Type, IMessageInfo>();
+                public IReadOnlyList<string> GetCategories() => new List<string>();
+                public IReadOnlyList<Type> GetMessageTypesByCategory(string category) => new List<Type>();
+                public IMessageInfo GetMessageInfo(Type messageType) => null;
+                public IMessageInfo GetMessageInfo<TMessage>() where TMessage : IMessage => null;
+                public bool IsRegistered(Type messageType) => false;
+                public bool IsRegistered<TMessage>() where TMessage : IMessage => false;
+                public ushort GetTypeCode(Type messageType) => 0;
+                public ushort GetTypeCode<TMessage>() where TMessage : IMessage => 0;
+                public Type GetMessageType(ushort typeCode) => null;
+                public IReadOnlyDictionary<ushort, Type> GetAllTypeCodes() => new Dictionary<ushort, Type>();
+                public void Clear() { }
+            }
+
+            private class NullDisposable : IDisposable
+            {
+                public void Dispose() { }
             }
         }
     }

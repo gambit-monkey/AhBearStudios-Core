@@ -5,6 +5,7 @@ using Unity.Collections;
 using Unity.Burst;
 using AhBearStudios.Core.Logging.Data;
 using AhBearStudios.Core.Logging.Formatters;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.Logging.Tags;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Logging.Messages;
@@ -500,17 +501,17 @@ namespace AhBearStudios.Core.Logging
         private int FlushMultiTarget(int maxToProcess)
         {
             int count = 0;
-    
+
             // Clear buffer before use
             _batchBuffer.Clear();
-    
+
             // Dequeue messages into the batch buffer
             while (count < maxToProcess && _queue.TryDequeue(out var log))
             {
                 _batchBuffer.Add(log);
                 count++;
             }
-    
+
             if (count > 0)
             {
                 // Process the batch through all targets
@@ -525,13 +526,14 @@ namespace AhBearStudios.Core.Logging
                         // Continue with other targets if one fails
                     }
                 }
-        
+
                 // Publish message for each processed log message
                 foreach (var message in _batchBuffer)
                 {
                     try
                     {
-                        _messageBus.PublishMessage(new LogEntryWrittenMessage(message, _targets.Count));
+                        // Use "MultiTarget" as the target name since this is for multiple targets
+                        _messageBus.PublishMessage(new LogEntryWrittenMessage(message, _targets.Count, "MultiTarget"));
                     }
                     catch
                     {
@@ -539,7 +541,7 @@ namespace AhBearStudios.Core.Logging
                     }
                 }
             }
-    
+
             _lastBatchSize = count;
             return count;
         }
@@ -552,27 +554,28 @@ namespace AhBearStudios.Core.Logging
         private int FlushLegacy(int maxToProcess)
         {
             int count = 0;
-            
+    
             while (count < maxToProcess && _queue.TryDequeue(out var log))
             {
                 try
                 {
                     // Use the custom formatter to format the message
                     FixedString512Bytes formattedMessage = _formatter.Format(log);
-                    
+            
                     // Convert to string for the burstLogger interface
                     _burstLogger.Log(log.Level, formattedMessage.ToString(), log.GetTagString().ToString());
-                    
+            
                     // Publish message about processing
                     try
                     {
-                        _messageBus.PublishMessage(new LogEntryWrittenMessage(log, 1));
+                        // Use "BurstLogger" as the target name for legacy mode
+                        _messageBus.PublishMessage(new LogEntryWrittenMessage(log, 1, "BurstLogger"));
                     }
                     catch
                     {
                         // Silently continue if message publishing fails
                     }
-                    
+            
                     count++;
                 }
                 catch (Exception ex)
@@ -593,7 +596,7 @@ namespace AhBearStudios.Core.Logging
                     }
                 }
             }
-            
+    
             _lastBatchSize = count;
             return count;
         }

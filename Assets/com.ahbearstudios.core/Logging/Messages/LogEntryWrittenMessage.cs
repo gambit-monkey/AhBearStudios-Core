@@ -1,3 +1,4 @@
+
 using System;
 using AhBearStudios.Core.Logging.Data;
 using AhBearStudios.Core.MessageBus.Interfaces;
@@ -36,16 +37,24 @@ namespace AhBearStudios.Core.Logging.Messages
         public int TargetCount { get; }
         
         /// <summary>
+        /// Gets the name of the target the message was written to.
+        /// For messages written to multiple targets, this represents the primary or first target.
+        /// </summary>
+        public string TargetName { get; }
+        
+        /// <summary>
         /// Creates a new LogMessageWrittenMessage instance.
         /// </summary>
         /// <param name="logMessage">The log message that was written.</param>
         /// <param name="targetCount">The number of targets the message was written to.</param>
-        public LogEntryWrittenMessage(LogMessage logMessage, int targetCount)
+        /// <param name="targetName">The name of the target the message was written to.</param>
+        public LogEntryWrittenMessage(LogMessage logMessage, int targetCount, string targetName)
         {
             Id = Guid.NewGuid();
             TimestampTicks = DateTime.UtcNow.Ticks;
             LogMessage = logMessage;
             TargetCount = targetCount;
+            TargetName = targetName ?? "Unknown";
         }
     }
 }

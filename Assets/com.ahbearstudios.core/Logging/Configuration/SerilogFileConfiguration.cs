@@ -1,6 +1,7 @@
 using UnityEngine;
 using AhBearStudios.Core.Logging.LogTargets;
 using System.IO;
+using AhBearStudios.Core.Logging.Interfaces;
 
 namespace AhBearStudios.Core.Logging.Configuration
 {

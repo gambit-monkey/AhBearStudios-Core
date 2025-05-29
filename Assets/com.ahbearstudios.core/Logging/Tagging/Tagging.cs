@@ -73,20 +73,21 @@ namespace AhBearStudios.Core.Logging.Tags
         
         /// <summary>
         /// Tag categories for filtering across multiple dimensions.
+        /// Limited to 8 categories to fit in a byte for performance.
         /// </summary>
         [Flags]
         public enum TagCategory : byte
         {
             None = 0,
-            System = 1 << 0,
-            UI = 1 << 1,
-            Gameplay = 1 << 2,
-            Debug = 1 << 3,
-            Error = 1 << 4,
-            Custom = 1 << 5,
-            Development = 1 << 6,
-            Features = 1 << 7,
-            All = byte.MaxValue
+            System = 1 << 0,        // 1   - System, Network, Physics, Audio, Input, etc.
+            UI = 1 << 1,            // 2   - UI, Interface elements
+            Gameplay = 1 << 2,      // 4   - Gameplay, AI, Animation, Graphics, etc.
+            Debug = 1 << 3,         // 8   - Debug, Info, Trace, Performance, Profiler
+            Error = 1 << 4,         // 16  - Warning, Error, Critical, Exception, Assert
+            Development = 1 << 5,   // 32  - Editor, Build, Tests
+            Features = 1 << 6,      // 64  - SaveLoad, Resources, Events, Localization, Loading, Analytics
+            Custom = 1 << 7,        // 128 - Custom user-defined categories
+            All = byte.MaxValue     // 255 - All categories
         }
         
         /// <summary>

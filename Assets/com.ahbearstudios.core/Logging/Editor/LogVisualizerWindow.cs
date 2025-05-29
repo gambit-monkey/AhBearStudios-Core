@@ -6,7 +6,6 @@ using UnityEngine;
 using AhBearStudios.Core.Logging.Data;
 using AhBearStudios.Core.Logging.Messages;
 using AhBearStudios.Core.MessageBus.Interfaces;
-using AhBearStudios.Core.MessageBus.Factories;
 using Unity.Collections;
 
 namespace AhBearStudios.Core.Logging.Editor
@@ -36,13 +35,26 @@ namespace AhBearStudios.Core.Logging.Editor
         private bool _autoScroll = true;
         private double _lastUpdateTime;
         private const double UpdateInterval = 0.1; // seconds
-        
+
         // Statistics
         private int _totalMessageCount;
         private Dictionary<LogLevel, int> _messageCountByLevel = new Dictionary<LogLevel, int>();
-        
+
         // UI styles
         private GUIStyleCollection _styles;
+
+        // Static reference to the currently active message bus for this window
+        private static IMessageBus _globalMessageBus;
+
+        /// <summary>
+        /// Sets the global message bus instance that log visualizer windows will use.
+        /// This should be called during application initialization.
+        /// </summary>
+        /// <param name="messageBus">The message bus instance to use for log visualization.</param>
+        public static void SetGlobalMessageBus(IMessageBus messageBus)
+        {
+            _globalMessageBus = messageBus;
+        }
 
         /// <summary>
         /// Opens or focuses the log visualizer window.
@@ -52,6 +64,18 @@ namespace AhBearStudios.Core.Logging.Editor
         {
             var window = GetWindow<LogVisualizerWindow>();
             window.titleContent = new GUIContent("Log Visualizer");
+            window.Show();
+        }
+
+        /// <summary>
+        /// Opens or focuses the log visualizer window with a specific message bus.
+        /// </summary>
+        /// <param name="messageBus">The message bus to use for this window instance.</param>
+        public static void ShowWindow(IMessageBus messageBus)
+        {
+            var window = GetWindow<LogVisualizerWindow>();
+            window.titleContent = new GUIContent("Log Visualizer");
+            window._messageBus = messageBus; // Set the message bus before initialization
             window.Show();
         }
 
@@ -88,11 +112,20 @@ namespace AhBearStudios.Core.Logging.Editor
             if (_initialized)
                 return;
 
-            // Initialize message bus if not already done
+            // Initialize message bus if not already set
             if (_messageBus == null)
             {
-                var config = MessageBusConfigFactory.CreateDefaultConfig("LogVisualizerMessageBus");
-                _messageBus = MessageBusFactory.CreateMessageBus(config);
+                // Try to use the global message bus first
+                _messageBus = _globalMessageBus;
+
+                // If no global message bus is set, create a null implementation
+                if (_messageBus == null)
+                {
+                    _messageBus = CreateNullMessageBus();
+                    Debug.LogWarning("LogVisualizerWindow: No message bus configured. " +
+                                     "Use LogVisualizerWindow.SetGlobalMessageBus() or ShowWindow(IMessageBus) to provide a message bus instance. " +
+                                     "Log visualization will be limited without a proper message bus.");
+                }
             }
 
             // Initialize profile manager
@@ -120,6 +153,15 @@ namespace AhBearStudios.Core.Logging.Editor
         }
 
         /// <summary>
+        /// Creates a no-op message bus implementation when no real message bus is available.
+        /// </summary>
+        /// <returns>A no-op message bus instance.</returns>
+        private static IMessageBus CreateNullMessageBus()
+        {
+            return new NullMessageBus();
+        }
+
+        /// <summary>
         /// Sets up subscriptions to the message types we care about.
         /// </summary>
         private void SubscribeToMessages()
@@ -127,11 +169,18 @@ namespace AhBearStudios.Core.Logging.Editor
             // Clear any existing subscriptions first
             UnsubscribeFromMessages();
 
-            // Subscribe to log entry written messages
-            _subscriptions.Add(_messageBus.SubscribeToMessage<LogEntryWrittenMessage>(OnLogEntryWritten));
-            
-            // Subscribe to log level changed messages
-            _subscriptions.Add(_messageBus.SubscribeToMessage<LogLevelChangedMessage>(OnLogLevelChanged));
+            try
+            {
+                // Subscribe to log entry written messages
+                _subscriptions.Add(_messageBus.SubscribeToMessage<LogEntryWrittenMessage>(OnLogEntryWritten));
+
+                // Subscribe to log level changed messages
+                _subscriptions.Add(_messageBus.SubscribeToMessage<LogLevelChangedMessage>(OnLogLevelChanged));
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"LogVisualizerWindow: Failed to subscribe to log messages: {ex.Message}");
+            }
         }
 
         /// <summary>
@@ -141,8 +190,16 @@ namespace AhBearStudios.Core.Logging.Editor
         {
             foreach (var subscription in _subscriptions)
             {
-                subscription?.Dispose();
+                try
+                {
+                    subscription?.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"LogVisualizerWindow: Error disposing subscription: {ex.Message}");
+                }
             }
+
             _subscriptions.Clear();
         }
 
@@ -186,27 +243,27 @@ namespace AhBearStudios.Core.Logging.Editor
         {
             _allMessages.Add(message);
             _totalMessageCount++;
-            
+
             var level = (LogLevel)message.Level;
             if (_messageCountByLevel.ContainsKey(level))
             {
                 _messageCountByLevel[level]++;
             }
-            
+
             // Add the tag to our filter list if it doesn't exist
             var tagString = message.Tag.ToString();
             if (!_tagFilters.ContainsKey(tagString))
             {
                 _tagFilters[tagString] = true;
             }
-            
+
             FilterMessages();
-            
+
             if (_autoScroll)
             {
                 _scrollPosition = new Vector2(0, float.MaxValue);
             }
-            
+
             Repaint();
         }
 
@@ -221,22 +278,22 @@ namespace AhBearStudios.Core.Logging.Editor
             }
 
             EditorGUILayout.BeginVertical();
-            
+
             // Top toolbar
             DrawToolbar();
-            
+
             // Filters section
             DrawFilters();
-            
+
             // Statistics
             DrawStatistics();
-            
+
             // Log level control
             DrawLevelControl();
-            
+
             // Message list
             DrawMessageList();
-            
+
             EditorGUILayout.EndVertical();
         }
 
@@ -246,16 +303,25 @@ namespace AhBearStudios.Core.Logging.Editor
         private void DrawToolbar()
         {
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
-            
+
             if (GUILayout.Button("Clear", _styles.ToolbarButtonStyle))
             {
                 ClearMessages();
             }
-            
+
             _autoScroll = GUILayout.Toggle(_autoScroll, "Auto Scroll", _styles.ToolbarButtonStyle);
-            
+
             GUILayout.FlexibleSpace();
-            
+
+            // Show message bus status
+            var messageBusStatus = _messageBus is NullMessageBus ? "No Message Bus" : "Connected";
+            var statusColor = _messageBus is NullMessageBus ? Color.yellow : Color.green;
+
+            var oldColor = GUI.color;
+            GUI.color = statusColor;
+            GUILayout.Label($"Status: {messageBusStatus}", EditorStyles.miniLabel);
+            GUI.color = oldColor;
+
             EditorGUILayout.EndHorizontal();
         }
 
@@ -265,9 +331,9 @@ namespace AhBearStudios.Core.Logging.Editor
         private void DrawFilters()
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            
+
             EditorGUILayout.LabelField("Filters", _styles.HeaderStyle);
-            
+
             // Text filter
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Filter:", GUILayout.Width(50));
@@ -277,61 +343,63 @@ namespace AhBearStudios.Core.Logging.Editor
                 _filterText = newFilter;
                 FilterMessages();
             }
-            
+
             if (GUILayout.Button("Clear", GUILayout.Width(60)))
             {
                 _filterText = "";
                 FilterMessages();
             }
+
             EditorGUILayout.EndHorizontal();
-            
+
             // Tag filters
             EditorGUILayout.BeginHorizontal();
             EditorGUILayout.LabelField("Tags:", GUILayout.Width(50));
-            
+
             if (GUILayout.Button("All", GUILayout.Width(60)))
             {
                 SelectAllTags(true);
             }
-            
+
             if (GUILayout.Button("None", GUILayout.Width(60)))
             {
                 SelectAllTags(false);
             }
+
             EditorGUILayout.EndHorizontal();
-            
+
             // Display tag toggles in a scrollable area
             EditorGUILayout.BeginHorizontal();
             GUILayout.Space(50); // Indent to align with "Tags:" label
-            
+
             EditorGUILayout.BeginVertical();
             int tagsPerRow = Mathf.Max(1, (int)(EditorGUIUtility.currentViewWidth - 100) / 200);
-            
+
             int tagCount = _tagFilters.Count;
             string[] tags = _tagFilters.Keys.ToArray();
-            
+
             for (int i = 0; i < tagCount; i += tagsPerRow)
             {
                 EditorGUILayout.BeginHorizontal();
-                
+
                 for (int j = 0; j < tagsPerRow && i + j < tagCount; j++)
                 {
                     string tag = tags[i + j];
                     bool included = _tagFilters[tag];
                     bool newIncluded = EditorGUILayout.ToggleLeft(tag, included, GUILayout.Width(200));
-                    
+
                     if (newIncluded != included)
                     {
                         SetTagIncluded(new FixedString32Bytes(tag), newIncluded);
                     }
                 }
-                
+
                 EditorGUILayout.EndHorizontal();
             }
-            
+
             EditorGUILayout.EndVertical();
             EditorGUILayout.EndHorizontal();
-            
+
             EditorGUILayout.EndVertical();
         }
 
@@ -353,21 +421,21 @@ namespace AhBearStudios.Core.Logging.Editor
         private void DrawStatistics()
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            
+
             EditorGUILayout.LabelField("Statistics", _styles.HeaderStyle);
             EditorGUILayout.LabelField($"Total Messages: {_totalMessageCount}");
-            
+
             EditorGUILayout.BeginHorizontal();
-            
+
             // Display counts for each log level
             DrawLevelBar("Debug", LogLevel.Debug, _styles.DebugStyle);
             DrawLevelBar("Info", LogLevel.Info, _styles.InfoStyle);
             DrawLevelBar("Warning", LogLevel.Warning, _styles.WarningStyle);
             DrawLevelBar("Error", LogLevel.Error, _styles.ErrorStyle);
             DrawLevelBar("Critical", LogLevel.Critical, _styles.CriticalStyle);
-            
+
             EditorGUILayout.EndHorizontal();
-            
+
             EditorGUILayout.EndVertical();
         }
 
@@ -378,20 +446,20 @@ namespace AhBearStudios.Core.Logging.Editor
         {
             int count = _messageCountByLevel.ContainsKey(level) ? _messageCountByLevel[level] : 0;
             bool isVisible = _currentProfile.IsLevelVisible(level);
-            
+
             EditorGUILayout.BeginVertical(GUILayout.Width(100));
-            
+
             // Label with count
             EditorGUILayout.BeginHorizontal();
             bool newIsVisible = EditorGUILayout.ToggleLeft(label, isVisible, GUILayout.Width(80));
             EditorGUILayout.LabelField(count.ToString(), style, GUILayout.Width(40));
             EditorGUILayout.EndHorizontal();
-            
+
             if (newIsVisible != isVisible)
             {
                 UpdateLogLevelVisibility(level, newIsVisible);
             }
-            
+
             EditorGUILayout.EndVertical();
         }
 
@@ -401,49 +469,49 @@ namespace AhBearStudios.Core.Logging.Editor
         private void DrawLevelControl()
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox);
-            
+
             EditorGUILayout.LabelField("Log Level Profiles", _styles.HeaderStyle);
-            
+
             EditorGUILayout.BeginHorizontal();
-            
+
             // Profile selection dropdown
             string[] profileNames = _profileManager.GetProfileNames();
             int currentIndex = Array.IndexOf(profileNames, _currentProfileName);
             int newIndex = EditorGUILayout.Popup("Profile:", currentIndex, profileNames);
-            
+
             if (newIndex != currentIndex && newIndex >= 0 && newIndex < profileNames.Length)
             {
                 _currentProfileName = profileNames[newIndex];
                 _currentProfile = _profileManager.GetOrCreateProfile(_currentProfileName);
                 FilterMessages();
             }
-            
+
             EditorGUILayout.EndHorizontal();
-            
+
             // Create new profile
             EditorGUILayout.BeginHorizontal();
-            
+
             _newProfileName = EditorGUILayout.TextField("New Profile:", _newProfileName);
-            
+
             if (GUILayout.Button("Create", GUILayout.Width(60)))
             {
                 CreateNewProfile();
             }
-            
+
             EditorGUILayout.EndHorizontal();
-            
+
             // Minimum log level selection
             EditorGUILayout.BeginHorizontal();
-            
+
             LogLevel newSelectedLevel = (LogLevel)EditorGUILayout.EnumPopup("Minimum Level:", _selectedLogLevel);
             if (newSelectedLevel != _selectedLogLevel)
             {
                 _selectedLogLevel = newSelectedLevel;
                 FilterMessages();
             }
-            
+
             EditorGUILayout.EndHorizontal();
-            
+
             EditorGUILayout.EndVertical();
         }
 
@@ -456,11 +524,11 @@ namespace AhBearStudios.Core.Logging.Editor
             {
                 return;
             }
-            
+
             _currentProfile = _profileManager.CreateProfile(_newProfileName);
             _currentProfileName = _newProfileName;
             _newProfileName = "New Profile";
-            
+
             FilterMessages();
         }
 
@@ -470,38 +538,39 @@ namespace AhBearStudios.Core.Logging.Editor
         private void DrawMessageList()
         {
             EditorGUILayout.BeginVertical(EditorStyles.helpBox, GUILayout.ExpandHeight(true));
-            
+
             EditorGUILayout.LabelField($"Messages ({_filteredMessages.Count})", _styles.HeaderStyle);
-            
+
             _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition);
-            
+
             float messageHeight = 40; // Approximate height for each message
             int totalMessages = _filteredMessages.Count;
-            
+
             // Calculate the visible range
             Rect scrollViewRect = GUILayoutUtility.GetLastRect();
             float scrollViewHeight = scrollViewRect.height;
-            
+
             int firstVisibleIndex = Mathf.Max(0, Mathf.FloorToInt(_scrollPosition.y / messageHeight));
             int visibleCount = Mathf.CeilToInt(scrollViewHeight / messageHeight) + 1;
             int lastVisibleIndex = Mathf.Min(firstVisibleIndex + visibleCount, totalMessages - 1);
-            
+
             // Provide height for the content
             GUILayout.Space(totalMessages * messageHeight);
-            
+
             // Draw only the visible messages
             for (int i = firstVisibleIndex; i <= lastVisibleIndex && i < totalMessages; i++)
             {
-                Rect messageRect = new Rect(0, i * messageHeight, EditorGUIUtility.currentViewWidth - 20, messageHeight);
-                
+                Rect messageRect = new Rect(0, i * messageHeight, EditorGUIUtility.currentViewWidth - 20,
+                    messageHeight);
+
                 if (messageRect.yMin < scrollViewRect.yMax && messageRect.yMax > scrollViewRect.yMin)
                 {
                     DrawMessage(messageRect, _filteredMessages[i]);
                 }
             }
-            
+
             EditorGUILayout.EndScrollView();
-            
+
             EditorGUILayout.EndVertical();
         }
 
@@ -512,27 +581,27 @@ namespace AhBearStudios.Core.Logging.Editor
         {
             LogLevel level = (LogLevel)message.Level;
             GUIStyle style = GetStyleForLevel(level);
-            
+
             // Draw background
             EditorGUI.DrawRect(rect, new Color(0.2f, 0.2f, 0.2f, 0.2f));
-            
+
             // Draw timestamp
             string timestamp = new DateTime(message.TimestampTicks).ToString("HH:mm:ss.fff");
             Rect timestampRect = new Rect(rect.x + 5, rect.y + 2, 100, 16);
             EditorGUI.LabelField(timestampRect, timestamp, style);
-            
+
             // Draw tag
             Rect tagRect = new Rect(rect.x + 110, rect.y + 2, 150, 16);
             EditorGUI.LabelField(tagRect, $"[{message.Tag}]", style);
-            
+
             // Draw level
             Rect levelRect = new Rect(rect.x + 270, rect.y + 2, 80, 16);
             EditorGUI.LabelField(levelRect, GetLogLevelName(level), style);
-            
+
             // Draw message content
             Rect contentRect = new Rect(rect.x + 5, rect.y + 20, rect.width - 10, rect.height - 22);
             EditorGUI.LabelField(contentRect, message.Message.ToString(), _styles.MessageStyle);
-            
+
             // Draw line at the bottom
             Rect lineRect = new Rect(rect.x, rect.y + rect.height - 1, rect.width, 1);
             EditorGUI.DrawRect(lineRect, new Color(0.3f, 0.3f, 0.3f, 0.5f));
@@ -544,29 +613,29 @@ namespace AhBearStudios.Core.Logging.Editor
         private void FilterMessages()
         {
             _filteredMessages.Clear();
-    
+
             foreach (var message in _allMessages)
             {
                 LogLevel level = (LogLevel)message.Level;
-        
+
                 // Skip if level is not visible
                 if (!IsLevelVisible(level))
                     continue;
-        
+
                 // Skip if level is below selected minimum
                 if (level < _selectedLogLevel)
                     continue;
-        
+
                 // Skip if tag is not included
                 // Convert LogTag to FixedString32Bytes before passing to IsTagIncluded
                 FixedString32Bytes tagString = new FixedString32Bytes(message.Tag.ToString());
                 if (!IsTagIncluded(tagString))
                     continue;
-        
+
                 // Skip if doesn't match text filter
                 if (!string.IsNullOrEmpty(_filterText) && !MessageMatchesFilter(message, _filterText))
                     continue;
-        
+
                 _filteredMessages.Add(message);
             }
         }
@@ -586,26 +655,22 @@ namespace AhBearStudios.Core.Logging.Editor
         {
             if (string.IsNullOrEmpty(filterText))
                 return true;
-            
+
             // Check message content
             if (message.Message.ToString().IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0)
                 return true;
-            
+
             // Check tag
             if (message.Tag.ToString().IndexOf(filterText, StringComparison.OrdinalIgnoreCase) >= 0)
                 return true;
-            
+
             // Check properties
             if (PropertiesContainText(message.Properties, filterText))
                 return true;
-            
+
             return false;
         }
 
-        /// <summary>
-        /// Checks if properties contain the filter text.
-        /// </summary>
-        
         /// <summary>
         /// Checks if properties contain the filter text.
         /// </summary>
@@ -613,10 +678,10 @@ namespace AhBearStudios.Core.Logging.Editor
         {
             if (!properties.IsCreated)
                 return false;
-    
+
             // Create a buffer for properties to search in
             var buffer = new System.Text.StringBuilder();
-    
+
             // Iterate through properties and add them to the buffer
             foreach (var property in properties)
             {
@@ -625,7 +690,7 @@ namespace AhBearStudios.Core.Logging.Editor
                 buffer.Append(property.Value);
                 buffer.Append(' ');
             }
-    
+
             // Check if the buffer contains the search text
             return buffer.ToString().IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0;
         }
@@ -691,7 +756,7 @@ namespace AhBearStudios.Core.Logging.Editor
             {
                 _tagFilters[tag] = included;
             }
-            
+
             FilterMessages();
         }
 
@@ -703,12 +768,12 @@ namespace AhBearStudios.Core.Logging.Editor
             _allMessages.Clear();
             _filteredMessages.Clear();
             _totalMessageCount = 0;
-            
+
             foreach (var level in _messageCountByLevel.Keys.ToArray())
             {
                 _messageCountByLevel[level] = 0;
             }
-            
+
             Repaint();
         }
 
@@ -718,10 +783,10 @@ namespace AhBearStudios.Core.Logging.Editor
         private void DisposeResources()
         {
             UnsubscribeFromMessages();
-            
+
             _profileManager?.Dispose();
             _profileManager = null;
-            
+
             _currentProfile = null;
             _allMessages.Clear();
             _filteredMessages.Clear();
@@ -734,6 +799,111 @@ namespace AhBearStudios.Core.Logging.Editor
         {
             DisposeResources();
             _initialized = false;
+        }
+
+        /// <summary>
+        /// No-op implementation of IMessageBus for scenarios where messaging is not needed.
+        /// This prevents the log visualizer from failing when no message bus is configured.
+        /// </summary>
+        private class NullMessageBus : IMessageBus
+        {
+            public IMessagePublisher<TMessage> GetPublisher<TMessage>() => new NullPublisher<TMessage>();
+            public IMessageSubscriber<TMessage> GetSubscriber<TMessage>() => new NullSubscriber<TMessage>();
+
+            public IKeyedMessagePublisher<TKey, TMessage> GetPublisher<TKey, TMessage>() =>
+                new NullKeyedPublisher<TKey, TMessage>();
+
+            public IKeyedMessageSubscriber<TKey, TMessage> GetSubscriber<TKey, TMessage>() =>
+                new NullKeyedSubscriber<TKey, TMessage>();
+
+            public void ClearCaches()
+            {
+            }
+
+            public void PublishMessage<TMessage>(TMessage message) where TMessage : IMessage
+            {
+            }
+
+            public IDisposable SubscribeToMessage<TMessage>(Action<TMessage> handler) where TMessage : IMessage =>
+                new NullDisposable();
+
+            public IDisposable SubscribeToAllMessages(Action<IMessage> handler) => new NullDisposable();
+            public IMessageRegistry GetMessageRegistry() => new NullMessageRegistry();
+
+            private class NullPublisher<TMessage> : IMessagePublisher<TMessage>
+            {
+                public void Publish(TMessage message)
+                {
+                }
+
+                public IDisposable PublishAsync(TMessage message) => new NullDisposable();
+            }
+
+            private class NullSubscriber<TMessage> : IMessageSubscriber<TMessage>
+            {
+                public IDisposable Subscribe(Action<TMessage> handler) => new NullDisposable();
+
+                public IDisposable Subscribe(Action<TMessage> handler, Func<TMessage, bool> filter) =>
+                    new NullDisposable();
+            }
+
+            private class NullKeyedPublisher<TKey, TMessage> : IKeyedMessagePublisher<TKey, TMessage>
+            {
+                public void Publish(TKey key, TMessage message)
+                {
+                }
+
+                public IDisposable PublishAsync(TKey key, TMessage message) => new NullDisposable();
+            }
+
+            private class NullKeyedSubscriber<TKey, TMessage> : IKeyedMessageSubscriber<TKey, TMessage>
+            {
+                public IDisposable Subscribe(TKey key, Action<TMessage> handler) => new NullDisposable();
+                public IDisposable Subscribe(Action<TKey, TMessage> handler) => new NullDisposable();
+
+                public IDisposable Subscribe(TKey key, Action<TMessage> handler, Func<TMessage, bool> filter) =>
+                    new NullDisposable();
+            }
+
+            private class NullMessageRegistry : IMessageRegistry
+            {
+                public void DiscoverMessages()
+                {
+                }
+
+                public void RegisterMessageType(Type messageType)
+                {
+                }
+
+                public void RegisterMessageType(Type messageType, ushort typeCode)
+                {
+                }
+
+                public IReadOnlyDictionary<Type, IMessageInfo> GetAllMessageTypes() =>
+                    new Dictionary<Type, IMessageInfo>();
+
+                public IReadOnlyList<string> GetCategories() => new List<string>();
+                public IReadOnlyList<Type> GetMessageTypesByCategory(string category) => new List<Type>();
+                public IMessageInfo GetMessageInfo(Type messageType) => null;
+                public IMessageInfo GetMessageInfo<TMessage>() where TMessage : IMessage => null;
+                public bool IsRegistered(Type messageType) => false;
+                public bool IsRegistered<TMessage>() where TMessage : IMessage => false;
+                public ushort GetTypeCode(Type messageType) => 0;
+                public ushort GetTypeCode<TMessage>() where TMessage : IMessage => 0;
+                public Type GetMessageType(ushort typeCode) => null;
+                public IReadOnlyDictionary<ushort, Type> GetAllTypeCodes() => new Dictionary<ushort, Type>();
+
+                public void Clear()
+                {
+                }
+            }
+
+            private class NullDisposable : IDisposable
+            {
+                public void Dispose()
+                {
+                }
+            }
         }
     }
 }

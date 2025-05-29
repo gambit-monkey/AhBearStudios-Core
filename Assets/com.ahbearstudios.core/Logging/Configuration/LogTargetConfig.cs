@@ -184,6 +184,8 @@ namespace AhBearStudios.Core.Logging.Configuration
         /// <returns>A configured log target.</returns>
         public abstract ILogTarget CreateTarget();
         
+        
+        
         /// <summary>
         /// Applies the tag filters to the specified log target.
         /// </summary>
@@ -192,7 +194,8 @@ namespace AhBearStudios.Core.Logging.Configuration
         {
             if (target == null)
                 return;
-                
+
+            // All ILogTarget implementations now support tag filtering
             target.SetTagFilters(_includedTags, _excludedTags, _processUntaggedMessages);
         }
         
