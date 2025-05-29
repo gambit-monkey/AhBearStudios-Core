@@ -38,7 +38,7 @@ namespace AhBearStudios.Core.Logging.Configuration
         
         [Header("Log Targets")]
         [Tooltip("List of log targets that will receive log messages")]
-        [SerializeField] private LogTargetConfig[] _logTargets = new LogTargetConfig[0];
+        [SerializeField] private ILogTargetConfig[] _logTargets = Array.Empty<ILogTargetConfig>();
         
         [Header("Advanced Settings")]
         [Tooltip("Whether to enable message bus integration for logging events")]
@@ -92,7 +92,7 @@ namespace AhBearStudios.Core.Logging.Configuration
         /// <summary>
         /// Array of log target configurations.
         /// </summary>
-        public LogTargetConfig[] LogTargets => _logTargets ?? new LogTargetConfig[0];
+        public ILogTargetConfig[] LogTargets => _logTargets ?? Array.Empty<ILogTargetConfig>();
         
         /// <summary>
         /// Whether message bus integration is enabled.
@@ -122,9 +122,9 @@ namespace AhBearStudios.Core.Logging.Configuration
         /// Gets all enabled log target configurations.
         /// </summary>
         /// <returns>Collection of enabled log target configurations.</returns>
-        public IEnumerable<LogTargetConfig> GetEnabledTargets()
+        public IEnumerable<ILogTargetConfig> GetEnabledTargets()
         {
-            return LogTargets?.Where(target => target != null && target.Enabled) ?? Enumerable.Empty<LogTargetConfig>();
+            return LogTargets?.Where(target => target != null && target.Enabled) ?? Enumerable.Empty<ILogTargetConfig>();
         }
         
         /// <summary>
@@ -132,7 +132,7 @@ namespace AhBearStudios.Core.Logging.Configuration
         /// </summary>
         /// <param name="targetName">Name of the target to find.</param>
         /// <returns>The log target configuration if found, null otherwise.</returns>
-        public LogTargetConfig GetTargetByName(string targetName)
+        public ILogTargetConfig GetTargetByName(string targetName)
         {
             if (string.IsNullOrEmpty(targetName) || LogTargets == null)
                 return null;
@@ -306,12 +306,12 @@ namespace AhBearStudios.Core.Logging.Configuration
         /// Adds a log target configuration to this manager config.
         /// </summary>
         /// <param name="targetConfig">The target configuration to add.</param>
-        public void AddLogTarget(LogTargetConfig targetConfig)
+        public void AddLogTarget(ILogTargetConfig targetConfig)
         {
             if (targetConfig == null)
                 return;
             
-            var targetsList = _logTargets?.ToList() ?? new List<LogTargetConfig>();
+            var targetsList = _logTargets?.ToList() ?? new List<ILogTargetConfig>();
             
             // Check for duplicate names
             if (targetsList.Any(t => t != null && t.TargetName == targetConfig.TargetName))
@@ -330,7 +330,7 @@ namespace AhBearStudios.Core.Logging.Configuration
         /// Removes a log target configuration from this manager config.
         /// </summary>
         /// <param name="targetConfig">The target configuration to remove.</param>
-        public void RemoveLogTarget(LogTargetConfig targetConfig)
+        public void RemoveLogTarget(ILogTargetConfig targetConfig)
         {
             if (targetConfig == null || _logTargets == null)
                 return;

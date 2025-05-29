@@ -2,6 +2,7 @@
 using System.Reflection;
 using AhBearStudios.Core.Logging.Builders;
 using AhBearStudios.Core.Logging.Configuration;
+using AhBearStudios.Core.Logging.Interfaces;
 
 namespace AhBearStudios.Core.Logging.Utilities
 {
@@ -15,29 +16,29 @@ namespace AhBearStudios.Core.Logging.Utilities
             BindingFlags.NonPublic | BindingFlags.Instance;
 
         /// <summary>
-        /// Applies Serilog builder data to a SerilogFileConfig using reflection
+        /// Applies Serilog builder data to a SerilogFileTargetConfig using reflection
         /// </summary>
-        public static void ApplySerilogData(SerilogFileConfigBuilder.ConfigData data, SerilogFileConfig config)
+        public static void ApplySerilogData(SerilogFileConfigBuilder.ConfigData data, SerilogFileTargetConfig targetConfig)
         {
             // Apply base LogTargetConfig properties
-            ApplyBaseData(data, config);
+            ApplyBaseData(data, targetConfig);
             
-            // Apply SerilogFileConfig-specific properties
-            SetPrivateField(config, "_logFilePath", data.LogFilePath);
-            SetPrivateField(config, "_useJsonFormat", data.UseJsonFormat);
-            SetPrivateField(config, "_logToConsole", data.LogToConsole);
-            SetPrivateField(config, "_retainedDays", data.RetainedDays);
+            // Apply SerilogFileTargetConfig-specific properties
+            SetPrivateField(targetConfig, "_logFilePath", data.LogFilePath);
+            SetPrivateField(targetConfig, "_useJsonFormat", data.UseJsonFormat);
+            SetPrivateField(targetConfig, "_logToConsole", data.LogToConsole);
+            SetPrivateField(targetConfig, "_retainedDays", data.RetainedDays);
         }
 
         /// <summary>
-        /// Applies Unity console builder data to a UnityConsoleLogConfig using reflection
+        /// Applies Unity console builder data to a UnityConsoleTargetConfig using reflection
         /// </summary>
-        public static void ApplyUnityConsoleData(UnityConsoleConfigBuilder.ConfigData data, UnityConsoleLogConfig config)
+        public static void ApplyUnityConsoleData(UnityConsoleConfigBuilder.ConfigData data, UnityConsoleTargetConfig config)
         {
             // Apply base LogTargetConfig properties
             ApplyBaseData(data, config);
             
-            // Apply UnityConsoleLogConfig-specific properties
+            // Apply UnityConsoleTargetConfig-specific properties
             SetPrivateField(config, "_useColorizedOutput", data.UseColorizedOutput);
             SetPrivateField(config, "_registerUnityLogHandler", data.RegisterUnityLogHandler);
             SetPrivateField(config, "_duplicateToOriginalHandler", data.DuplicateToOriginalHandler);
@@ -46,7 +47,7 @@ namespace AhBearStudios.Core.Logging.Utilities
         /// <summary>
         /// Applies common LogTargetConfig properties using reflection - Serilog version
         /// </summary>
-        private static void ApplyBaseData(SerilogFileConfigBuilder.ConfigData data, LogTargetConfig config)
+        private static void ApplyBaseData(SerilogFileConfigBuilder.ConfigData data, ILogTargetConfig config)
         {
             SetPrivateField(config, "_targetName", data.TargetName);
             SetPrivateField(config, "_enabled", data.Enabled);
@@ -71,7 +72,7 @@ namespace AhBearStudios.Core.Logging.Utilities
         /// <summary>
         /// Applies common LogTargetConfig properties using reflection - Unity Console version
         /// </summary>
-        private static void ApplyBaseData(UnityConsoleConfigBuilder.ConfigData data, LogTargetConfig config)
+        private static void ApplyBaseData(UnityConsoleConfigBuilder.ConfigData data, ILogTargetConfig config)
         {
             SetPrivateField(config, "_targetName", data.TargetName);
             SetPrivateField(config, "_enabled", data.Enabled);

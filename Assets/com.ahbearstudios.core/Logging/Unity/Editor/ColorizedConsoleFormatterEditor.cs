@@ -6,6 +6,7 @@ using AhBearStudios.Core.Logging.Tags;
 using System;
 using System.Linq;
 using AhBearStudios.Core.Logging.Extensions;
+using AhBearStudios.Core.Logging.Messages;
 using Serilog;
 using Unity.Collections;
 

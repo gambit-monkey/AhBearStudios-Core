@@ -1,3 +1,6 @@
+
+using AhBearStudios.Core.MessageBus.Interfaces;
+
 namespace AhBearStudios.Core.Logging.Interfaces
 {
     /// <summary>
@@ -102,6 +105,13 @@ namespace AhBearStudios.Core.Logging.Interfaces
         /// </summary>
         /// <returns>A configured log target.</returns>
         ILogTarget CreateTarget();
+        
+        /// <summary>
+        /// Creates a log target based on this configuration with optional message bus.
+        /// </summary>
+        /// <param name="messageBus">Optional message bus for publishing log events.</param>
+        /// <returns>A configured log target.</returns>
+        ILogTarget CreateTarget(IMessageBus messageBus);
         
         /// <summary>
         /// Applies the tag filters to the specified log target.

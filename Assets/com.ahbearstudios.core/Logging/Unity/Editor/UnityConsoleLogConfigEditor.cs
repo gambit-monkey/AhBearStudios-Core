@@ -10,13 +10,13 @@ namespace AhBearStudios.Core.Logging.Editor
     /// Custom editor for Unity Console Log Configuration.
     /// Provides a rich UI for configuring the Unity Console log target.
     /// </summary>
-    [CustomEditor(typeof(UnityConsoleLogConfig))]
+    [CustomEditor(typeof(UnityConsoleTargetConfig))]
     public class UnityConsoleLogConfigEditor : UnityEditor.Editor
     {
         #region Private Fields
         
         // Configuration object
-        private UnityConsoleLogConfig _config;
+        private UnityConsoleTargetConfig _config;
         
         // Serialized properties
         private SerializedProperty _enabledProp;
@@ -54,7 +54,7 @@ namespace AhBearStudios.Core.Logging.Editor
         /// </summary>
         private void OnEnable()
         {
-            _config = (UnityConsoleLogConfig)target;
+            _config = (UnityConsoleTargetConfig)target;
             
             // Find serialized properties
             _enabledProp = serializedObject.FindProperty("Enabled");
@@ -80,19 +80,19 @@ namespace AhBearStudios.Core.Logging.Editor
         {
             // Check if any properties weren't found and log warnings
             if (_enabledProp == null)
-                Debug.LogWarning("Property 'Enabled' not found in UnityConsoleLogConfig");
+                Debug.LogWarning("Property 'Enabled' not found in UnityConsoleTargetConfig");
             if (_targetNameProp == null)
-                Debug.LogWarning("Property 'TargetName' not found in UnityConsoleLogConfig");
+                Debug.LogWarning("Property 'TargetName' not found in UnityConsoleTargetConfig");
             if (_minimumLevelProp == null)
-                Debug.LogWarning("Property 'MinimumLevel' not found in UnityConsoleLogConfig");
+                Debug.LogWarning("Property 'MinimumLevel' not found in UnityConsoleTargetConfig");
             if (_includeTagsProp == null)
-                Debug.LogWarning("Property 'IncludeTags' not found in UnityConsoleLogConfig");
+                Debug.LogWarning("Property 'IncludeTags' not found in UnityConsoleTargetConfig");
             if (_excludeTagsProp == null)
-                Debug.LogWarning("Property 'ExcludeTags' not found in UnityConsoleLogConfig");
+                Debug.LogWarning("Property 'ExcludeTags' not found in UnityConsoleTargetConfig");
             if (_formatterProp == null)
-                Debug.LogWarning("Property '_formatter' not found in UnityConsoleLogConfig");
+                Debug.LogWarning("Property '_formatter' not found in UnityConsoleTargetConfig");
             if (_useColorizedOutputProp == null)
-                Debug.LogWarning("Property '_useColorizedOutput' not found in UnityConsoleLogConfig");
+                Debug.LogWarning("Property '_useColorizedOutput' not found in UnityConsoleTargetConfig");
         }
         
         #endregion

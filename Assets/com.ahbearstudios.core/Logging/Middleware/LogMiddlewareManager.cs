@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Logging.Data;
+using AhBearStudios.Core.Logging.Messages;
 using UnityEngine.Profiling;
 
 namespace AhBearStudios.Core.Logging.Middleware

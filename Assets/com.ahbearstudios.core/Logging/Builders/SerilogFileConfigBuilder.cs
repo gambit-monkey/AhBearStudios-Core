@@ -9,7 +9,7 @@ namespace AhBearStudios.Core.Logging.Builders
     /// Builder for Serilog file configurations that can work with both runtime creation 
     /// and ScriptableObject configuration
     /// </summary>
-    public sealed class SerilogFileConfigBuilder : ILogTargetConfigBuilder<SerilogFileConfig, SerilogFileConfigBuilder>
+    public sealed class SerilogFileConfigBuilder : ILogTargetConfigBuilder<SerilogFileTargetConfig, SerilogFileConfigBuilder>
     {
         /// <summary>
         /// Internal config data structure
@@ -146,36 +146,36 @@ namespace AhBearStudios.Core.Logging.Builders
         }
 
         /// <summary>
-        /// Initializes builder from existing ScriptableObject config
+        /// Initializes builder from existing ScriptableObject targetConfig
         /// </summary>
-        public SerilogFileConfigBuilder FromExisting(SerilogFileConfig config)
+        public SerilogFileConfigBuilder FromExisting(SerilogFileTargetConfig targetConfig)
         {
-            if (config == null)
-                throw new ArgumentNullException(nameof(config));
+            if (targetConfig == null)
+                throw new ArgumentNullException(nameof(targetConfig));
 
             // Use public properties where available
-            _data.TargetName = config.TargetName;
-            _data.Enabled = config.Enabled;
-            _data.MinimumLevel = config.MinimumLevel;
-            _data.LogFilePath = config.LogFilePath;
-            _data.UseJsonFormat = config.UseJsonFormat;
-            _data.LogToConsole = config.LogToConsole;
-            _data.RetainedDays = config.RetainedDays;
-            _data.IncludedTags = (string[])config.IncludedTags?.Clone() ?? new string[0];
-            _data.ExcludedTags = (string[])config.ExcludedTags?.Clone() ?? new string[0];
-            _data.ProcessUntaggedMessages = config.ProcessUntaggedMessages;
-            _data.CaptureUnityLogs = config.CaptureUnityLogs;
-            _data.IncludeStackTraces = config.IncludeStackTraces;
-            _data.IncludeTimestamps = config.IncludeTimestamps;
-            _data.TimestampFormat = config.TimestampFormat;
-            _data.IncludeSourceContext = config.IncludeSourceContext;
-            _data.IncludeThreadId = config.IncludeThreadId;
-            _data.EnableStructuredLogging = config.EnableStructuredLogging;
-            _data.AutoFlush = config.AutoFlush;
-            _data.BufferSize = config.BufferSize;
-            _data.FlushIntervalSeconds = config.FlushIntervalSeconds;
-            _data.LimitMessageLength = config.LimitMessageLength;
-            _data.MaxMessageLength = config.MaxMessageLength;
+            _data.TargetName = targetConfig.TargetName;
+            _data.Enabled = targetConfig.Enabled;
+            _data.MinimumLevel = targetConfig.MinimumLevel;
+            _data.LogFilePath = targetConfig.LogFilePath;
+            _data.UseJsonFormat = targetConfig.UseJsonFormat;
+            _data.LogToConsole = targetConfig.LogToConsole;
+            _data.RetainedDays = targetConfig.RetainedDays;
+            _data.IncludedTags = (string[])targetConfig.IncludedTags?.Clone() ?? new string[0];
+            _data.ExcludedTags = (string[])targetConfig.ExcludedTags?.Clone() ?? new string[0];
+            _data.ProcessUntaggedMessages = targetConfig.ProcessUntaggedMessages;
+            _data.CaptureUnityLogs = targetConfig.CaptureUnityLogs;
+            _data.IncludeStackTraces = targetConfig.IncludeStackTraces;
+            _data.IncludeTimestamps = targetConfig.IncludeTimestamps;
+            _data.TimestampFormat = targetConfig.TimestampFormat;
+            _data.IncludeSourceContext = targetConfig.IncludeSourceContext;
+            _data.IncludeThreadId = targetConfig.IncludeThreadId;
+            _data.EnableStructuredLogging = targetConfig.EnableStructuredLogging;
+            _data.AutoFlush = targetConfig.AutoFlush;
+            _data.BufferSize = targetConfig.BufferSize;
+            _data.FlushIntervalSeconds = targetConfig.FlushIntervalSeconds;
+            _data.LimitMessageLength = targetConfig.LimitMessageLength;
+            _data.MaxMessageLength = targetConfig.MaxMessageLength;
     
             return this;
         }
@@ -223,9 +223,9 @@ namespace AhBearStudios.Core.Logging.Builders
         /// <summary>
         /// Builds a new ScriptableObject instance with the configured settings
         /// </summary>
-        public SerilogFileConfig Build()
+        public SerilogFileTargetConfig Build()
         {
-            var config = ScriptableObject.CreateInstance<SerilogFileConfig>();
+            var config = ScriptableObject.CreateInstance<SerilogFileTargetConfig>();
             
             // Apply all the configured settings to the ScriptableObject
             // Note: This requires either reflection or exposing internal setters
@@ -235,36 +235,36 @@ namespace AhBearStudios.Core.Logging.Builders
         }
 
         /// <summary>
-        /// Applies the builder data to an existing ScriptableObject config
+        /// Applies the builder data to an existing ScriptableObject targetConfig
         /// </summary>
-        public void ApplyTo(SerilogFileConfig config)
+        public void ApplyTo(SerilogFileTargetConfig targetConfig)
         {
-            if (config == null)
-                throw new ArgumentNullException(nameof(config));
+            if (targetConfig == null)
+                throw new ArgumentNullException(nameof(targetConfig));
                 
-            ApplyDataToScriptableObject(_data, config);
+            ApplyDataToScriptableObject(_data, targetConfig);
         }
 
-        private static void ApplyDataToScriptableObject(ConfigData data, SerilogFileConfig config)
+        private static void ApplyDataToScriptableObject(ConfigData data, SerilogFileTargetConfig targetConfig)
         {
-            config.TargetName = data.TargetName;
-            config.Enabled = data.Enabled;
-            config.MinimumLevel = data.MinimumLevel;
-            config.IncludedTags = data.IncludedTags;
-            config.ExcludedTags = data.ExcludedTags;
-            config.ProcessUntaggedMessages = data.ProcessUntaggedMessages;
-            config.CaptureUnityLogs = data.CaptureUnityLogs;
-            config.IncludeStackTraces = data.IncludeStackTraces;
-            config.IncludeTimestamps = data.IncludeTimestamps;
-            config.TimestampFormat = data.TimestampFormat;
-            config.IncludeSourceContext = data.IncludeSourceContext;
-            config.IncludeThreadId = data.IncludeThreadId;
-            config.EnableStructuredLogging = data.EnableStructuredLogging;
-            config.AutoFlush = data.AutoFlush;
-            config.BufferSize = data.BufferSize;
-            config.FlushIntervalSeconds = data.FlushIntervalSeconds;
-            config.LimitMessageLength = data.LimitMessageLength;
-            config.MaxMessageLength = data.MaxMessageLength;
+            targetConfig.TargetName = data.TargetName;
+            targetConfig.Enabled = data.Enabled;
+            targetConfig.MinimumLevel = data.MinimumLevel;
+            targetConfig.IncludedTags = data.IncludedTags;
+            targetConfig.ExcludedTags = data.ExcludedTags;
+            targetConfig.ProcessUntaggedMessages = data.ProcessUntaggedMessages;
+            targetConfig.CaptureUnityLogs = data.CaptureUnityLogs;
+            targetConfig.IncludeStackTraces = data.IncludeStackTraces;
+            targetConfig.IncludeTimestamps = data.IncludeTimestamps;
+            targetConfig.TimestampFormat = data.TimestampFormat;
+            targetConfig.IncludeSourceContext = data.IncludeSourceContext;
+            targetConfig.IncludeThreadId = data.IncludeThreadId;
+            targetConfig.EnableStructuredLogging = data.EnableStructuredLogging;
+            targetConfig.AutoFlush = data.AutoFlush;
+            targetConfig.BufferSize = data.BufferSize;
+            targetConfig.FlushIntervalSeconds = data.FlushIntervalSeconds;
+            targetConfig.LimitMessageLength = data.LimitMessageLength;
+            targetConfig.MaxMessageLength = data.MaxMessageLength;
         }
     }
 }

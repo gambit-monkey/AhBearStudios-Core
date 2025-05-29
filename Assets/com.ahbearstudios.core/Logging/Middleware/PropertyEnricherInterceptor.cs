@@ -2,6 +2,7 @@
 using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Logging.Data;
+using AhBearStudios.Core.Logging.Messages;
 using Unity.Collections;
 
 namespace AhBearStudios.Core.Logging.Middleware

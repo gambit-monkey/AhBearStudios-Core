@@ -9,6 +9,8 @@ using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.Logging.Tags;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Logging.Messages;
+using AhBearStudios.Core.Logging.Builders;
+using AhBearStudios.Core.Logging.Factories;
 
 namespace AhBearStudios.Core.Logging
 {
@@ -276,10 +278,247 @@ namespace AhBearStudios.Core.Logging
         
         #endregion
         
-        #region Factory Methods
+        #region Modern Factory Methods (Using Builders)
+        
+        /// <summary>
+        /// Creates a LogBatchProcessor using configuration builders. This is the recommended approach
+        /// for new code as it provides better configuration management and consistency.
+        /// </summary>
+        /// <param name="builderConfigurator">Action to configure log target builders.</param>
+        /// <param name="formatter">Optional formatter. Uses DefaultLogFormatter if null.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
+        /// <param name="initialCapacity">Initial capacity for the internal queue.</param>
+        /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation.</param>
+        /// <returns>A new LogBatchProcessor instance configured with the specified targets.</returns>
+        /// <exception cref="ArgumentNullException">Thrown if builderConfigurator or messageBus is null.</exception>
+        public static LogBatchProcessor CreateWithBuilders(
+            Action<TargetBuilderCollection> builderConfigurator,
+            ILogFormatter formatter = null,
+            IMessageBus messageBus = null,
+            int initialCapacity = 64,
+            int maxMessagesPerFlush = 200)
+        {
+            if (builderConfigurator == null)
+                throw new ArgumentNullException(nameof(builderConfigurator));
+            
+            if (messageBus == null)
+                throw new ArgumentNullException(nameof(messageBus));
+
+            var collection = new TargetBuilderCollection();
+            builderConfigurator(collection);
+            
+            var targets = collection.BuildTargets();
+            var actualFormatter = formatter ?? new DefaultLogFormatter();
+            
+            return new LogBatchProcessor(targets, actualFormatter, messageBus, initialCapacity, maxMessagesPerFlush);
+        }
+
+        /// <summary>
+        /// Creates a LogBatchProcessor optimized for development with console and file logging.
+        /// </summary>
+        /// <param name="logFilePath">Path for the log file.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
+        /// <param name="initialCapacity">Initial capacity for the internal queue.</param>
+        /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation.</param>
+        /// <returns>A LogBatchProcessor configured for development use.</returns>
+        public static LogBatchProcessor CreateForDevelopment(
+            string logFilePath = "Logs/debug.log",
+            IMessageBus messageBus = null,
+            int initialCapacity = 64,
+            int maxMessagesPerFlush = 200)
+        {
+            return CreateWithBuilders(
+                builders =>
+                {
+                    builders.AddSerilogFile(LogConfigBuilderFactory.SerilogFileDebug(logFilePath));
+                    builders.AddUnityConsole(LogConfigBuilderFactory.UnityConsoleDevelopment());
+                },
+                null, // Use default formatter
+                messageBus,
+                initialCapacity,
+                maxMessagesPerFlush);
+        }
+
+        /// <summary>
+        /// Creates a LogBatchProcessor optimized for production with performance-focused settings.
+        /// </summary>
+        /// <param name="logFilePath">Path for the log file.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
+        /// <param name="initialCapacity">Initial capacity for the internal queue.</param>
+        /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation.</param>
+        /// <returns>A LogBatchProcessor configured for production use.</returns>
+        public static LogBatchProcessor CreateForProduction(
+            string logFilePath = "Logs/app.log",
+            IMessageBus messageBus = null,
+            int initialCapacity = 128,
+            int maxMessagesPerFlush = 500)
+        {
+            return CreateWithBuilders(
+                builders =>
+                {
+                    builders.AddSerilogFile(LogConfigBuilderFactory.SerilogFileHighPerformance(logFilePath));
+                    builders.AddUnityConsole(LogConfigBuilderFactory.UnityConsoleProduction());
+                },
+                null, // Use default formatter
+                messageBus,
+                initialCapacity,
+                maxMessagesPerFlush);
+        }
+
+        /// <summary>
+        /// Creates a LogBatchProcessor with console output only, useful for lightweight scenarios.
+        /// </summary>
+        /// <param name="useColorizedOutput">Whether to use colorized console output.</param>
+        /// <param name="minimumLevel">Minimum log level for console output.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
+        /// <param name="initialCapacity">Initial capacity for the internal queue.</param>
+        /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation.</param>
+        /// <returns>A LogBatchProcessor configured for console-only logging.</returns>
+        public static LogBatchProcessor CreateConsoleOnly(
+            bool useColorizedOutput = true,
+            LogLevel minimumLevel = LogLevel.Info,
+            IMessageBus messageBus = null,
+            int initialCapacity = 64,
+            int maxMessagesPerFlush = 200)
+        {
+            return CreateWithBuilders(
+                builders =>
+                {
+                    builders.AddUnityConsole(LogConfigBuilderFactory.UnityConsole()
+                        .WithColorizedOutput(useColorizedOutput)
+                        .WithMinimumLevel(minimumLevel));
+                },
+                null, // Use default formatter
+                messageBus,
+                initialCapacity,
+                maxMessagesPerFlush);
+        }
+
+        /// <summary>
+        /// Creates a LogBatchProcessor with file output only, useful when console output is not desired.
+        /// </summary>
+        /// <param name="logFilePath">Path for the log file.</param>
+        /// <param name="minimumLevel">Minimum log level for file output.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
+        /// <param name="initialCapacity">Initial capacity for the internal queue.</param>
+        /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation.</param>
+        /// <returns>A LogBatchProcessor configured for file-only logging.</returns>
+        public static LogBatchProcessor CreateFileOnly(
+            string logFilePath = "Logs/app.log",
+            LogLevel minimumLevel = LogLevel.Debug,
+            IMessageBus messageBus = null,
+            int initialCapacity = 64,
+            int maxMessagesPerFlush = 200)
+        {
+            return CreateWithBuilders(
+                builders =>
+                {
+                    builders.AddSerilogFile(LogConfigBuilderFactory.SerilogFile(logFilePath)
+                        .WithMinimumLevel(minimumLevel));
+                },
+                null, // Use default formatter
+                messageBus,
+                initialCapacity,
+                maxMessagesPerFlush);
+        }
+
+        /// <summary>
+        /// Creates a LogBatchProcessor optimized for maximum performance with minimal overhead.
+        /// Uses buffering and reduced formatting for maximum throughput.
+        /// </summary>
+        /// <param name="logFilePath">Path for the log file.</param>
+        /// <param name="messageBus">Message bus for publishing log-related messages.</param>
+        /// <param name="initialCapacity">Initial capacity for the internal queue (larger for performance).</param>
+        /// <param name="maxMessagesPerFlush">Maximum number of messages to process in a single flush operation (larger for performance).</param>
+        /// <returns>A LogBatchProcessor configured for high-performance logging.</returns>
+        public static LogBatchProcessor CreateHighPerformance(
+            string logFilePath = "Logs/hp.log",
+            IMessageBus messageBus = null,
+            int initialCapacity = 256,
+            int maxMessagesPerFlush = 1000)
+        {
+            return CreateWithBuilders(
+                builders =>
+                {
+                    builders.AddSerilogFile(LogConfigBuilderFactory.SerilogFileHighPerformance(logFilePath));
+                    // No console output for maximum performance
+                },
+                null, // Use default formatter
+                messageBus,
+                initialCapacity,
+                maxMessagesPerFlush);
+        }
+
+        /// <summary>
+        /// Helper class for building multiple log targets using the builder pattern.
+        /// </summary>
+        public class TargetBuilderCollection
+        {
+            private readonly List<ILogTarget> _targets = new List<ILogTarget>();
+
+            /// <summary>
+            /// Adds a Serilog file target using the provided builder configuration.
+            /// </summary>
+            /// <param name="builder">Configured Serilog file builder.</param>
+            /// <returns>This collection for method chaining.</returns>
+            public TargetBuilderCollection AddSerilogFile(SerilogFileConfigBuilder builder)
+            {
+                if (builder != null)
+                {
+                    var config = builder.Build();
+                    var target = LogTargetFactory.CreateSerilogTarget(config);
+                    _targets.Add(target);
+                }
+                return this;
+            }
+
+            /// <summary>
+            /// Adds a Unity console target using the provided builder configuration.
+            /// </summary>
+            /// <param name="builder">Configured Unity console builder.</param>
+            /// <returns>This collection for method chaining.</returns>
+            public TargetBuilderCollection AddUnityConsole(UnityConsoleConfigBuilder builder)
+            {
+                if (builder != null)
+                {
+                    var config = builder.Build();
+                    var target = LogTargetFactory.CreateUnityConsoleTarget(config);
+                    _targets.Add(target);
+                }
+                return this;
+            }
+
+            /// <summary>
+            /// Adds a custom log target directly.
+            /// </summary>
+            /// <param name="target">The log target to add.</param>
+            /// <returns>This collection for method chaining.</returns>
+            public TargetBuilderCollection AddCustomTarget(ILogTarget target)
+            {
+                if (target != null)
+                {
+                    _targets.Add(target);
+                }
+                return this;
+            }
+
+            /// <summary>
+            /// Builds and returns the collection of configured targets.
+            /// </summary>
+            /// <returns>List of configured log targets.</returns>
+            internal List<ILogTarget> BuildTargets()
+            {
+                return new List<ILogTarget>(_targets);
+            }
+        }
+
+        #endregion
+        
+        #region Legacy Factory Methods (For Backward Compatibility)
         
         /// <summary>
         /// Creates a new LogBatchProcessor instance with multiple targets and default formatter.
+        /// Legacy method - consider using CreateWithBuilders for new code.
         /// </summary>
         /// <param name="targets">Collection of log targets to receive messages.</param>
         /// <param name="messageBus">Message bus for publishing log-related messages.</param>
@@ -299,6 +538,7 @@ namespace AhBearStudios.Core.Logging
         
         /// <summary>
         /// Creates a new LogBatchProcessor instance with a single target and default formatter.
+        /// Legacy method - consider using CreateWithBuilders for new code.
         /// </summary>
         /// <param name="target">Log target to receive messages.</param>
         /// <param name="messageBus">Message bus for publishing log-related messages.</param>

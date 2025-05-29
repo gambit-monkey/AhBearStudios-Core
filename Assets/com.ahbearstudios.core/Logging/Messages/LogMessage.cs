@@ -1,8 +1,9 @@
 using System;
+using AhBearStudios.Core.Logging.Data;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Tags;
 
-namespace AhBearStudios.Core.Logging.Data
+namespace AhBearStudios.Core.Logging.Messages
 {
     /// <summary>
     /// Represents a log message in a format that is compatible with Unity Collections v2 and
@@ -180,31 +181,6 @@ namespace AhBearStudios.Core.Logging.Data
         {
             return Tagging.IsWarningOrWorse(Tag);
         }
-        
-        // /// <summary>
-        // /// Equality comparison.
-        // /// </summary>
-        // public bool Equals(LogMessage other)
-        // {
-        //     return Tag == other.Tag &&
-        //            CustomTag.Equals(other.CustomTag) &&
-        //            Level == other.Level &&
-        //            Message.Equals(other.Message) &&
-        //            TimestampTicks == other.TimestampTicks;
-        // }
-        
-        // /// <summary>
-        // /// Gets a hash code for the log message.
-        // /// </summary>
-        // public override int GetHashCode()
-        // {
-        //     return HashCode.Combine(
-        //         (int)Tag,
-        //         CustomTag.GetHashCode(),
-        //         Level,
-        //         Message.GetHashCode(),
-        //         TimestampTicks.GetHashCode());
-        // }
         
         /// <summary>
         /// Equality comparison.

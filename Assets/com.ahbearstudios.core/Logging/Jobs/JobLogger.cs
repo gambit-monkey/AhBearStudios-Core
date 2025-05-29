@@ -1,6 +1,7 @@
 using Unity.Collections;
 using Unity.Burst;
 using AhBearStudios.Core.Logging.Data;
+using AhBearStudios.Core.Logging.Messages;
 using AhBearStudios.Core.Logging.Tags;
 
 namespace AhBearStudios.Core.Logging.Jobs

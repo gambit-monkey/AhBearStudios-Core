@@ -1,18 +1,24 @@
 using UnityEngine;
+using AhBearStudios.Core.Logging.LogTargets;
+using AhBearStudios.Core.Logging.Formatters;
 using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Interfaces;
 
 namespace AhBearStudios.Core.Logging.Configuration
 {
     /// <summary>
-    /// Base configuration for log targets.
-    /// Implements common functionality shared across different log target types.
+    /// Configuration for Unity Console log targets.
+    /// Implements ILogTargetConfig directly using composition.
     /// </summary>
-    public abstract class LogTargetConfig_Old : ScriptableObject, ILogTargetConfig
+    [CreateAssetMenu(
+        fileName = "UnityConsoleTargetConfig", 
+        menuName = "AhBearStudios/Logging/Unity Console Log Config", 
+        order = 1)]
+    public class UnityConsoleTargetConfig : ScriptableObject, ILogTargetConfig
     {
         [Header("General Settings")]
         [SerializeField, Tooltip("The unique name of this log target")]
-        private string _targetName = "DefaultTarget";
+        private string _targetName = "UnityConsole";
         
         [SerializeField, Tooltip("Whether this log target is enabled")]
         private bool _enabled = true;
@@ -69,7 +75,21 @@ namespace AhBearStudios.Core.Logging.Configuration
         [SerializeField, Tooltip("Maximum message length when limiting is enabled")]
         private int _maxMessageLength = 8192;
         
-        // ILogTargetConfig implementation
+        [Header("Console Configuration")]
+        [SerializeField, Tooltip("The formatter to use for console logs. If none is assigned, a default formatter will be used.")]
+        private ColorizedConsoleFormatter _formatter;
+
+        [SerializeField, Tooltip("Enable colorized output in the Unity Console")]
+        private bool _useColorizedOutput = true;
+        
+        [SerializeField, Tooltip("Registers our logger with Unity")]
+        private bool _registerUnityLogHandler = true;
+        
+        [SerializeField, Tooltip("When registered with Unity, also send logs to Unity's original handler")]
+        private bool _duplicateToOriginalHandler = false;
+
+        #region ILogTargetConfig Implementation
+        
         public string TargetName 
         { 
             get => _targetName; 
@@ -178,27 +198,88 @@ namespace AhBearStudios.Core.Logging.Configuration
             set => _maxMessageLength = value; 
         }
         
+        #endregion
+
+        #region Console-Specific Properties
+
         /// <summary>
-        /// Creates a log target based on this configuration.
+        /// Gets or sets the formatter used for console logs.
         /// </summary>
-        /// <returns>A configured log target.</returns>
-        public abstract ILogTarget CreateTarget();
+        public ColorizedConsoleFormatter Formatter
+        {
+            get => _formatter;
+            set
+            {
+                _formatter = value;
+                #if UNITY_EDITOR
+                UnityEditor.EditorUtility.SetDirty(this);
+                #endif
+            }
+        }
+
+        /// <summary>
+        /// Gets or sets whether to use colorized output.
+        /// </summary>
+        public bool UseColorizedOutput
+        {
+            get => _useColorizedOutput;
+            set
+            {
+                _useColorizedOutput = value;
+                #if UNITY_EDITOR
+                UnityEditor.EditorUtility.SetDirty(this);
+                #endif
+            }
+        }
         
         /// <summary>
-        /// Creates a log target based on this configuration with optional message bus.
+        /// Gets whether to register with Unity's log handler.
+        /// </summary>
+        public bool RegisterUnityLogHandler 
+        { 
+            get => _registerUnityLogHandler; 
+            set => _registerUnityLogHandler = value; 
+        }
+        
+        /// <summary>
+        /// Gets whether to duplicate to original handler.
+        /// </summary>
+        public bool DuplicateToOriginalHandler 
+        { 
+            get => _duplicateToOriginalHandler; 
+            set => _duplicateToOriginalHandler = value; 
+        }
+
+        #endregion
+        
+        #region ILogTargetConfig Methods
+        
+        /// <summary>
+        /// Creates a Unity Console log target based on this configuration.
+        /// </summary>
+        /// <returns>A configured UnityConsoleTarget.</returns>
+        public ILogTarget CreateTarget()
+        {
+            return CreateTarget(null);
+        }
+        
+        /// <summary>
+        /// Creates a Unity Console log target based on this configuration with optional message bus.
         /// </summary>
         /// <param name="messageBus">Optional message bus for publishing log events.</param>
-        /// <returns>A configured log target.</returns>
-        public virtual ILogTarget CreateTarget(IMessageBus messageBus)
+        /// <returns>A configured UnityConsoleTarget.</returns>
+        public ILogTarget CreateTarget(IMessageBus messageBus)
         {
-            return CreateTarget();
+            var target = new UnityConsoleTarget(this, _formatter, messageBus);
+            ApplyTagFilters(target);
+            return target;
         }
         
         /// <summary>
         /// Applies the tag filters to the specified log target.
         /// </summary>
         /// <param name="target">The log target to configure with filters.</param>
-        public virtual void ApplyTagFilters(ILogTarget target)
+        public void ApplyTagFilters(ILogTarget target)
         {
             if (target == null)
                 return;
@@ -210,22 +291,24 @@ namespace AhBearStudios.Core.Logging.Configuration
         /// Creates a deep copy of this configuration.
         /// </summary>
         /// <returns>A new configuration instance with the same settings.</returns>
-        public virtual ILogTargetConfig Clone()
+        public ILogTargetConfig Clone()
         {
             var clone = Instantiate(this);
             clone.name = this.name;
             return clone;
         }
         
+        #endregion
+        
         /// <summary>
-        /// Validates the configuration when values are changed in the inspector.
+        /// Validate the configuration to ensure all required components are present.
         /// </summary>
-        protected virtual void OnValidate()
+        private void OnValidate()
         {
             // Ensure target name is not empty
             if (string.IsNullOrEmpty(_targetName))
             {
-                _targetName = "Target_" + System.Guid.NewGuid().ToString().Substring(0, 8);
+                _targetName = "UnityConsole_" + System.Guid.NewGuid().ToString().Substring(0, 8);
                 Debug.LogWarning($"Target name cannot be empty. Generated a new name: {_targetName}");
             }
             
@@ -249,6 +332,14 @@ namespace AhBearStudios.Core.Logging.Configuration
                 _flushIntervalSeconds = 0;
                 Debug.LogWarning("Flush interval cannot be negative. Reset to 0.");
             }
+            
+            // If colorized output is enabled but no formatter is assigned, log a warning in the editor
+            #if UNITY_EDITOR
+            if (_useColorizedOutput && _formatter == null)
+            {
+                Debug.LogWarning($"[{name}] Colorized output is enabled but no formatter is assigned. A default formatter will be used.");
+            }
+            #endif
         }
     }
 }

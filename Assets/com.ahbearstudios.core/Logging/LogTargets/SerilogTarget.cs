@@ -2,9 +2,11 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using AhBearStudios.Core.Logging.Data;
+using AhBearStudios.Core.Logging.Configuration;
 using AhBearStudios.Core.Logging.Interfaces;
+using AhBearStudios.Core.Logging.Messages;
 using AhBearStudios.Core.Logging.Tags;
+using AhBearStudios.Core.MessageBus.Interfaces;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
@@ -17,15 +19,16 @@ namespace AhBearStudios.Core.Logging.LogTargets
     /// An implementation of ILogTarget that forwards log messages to Serilog.
     /// Supports configuration options, filtering, and high-performance logging.
     /// </summary>
-    public class SerilogTarget : ILogTarget
+    public sealed class SerilogTarget : ILogTarget
     {
         private readonly ILogger _logger;
         private readonly LoggingLevelSwitch _levelSwitch;
         private readonly HashSet<Tagging.TagCategory> _includedTagFilters;
         private readonly HashSet<Tagging.TagCategory> _excludedTagFilters;
+        private readonly SerilogFileTargetConfig _targetConfig;
+        private readonly IMessageBus _messageBus;
         private bool _processUntaggedMessages = true;
         private bool _isDisposed;
-        private bool _isEnabled = true;
         
         /// <summary>
         /// Gets the name of this log target.
@@ -46,159 +49,31 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// Gets or sets whether this target is currently enabled.
         /// When disabled, no messages will be processed.
         /// </summary>
-        public bool IsEnabled 
-        { 
-            get => _isEnabled; 
-            set => _isEnabled = value; 
-        }
+        public bool IsEnabled { get; set; }
         
         /// <summary>
-        /// Creates a new SerilogTarget that logs to a file with default settings.
+        /// Creates a new SerilogTarget from configuration.
         /// </summary>
-        /// <param name="name">The name of this target.</param>
-        /// <param name="logFilePath">The path where log files will be created.</param>
-        /// <param name="minimumLevel">The minimum level of messages to log.</param>
-        public SerilogTarget(string name, string logFilePath, LogLevel minimumLevel = LogLevel.Info)
+        /// <param name="targetConfig">The Serilog configuration to use.</param>
+        /// <param name="messageBus">Optional message bus for publishing log events.</param>
+        /// <exception cref="ArgumentNullException">Thrown when targetConfig is null.</exception>
+        public SerilogTarget(SerilogFileTargetConfig targetConfig, IMessageBus messageBus = null)
         {
-            Name = string.IsNullOrEmpty(name) ? "SerilogFile" : name;
+            _targetConfig = targetConfig ?? throw new ArgumentNullException(nameof(targetConfig));
+            _messageBus = messageBus;
+            
+            Name = string.IsNullOrEmpty(targetConfig.TargetName) ? "SerilogFile" : targetConfig.TargetName;
+            IsEnabled = targetConfig.Enabled;
+            
             _includedTagFilters = new HashSet<Tagging.TagCategory>();
             _excludedTagFilters = new HashSet<Tagging.TagCategory>();
-            _processUntaggedMessages = true;
-            _levelSwitch = new LoggingLevelSwitch(ConvertLogLevelToLogEventLevel(minimumLevel));
+            _levelSwitch = new LoggingLevelSwitch(ConvertLogLevelToLogEventLevel(targetConfig.MinimumLevel));
             
-            // Ensure directory exists
-            string directory = Path.GetDirectoryName(logFilePath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
+            // Configure tag filters
+            SetTagFilters(targetConfig.IncludedTags, targetConfig.ExcludedTags, targetConfig.ProcessUntaggedMessages);
             
-            // Configure Serilog for file logging with rolling files
-            _logger = new LoggerConfiguration()
-                .MinimumLevel.ControlledBy(_levelSwitch)
-                .Enrich.WithProperty("Application", "AhBearStudios")
-                .WriteTo.File(
-                    logFilePath,
-                    rollingInterval: RollingInterval.Day,
-                    retainedFileCountLimit: 7,
-                    shared: true,
-                    buffered: true,
-                    flushToDiskInterval: TimeSpan.FromSeconds(2))
-                .CreateLogger();
-        }
-        
-        /// <summary>
-        /// Creates a new SerilogTarget with a pre-configured logger.
-        /// </summary>
-        /// <param name="name">The name of this target.</param>
-        /// <param name="logger">The pre-configured Serilog logger to use.</param>
-        /// <param name="levelSwitch">The level switch to control logging levels.</param>
-        public SerilogTarget(string name, ILogger logger, LoggingLevelSwitch levelSwitch)
-        {
-            Name = string.IsNullOrEmpty(name) ? "SerilogCustom" : name;
-            _includedTagFilters = new HashSet<Tagging.TagCategory>();
-            _excludedTagFilters = new HashSet<Tagging.TagCategory>();
-            _processUntaggedMessages = true;
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _levelSwitch = levelSwitch ?? new LoggingLevelSwitch(LogEventLevel.Information);
-        }
-        
-        /// <summary>
-        /// Creates a new SerilogTarget that logs to both file and console with JSON formatting.
-        /// </summary>
-        /// <param name="name">The name of this target.</param>
-        /// <param name="logFilePath">The path where log files will be created.</param>
-        /// <param name="minimumLevel">The minimum level of messages to log.</param>
-        /// <returns>A new SerilogTarget configured for both file and console output with JSON formatting.</returns>
-        public static SerilogTarget CreateFileAndConsoleTarget(string name, string logFilePath, LogLevel minimumLevel = LogLevel.Info)
-        {
-            string directory = Path.GetDirectoryName(logFilePath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-            
-            var levelSwitch = new LoggingLevelSwitch(ConvertLogLevelToLogEventLevel(minimumLevel));
-            
-            var logger = new LoggerConfiguration()
-                .MinimumLevel.ControlledBy(levelSwitch)
-                .Enrich.WithProperty("Application", "AhBearStudios")
-                .WriteTo.File(
-                    new JsonFormatter(), 
-                    logFilePath,
-                    rollingInterval: RollingInterval.Day,
-                    retainedFileCountLimit: 7,
-                    shared: true)
-                .WriteTo.Console()
-                .CreateLogger();
-                
-            return new SerilogTarget(name, logger, levelSwitch);
-        }
-        
-        /// <summary>
-        /// Creates a new SerilogTarget that logs to both file and console with JSON formatting.
-        /// </summary>
-        /// <param name="name">The name of this target.</param>
-        /// <param name="minimumLevel">The minimum level of messages to log.</param>
-        /// <returns>A new SerilogTarget configured for console output.</returns>
-        public static SerilogTarget CreateConsoleTarget(string name, LogLevel minimumLevel = LogLevel.Info)
-        {
-            var levelSwitch = new LoggingLevelSwitch(ConvertLogLevelToLogEventLevel(minimumLevel));
-            
-            var logger = new LoggerConfiguration()
-                .MinimumLevel.ControlledBy(levelSwitch)
-                .Enrich.WithProperty("Application", "AhBearStudios")
-                .WriteTo.Console()
-                .CreateLogger();
-                
-            return new SerilogTarget(name, logger, levelSwitch);
-        }
-        
-        /// <summary>
-        /// Creates a new SerilogTarget that logs to a file with optional JSON formatting.
-        /// </summary>
-        /// <param name="name">The name of this target.</param>
-        /// <param name="logFilePath">The path where log files will be created.</param>
-        /// <param name="minimumLevel">The minimum level of messages to log.</param>
-        /// <param name="useJsonFormat">Whether to use JSON formatting for the log files.</param>
-        /// <returns>A new SerilogTarget configured for file output.</returns>
-        public static SerilogTarget CreateFileTarget(string name, string logFilePath, LogLevel minimumLevel = LogLevel.Info,
-            bool useJsonFormat = false)
-        {
-            string directory = Path.GetDirectoryName(logFilePath);
-            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-            {
-                Directory.CreateDirectory(directory);
-            }
-
-            var levelSwitch = new LoggingLevelSwitch(ConvertLogLevelToLogEventLevel(minimumLevel));
-
-            var loggerConfig = new LoggerConfiguration()
-                .MinimumLevel.ControlledBy(levelSwitch)
-                .Enrich.WithProperty("Application", "AhBearStudios");
-
-            // Add file sink with or without JSON formatting
-            if (useJsonFormat)
-            {
-                loggerConfig.WriteTo.File(
-                    new JsonFormatter(),
-                    logFilePath,
-                    rollingInterval: RollingInterval.Day,
-                    retainedFileCountLimit: 7,
-                    shared: true);
-            }
-            else
-            {
-                loggerConfig.WriteTo.File(
-                    logFilePath,
-                    rollingInterval: RollingInterval.Day,
-                    retainedFileCountLimit: 7,
-                    shared: true);
-            }
-
-            var logger = loggerConfig.CreateLogger();
-
-            return new SerilogTarget(name, logger, levelSwitch);
+            // Create the Serilog logger based on configuration
+            _logger = CreateLoggerFromConfig(targetConfig);
         }
         
         /// <summary>
@@ -207,7 +82,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <param name="entries">The list of log messages to write.</param>
         public void WriteBatch(NativeList<LogMessage> entries)
         {
-            if (_isDisposed || !_isEnabled || entries.Length == 0)
+            if (_isDisposed || !IsEnabled || entries.Length == 0)
                 return;
                 
             foreach (var entry in entries)
@@ -215,71 +90,9 @@ namespace AhBearStudios.Core.Logging.LogTargets
                 if (ShouldLog(entry.Level, entry.Tag))
                 {
                     WriteToSerilog(entry);
+                    PublishLogEntryMessage(entry);
                 }
             }
-        }
-
-        /// <summary>
-        /// Writes a structured log message to Serilog with property context.
-        /// </summary>
-        protected void WriteToSerilog(LogMessage message)
-        {
-            // Skip if below minimum level or message doesn't pass tag filter
-            if (message.Level < MinimumLevel || !ShouldLog(message.Level, message.Tag))
-                return;
-    
-            var level = ConvertLogLevel(message.Level);
-            var messageTemplate = message.Message.ToString();
-
-            try
-            {
-                // Start with a logger that has the tag context
-                var contextLogger = _logger.ForContext("Tag", message.Tag.ToString())
-                    .ForContext("Level", message.Level);
-        
-                // Add structured properties if available
-                if (message.Properties.IsCreated)
-                {
-                    // Add each property individually to the logger context
-                    foreach (var property in message.Properties)
-                    {
-                        contextLogger = contextLogger.ForContext(
-                            property.Key.ToString(), 
-                            property.Value.ToString());
-                    }
-                }
-        
-                // Write the log message with the fully enriched context
-                contextLogger.Write(level, messageTemplate);
-            }
-            catch (Exception ex)
-            {
-                // Log error but continue - we don't want logging to cause application failures
-                Console.WriteLine($"Error writing to Serilog: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Converts the internal byte log level to Serilog's LogEventLevel enum.
-        /// </summary>
-        /// <param name="messageLevel">The byte log level from the logging system.</param>
-        /// <returns>The corresponding Serilog LogEventLevel.</returns>
-        private LogEventLevel ConvertLogLevel(LogLevel messageLevel)
-        {
-            // Map our byte-based log levels to Serilog's LogEventLevel
-            if (messageLevel >= LogLevel.Critical)
-                return LogEventLevel.Fatal;
-            if (messageLevel >= LogLevel.Error)
-                return LogEventLevel.Error;
-            if (messageLevel >= LogLevel.Warning)
-                return LogEventLevel.Warning;
-            if (messageLevel >= LogLevel.Info)
-                return LogEventLevel.Information;
-            if (messageLevel >= LogLevel.Debug)
-                return LogEventLevel.Debug;
-    
-            // Default to Verbose for any remaining lower levels
-            return LogEventLevel.Verbose;
         }
 
         /// <summary>
@@ -288,12 +101,13 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <param name="entry">The log message to write.</param>
         public void Write(in LogMessage entry)
         {
-            if (_isDisposed || !_isEnabled)
+            if (_isDisposed || !IsEnabled)
                 return;
                 
             if (ShouldLog(entry.Level, entry.Tag))
             {
                 WriteToSerilog(entry);
+                PublishLogEntryMessage(entry);
             }
         }
         
@@ -302,11 +116,18 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// </summary>
         public void Flush()
         {
-            // Serilog's File sink doesn't have an explicit flush method,
-            // but we can use this opportunity to ensure any critical
-            // logs get written out immediately by forcing a garbage collection.
-            // This is only a best-effort attempt.
-            Log.CloseAndFlush();
+            if (_isDisposed)
+                return;
+                
+            try
+            {
+                Log.CloseAndFlush();
+            }
+            catch (Exception ex)
+            {
+                // Log error but continue - we don't want logging to cause application failures
+                Console.WriteLine($"Error flushing Serilog: {ex.Message}");
+            }
         }
         
         /// <summary>
@@ -316,53 +137,141 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <returns>True if messages with this level would be logged; otherwise, false.</returns>
         public bool IsLevelEnabled(LogLevel level)
         {
-            if (!_isEnabled)
-                return false;
-                
-            return level >= MinimumLevel;
+            return IsEnabled && level >= MinimumLevel;
         }
         
         /// <summary>
-        /// Adds a tag filter to this target. Only messages with matching tag will be processed.
+        /// Adds a tag filter to this target. Only messages with matching tag categories will be processed.
         /// </summary>
-        /// <param name="tagCategory">The tag category to include.</param>
+        /// <param name="tagCategory">The tag category to include in filtering.</param>
         public void AddTagFilter(Tagging.TagCategory tagCategory)
         {
-            if (tagCategory == Tagging.TagCategory.None)
+            if (_isDisposed)
                 return;
-                
-            _includedTagFilters.Add(tagCategory);
-        }
         
+            if (tagCategory != Tagging.TagCategory.None)
+            {
+                _includedTagFilters.Add(tagCategory);
+            }
+        }
+
         /// <summary>
         /// Removes a tag filter from this target.
         /// </summary>
         /// <param name="tagCategory">The tag category to remove from filtering.</param>
         public void RemoveTagFilter(Tagging.TagCategory tagCategory)
         {
-            _includedTagFilters.Remove(tagCategory);
-        }
+            if (_isDisposed)
+                return;
         
+            _includedTagFilters.Remove(tagCategory);
+            _excludedTagFilters.Remove(tagCategory);
+        }
+
         /// <summary>
         /// Clears all tag filters from this target.
+        /// After clearing, all tag categories will be processed (subject to other filtering rules).
         /// </summary>
         public void ClearTagFilters()
         {
+            if (_isDisposed)
+                return;
+        
             _includedTagFilters.Clear();
             _excludedTagFilters.Clear();
             _processUntaggedMessages = true;
         }
+
+        void ILogTarget.SetTagFilters(string[] includedTags, string[] excludedTags, bool processUntaggedMessages)
+        {
+            SetTagFilters(includedTags, excludedTags, processUntaggedMessages);
+        }
+
+        /// <summary>
+        /// Disposes the resources used by this target.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_isDisposed)
+                return;
+                
+            try
+            {
+                Flush();
+            }
+            catch
+            {
+                // Silently ignore errors during disposal
+            }
+            
+            _includedTagFilters?.Clear();
+            _excludedTagFilters?.Clear();
+            
+            _isDisposed = true;
+        }
+        
+        /// <summary>
+        /// Creates a Serilog logger based on the provided configuration.
+        /// </summary>
+        /// <param name="targetConfig">The configuration to use.</param>
+        /// <returns>A configured ILogger instance.</returns>
+        private ILogger CreateLoggerFromConfig(SerilogFileTargetConfig targetConfig)
+        {
+            if (string.IsNullOrEmpty(targetConfig.LogFilePath))
+                throw new ArgumentException("LogFilePath cannot be null or empty", nameof(targetConfig));
+                
+            // Ensure directory exists
+            string directory = Path.GetDirectoryName(targetConfig.LogFilePath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+            
+            var loggerConfig = new LoggerConfiguration()
+                .MinimumLevel.ControlledBy(_levelSwitch)
+                .Enrich.WithProperty("Application", "AhBearStudios")
+                .Enrich.WithProperty("Target", Name);
+            
+            // Configure file output
+            if (targetConfig.UseJsonFormat)
+            {
+                loggerConfig.WriteTo.File(
+                    new JsonFormatter(),
+                    targetConfig.LogFilePath,
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: targetConfig.RetainedDays > 0 ? targetConfig.RetainedDays : 7,
+                    shared: true,
+                    buffered: targetConfig.AutoFlush,
+                    flushToDiskInterval: targetConfig.AutoFlush ? TimeSpan.FromSeconds(targetConfig.FlushIntervalSeconds) : null);
+            }
+            else
+            {
+                loggerConfig.WriteTo.File(
+                    targetConfig.LogFilePath,
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: targetConfig.RetainedDays > 0 ? targetConfig.RetainedDays : 7,
+                    shared: true,
+                    buffered: targetConfig.AutoFlush,
+                    flushToDiskInterval: targetConfig.AutoFlush ? TimeSpan.FromSeconds(targetConfig.FlushIntervalSeconds) : null);
+            }
+            
+            // Add console output if configured
+            if (targetConfig.LogToConsole)
+            {
+                loggerConfig.WriteTo.Console();
+            }
+            
+            return loggerConfig.CreateLogger();
+        }
         
         /// <summary>
         /// Sets comprehensive tag filters for this target.
-        /// This provides a configuration-friendly way to set up filtering.
         /// </summary>
         /// <param name="includedTags">Tags that should be included (null or empty means include all).</param>
         /// <param name="excludedTags">Tags that should be excluded.</param>
         /// <param name="processUntaggedMessages">Whether to process messages without tags.</param>
-        public void SetTagFilters(string[] includedTags, string[] excludedTags, bool processUntaggedMessages)
+        private void SetTagFilters(string[] includedTags, string[] excludedTags, bool processUntaggedMessages)
         {
-            // Clear existing filters
             _includedTagFilters.Clear();
             _excludedTagFilters.Clear();
             _processUntaggedMessages = processUntaggedMessages;
@@ -398,15 +307,13 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <param name="tagString">The tag string to parse.</param>
         /// <param name="tagCategory">The parsed TagCategory.</param>
         /// <returns>True if parsing succeeded, false otherwise.</returns>
-        private bool TryParseTagCategory(string tagString, out Tagging.TagCategory tagCategory)
+        private static bool TryParseTagCategory(string tagString, out Tagging.TagCategory tagCategory)
         {
-            // Try direct enum parsing first
             if (Enum.TryParse<Tagging.TagCategory>(tagString, true, out tagCategory))
             {
                 return true;
             }
             
-            // Add custom mappings for common string names
             switch (tagString.ToLowerInvariant())
             {
                 case "system":
@@ -440,29 +347,6 @@ namespace AhBearStudios.Core.Logging.LogTargets
         }
         
         /// <summary>
-        /// Disposes the resources used by this target.
-        /// </summary>
-        public void Dispose()
-        {
-            if (_isDisposed)
-                return;
-                
-            // Flush any remaining logs
-            try
-            {
-                Flush();
-            }
-            catch
-            {
-                // Silently ignore errors during disposal
-            }
-            
-            // Log.CloseAndFlush() handles disposing of Serilog
-            
-            _isDisposed = true;
-        }
-        
-        /// <summary>
         /// Checks if a message with the given level and tag should be logged.
         /// </summary>
         /// <param name="level">The message level.</param>
@@ -473,7 +357,6 @@ namespace AhBearStudios.Core.Logging.LogTargets
             if (level < MinimumLevel)
                 return false;
             
-            // Get the tag category for filtering
             var category = Tagging.GetTagCategory(tag);
             
             // Check if tag is explicitly excluded
@@ -493,53 +376,61 @@ namespace AhBearStudios.Core.Logging.LogTargets
         }
         
         /// <summary>
-        /// Writes a log message to Serilog with the appropriate level and properties.
+        /// Writes a log message to Serilog with structured properties.
         /// </summary>
         /// <param name="entry">The log message to write.</param>
         private void WriteToSerilog(in LogMessage entry)
         {
-            // Get the Serilog LogEventLevel equivalent to our log level
-            LogEventLevel level = ConvertLogLevelToLogEventLevel(entry.Level);
-    
-            // Get tag string
-            string tagString = entry.GetTagString().ToString();
-    
-            // Get timestamp
-            DateTime timestamp = new DateTime(entry.TimestampTicks);
-    
-            // Create a logger with context properties
-            var contextLogger = _logger
-                .ForContext("Tag", tagString)
-                .ForContext("Timestamp", timestamp);
-    
-            // Write to Serilog with the appropriate level
-            string message = entry.Message.ToString();
-    
-            switch (level)
+            try
             {
-                case LogEventLevel.Verbose:
-                    contextLogger.Verbose("{Message}", message);
-                    break;
-            
-                case LogEventLevel.Debug:
-                    contextLogger.Debug("{Message}", message);
-                    break;
-            
-                case LogEventLevel.Information:
-                    contextLogger.Information("{Message}", message);
-                    break;
-            
-                case LogEventLevel.Warning:
-                    contextLogger.Warning("{Message}", message);
-                    break;
-            
-                case LogEventLevel.Error:
-                    contextLogger.Error("{Message}", message);
-                    break;
-            
-                case LogEventLevel.Fatal:
-                    contextLogger.Fatal("{Message}", message);
-                    break;
+                var level = ConvertLogLevelToLogEventLevel(entry.Level);
+                var tagString = entry.GetTagString().ToString();
+                var message = entry.Message.ToString();
+                var timestamp = new DateTime(entry.TimestampTicks);
+                
+                // Create enriched logger context
+                var contextLogger = _logger
+                    .ForContext("Tag", tagString)
+                    .ForContext("Timestamp", timestamp)
+                    .ForContext("Level", entry.Level.ToString());
+                
+                // Add properties if available
+                if (entry.Properties.IsCreated)
+                {
+                    foreach (var property in entry.Properties)
+                    {
+                        contextLogger = contextLogger.ForContext(
+                            property.Key.ToString(), 
+                            property.Value.ToString());
+                    }
+                }
+                
+                // Write with appropriate level
+                contextLogger.Write(level, "{Message}", message);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error writing to Serilog: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Publishes a log entry message to the message bus if available.
+        /// </summary>
+        /// <param name="entry">The log entry to publish.</param>
+        private void PublishLogEntryMessage(in LogMessage entry)
+        {
+            if (_messageBus == null)
+                return;
+                
+            try
+            {
+                var logEntryMessage = new LogEntryMessage(entry);
+                _messageBus.PublishMessage(logEntryMessage);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error publishing log entry message: {ex.Message}");
             }
         }
         
@@ -550,18 +441,15 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <returns>The equivalent LogEventLevel.</returns>
         private static LogEventLevel ConvertLogLevelToLogEventLevel(LogLevel level)
         {
-            if (level == LogLevel.Debug)
-                return LogEventLevel.Debug;
-            else if (level == LogLevel.Info)
-                return LogEventLevel.Information;
-            else if (level == LogLevel.Warning)
-                return LogEventLevel.Warning;
-            else if (level == LogLevel.Error)
-                return LogEventLevel.Error;
-            else if (level == LogLevel.Critical)
-                return LogEventLevel.Fatal;
-            else
-                return LogEventLevel.Information; // Default to Information
+            return level switch
+            {
+                LogLevel.Debug => LogEventLevel.Debug,
+                LogLevel.Info => LogEventLevel.Information,
+                LogLevel.Warning => LogEventLevel.Warning,
+                LogLevel.Error => LogEventLevel.Error,
+                LogLevel.Critical => LogEventLevel.Fatal,
+                _ => LogEventLevel.Information
+            };
         }
         
         /// <summary>
@@ -571,23 +459,16 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <returns>The equivalent LogLevel.</returns>
         private static LogLevel ConvertLevelSwitchToLogLevel(LogEventLevel level)
         {
-            switch (level)
+            return level switch
             {
-                case LogEventLevel.Verbose:
-                    return LogLevel.Debug;
-                case LogEventLevel.Debug:
-                    return LogLevel.Debug;
-                case LogEventLevel.Information:
-                    return LogLevel.Info;
-                case LogEventLevel.Warning:
-                    return LogLevel.Warning;
-                case LogEventLevel.Error:
-                    return LogLevel.Error;
-                case LogEventLevel.Fatal:
-                    return LogLevel.Critical;
-                default:
-                    return LogLevel.Info;
-            }
+                LogEventLevel.Verbose => LogLevel.Debug,
+                LogEventLevel.Debug => LogLevel.Debug,
+                LogEventLevel.Information => LogLevel.Info,
+                LogEventLevel.Warning => LogLevel.Warning,
+                LogEventLevel.Error => LogLevel.Error,
+                LogEventLevel.Fatal => LogLevel.Critical,
+                _ => LogLevel.Info
+            };
         }
     }
 }

@@ -1,5 +1,6 @@
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Data;
+using AhBearStudios.Core.Logging.Messages;
 
 namespace AhBearStudios.Core.Logging
 {

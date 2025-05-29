@@ -1,9 +1,9 @@
 using System;
-using AhBearStudios.Core.Logging.Data;
 using AhBearStudios.Core.Logging.Tags;
 using Unity.Collections;
 using UnityEngine;
 using System.Collections.Generic;
+using AhBearStudios.Core.Logging.Messages;
 
 namespace AhBearStudios.Core.Logging.Formatters
 {

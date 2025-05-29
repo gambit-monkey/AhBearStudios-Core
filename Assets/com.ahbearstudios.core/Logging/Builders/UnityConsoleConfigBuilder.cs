@@ -8,7 +8,7 @@ namespace AhBearStudios.Core.Logging.Builders
     /// <summary>
     /// Builder for Unity console configurations
     /// </summary>
-    public sealed class UnityConsoleConfigBuilder : ILogTargetConfigBuilder<UnityConsoleLogConfig, UnityConsoleConfigBuilder>
+    public sealed class UnityConsoleConfigBuilder : ILogTargetConfigBuilder<UnityConsoleTargetConfig, UnityConsoleConfigBuilder>
     {
         public class ConfigData
         {
@@ -133,7 +133,7 @@ namespace AhBearStudios.Core.Logging.Builders
         /// <summary>
         /// Initializes builder from existing ScriptableObject config
         /// </summary>
-        public UnityConsoleConfigBuilder FromExisting(UnityConsoleLogConfig config)
+        public UnityConsoleConfigBuilder FromExisting(UnityConsoleTargetConfig config)
         {
             if (config == null)
                 throw new ArgumentNullException(nameof(config));
@@ -158,7 +158,7 @@ namespace AhBearStudios.Core.Logging.Builders
             _data.LimitMessageLength = config.LimitMessageLength;
             _data.MaxMessageLength = config.MaxMessageLength;
     
-            // Copy UnityConsoleLogConfig-specific properties
+            // Copy UnityConsoleTargetConfig-specific properties
             _data.UseColorizedOutput = config.UseColorizedOutput;
             _data.RegisterUnityLogHandler = config.RegisterUnityLogHandler;
             _data.DuplicateToOriginalHandler = config.DuplicateToOriginalHandler;
@@ -196,14 +196,14 @@ namespace AhBearStudios.Core.Logging.Builders
 
         internal ConfigData GetData() => _data;
 
-        public UnityConsoleLogConfig Build()
+        public UnityConsoleTargetConfig Build()
         {
-            var config = ScriptableObject.CreateInstance<UnityConsoleLogConfig>();
+            var config = ScriptableObject.CreateInstance<UnityConsoleTargetConfig>();
             ApplyDataToScriptableObject(_data, config);
             return config;
         }
 
-        public void ApplyTo(UnityConsoleLogConfig config)
+        public void ApplyTo(UnityConsoleTargetConfig config)
         {
             if (config == null)
                 throw new ArgumentNullException(nameof(config));
@@ -211,7 +211,7 @@ namespace AhBearStudios.Core.Logging.Builders
             ApplyDataToScriptableObject(_data, config);
         }
 
-        private static void ApplyDataToScriptableObject(ConfigData data, UnityConsoleLogConfig config)
+        private static void ApplyDataToScriptableObject(ConfigData data, UnityConsoleTargetConfig config)
         {
             // Apply base LogTargetConfig properties
             config.TargetName = data.TargetName;
@@ -233,7 +233,7 @@ namespace AhBearStudios.Core.Logging.Builders
             config.LimitMessageLength = data.LimitMessageLength;
             config.MaxMessageLength = data.MaxMessageLength;
     
-            // Apply UnityConsoleLogConfig-specific properties
+            // Apply UnityConsoleTargetConfig-specific properties
             config.UseColorizedOutput = data.UseColorizedOutput;
             config.RegisterUnityLogHandler = data.RegisterUnityLogHandler;
             config.DuplicateToOriginalHandler = data.DuplicateToOriginalHandler;

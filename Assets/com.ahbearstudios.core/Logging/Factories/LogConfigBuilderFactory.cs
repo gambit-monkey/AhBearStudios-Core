@@ -83,17 +83,17 @@ namespace AhBearStudios.Core.Logging.Builders
         }
 
         /// <summary>
-        /// Creates builder from existing ScriptableObject config
+        /// Creates builder from existing ScriptableObject targetConfig
         /// </summary>
-        public static SerilogFileConfigBuilder FromExisting(SerilogFileConfig config)
+        public static SerilogFileConfigBuilder FromExisting(SerilogFileTargetConfig targetConfig)
         {
-            return new SerilogFileConfigBuilder().FromExisting(config);
+            return new SerilogFileConfigBuilder().FromExisting(targetConfig);
         }
 
         /// <summary>
         /// Creates builder from existing ScriptableObject config
         /// </summary>
-        public static UnityConsoleConfigBuilder FromExisting(UnityConsoleLogConfig config)
+        public static UnityConsoleConfigBuilder FromExisting(UnityConsoleTargetConfig config)
         {
             return new UnityConsoleConfigBuilder().FromExisting(config);
         }

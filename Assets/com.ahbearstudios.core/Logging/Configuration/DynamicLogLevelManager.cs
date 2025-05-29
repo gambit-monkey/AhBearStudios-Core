@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using AhBearStudios.Core.Logging.Middleware;
 using AhBearStudios.Core.Logging.Data;
+using AhBearStudios.Core.Logging.Messages;
 using AhBearStudios.Core.Logging.Tags;
 
 namespace AhBearStudios.Core.Logging.Configuration

@@ -32,7 +32,7 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
         {
             // Add known property names for different log target types
             // These can be extended as new target types are added
-            { typeof(LogTargetConfig), new[] { "FilePath", "OutputPath", "LogPath", "FileName", "OutputFile" } }
+            { typeof(ILogTargetConfig), new[] { "FilePath", "OutputPath", "LogPath", "FileName", "OutputFile" } }
         };
         
         /// <summary>
@@ -180,7 +180,7 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
         /// </summary>
         /// <param name="targetConfig">The log target configuration.</param>
         /// <param name="createdDirectories">Set to track created directories and avoid duplicates.</param>
-        private static void ProcessLogTargetDirectories(LogTargetConfig targetConfig, HashSet<string> createdDirectories)
+        private static void ProcessLogTargetDirectories(ILogTargetConfig targetConfig, HashSet<string> createdDirectories)
         {
             // Method 1: Check if target implements ILogTargetDirectoryProvider
             if (targetConfig is ILogTargetDirectoryProvider directoryProvider && directoryProvider.RequiresDirectories)
@@ -211,7 +211,7 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
         /// </summary>
         /// <param name="targetConfig">The log target configuration.</param>
         /// <returns>Collection of file paths found in the target.</returns>
-        private static IEnumerable<string> ExtractFilePathsFromTarget(LogTargetConfig targetConfig)
+        private static IEnumerable<string> ExtractFilePathsFromTarget(ILogTargetConfig targetConfig)
         {
             var filePaths = new List<string>();
             var targetType = targetConfig.GetType();
@@ -469,7 +469,7 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
         /// </summary>
         /// <param name="targetConfig">The target configuration to test.</param>
         /// <returns>Collection of extracted file paths.</returns>
-        internal static IEnumerable<string> TestExtractFilePathsFromTarget(LogTargetConfig targetConfig)
+        internal static IEnumerable<string> TestExtractFilePathsFromTarget(ILogTargetConfig targetConfig)
         {
             return ExtractFilePathsFromTarget(targetConfig);
         }

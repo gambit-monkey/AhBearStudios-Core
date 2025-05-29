@@ -1,18 +1,24 @@
 using UnityEngine;
+using AhBearStudios.Core.Logging.LogTargets;
+using System.IO;
 using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Interfaces;
 
 namespace AhBearStudios.Core.Logging.Configuration
 {
     /// <summary>
-    /// Base configuration for log targets.
-    /// Implements common functionality shared across different log target types.
+    /// Configuration for Serilog file log targets.
+    /// Implements ILogTargetConfig directly using composition.
     /// </summary>
-    public abstract class LogTargetConfig_Old : ScriptableObject, ILogTargetConfig
+    [CreateAssetMenu(
+        fileName = "SerilogFileTargetConfig", 
+        menuName = "AhBearStudios/Logging/Serilog File Config", 
+        order = 2)]
+    public class SerilogFileTargetConfig : ScriptableObject, ILogTargetConfig
     {
         [Header("General Settings")]
         [SerializeField, Tooltip("The unique name of this log target")]
-        private string _targetName = "DefaultTarget";
+        private string _targetName = "SerilogFile";
         
         [SerializeField, Tooltip("Whether this log target is enabled")]
         private bool _enabled = true;
@@ -69,7 +75,21 @@ namespace AhBearStudios.Core.Logging.Configuration
         [SerializeField, Tooltip("Maximum message length when limiting is enabled")]
         private int _maxMessageLength = 8192;
         
-        // ILogTargetConfig implementation
+        [Header("File Configuration")]
+        [Tooltip("The file path where logs will be written (relative to application data path)")]
+        [SerializeField] private string _logFilePath = "Logs/app.log";
+        
+        [Tooltip("Whether to use JSON formatting for logs")]
+        [SerializeField] private bool _useJsonFormat = false;
+        
+        [Tooltip("Whether to log to both file and console")]
+        [SerializeField] private bool _logToConsole = false;
+        
+        [Tooltip("Number of days to retain log files")]
+        [SerializeField] private int _retainedDays = 7;
+        
+        #region ILogTargetConfig Implementation
+        
         public string TargetName 
         { 
             get => _targetName; 
@@ -178,27 +198,91 @@ namespace AhBearStudios.Core.Logging.Configuration
             set => _maxMessageLength = value; 
         }
         
-        /// <summary>
-        /// Creates a log target based on this configuration.
-        /// </summary>
-        /// <returns>A configured log target.</returns>
-        public abstract ILogTarget CreateTarget();
+        #endregion
+
+        #region File-Specific Properties
         
         /// <summary>
-        /// Creates a log target based on this configuration with optional message bus.
+        /// Gets the resolved log file path.
+        /// </summary>
+        public string LogFilePath
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(_logFilePath))
+                    return "Logs/app.log";
+                    
+                // Resolve relative to persistentDataPath if not absolute
+                if (!Path.IsPathRooted(_logFilePath))
+                {
+                    return Path.Combine(Application.persistentDataPath, _logFilePath);
+                }
+                
+                return _logFilePath;
+            }
+            set => _logFilePath = value;
+        }
+        
+        /// <summary>
+        /// Gets whether to use JSON formatting.
+        /// </summary>
+        public bool UseJsonFormat 
+        { 
+            get => _useJsonFormat; 
+            set => _useJsonFormat = value; 
+        }
+        
+        /// <summary>
+        /// Gets whether to log to both file and console.
+        /// </summary>
+        public bool LogToConsole 
+        { 
+            get => _logToConsole; 
+            set => _logToConsole = value; 
+        }
+        
+        /// <summary>
+        /// Gets the number of days to retain log files.
+        /// </summary>
+        public int RetainedDays 
+        { 
+            get => _retainedDays <= 0 ? 7 : _retainedDays; 
+            set => _retainedDays = value; 
+        }
+        
+        #endregion
+        
+        #region ILogTargetConfig Methods
+        
+        /// <summary>
+        /// Creates a Serilog log target based on this configuration.
+        /// </summary>
+        /// <returns>A configured SerilogTarget.</returns>
+        public ILogTarget CreateTarget()
+        {
+            return CreateTarget(null);
+        }
+        
+        /// <summary>
+        /// Creates a Serilog log target based on this configuration with optional message bus.
         /// </summary>
         /// <param name="messageBus">Optional message bus for publishing log events.</param>
-        /// <returns>A configured log target.</returns>
-        public virtual ILogTarget CreateTarget(IMessageBus messageBus)
+        /// <returns>A configured SerilogTarget.</returns>
+        public ILogTarget CreateTarget(IMessageBus messageBus)
         {
-            return CreateTarget();
+            EnsureDirectoryExists(LogFilePath);
+            
+            var target = new SerilogTarget(this, messageBus);
+            ApplyTagFilters(target);
+            
+            return target;
         }
         
         /// <summary>
         /// Applies the tag filters to the specified log target.
         /// </summary>
         /// <param name="target">The log target to configure with filters.</param>
-        public virtual void ApplyTagFilters(ILogTarget target)
+        public void ApplyTagFilters(ILogTarget target)
         {
             if (target == null)
                 return;
@@ -210,22 +294,37 @@ namespace AhBearStudios.Core.Logging.Configuration
         /// Creates a deep copy of this configuration.
         /// </summary>
         /// <returns>A new configuration instance with the same settings.</returns>
-        public virtual ILogTargetConfig Clone()
+        public ILogTargetConfig Clone()
         {
             var clone = Instantiate(this);
             clone.name = this.name;
             return clone;
         }
         
+        #endregion
+        
         /// <summary>
-        /// Validates the configuration when values are changed in the inspector.
+        /// Ensures the directory for the log file exists.
         /// </summary>
-        protected virtual void OnValidate()
+        /// <param name="filePath">The file path.</param>
+        private void EnsureDirectoryExists(string filePath)
+        {
+            string directory = Path.GetDirectoryName(filePath);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+        }
+        
+        /// <summary>
+        /// Validates configuration in the editor.
+        /// </summary>
+        private void OnValidate()
         {
             // Ensure target name is not empty
             if (string.IsNullOrEmpty(_targetName))
             {
-                _targetName = "Target_" + System.Guid.NewGuid().ToString().Substring(0, 8);
+                _targetName = "SerilogFile_" + System.Guid.NewGuid().ToString().Substring(0, 8);
                 Debug.LogWarning($"Target name cannot be empty. Generated a new name: {_targetName}");
             }
             
@@ -249,6 +348,9 @@ namespace AhBearStudios.Core.Logging.Configuration
                 _flushIntervalSeconds = 0;
                 Debug.LogWarning("Flush interval cannot be negative. Reset to 0.");
             }
+            
+            if (_retainedDays < 1)
+                _retainedDays = 1;
         }
     }
 }

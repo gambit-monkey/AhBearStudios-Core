@@ -6,10 +6,10 @@ using AhBearStudios.Core.Logging.Configuration;
 namespace AhBearStudios.Core.Logging.Editor
 {
     /// <summary>
-    /// Custom editor for SerilogFileConfig that provides an enhanced UI with validation,
+    /// Custom editor for SerilogFileTargetConfig that provides an enhanced UI with validation,
     /// file path selection, and improved organization of settings.
     /// </summary>
-    [CustomEditor(typeof(SerilogFileConfig))]
+    [CustomEditor(typeof(SerilogFileTargetConfig))]
     public class SerilogFileConfigEditor : UnityEditor.Editor
     {
         #region Private Fields
@@ -224,13 +224,13 @@ namespace AhBearStudios.Core.Logging.Editor
                 EditorGUILayout.EndHorizontal();
                 
                 // Show the resolved path for clarity
-                SerilogFileConfig config = (SerilogFileConfig)target;
-                EditorGUILayout.HelpBox($"Resolved Path: {config.LogFilePath}", MessageType.Info);
+                SerilogFileTargetConfig targetConfig = (SerilogFileTargetConfig)target;
+                EditorGUILayout.HelpBox($"Resolved Path: {targetConfig.LogFilePath}", MessageType.Info);
                 
                 // Ensure directory exists button
                 if (GUILayout.Button("Ensure Directory Exists"))
                 {
-                    EnsureDirectoryExists(config.LogFilePath);
+                    EnsureDirectoryExists(targetConfig.LogFilePath);
                 }
                 
                 EditorGUILayout.Space(4);
@@ -394,12 +394,12 @@ namespace AhBearStudios.Core.Logging.Editor
         /// </summary>
         private void ValidateConfiguration()
         {
-            SerilogFileConfig config = (SerilogFileConfig)target;
+            SerilogFileTargetConfig targetConfig = (SerilogFileTargetConfig)target;
             bool hasIssues = false;
             string message = "Configuration Validation:\n\n";
             
             // Check target name
-            if (string.IsNullOrWhiteSpace(config.TargetName))
+            if (string.IsNullOrWhiteSpace(targetConfig.TargetName))
             {
                 message += "- Target name is empty. This may cause issues with target identification.\n";
                 hasIssues = true;
@@ -415,7 +415,7 @@ namespace AhBearStudios.Core.Logging.Editor
             // Check directory exists and is writable
             try
             {
-                string directory = Path.GetDirectoryName(config.LogFilePath);
+                string directory = Path.GetDirectoryName(targetConfig.LogFilePath);
                 
                 if (!Directory.Exists(directory))
                 {
@@ -467,11 +467,11 @@ namespace AhBearStudios.Core.Logging.Editor
         /// </summary>
         private void CreateTestLog()
         {
-            SerilogFileConfig config = (SerilogFileConfig)target;
+            SerilogFileTargetConfig targetConfig = (SerilogFileTargetConfig)target;
             
-            string directory = Path.GetDirectoryName(config.LogFilePath);
-            string filename = Path.GetFileNameWithoutExtension(config.LogFilePath);
-            string extension = Path.GetExtension(config.LogFilePath);
+            string directory = Path.GetDirectoryName(targetConfig.LogFilePath);
+            string filename = Path.GetFileNameWithoutExtension(targetConfig.LogFilePath);
+            string extension = Path.GetExtension(targetConfig.LogFilePath);
             
             string testLogPath = Path.Combine(directory, 
                 filename + "_test_" + System.DateTime.Now.ToString("yyyyMMdd_HHmmss") + extension);
@@ -485,10 +485,10 @@ namespace AhBearStudios.Core.Logging.Editor
                 }
                 
                 // Create sample log content with proper log level
-                string logLevelName = GetLogLevelDisplayName(config.MinimumLevel);
+                string logLevelName = GetLogLevelDisplayName(targetConfig.MinimumLevel);
                 string logContent;
                 
-                if (config.UseJsonFormat)
+                if (targetConfig.UseJsonFormat)
                 {
                     logContent = 
                         "{\n" +
@@ -496,7 +496,7 @@ namespace AhBearStudios.Core.Logging.Editor
                         "  \"Level\": \"" + logLevelName + "\",\n" +
                         "  \"Message\": \"This is a test log entry created from the Unity Editor\",\n" +
                         "  \"Tag\": \"Test\",\n" +
-                        "  \"Properties\": { \"Source\": \"UnityEditor\", \"ConfigName\": \"" + config.name + "\" }\n" +
+                        "  \"Properties\": { \"Source\": \"UnityEditor\", \"ConfigName\": \"" + targetConfig.name + "\" }\n" +
                         "}\n";
                 }
                 else
@@ -506,7 +506,7 @@ namespace AhBearStudios.Core.Logging.Editor
                         "[" + logLevelName + "] " +
                         "[Test] " +
                         "This is a test log entry created from the Unity Editor " +
-                        "{ Source: UnityEditor, ConfigName: " + config.name + " }\n";
+                        "{ Source: UnityEditor, ConfigName: " + targetConfig.name + " }\n";
                 }
                 
                 // Write to file

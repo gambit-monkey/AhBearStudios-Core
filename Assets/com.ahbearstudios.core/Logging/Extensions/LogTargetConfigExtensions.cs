@@ -9,43 +9,43 @@ namespace AhBearStudios.Core.Logging.Extensions
     public static class LogTargetConfigExtensions
     {
         /// <summary>
-        /// Creates a builder from an existing ScriptableObject config
+        /// Creates a builder from an existing ScriptableObject targetConfig
         /// </summary>
-        public static SerilogFileConfigBuilder ToBuilder(this SerilogFileConfig config)
+        public static SerilogFileConfigBuilder ToBuilder(this SerilogFileTargetConfig targetConfig)
         {
-            return new SerilogFileConfigBuilder().FromExisting(config);
+            return new SerilogFileConfigBuilder().FromExisting(targetConfig);
         }
         
         /// <summary>
         /// Creates a builder from an existing ScriptableObject config
         /// </summary>
-        public static UnityConsoleConfigBuilder ToBuilder(this UnityConsoleLogConfig config)
+        public static UnityConsoleConfigBuilder ToBuilder(this UnityConsoleTargetConfig config)
         {
             return new UnityConsoleConfigBuilder().FromExisting(config);
         }
         
         /// <summary>
+        /// Applies builder settings to an existing ScriptableObject targetConfig
+        /// </summary>
+        public static void ApplyBuilder(this SerilogFileTargetConfig targetConfig, SerilogFileConfigBuilder builder)
+        {
+            // Use the builder's ApplyTo method instead of Build()
+            builder.ApplyTo(targetConfig);
+        }
+        
+        /// <summary>
         /// Applies builder settings to an existing ScriptableObject config
         /// </summary>
-        public static void ApplyBuilder(this SerilogFileConfig config, SerilogFileConfigBuilder builder)
+        public static void ApplyBuilder(this UnityConsoleTargetConfig config, UnityConsoleConfigBuilder builder)
         {
             // Use the builder's ApplyTo method instead of Build()
             builder.ApplyTo(config);
         }
         
         /// <summary>
-        /// Applies builder settings to an existing ScriptableObject config
+        /// Copies ConfigData to SerilogFileTargetConfig ScriptableObject
         /// </summary>
-        public static void ApplyBuilder(this UnityConsoleLogConfig config, UnityConsoleConfigBuilder builder)
-        {
-            // Use the builder's ApplyTo method instead of Build()
-            builder.ApplyTo(config);
-        }
-        
-        /// <summary>
-        /// Copies ConfigData to SerilogFileConfig ScriptableObject
-        /// </summary>
-        private static void CopyToScriptableObject(SerilogFileConfigBuilder.ConfigData data, SerilogFileConfig target)
+        private static void CopyToScriptableObject(SerilogFileConfigBuilder.ConfigData data, SerilogFileTargetConfig target)
         {
             target.TargetName = data.TargetName;
             target.Enabled = data.Enabled;
@@ -65,13 +65,13 @@ namespace AhBearStudios.Core.Logging.Extensions
             target.FlushIntervalSeconds = data.FlushIntervalSeconds;
             target.LimitMessageLength = data.LimitMessageLength;
             target.MaxMessageLength = data.MaxMessageLength;
-            // Add any SerilogFileConfig-specific properties here
+            // Add any SerilogFileTargetConfig-specific properties here
         }
         
         /// <summary>
-        /// Copies ConfigData to UnityConsoleLogConfig ScriptableObject
+        /// Copies ConfigData to UnityConsoleTargetConfig ScriptableObject
         /// </summary>
-        private static void CopyToScriptableObject(UnityConsoleConfigBuilder.ConfigData data, UnityConsoleLogConfig target)
+        private static void CopyToScriptableObject(UnityConsoleConfigBuilder.ConfigData data, UnityConsoleTargetConfig target)
         {
             target.TargetName = data.TargetName;
             target.Enabled = data.Enabled;
@@ -91,7 +91,7 @@ namespace AhBearStudios.Core.Logging.Extensions
             target.FlushIntervalSeconds = data.FlushIntervalSeconds;
             target.LimitMessageLength = data.LimitMessageLength;
             target.MaxMessageLength = data.MaxMessageLength;
-            // Add any UnityConsoleLogConfig-specific properties here
+            // Add any UnityConsoleTargetConfig-specific properties here
             target.UseColorizedOutput = data.UseColorizedOutput;
             target.RegisterUnityLogHandler = data.RegisterUnityLogHandler;
             target.DuplicateToOriginalHandler = data.DuplicateToOriginalHandler;

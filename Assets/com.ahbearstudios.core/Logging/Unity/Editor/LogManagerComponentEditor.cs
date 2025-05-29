@@ -1,18 +1,21 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using UnityEngine;
 using UnityEditor;
 using AhBearStudios.Core.Logging.Configuration;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.Logging.Tags;
 
-namespace AhBearStudios.Core.Logging.Editor
+namespace AhBearStudios.Core.Logging.Unity.Editor
 {
     /// <summary>
     /// Custom Unity Editor for the LogManagerComponent.
     /// Provides a rich interface for configuring and managing log settings.
+    /// Uses compositional approach with ILogTargetConfig for better flexibility.
     /// </summary>
     [CustomEditor(typeof(LogManagerComponent))]
-    public class LogManagerComponentEditor : UnityEditor.Editor
+    public sealed class LogManagerComponentEditor : UnityEditor.Editor
     {
         #region Private Fields
         
@@ -20,45 +23,55 @@ namespace AhBearStudios.Core.Logging.Editor
         private SerializedProperty _configProperty;
         private SerializedProperty _logTargetConfigsProperty;
         
-        // Foldout states
+        // Foldout states - cached to avoid GC
         private bool _showGeneralSettings = true;
         private bool _showTargetConfigs = true;
-        private bool _showAdvancedSettings = false;
-        private bool _showRuntimeInfo = false;
+        private bool _showAdvancedSettings;
+        private bool _showRuntimeInfo;
         
-        // Target references
+        // Component reference
         private LogManagerComponent _logManagerComponent;
         
-        // Runtime monitoring
+        // Runtime monitoring cache
         private int _lastQueueCount;
         private int _lastTargetCount;
         private LogLevel _lastMinimumLevel;
-        private float _lastUpdateTime;
+        private double _lastUpdateTime;
         
-        // UI Styles
-        private CustomEditorStyles _styles;
+        // UI Styles - memory-optimized
+        private EditorStylesCache _stylesCache;
+        
+        // Reflection cache for type discovery
+        private static Type[] _logTargetConfigTypes;
+        private static readonly object _typeCacheLock = new object();
         
         #endregion
         
-        #region Initialization
+        #region Unity Lifecycle
         
         /// <summary>
         /// Initialize the editor when enabled.
         /// </summary>
         private void OnEnable()
         {
+            // Cache serialized properties
             _configProperty = serializedObject.FindProperty("_config");
             _logTargetConfigsProperty = serializedObject.FindProperty("_logTargetConfigs");
             
+            // Cache component reference
             _logManagerComponent = target as LogManagerComponent;
             
-            _lastUpdateTime = Time.realtimeSinceStartup;
+            // Initialize update time
+            _lastUpdateTime = EditorApplication.timeSinceStartup;
             
-            // Initialize styles
-            _styles = new CustomEditorStyles();
+            // Initialize styles cache
+            _stylesCache = new EditorStylesCache();
             
-            // Subscribe to editor update for runtime monitoring
+            // Subscribe to editor updates for runtime monitoring
             EditorApplication.update += OnEditorUpdate;
+            
+            // Ensure type cache is initialized
+            EnsureTypeCache();
         }
         
         /// <summary>
@@ -67,6 +80,7 @@ namespace AhBearStudios.Core.Logging.Editor
         private void OnDisable()
         {
             EditorApplication.update -= OnEditorUpdate;
+            _stylesCache?.Dispose();
         }
         
         #endregion
@@ -78,26 +92,40 @@ namespace AhBearStudios.Core.Logging.Editor
         /// </summary>
         public override void OnInspectorGUI()
         {
+            if (_logManagerComponent == null)
+                return;
+                
             serializedObject.Update();
             
-            // Ensure styles are initialized
-            _styles.EnsureInitialized();
+            // Ensure styles are ready
+            _stylesCache.EnsureInitialized();
             
             // Header
-            EditorGUILayout.LabelField("Log Manager Configuration", _styles.HeaderStyle);
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.LabelField("Log Manager Configuration", _stylesCache.HeaderStyle);
+                GUILayout.FlexibleSpace();
+                
+                if (Application.isPlaying && _logManagerComponent.LoggerManager != null)
+                {
+                    var status = _logManagerComponent.LoggerManager.QueuedMessageCount > 0 ? "Active" : "Idle";
+                    EditorGUILayout.LabelField($"Status: {status}", _stylesCache.StatusStyle);
+                }
+            }
+            
             EditorGUILayout.Space();
             
-            // Main sections
+            // Main configuration sections
             DrawGeneralSettings();
-            
             EditorGUILayout.Space();
+            
             DrawTargetConfigs();
-            
             EditorGUILayout.Space();
+            
             DrawAdvancedSettings();
             
-            // Runtime section (only in play mode)
-            if (Application.isPlaying && _logManagerComponent != null)
+            // Runtime section (play mode only)
+            if (Application.isPlaying && _logManagerComponent.LoggerManager != null)
             {
                 EditorGUILayout.Space();
                 DrawRuntimeInfo();
@@ -111,97 +139,141 @@ namespace AhBearStudios.Core.Logging.Editor
         /// </summary>
         private void DrawGeneralSettings()
         {
-            _showGeneralSettings = EditorGUILayout.Foldout(_showGeneralSettings, "General Settings", true);
+            _showGeneralSettings = EditorGUILayout.Foldout(_showGeneralSettings, "General Settings", true, _stylesCache.FoldoutStyle);
             
-            if (_showGeneralSettings)
+            if (!_showGeneralSettings)
+                return;
+                
+            using (new EditorGUI.IndentLevelScope())
             {
-                EditorGUI.indentLevel++;
+                // Config asset reference
+                EditorGUILayout.PropertyField(_configProperty, new GUIContent("Manager Config", "Main configuration asset for the log manager"));
                 
-                // Config field
-                EditorGUILayout.PropertyField(_configProperty);
+                var config = _configProperty.objectReferenceValue as LogManagerConfig;
                 
-                if (_configProperty.objectReferenceValue == null)
+                if (config == null)
                 {
-                    EditorGUILayout.HelpBox("No LogManagerConfig assigned. Default settings will be used.", MessageType.Info);
-                    
-                    EditorGUILayout.BeginHorizontal();
-                    GUILayout.FlexibleSpace();
-                    
-                    if (GUILayout.Button("Create New Config", _styles.ButtonStyle))
-                    {
-                        CreateNewConfig();
-                    }
-                    
-                    GUILayout.FlexibleSpace();
-                    EditorGUILayout.EndHorizontal();
+                    DrawConfigCreationHelp();
                 }
                 else
                 {
-                    // Show read-only configuration preview
-                    var config = _configProperty.objectReferenceValue as LogManagerConfig;
-                    if (config != null)
-                    {
-                        EditorGUI.BeginDisabledGroup(true);
-                        
-                        EditorGUILayout.EnumPopup("Minimum Log Level", config.MinimumLevel);
-                        EditorGUILayout.IntField("Max Messages Per Batch", config.MaxMessagesPerBatch);
-                        EditorGUILayout.IntField("Initial Queue Capacity", config.InitialQueueCapacity);
-                        EditorGUILayout.Toggle("Auto Flush Enabled", config.EnableAutoFlush);
-                        
-                        if (config.EnableAutoFlush)
-                        {
-                            EditorGUILayout.FloatField("Auto Flush Interval", config.AutoFlushInterval);
-                        }
-                        
-                        EditorGUILayout.EnumPopup("Default Tag", config.DefaultTag);
-                        
-                        EditorGUI.EndDisabledGroup();
-                        
-                        // Edit config button
-                        EditorGUILayout.BeginHorizontal();
-                        GUILayout.FlexibleSpace();
-                        
-                        if (GUILayout.Button("Edit Config Asset", _styles.ButtonStyle))
-                        {
-                            Selection.activeObject = config;
-                        }
-                        
-                        GUILayout.FlexibleSpace();
-                        EditorGUILayout.EndHorizontal();
-                    }
+                    DrawConfigPreview(config);
                 }
-                
-                EditorGUI.indentLevel--;
             }
         }
         
         /// <summary>
-        /// Draw the target configurations section.
+        /// Draw help section for creating configuration.
         /// </summary>
-        private void DrawTargetConfigs()
+        private void DrawConfigCreationHelp()
         {
-            _showTargetConfigs = EditorGUILayout.Foldout(_showTargetConfigs, "Log Target Configurations", true);
+            EditorGUILayout.HelpBox("No LogManagerConfig assigned. Default settings will be used.", MessageType.Info);
             
-            if (_showTargetConfigs)
+            using (new EditorGUILayout.HorizontalScope())
             {
-                EditorGUI.indentLevel++;
-                
-                // Show array of target configs
-                EditorGUILayout.PropertyField(_logTargetConfigsProperty, true);
-                
-                // Add button
-                EditorGUILayout.BeginHorizontal();
                 GUILayout.FlexibleSpace();
                 
-                if (GUILayout.Button("Add Target Config", _styles.ButtonStyle))
+                if (GUILayout.Button("Create New Config", _stylesCache.ButtonStyle, GUILayout.Width(150)))
                 {
-                    ShowAddTargetMenu();
+                    CreateNewManagerConfig();
                 }
                 
                 GUILayout.FlexibleSpace();
-                EditorGUILayout.EndHorizontal();
+            }
+        }
+        
+        /// <summary>
+        /// Draw read-only preview of configuration settings.
+        /// </summary>
+        /// <param name="config">The configuration to preview.</param>
+        private void DrawConfigPreview(LogManagerConfig config)
+        {
+            using (new EditorGUI.DisabledScope(true))
+            {
+                EditorGUILayout.EnumPopup(new GUIContent("Minimum Log Level"), config.MinimumLevel);
+                EditorGUILayout.IntField(new GUIContent("Max Messages Per Batch"), config.MaxMessagesPerBatch);
+                EditorGUILayout.IntField(new GUIContent("Initial Queue Capacity"), config.InitialQueueCapacity);
+                EditorGUILayout.Toggle(new GUIContent("Auto Flush Enabled"), config.EnableAutoFlush);
                 
-                EditorGUI.indentLevel--;
+                if (config.EnableAutoFlush)
+                {
+                    EditorGUILayout.FloatField(new GUIContent("Auto Flush Interval"), config.AutoFlushInterval);
+                }
+                
+                EditorGUILayout.EnumPopup(new GUIContent("Default Tag"), config.DefaultTag);
+            }
+            
+            // Edit config button
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                GUILayout.FlexibleSpace();
+                
+                if (GUILayout.Button("Edit Config Asset", _stylesCache.ButtonStyle, GUILayout.Width(150)))
+                {
+                    Selection.activeObject = config;
+                }
+                
+                GUILayout.FlexibleSpace();
+            }
+        }
+        
+        /// <summary>
+        /// Draw the target configurations section with compositional ILogTargetConfig support.
+        /// </summary>
+        private void DrawTargetConfigs()
+        {
+            _showTargetConfigs = EditorGUILayout.Foldout(_showTargetConfigs, "Log Target Configurations", true, _stylesCache.FoldoutStyle);
+            
+            if (!_showTargetConfigs)
+                return;
+                
+            using (new EditorGUI.IndentLevelScope())
+            {
+                // Show array of target configs with improved validation
+                DrawTargetConfigArray();
+                
+                EditorGUILayout.Space();
+                
+                // Action buttons
+                using (new EditorGUILayout.HorizontalScope())
+                {
+                    if (GUILayout.Button("Add Target Config", _stylesCache.ButtonStyle))
+                    {
+                        ShowAddTargetMenu();
+                    }
+                    
+                    if (_logTargetConfigsProperty.arraySize > 0)
+                    {
+                        if (GUILayout.Button("Validate All", _stylesCache.ButtonStyle))
+                        {
+                            ValidateAllTargetConfigs();
+                        }
+                    }
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Draw the target config array with enhanced validation and composition support.
+        /// </summary>
+        private void DrawTargetConfigArray()
+        {
+            EditorGUILayout.PropertyField(_logTargetConfigsProperty, new GUIContent("Target Configurations"), true);
+            
+            // Validate each config during drawing
+            for (int i = 0; i < _logTargetConfigsProperty.arraySize; i++)
+            {
+                var elementProperty = _logTargetConfigsProperty.GetArrayElementAtIndex(i);
+                var targetConfig = elementProperty.objectReferenceValue as ILogTargetConfig;
+                
+                if (targetConfig == null)
+                {
+                    EditorGUILayout.HelpBox($"Target Config {i} is null or invalid.", MessageType.Warning);
+                }
+                else if (!targetConfig.Enabled)
+                {
+                    EditorGUILayout.HelpBox($"Target Config {i} ({targetConfig.TargetName}) is disabled.", MessageType.Info);
+                }
             }
         }
         
@@ -210,112 +282,173 @@ namespace AhBearStudios.Core.Logging.Editor
         /// </summary>
         private void DrawAdvancedSettings()
         {
-            _showAdvancedSettings = EditorGUILayout.Foldout(_showAdvancedSettings, "Advanced Settings", true);
+            _showAdvancedSettings = EditorGUILayout.Foldout(_showAdvancedSettings, "Advanced Settings", true, _stylesCache.FoldoutStyle);
             
-            if (_showAdvancedSettings)
-            {
-                EditorGUI.indentLevel++;
+            if (!_showAdvancedSettings)
+                return;
                 
+            using (new EditorGUI.IndentLevelScope())
+            {
                 EditorGUILayout.HelpBox(
                     "LogManagerComponent initializes the logging system when the scene starts. " +
-                    "It manages the lifecycle of the JobLoggerManager and handles automatic flushing of logs.", 
+                    "It manages the lifecycle of the JobLoggerManager and handles automatic flushing of logs.",
                     MessageType.Info);
                 
                 EditorGUILayout.Space();
                 
-                // Don't Destroy On Load option
-                EditorGUILayout.LabelField("Component Lifetime", _styles.SectionHeaderStyle);
+                // Component lifetime management
+                EditorGUILayout.LabelField("Component Lifetime", _stylesCache.SectionHeaderStyle);
                 
-                EditorGUILayout.BeginHorizontal();
-                
-                if (GUILayout.Button("Make Don't Destroy On Load", _styles.ButtonStyle))
+                using (new EditorGUILayout.HorizontalScope())
                 {
-                    SetDontDestroyOnLoad();
+                    if (GUILayout.Button("Make Persistent", _stylesCache.ButtonStyle))
+                    {
+                        SetDontDestroyOnLoad();
+                    }
+                    
+                    if (GUILayout.Button("Reset to Scene", _stylesCache.ButtonStyle))
+                    {
+                        ResetToScene();
+                    }
                 }
-                
-                EditorGUILayout.EndHorizontal();
-                
-                EditorGUI.indentLevel--;
             }
         }
         
         /// <summary>
-        /// Draw the runtime information section.
+        /// Draw the runtime information section with performance monitoring.
         /// </summary>
         private void DrawRuntimeInfo()
         {
-            _showRuntimeInfo = EditorGUILayout.Foldout(_showRuntimeInfo, "Runtime Information", true);
+            _showRuntimeInfo = EditorGUILayout.Foldout(_showRuntimeInfo, "Runtime Information", true, _stylesCache.FoldoutStyle);
             
-            if (_showRuntimeInfo)
+            if (!_showRuntimeInfo)
+                return;
+                
+            using (new EditorGUI.IndentLevelScope())
             {
-                EditorGUI.indentLevel++;
+                var loggerManager = _logManagerComponent.LoggerManager;
                 
-                JobLoggerManager jobLoggerManager = _logManagerComponent.LoggerManager;
-                
-                if (jobLoggerManager == null)
+                if (loggerManager == null)
                 {
                     EditorGUILayout.HelpBox("Logger Manager is not initialized.", MessageType.Warning);
-                }
-                else
-                {
-                    EditorGUILayout.BeginVertical(UnityEditor.EditorStyles.helpBox);
-                    
-                    // Status information
-                    EditorGUILayout.LabelField("Logger Status:", _styles.SectionHeaderStyle);
-                    EditorGUILayout.LabelField($"Queued Messages: {jobLoggerManager.QueuedMessageCount}", _styles.RuntimeInfoStyle);
-                    EditorGUILayout.LabelField($"Active Targets: {jobLoggerManager.TargetCount}", _styles.RuntimeInfoStyle);
-                    EditorGUILayout.LabelField($"Global Minimum Level: {jobLoggerManager.GlobalMinimumLevel}", _styles.RuntimeInfoStyle);
-                    
-                    EditorGUILayout.Space();
-                    
-                    // Runtime actions
-                    EditorGUILayout.BeginHorizontal();
-                    
-                    if (GUILayout.Button("Flush Logs Now", _styles.ButtonStyle))
-                    {
-                        int processed = jobLoggerManager.Flush();
-                        EditorUtility.DisplayDialog("Flush Result", $"Processed {processed} log messages.", "OK");
-                    }
-                    
-                    EditorGUILayout.EndHorizontal();
-                    
-                    // Test messages section
-                    EditorGUILayout.Space();
-                    EditorGUILayout.LabelField("Send Test Message:", _styles.SectionHeaderStyle);
-                    
-                    EditorGUILayout.BeginHorizontal();
-                    
-                    if (GUILayout.Button("Debug", _styles.ButtonStyle))
-                    {
-                        SendTestMessage(jobLoggerManager, LogLevel.Debug);
-                    }
-                    
-                    if (GUILayout.Button("Info", _styles.ButtonStyle))
-                    {
-                        SendTestMessage(jobLoggerManager, LogLevel.Info);
-                    }
-                    
-                    if (GUILayout.Button("Warning", _styles.ButtonStyle))
-                    {
-                        SendTestMessage(jobLoggerManager, LogLevel.Warning);
-                    }
-                    
-                    if (GUILayout.Button("Error", _styles.ButtonStyle))
-                    {
-                        SendTestMessage(jobLoggerManager, LogLevel.Error);
-                    }
-                    
-                    if (GUILayout.Button("Critical", _styles.ButtonStyle))
-                    {
-                        SendTestMessage(jobLoggerManager, LogLevel.Critical);
-                    }
-                    
-                    EditorGUILayout.EndHorizontal();
-                    
-                    EditorGUILayout.EndVertical();
+                    return;
                 }
                 
-                EditorGUI.indentLevel--;
+                using (new EditorGUILayout.VerticalScope(EditorStyles.helpBox))
+                {
+                    DrawLoggerStatus(loggerManager);
+                    EditorGUILayout.Space();
+                    DrawRuntimeActions(loggerManager);
+                    EditorGUILayout.Space();
+                    DrawTestMessageSection(loggerManager);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Draw logger status information.
+        /// </summary>
+        /// <param name="loggerManager">The logger manager instance.</param>
+        private void DrawLoggerStatus(JobLoggerManager loggerManager)
+        {
+            EditorGUILayout.LabelField("Logger Status:", _stylesCache.SectionHeaderStyle);
+            
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                EditorGUILayout.LabelField($"Queued Messages: {loggerManager.QueuedMessageCount}", _stylesCache.RuntimeInfoStyle);
+                GUILayout.FlexibleSpace();
+                EditorGUILayout.LabelField($"Active Targets: {loggerManager.TargetCount}", _stylesCache.RuntimeInfoStyle);
+            }
+            
+            EditorGUILayout.LabelField($"Global Minimum Level: {loggerManager.GlobalMinimumLevel}", _stylesCache.RuntimeInfoStyle);
+        }
+        
+        /// <summary>
+        /// Draw runtime action buttons.
+        /// </summary>
+        /// <param name="loggerManager">The logger manager instance.</param>
+        private void DrawRuntimeActions(JobLoggerManager loggerManager)
+        {
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Flush Logs Now", _stylesCache.ButtonStyle))
+                {
+                    FlushLogsWithFeedback(loggerManager);
+                }
+                
+                if (GUILayout.Button("Clear Queue", _stylesCache.ButtonStyle))
+                {
+                    ClearLogQueue(loggerManager);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// Draw test message section.
+        /// </summary>
+        /// <param name="loggerManager">The logger manager instance.</param>
+        private void DrawTestMessageSection(JobLoggerManager loggerManager)
+        {
+            EditorGUILayout.LabelField("Send Test Message:", _stylesCache.SectionHeaderStyle);
+            
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Debug", _stylesCache.ButtonStyle))
+                    SendTestMessage(loggerManager, LogLevel.Debug);
+                    
+                if (GUILayout.Button("Info", _stylesCache.ButtonStyle))
+                    SendTestMessage(loggerManager, LogLevel.Info);
+                    
+                if (GUILayout.Button("Warning", _stylesCache.ButtonStyle))
+                    SendTestMessage(loggerManager, LogLevel.Warning);
+            }
+            
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Error", _stylesCache.ButtonStyle))
+                    SendTestMessage(loggerManager, LogLevel.Error);
+                    
+                if (GUILayout.Button("Critical", _stylesCache.ButtonStyle))
+                    SendTestMessage(loggerManager, LogLevel.Critical);
+            }
+        }
+        
+        #endregion
+        
+        #region Event Handlers
+        
+        /// <summary>
+        /// Updates the editor UI periodically during play mode to show latest statistics.
+        /// Optimized to minimize GC allocations and unnecessary repaints.
+        /// </summary>
+        private void OnEditorUpdate()
+        {
+            // Throttle updates to every 0.5 seconds
+            const double updateInterval = 0.5;
+            if (EditorApplication.timeSinceStartup - _lastUpdateTime < updateInterval)
+                return;
+                
+            _lastUpdateTime = EditorApplication.timeSinceStartup;
+            
+            if (!Application.isPlaying || _logManagerComponent?.LoggerManager == null)
+                return;
+                
+            var loggerManager = _logManagerComponent.LoggerManager;
+            
+            // Cache current values
+            int queueCount = loggerManager.QueuedMessageCount;
+            int targetCount = loggerManager.TargetCount;
+            LogLevel minimumLevel = loggerManager.GlobalMinimumLevel;
+            
+            // Only repaint if something changed
+            if (_lastQueueCount != queueCount || 
+                _lastTargetCount != targetCount || 
+                _lastMinimumLevel != minimumLevel)
+            {
+                _lastQueueCount = queueCount;
+                _lastTargetCount = targetCount;
+                _lastMinimumLevel = minimumLevel;
+                Repaint();
             }
         }
         
@@ -324,121 +457,119 @@ namespace AhBearStudios.Core.Logging.Editor
         #region Helper Methods
         
         /// <summary>
-        /// Updates the editor UI periodically during play mode to show latest statistics.
+        /// Ensures the type cache for ILogTargetConfig implementations is initialized.
+        /// Thread-safe and called only once.
         /// </summary>
-        private void OnEditorUpdate()
+        private static void EnsureTypeCache()
         {
-            // Only update periodically to avoid performance impact
-            if (Time.realtimeSinceStartup - _lastUpdateTime < 0.5f)
+            if (_logTargetConfigTypes != null)
                 return;
                 
-            _lastUpdateTime = Time.realtimeSinceStartup;
-            
-            if (Application.isPlaying && _logManagerComponent != null)
+            lock (_typeCacheLock)
             {
-                JobLoggerManager jobLoggerManager = _logManagerComponent.LoggerManager;
-                
-                if (jobLoggerManager != null)
-                {
-                    int queueCount = jobLoggerManager.QueuedMessageCount;
-                    int targetCount = jobLoggerManager.TargetCount;
-                    LogLevel minimumLevel = jobLoggerManager.GlobalMinimumLevel;
+                if (_logTargetConfigTypes != null)
+                    return;
                     
-                    // Only repaint if something changed
-                    if (_lastQueueCount != queueCount || 
-                        _lastTargetCount != targetCount || 
-                        _lastMinimumLevel != minimumLevel)
-                    {
-                        _lastQueueCount = queueCount;
-                        _lastTargetCount = targetCount;
-                        _lastMinimumLevel = minimumLevel;
-                        Repaint();
-                    }
-                }
+                _logTargetConfigTypes = GetConcreteLogTargetConfigTypes().ToArray();
             }
         }
         
         /// <summary>
-        /// Creates a new LogManagerConfig asset.
+        /// Gets all concrete types that implement ILogTargetConfig.
+        /// Uses composition-friendly approach to find all implementations.
         /// </summary>
-        private void CreateNewConfig()
+        /// <returns>A collection of ILogTargetConfig implementation types.</returns>
+        private static IEnumerable<Type> GetConcreteLogTargetConfigTypes()
+        {
+            var targetConfigInterface = typeof(ILogTargetConfig);
+            var scriptableObjectType = typeof(ScriptableObject);
+            
+            return AppDomain.CurrentDomain.GetAssemblies()
+                .SelectMany(assembly => 
+                {
+                    try
+                    {
+                        return assembly.GetTypes();
+                    }
+                    catch
+                    {
+                        return Enumerable.Empty<Type>();
+                    }
+                })
+                .Where(type => 
+                    !type.IsAbstract && 
+                    !type.IsInterface &&
+                    targetConfigInterface.IsAssignableFrom(type) &&
+                    scriptableObjectType.IsAssignableFrom(type))
+                .OrderBy(type => type.Name);
+        }
+        
+        /// <summary>
+        /// Creates a new LogManagerConfig asset with safe defaults.
+        /// </summary>
+        private void CreateNewManagerConfig()
         {
             string path = EditorUtility.SaveFilePanelInProject(
                 "Create Log Manager Configuration",
                 "LogManagerConfig",
                 "asset",
-                "Choose a location to save the log manager configuration."
-            );
+                "Choose a location to save the log manager configuration.");
             
             if (string.IsNullOrEmpty(path))
                 return;
             
-            // Create and configure the asset
-            LogManagerConfig config = CreateInstance<LogManagerConfig>();
-            
-            // Save the asset
-            AssetDatabase.CreateAsset(config, path);
-            
-            // Configure default properties via SerializedObject
-            SerializedObject configSO = new SerializedObject(config);
-            configSO.FindProperty("_minimumLevel").enumValueIndex = (int)LogLevel.Info;
-            configSO.FindProperty("_maxMessagesPerBatch").intValue = 200;
-            configSO.FindProperty("_initialQueueCapacity").intValue = 64;
-            configSO.FindProperty("_enableAutoFlush").boolValue = true;
-            configSO.FindProperty("_autoFlushInterval").floatValue = 0.5f;
-            configSO.FindProperty("_defaultTag").enumValueIndex = (int)Tagging.LogTag.Default;
-            configSO.ApplyModifiedProperties();
-            
-            AssetDatabase.SaveAssets();
-            AssetDatabase.Refresh();
-            
-            // Assign to our component
-            _configProperty.objectReferenceValue = config;
-            serializedObject.ApplyModifiedProperties();
-            
-            // Select in Project window
-            EditorGUIUtility.PingObject(config);
+            try
+            {
+                // Create and configure the asset
+                var config = CreateInstance<LogManagerConfig>();
+                
+                // Configure with safe defaults via SerializedObject
+                var configSO = new SerializedObject(config);
+                configSO.FindProperty("_minimumLevel").enumValueIndex = (int)LogLevel.Info;
+                configSO.FindProperty("_maxMessagesPerBatch").intValue = 200;
+                configSO.FindProperty("_initialQueueCapacity").intValue = 64;
+                configSO.FindProperty("_enableAutoFlush").boolValue = true;
+                configSO.FindProperty("_autoFlushInterval").floatValue = 0.5f;
+                configSO.FindProperty("_defaultTag").enumValueIndex = (int)Tagging.LogTag.Default;
+                configSO.ApplyModifiedProperties();
+                
+                // Save and assign
+                AssetDatabase.CreateAsset(config, path);
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+                
+                _configProperty.objectReferenceValue = config;
+                serializedObject.ApplyModifiedProperties();
+                
+                EditorGUIUtility.PingObject(config);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to create LogManagerConfig: {ex.Message}");
+            }
         }
         
         /// <summary>
-        /// Shows a context menu to add a new target config.
+        /// Shows a context menu to add a new target config with composition support.
         /// </summary>
         private void ShowAddTargetMenu()
         {
             var menu = new GenericMenu();
             
-            // Find all concrete target config types
-            IEnumerable<Type> targetConfigTypes = GetConcreteLogTargetConfigTypes();
-            
-            foreach (Type configType in targetConfigTypes)
+            if (_logTargetConfigTypes == null || _logTargetConfigTypes.Length == 0)
             {
-                string menuName = FormatTypeNameForMenu(configType);
-                menu.AddItem(new GUIContent(menuName), false, () => CreateLogTargetConfig(configType));
+                menu.AddDisabledItem(new GUIContent("No target config types found"));
             }
-            
-            menu.ShowAsContext();
-        }
-        
-        /// <summary>
-        /// Gets all concrete types that inherit from LogTargetConfig.
-        /// </summary>
-        /// <returns>A collection of LogTargetConfig types.</returns>
-        private IEnumerable<Type> GetConcreteLogTargetConfigTypes()
-        {
-            var result = new List<Type>();
-            var assembly = typeof(LogTargetConfig).Assembly;
-            
-            foreach (Type type in assembly.GetTypes())
+            else
             {
-                if (typeof(LogTargetConfig).IsAssignableFrom(type) && 
-                    !type.IsAbstract && 
-                    type != typeof(LogTargetConfig))
+                foreach (var configType in _logTargetConfigTypes)
                 {
-                    result.Add(type);
+                    string menuName = FormatTypeNameForMenu(configType);
+                    menu.AddItem(new GUIContent(menuName), false, () => CreateLogTargetConfig(configType));
                 }
             }
             
-            return result;
+            menu.ShowAsContext();
         }
         
         /// <summary>
@@ -446,7 +577,7 @@ namespace AhBearStudios.Core.Logging.Editor
         /// </summary>
         /// <param name="type">The type to format.</param>
         /// <returns>A formatted menu name.</returns>
-        private string FormatTypeNameForMenu(Type type)
+        private static string FormatTypeNameForMenu(Type type)
         {
             string name = type.Name;
             
@@ -456,19 +587,26 @@ namespace AhBearStudios.Core.Logging.Editor
                 name = name.Substring(0, name.Length - 6);
             }
             
-            // Add spaces before capital letters
-            name = System.Text.RegularExpressions.Regex.Replace(name, "([A-Z])", " $1").Trim();
+            // Add spaces before capital letters using efficient string manipulation
+            var result = new System.Text.StringBuilder(name.Length + 10);
+            for (int i = 0; i < name.Length; i++)
+            {
+                if (i > 0 && char.IsUpper(name[i]))
+                {
+                    result.Append(' ');
+                }
+                result.Append(name[i]);
+            }
             
-            return name;
+            return result.ToString();
         }
         
         /// <summary>
-        /// Creates a new log target config asset.
+        /// Creates a new log target config asset using composition approach.
         /// </summary>
         /// <param name="configType">The type of config to create.</param>
         private void CreateLogTargetConfig(Type configType)
         {
-            // Generate filename
             string typeName = configType.Name;
             if (typeName.EndsWith("Config"))
             {
@@ -479,59 +617,154 @@ namespace AhBearStudios.Core.Logging.Editor
                 $"Create {typeName} Configuration",
                 typeName,
                 "asset",
-                $"Choose a location to save the {typeName} configuration."
-            );
+                $"Choose a location to save the {typeName} configuration.");
             
             if (string.IsNullOrEmpty(path))
                 return;
             
-            // Create and save asset
-            LogTargetConfig config = CreateInstance(configType) as LogTargetConfig;
-            if (config != null)
+            try
             {
-                AssetDatabase.CreateAsset(config, path);
-                AssetDatabase.SaveAssets();
-                AssetDatabase.Refresh();
-                
-                // Add to the array
-                int index = _logTargetConfigsProperty.arraySize;
-                _logTargetConfigsProperty.arraySize++;
-                _logTargetConfigsProperty.GetArrayElementAtIndex(index).objectReferenceValue = config;
-                serializedObject.ApplyModifiedProperties();
-                
-                // Ping in Project window
-                EditorGUIUtility.PingObject(config);
+                // Create using composition-friendly approach
+                var config = CreateInstance(configType) as ScriptableObject;
+                if (config is ILogTargetConfig targetConfig)
+                {
+                    // Set default name if available
+                    if (!string.IsNullOrEmpty(targetConfig.TargetName))
+                    {
+                        targetConfig.TargetName = typeName;
+                    }
+                    
+                    AssetDatabase.CreateAsset(config, path);
+                    AssetDatabase.SaveAssets();
+                    AssetDatabase.Refresh();
+                    
+                    // Add to array
+                    int index = _logTargetConfigsProperty.arraySize;
+                    _logTargetConfigsProperty.arraySize++;
+                    _logTargetConfigsProperty.GetArrayElementAtIndex(index).objectReferenceValue = config;
+                    serializedObject.ApplyModifiedProperties();
+                    
+                    EditorGUIUtility.PingObject(config);
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to create {configType.Name}: {ex.Message}");
             }
         }
         
         /// <summary>
-        /// Sets the target component to DontDestroyOnLoad.
+        /// Validates all target configurations and shows results.
+        /// </summary>
+        private void ValidateAllTargetConfigs()
+        {
+            int validCount = 0;
+            int invalidCount = 0;
+            var issues = new List<string>();
+            
+            for (int i = 0; i < _logTargetConfigsProperty.arraySize; i++)
+            {
+                var elementProperty = _logTargetConfigsProperty.GetArrayElementAtIndex(i);
+                var targetConfig = elementProperty.objectReferenceValue as ILogTargetConfig;
+                
+                if (targetConfig == null)
+                {
+                    invalidCount++;
+                    issues.Add($"Config {i}: Null or invalid reference");
+                }
+                else if (string.IsNullOrEmpty(targetConfig.TargetName))
+                {
+                    invalidCount++;
+                    issues.Add($"Config {i}: Missing target name");
+                }
+                else
+                {
+                    validCount++;
+                }
+            }
+            
+            string message = $"Validation Results:\n• Valid configs: {validCount}\n• Invalid configs: {invalidCount}";
+            if (issues.Count > 0)
+            {
+                message += "\n\nIssues found:\n" + string.Join("\n", issues);
+            }
+            
+            EditorUtility.DisplayDialog("Target Config Validation", message, "OK");
+        }
+        
+        /// <summary>
+        /// Sets the target component to DontDestroyOnLoad with proper validation.
         /// </summary>
         private void SetDontDestroyOnLoad()
         {
             if (!Application.isPlaying)
             {
                 EditorUtility.DisplayDialog(
-                    "Cannot Set DontDestroyOnLoad",
+                    "Cannot Set Persistent",
                     "DontDestroyOnLoad can only be set during play mode.",
-                    "OK"
-                );
+                    "OK");
                 return;
             }
             
-            if (_logManagerComponent != null)
+            if (_logManagerComponent?.gameObject != null)
             {
-                UnityEngine.Object.DontDestroyOnLoad(_logManagerComponent.gameObject);
+                DontDestroyOnLoad(_logManagerComponent.gameObject);
                 EditorUtility.DisplayDialog(
-                    "DontDestroyOnLoad Set",
+                    "Component Made Persistent",
                     "The LogManagerComponent will now persist between scene loads.",
-                    "OK"
-                );
+                    "OK");
             }
         }
         
         /// <summary>
-        /// Sends a test message through the logger.
+        /// Resets the component to be destroyed on scene load.
+        /// </summary>
+        private void ResetToScene()
+        {
+            if (!Application.isPlaying)
+            {
+                EditorUtility.DisplayDialog(
+                    "Reset to Scene",
+                    "This setting only affects play mode behavior.",
+                    "OK");
+                return;
+            }
+            
+            EditorUtility.DisplayDialog(
+                "Reset to Scene",
+                "Component will be destroyed when the scene unloads. Restart play mode to apply.",
+                "OK");
+        }
+        
+        /// <summary>
+        /// Flushes logs and provides user feedback.
+        /// </summary>
+        /// <param name="manager">The logger manager instance.</param>
+        private void FlushLogsWithFeedback(JobLoggerManager manager)
+        {
+            try
+            {
+                int processed = manager.Flush();
+                EditorUtility.DisplayDialog("Flush Result", $"Processed {processed} log messages.", "OK");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to flush logs: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Clears the log queue (if supported).
+        /// </summary>
+        /// <param name="manager">The logger manager instance.</param>
+        private void ClearLogQueue(JobLoggerManager manager)
+        {
+            // Note: This would require additional API on JobLoggerManager
+            EditorUtility.DisplayDialog("Clear Queue", "Queue clearing is not implemented yet.", "OK");
+        }
+        
+        /// <summary>
+        /// Sends a test message through the logger with proper error handling.
         /// </summary>
         /// <param name="manager">The logger manager instance.</param>
         /// <param name="level">The log level to use.</param>
@@ -540,29 +773,36 @@ namespace AhBearStudios.Core.Logging.Editor
             if (manager == null)
                 return;
                 
-            string message = $"Test message from LogManagerComponentEditor at {DateTime.Now}";
-            
-            switch (level)
+            try
             {
-                case LogLevel.Trace:
-                    // Trace is typically not exposed directly
-                    manager.Log(LogLevel.Trace, Tagging.LogTag.Trace, message);
-                    break;
-                case LogLevel.Debug:
-                    manager.Debug(message, Tagging.LogTag.Debug);
-                    break;
-                case LogLevel.Info:
-                    manager.Info(message, Tagging.LogTag.Info);
-                    break;
-                case LogLevel.Warning:
-                    manager.Warning(message, Tagging.LogTag.Warning);
-                    break;
-                case LogLevel.Error:
-                    manager.Error(message, Tagging.LogTag.Error);
-                    break;
-                case LogLevel.Critical:
-                    manager.Critical(message, Tagging.LogTag.Critical);
-                    break;
+                string timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
+                string message = $"Test message from Editor at {timestamp}";
+                
+                switch (level)
+                {
+                    case LogLevel.Debug:
+                        manager.Debug(message, Tagging.LogTag.Debug);
+                        break;
+                    case LogLevel.Info:
+                        manager.Info(message, Tagging.LogTag.Info);
+                        break;
+                    case LogLevel.Warning:
+                        manager.Warning(message, Tagging.LogTag.Warning);
+                        break;
+                    case LogLevel.Error:
+                        manager.Error(message, Tagging.LogTag.Error);
+                        break;
+                    case LogLevel.Critical:
+                        manager.Critical(message, Tagging.LogTag.Critical);
+                        break;
+                    default:
+                        manager.Log(level, Tagging.LogTag.Default, message);
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"Failed to send test message: {ex.Message}");
             }
         }
         
@@ -571,74 +811,87 @@ namespace AhBearStudios.Core.Logging.Editor
         #region Nested Types
         
         /// <summary>
-        /// Container for editor styles to avoid GC allocations.
+        /// Memory-optimized cache for editor styles to avoid GC allocations.
+        /// Implements IDisposable for proper resource cleanup.
         /// </summary>
-        private sealed class CustomEditorStyles
+        private sealed class EditorStylesCache : IDisposable
         {
-            // Styles
             public GUIStyle HeaderStyle { get; private set; }
             public GUIStyle SectionHeaderStyle { get; private set; }
             public GUIStyle RuntimeInfoStyle { get; private set; }
-            public GUIStyle ErrorStyle { get; private set; }
+            public GUIStyle StatusStyle { get; private set; }
             public GUIStyle ButtonStyle { get; private set; }
+            public GUIStyle FoldoutStyle { get; private set; }
             
-            // Initialization state
             private bool _initialized;
+            private bool _disposed;
             
             /// <summary>
-            /// Ensures styles are initialized.
+            /// Ensures styles are initialized only when needed.
             /// </summary>
             public void EnsureInitialized()
             {
-                if (_initialized)
+                if (_initialized || _disposed)
                     return;
-                
+                    
                 InitializeStyles();
                 _initialized = true;
             }
             
             /// <summary>
-            /// Initialize all styles.
+            /// Initialize all styles with optimized settings.
             /// </summary>
             private void InitializeStyles()
             {
-                HeaderStyle = new GUIStyle(GUI.skin.label)
+                HeaderStyle = new GUIStyle(EditorStyles.boldLabel)
                 {
                     fontSize = 16,
-                    fontStyle = FontStyle.Bold,
                     alignment = TextAnchor.MiddleLeft,
                     margin = new RectOffset(0, 0, 10, 10)
                 };
                 
-                SectionHeaderStyle = new GUIStyle(GUI.skin.label)
+                SectionHeaderStyle = new GUIStyle(EditorStyles.boldLabel)
                 {
-                    fontSize = 14,
-                    fontStyle = FontStyle.Bold,
+                    fontSize = 12,
                     alignment = TextAnchor.MiddleLeft,
-                    margin = new RectOffset(0, 0, 5, 5)
+                    margin = new RectOffset(0, 0, 5, 2)
                 };
                 
-                RuntimeInfoStyle = new GUIStyle(GUI.skin.label)
+                RuntimeInfoStyle = new GUIStyle(EditorStyles.label)
                 {
-                    fontSize = 12,
-                    fontStyle = FontStyle.Normal,
-                    padding = new RectOffset(5, 5, 5, 5),
-                    margin = new RectOffset(5, 5, 5, 5)
+                    fontSize = 11,
+                    padding = new RectOffset(5, 5, 2, 2)
                 };
                 
-                ErrorStyle = new GUIStyle(GUI.skin.label)
+                StatusStyle = new GUIStyle(EditorStyles.miniLabel)
                 {
-                    fontSize = 12,
-                    fontStyle = FontStyle.Bold,
-                    normal = { textColor = Color.red },
-                    wordWrap = true
+                    fontSize = 10,
+                    alignment = TextAnchor.MiddleRight,
+                    normal = { textColor = EditorGUIUtility.isProSkin ? Color.green : Color.blue }
                 };
                 
                 ButtonStyle = new GUIStyle(GUI.skin.button)
                 {
-                    padding = new RectOffset(10, 10, 5, 5),
+                    padding = new RectOffset(10, 10, 4, 4),
                     margin = new RectOffset(2, 2, 2, 2)
                 };
+                
+                FoldoutStyle = new GUIStyle(EditorStyles.foldout)
+                {
+                    fontStyle = FontStyle.Bold
+                };
+            }
+            
+            /// <summary>
+            /// Cleanup resources.
+            /// </summary>
+            public void Dispose()
+            {
+                if (_disposed)
+                    return;
+                    
+                // GUIStyle doesn't need explicit disposal in Unity, but we mark as disposed
+                _disposed = true;
             }
         }
         

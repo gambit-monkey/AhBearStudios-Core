@@ -16,7 +16,7 @@ namespace AhBearStudios.Core.Logging.Unity
         private readonly IBurstLogger _coreLogger;
         private readonly ILogHandler _originalLogHandler;
         private readonly bool _isRegisteredWithUnity;
-        private readonly UnityConsoleLogConfig _config;
+        private readonly UnityConsoleTargetConfig _config;
         
         /// <summary>
         /// Gets whether this adapter is registered with the Unity logger.
@@ -28,7 +28,7 @@ namespace AhBearStudios.Core.Logging.Unity
         /// </summary>
         /// <param name="coreLogger">The core logging implementation to forward logs to.</param>
         /// <param name="config">Optional configuration for the Unity console logger.</param>
-        public UnityLoggerAdapter(IBurstLogger coreLogger, UnityConsoleLogConfig config = null)
+        public UnityLoggerAdapter(IBurstLogger coreLogger, UnityConsoleTargetConfig config = null)
         {
             _coreLogger = coreLogger ?? throw new ArgumentNullException(nameof(coreLogger));
             _config = config;
