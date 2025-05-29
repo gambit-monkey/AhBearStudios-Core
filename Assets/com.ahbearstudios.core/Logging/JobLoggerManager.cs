@@ -644,7 +644,7 @@ namespace AhBearStudios.Core.Logging
         /// Updates the minimum level for all targets based on the global setting.
         /// Thread-safe: Uses a lock to synchronize access to the target list.
         /// </summary>
-        private void UpdateTargetMinimumLevels()
+        public void UpdateTargetMinimumLevels()
         {
             lock (_configLock)
             {

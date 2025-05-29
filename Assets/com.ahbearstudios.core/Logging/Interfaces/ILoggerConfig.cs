@@ -24,5 +24,20 @@ namespace AhBearStudios.Core.Logging
         /// Default tag to use when no tag is specified.
         /// </summary>
         Tagging.LogTag DefaultTag { get; }
+        
+        /// <summary>
+        /// Gets or sets whether async logging is enabled
+        /// </summary>
+        bool EnableAsyncLogging { get; set; }
+    
+        /// <summary>
+        /// Gets or sets the async queue capacity
+        /// </summary>
+        int AsyncQueueCapacity { get; set; }
+    
+        /// <summary>
+        /// Gets or sets the flush timeout for async operations
+        /// </summary>
+        float AsyncFlushTimeoutSeconds { get; set; }
     }
 }

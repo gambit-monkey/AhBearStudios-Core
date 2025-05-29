@@ -1,3 +1,4 @@
+
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -36,6 +37,16 @@ namespace AhBearStudios.Core.Logging.Configuration
         [Tooltip("Default tag to use when no tag is specified")]
         [SerializeField] private Tagging.LogTag _defaultTag = Tagging.LogTag.Default;
         
+        [Header("Async Logging Settings")]
+        [Tooltip("Whether async logging is enabled")]
+        [SerializeField] private bool _enableAsyncLogging = false;
+        
+        [Tooltip("Capacity of the async queue for log messages")]
+        [SerializeField] private int _asyncQueueCapacity = 1000;
+        
+        [Tooltip("Timeout in seconds for async flush operations")]
+        [SerializeField] private float _asyncFlushTimeoutSeconds = 5.0f;
+        
         [Header("Log Targets")]
         [Tooltip("List of log targets that will receive log messages")]
         [SerializeField] private ILogTargetConfig[] _logTargets = Array.Empty<ILogTargetConfig>();
@@ -70,6 +81,51 @@ namespace AhBearStudios.Core.Logging.Configuration
         /// </summary>
         public Tagging.LogTag DefaultTag => _defaultTag;
         
+        /// <summary>
+        /// Gets or sets whether async logging is enabled.
+        /// </summary>
+        public bool EnableAsyncLogging
+        {
+            get => _enableAsyncLogging;
+            set
+            {
+                _enableAsyncLogging = value;
+                #if UNITY_EDITOR
+                UnityEditor.EditorUtility.SetDirty(this);
+                #endif
+            }
+        }
+        
+        /// <summary>
+        /// Gets or sets the async queue capacity.
+        /// </summary>
+        public int AsyncQueueCapacity
+        {
+            get => _asyncQueueCapacity;
+            set
+            {
+                _asyncQueueCapacity = Mathf.Max(1, value); // Ensure positive value
+                #if UNITY_EDITOR
+                UnityEditor.EditorUtility.SetDirty(this);
+                #endif
+            }
+        }
+        
+        /// <summary>
+        /// Gets or sets the flush timeout for async operations.
+        /// </summary>
+        public float AsyncFlushTimeoutSeconds
+        {
+            get => _asyncFlushTimeoutSeconds;
+            set
+            {
+                _asyncFlushTimeoutSeconds = Mathf.Max(0.1f, value); // Ensure reasonable minimum timeout
+                #if UNITY_EDITOR
+                UnityEditor.EditorUtility.SetDirty(this);
+                #endif
+            }
+        }
+
         #endregion
         
         #region Additional Properties
@@ -251,6 +307,22 @@ namespace AhBearStudios.Core.Logging.Configuration
                 isValid = false;
             }
             
+            // Validate async settings
+            if (_enableAsyncLogging)
+            {
+                if (_asyncQueueCapacity <= 0)
+                {
+                    Debug.LogWarning($"LogManagerConfig '{name}': AsyncQueueCapacity must be positive when async logging is enabled.");
+                    isValid = false;
+                }
+                
+                if (_asyncFlushTimeoutSeconds <= 0)
+                {
+                    Debug.LogWarning($"LogManagerConfig '{name}': AsyncFlushTimeoutSeconds must be positive when async logging is enabled.");
+                    isValid = false;
+                }
+            }
+            
             return isValid;
         }
         
@@ -281,6 +353,19 @@ namespace AhBearStudios.Core.Logging.Configuration
             {
                 _autoFlushInterval = 0.5f;
                 Debug.LogWarning($"AutoFlushInterval must be positive. Reset to {_autoFlushInterval}.");
+            }
+            
+            // Validate async settings
+            if (_asyncQueueCapacity <= 0)
+            {
+                _asyncQueueCapacity = 1000;
+                Debug.LogWarning($"AsyncQueueCapacity must be positive. Reset to {_asyncQueueCapacity}.");
+            }
+            
+            if (_asyncFlushTimeoutSeconds <= 0)
+            {
+                _asyncFlushTimeoutSeconds = 5.0f;
+                Debug.LogWarning($"AsyncFlushTimeoutSeconds must be positive. Reset to {_asyncFlushTimeoutSeconds}.");
             }
             
             // Ensure configuration name is not empty
