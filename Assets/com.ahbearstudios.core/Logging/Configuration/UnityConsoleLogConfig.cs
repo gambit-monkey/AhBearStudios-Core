@@ -62,9 +62,17 @@ namespace AhBearStudios.Core.Logging.Configuration
             }
         }
         
-        public bool RegisterUnityLogHandler => _registerUnityLogHandler;
-        public bool DuplicateToOriginalHandler => _duplicateToOriginalHandler;
-
+        public bool RegisterUnityLogHandler 
+        { 
+            get => _registerUnityLogHandler; 
+            set => _registerUnityLogHandler = value; 
+        }
+        public bool DuplicateToOriginalHandler 
+        { 
+            get => _duplicateToOriginalHandler; 
+            set => _duplicateToOriginalHandler = value; 
+        }
+        
         /// <summary>
         /// Creates a Unity Console log target based on this configuration.
         /// </summary>
