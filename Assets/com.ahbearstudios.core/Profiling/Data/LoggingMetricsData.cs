@@ -4,7 +4,6 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Mathematics;
 using AhBearStudios.Core.Profiling.Interfaces;
-using AhBearStudios.Core.Logging.Tags;
 using LogTag = AhBearStudios.Core.Logging.Tags.Tagging.LogTag;
 
 namespace AhBearStudios.Core.Profiling.Data
