@@ -13,6 +13,9 @@ namespace AhBearStudios.Core.Tests.Logging
         public LogLevel MinimumLevel { get; set; } = LogLevel.Info;
         public int MaxMessagesPerBatch { get; set; } = 100;
         public Tagging.LogTag DefaultTag { get; set; } = new Tagging.LogTag("Default", Tagging.TagCategory.General);
+        public bool EnableAsyncLogging { get; set; } = false;
+        public int AsyncQueueCapacity { get; set; } = 1000;
+        public float AsyncFlushTimeoutSeconds { get; set; } = 1.0f;
     }
 
     /// <summary>
@@ -41,7 +44,7 @@ namespace AhBearStudios.Core.Tests.Logging
 
         public ILogTarget CreateTarget()
         {
-            return new MockLogTargetTests.MockLogTarget(TargetName)
+            return new MockLogTarget(TargetName)
             {
                 MinimumLevel = MinimumLevel,
                 IsEnabled = Enabled
@@ -163,7 +166,7 @@ namespace AhBearStudios.Core.Tests.Logging
                 LogLevel.Info, 
                 LogLevel.Warning, 
                 LogLevel.Error, 
-                LogLevel.Fatal 
+                LogLevel.Critical 
             };
 
             // Act & Assert
@@ -172,6 +175,45 @@ namespace AhBearStudios.Core.Tests.Logging
                 _config.MinimumLevel = level;
                 Assert.That(_config.MinimumLevel, Is.EqualTo(level));
             }
+        }
+        
+        [Test]
+        public void LoggerConfig_AsyncLogging_CanBeEnabled()
+        {
+            // Act
+            _config.EnableAsyncLogging = true;
+
+            // Assert
+            Assert.That(_config.EnableAsyncLogging, Is.True);
+        }
+
+        [Test]
+        public void LoggerConfig_AsyncQueueCapacity_CanBeChanged()
+        {
+            // Act
+            _config.AsyncQueueCapacity = 2000;
+
+            // Assert
+            Assert.That(_config.AsyncQueueCapacity, Is.EqualTo(2000));
+        }
+
+        [Test]
+        public void LoggerConfig_AsyncFlushTimeout_CanBeChanged()
+        {
+            // Act
+            _config.AsyncFlushTimeoutSeconds = 5.0f;
+
+            // Assert
+            Assert.That(_config.AsyncFlushTimeoutSeconds, Is.EqualTo(5.0f));
+        }
+
+        [Test]
+        public void LoggerConfig_AsyncProperties_DefaultValues_AreCorrect()
+        {
+            // Assert
+            Assert.That(_config.EnableAsyncLogging, Is.False);
+            Assert.That(_config.AsyncQueueCapacity, Is.EqualTo(1000));
+            Assert.That(_config.AsyncFlushTimeoutSeconds, Is.EqualTo(1.0f));
         }
     }
 
@@ -330,7 +372,7 @@ namespace AhBearStudios.Core.Tests.Logging
             _config.ExcludedTags = new[] { "BlockedTag" };
             _config.ProcessUntaggedMessages = false;
 
-            using var target = new MockLogTargetTests.MockLogTarget();
+            using var target = new MockLogTarget();
 
             // Act
             _config.ApplyTagFilters(target);

@@ -1,5 +1,4 @@
 ﻿using NUnit.Framework;
-using Unity.Collections;
 using AhBearStudios.Core.Logging.Messages;
 using AhBearStudios.Core.Logging;
 using System;
@@ -108,7 +107,7 @@ namespace AhBearStudios.Core.Tests.Logging
         public void LogMessage_GetHashCode_IsConsistent()
         {
             // Arrange
-            var message = new LogMessage(LogLevel.Fatal, "Test", "Tag");
+            var message = new LogMessage(LogLevel.Critical, "Test", "Tag");
 
             // Act
             var hash1 = message.GetHashCode();

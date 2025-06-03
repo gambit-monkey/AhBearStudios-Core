@@ -157,7 +157,7 @@ namespace AhBearStudios.Core.Tests.Logging
             Assert.That(_logger.IsEnabled(LogLevel.Info), Is.False);
             Assert.That(_logger.IsEnabled(LogLevel.Warning), Is.True);
             Assert.That(_logger.IsEnabled(LogLevel.Error), Is.True);
-            Assert.That(_logger.IsEnabled(LogLevel.Fatal), Is.True);
+            Assert.That(_logger.IsEnabled(LogLevel.Critical), Is.True);
         }
 
         [Test]
@@ -287,7 +287,7 @@ namespace AhBearStudios.Core.Tests.Logging
                 LogLevel.Info, 
                 LogLevel.Warning, 
                 LogLevel.Error, 
-                LogLevel.Fatal 
+                LogLevel.Critical 
             };
 
             // Act

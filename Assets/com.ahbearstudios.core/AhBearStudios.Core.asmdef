@@ -1,0 +1,20 @@
+
+{
+  "name": "AhBearStudios.Core",
+  "rootNamespace": "AhBearStudios.Core",
+  "references": [
+    "Unity.Collections",
+    "Unity.Jobs",
+    "Unity.Burst",
+    "Unity.Mathematics"
+  ],
+  "includePlatforms": [],
+  "excludePlatforms": [],
+  "allowUnsafeCode": true,
+  "overrideReferences": false,
+  "precompiledReferences": [],
+  "autoReferenced": true,
+  "defineConstraints": [],
+  "versionDefines": [],
+  "noEngineReferences": false
+}

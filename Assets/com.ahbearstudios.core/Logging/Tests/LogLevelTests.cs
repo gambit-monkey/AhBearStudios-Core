@@ -41,7 +41,7 @@ namespace AhBearStudios.Core.Tests.Logging
             Assert.That(LogLevel.Info.ToString(), Is.EqualTo("Info"));
             Assert.That(LogLevel.Warning.ToString(), Is.EqualTo("Warning"));
             Assert.That(LogLevel.Error.ToString(), Is.EqualTo("Error"));
-            Assert.That(LogLevel.Critical.ToString(), Is.EqualTo("Fatal"));
+            Assert.That(LogLevel.Critical.ToString(), Is.EqualTo("Critical"));
         }
 
         [Test]

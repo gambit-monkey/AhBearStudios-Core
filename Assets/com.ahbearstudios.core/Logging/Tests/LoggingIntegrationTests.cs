@@ -3,7 +3,6 @@ using Unity.Collections;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Logging.Data;
 using AhBearStudios.Core.Logging.Messages;
-using AhBearStudios.Core.Logging.Interfaces;
 using System.Collections.Generic;
 using System.Linq;
 using System;
@@ -25,7 +24,7 @@ namespace AhBearStudios.Core.Tests.Logging
         public void SetUp()
         {
             _logger = new MockBurstLogger();
-            _target = new MockLogTargetTests.MockLogTarget("IntegrationTarget");
+            _target = new MockLogTarget("IntegrationTarget");
             _formatter = new MockLogFormatter();
             _disposables = new List<IDisposable>();
         }
@@ -46,217 +45,7 @@ namespace AhBearStudios.Core.Tests.Logging
         [Test]
         public void LoggingPipeline_EndToEnd_WorksCorrectly()
         {
-            // Assert
-            Assert.That(formattedResults.Count, Is.EqualTo(3));
-            Assert.That(formattedResults[0], Is.EqualTo("[Info] Tag1: Test message 1"));
-            Assert.That(formattedResults[1], Is.EqualTo("[Warning] Tag2: Test message 2"));
-            Assert.That(formattedResults[2], Is.EqualTo("[Error] Tag3: Test message 3"));
-        }
-
-        [Test]
-        public void LoggingPipeline_ConfigurationChanges_TakeEffectImmediately()
-        {
             // Arrange
-            var message = "Configuration test";
-            var tag = "ConfigTag";
-
-            // Initial state - should log
-            _logger.Log(LogLevel.Info, message, tag);
-            var initialCount = _logger.LogEntries.Count;
-
-            // Act - Change minimum level
-            _logger.MinimumLevel = LogLevel.Error;
-            _logger.Log(LogLevel.Info, message, tag); // Should not log
-            _logger.Log(LogLevel.Error, message, tag); // Should log
-
-            // Assert
-            Assert.That(_logger.LogEntries.Count, Is.EqualTo(initialCount + 1));
-            Assert.That(_logger.LogEntries.Last().Level, Is.EqualTo(LogLevel.Error));
-        }
-
-        [Test]
-        public void LoggingPipeline_MemoryManagement_ProperlyDisposesResources()
-        {
-            // Arrange
-            var propertiesList = new List<LogProperties>();
-            
-            // Act - Create multiple LogProperties instances
-            for (int i = 0; i < 10; i++)
-            {
-                var properties = new LogProperties(Allocator.Temp);
-                properties.Add($"Key{i}", $"Value{i}");
-                propertiesList.Add(properties);
-                _disposables.Add(properties);
-
-                _logger.Log(LogLevel.Info, $"Message {i}", "Tag", properties);
-            }
-
-            // Assert - All containers should be created
-            foreach (var props in propertiesList)
-            {
-                Assert.That(props.IsCreated, Is.True);
-            }
-
-            // Act - Dispose all
-            foreach (var disposable in _disposables)
-            {
-                disposable.Dispose();
-            }
-            _disposables.Clear();
-
-            // Assert - All containers should be disposed
-            foreach (var props in propertiesList)
-            {
-                Assert.That(props.IsCreated, Is.False);
-            }
-        }
-
-        [Test]
-        public void LoggingPipeline_ConcurrentAccess_RemainsThreadSafe()
-        {
-            // Arrange
-            var messageCount = 100;
-            var exceptions = new List<Exception>();
-
-            // Act - Simulate concurrent access (basic test)
-            System.Threading.Tasks.Parallel.For(0, messageCount, i =>
-            {
-                try
-                {
-                    _logger.Log(LogLevel.Info, $"Concurrent message {i}", $"Thread{i % 4}");
-                }
-                catch (Exception ex)
-                {
-                    lock (exceptions)
-                    {
-                        exceptions.Add(ex);
-                    }
-                }
-            });
-
-            // Assert
-            Assert.That(exceptions, Is.Empty, "No exceptions should occur during concurrent access");
-            Assert.That(_logger.LogEntries.Count, Is.EqualTo(messageCount));
-        }
-
-        [Test]
-        public void LoggingPipeline_LevelHierarchy_RespectsCorrectOrder()
-        {
-            // Arrange
-            var levels = new[] 
-            { 
-                LogLevel.Trace, 
-                LogLevel.Debug, 
-                LogLevel.Info, 
-                LogLevel.Warning, 
-                LogLevel.Error, 
-                LogLevel.Fatal 
-            };
-
-            // Test each minimum level
-            foreach (var minimumLevel in levels)
-            {
-                _logger.Clear();
-                _logger.MinimumLevel = minimumLevel;
-
-                // Act - Log all levels
-                foreach (var testLevel in levels)
-                {
-                    _logger.Log(testLevel, $"Message for {testLevel}", "Tag");
-                }
-
-                // Assert - Only levels >= minimum should be logged
-                var expectedCount = levels.Count(l => l >= minimumLevel);
-                Assert.That(_logger.LogEntries.Count, Is.EqualTo(expectedCount), 
-                    $"Failed for minimum level {minimumLevel}");
-
-                // Verify all logged entries are >= minimum level
-                foreach (var entry in _logger.LogEntries)
-                {
-                    Assert.That(entry.Level, Is.GreaterThanOrEqualTo(minimumLevel));
-                }
-            }
-        }
-
-        [Test]
-        public void LoggingPipeline_FlushOperations_ExecuteCorrectly()
-        {
-            // Arrange
-            var logMessage = new LogMessage(LogLevel.Info, "Flush test", "FlushTag");
-            
-            // Act
-            _target.Write(logMessage);
-            _target.Write(logMessage);
-            _target.Flush();
-            _target.Write(logMessage);
-            _target.Flush();
-
-            // Assert
-            Assert.That(_target.ReceivedMessages.Count, Is.EqualTo(3));
-            Assert.That(_target.FlushCallCount, Is.EqualTo(2));
-        }
-
-        [Test]
-        public void LoggingPipeline_ComplexScenario_HandlesCorrectly()
-        {
-            // Arrange - Complex scenario with multiple components and configurations
-            using var target2 = new MockLogTargetTests.MockLogTarget("ComplexTarget2");
-            _disposables.Add(target2);
-
-            _logger.MinimumLevel = LogLevel.Debug;
-            _target.MinimumLevel = LogLevel.Info;
-            _target.SetTagFilters(new[] { "Important" }, null, true);
-            
-            target2.MinimumLevel = LogLevel.Warning;
-            target2.SetTagFilters(null, new[] { "Spam" }, true);
-
-            using var properties = new LogProperties(Allocator.Temp);
-            _disposables.Add(properties);
-            properties.Add("SessionId", "ABC123");
-            properties.Add("Operation", "ComplexTest");
-
-            var scenarios = new[]
-            {
-                (LogLevel.Trace, "Trace message", "Debug", false),      // Filtered by logger
-                (LogLevel.Debug, "Debug message", "Debug", false),      // Filtered by target1
-                (LogLevel.Info, "Info message", "Important", true),     // Passes target1, filtered by target2
-                (LogLevel.Warning, "Warning message", "Important", true), // Passes both targets
-                (LogLevel.Error, "Error message", "Spam", false),       // Passes target1, filtered by target2
-                (LogLevel.Fatal, "Fatal message", "Critical", true)     // Passes both targets
-            };
-
-            // Act
-            foreach (var (level, message, tag, withProps) in scenarios)
-            {
-                if (withProps)
-                {
-                    _logger.Log(level, message, tag, properties);
-                }
-                else
-                {
-                    _logger.Log(level, message, tag);
-                }
-
-                var logMessage = new LogMessage(level, message, tag);
-                _target.Write(logMessage);
-                target2.Write(logMessage);
-            }
-
-            // Assert
-            Assert.That(_logger.LogEntries.Count, Is.EqualTo(5)); // All except Trace
-            Assert.That(_target.ReceivedMessages.Count, Is.EqualTo(3)); // Info and above with correct tags
-            Assert.That(target2.ReceivedMessages.Count, Is.EqualTo(2)); // Warning and above, excluding Spam
-
-            // Verify specific messages
-            var target1Tags = _target.ReceivedMessages.Select(m => m.Tag.ToString()).ToArray();
-            var target2Tags = target2.ReceivedMessages.Select(m => m.Tag.ToString()).ToArray();
-
-            Assert.That(target1Tags, Contains.Item("Important"));
-            Assert.That(target1Tags, Does.Not.Contain("Spam"));
-            Assert.That(target2Tags, Does.Not.Contain("Spam"));
-        }
-    }
-} Arrange
             var level = LogLevel.Warning;
             var message = "Integration test message";
             var tag = "IntegrationTag";
@@ -451,7 +240,7 @@ namespace AhBearStudios.Core.Tests.Logging
         public void LoggingPipeline_MultipleTargets_DistributesCorrectly()
         {
             // Arrange
-            using var target2 = new MockLogTargetTests.MockLogTarget("SecondTarget");
+            using var target2 = new MockLogTarget("SecondTarget");
             _disposables.Add(target2);
             
             target2.MinimumLevel = LogLevel.Warning;
@@ -503,4 +292,214 @@ namespace AhBearStudios.Core.Tests.Logging
                 formattedResults.Add(formatted.ToString());
             }
 
-            //
+            // Assert
+            Assert.That(formattedResults.Count, Is.EqualTo(3));
+            Assert.That(formattedResults[0], Is.EqualTo("[Info] Tag1: Test message 1"));
+            Assert.That(formattedResults[1], Is.EqualTo("[Warning] Tag2: Test message 2"));
+            Assert.That(formattedResults[2], Is.EqualTo("[Error] Tag3: Test message 3"));
+        }
+
+        [Test]
+        public void LoggingPipeline_ConfigurationChanges_TakeEffectImmediately()
+        {
+            // Arrange
+            var message = "Configuration test";
+            var tag = "ConfigTag";
+
+            // Initial state - should log
+            _logger.Log(LogLevel.Info, message, tag);
+            var initialCount = _logger.LogEntries.Count;
+
+            // Act - Change minimum level
+            _logger.MinimumLevel = LogLevel.Error;
+            _logger.Log(LogLevel.Info, message, tag); // Should not log
+            _logger.Log(LogLevel.Error, message, tag); // Should log
+
+            // Assert
+            Assert.That(_logger.LogEntries.Count, Is.EqualTo(initialCount + 1));
+            Assert.That(_logger.LogEntries.Last().Level, Is.EqualTo(LogLevel.Error));
+        }
+
+        [Test]
+        public void LoggingPipeline_MemoryManagement_ProperlyDisposesResources()
+        {
+            // Arrange
+            var propertiesList = new List<LogProperties>();
+            
+            // Act - Create multiple LogProperties instances
+            for (int i = 0; i < 10; i++)
+            {
+                var properties = new LogProperties(Allocator.Temp);
+                properties.Add($"Key{i}", $"Value{i}");
+                propertiesList.Add(properties);
+                _disposables.Add(properties);
+
+                _logger.Log(LogLevel.Info, $"Message {i}", "Tag", properties);
+            }
+
+            // Assert - All containers should be created
+            foreach (var props in propertiesList)
+            {
+                Assert.That(props.IsCreated, Is.True);
+            }
+
+            // Act - Dispose all
+            foreach (var disposable in _disposables)
+            {
+                disposable.Dispose();
+            }
+            _disposables.Clear();
+
+            // Assert - All containers should be disposed
+            foreach (var props in propertiesList)
+            {
+                Assert.That(props.IsCreated, Is.False);
+            }
+        }
+
+        [Test]
+        public void LoggingPipeline_ConcurrentAccess_RemainsThreadSafe()
+        {
+            // Arrange
+            var messageCount = 100;
+            var exceptions = new List<Exception>();
+
+            // Act - Simulate concurrent access (basic test)
+            System.Threading.Tasks.Parallel.For(0, messageCount, i =>
+            {
+                try
+                {
+                    _logger.Log(LogLevel.Info, $"Concurrent message {i}", $"Thread{i % 4}");
+                }
+                catch (Exception ex)
+                {
+                    lock (exceptions)
+                    {
+                        exceptions.Add(ex);
+                    }
+                }
+            });
+
+            // Assert
+            Assert.That(exceptions, Is.Empty, "No exceptions should occur during concurrent access");
+            Assert.That(_logger.LogEntries.Count, Is.EqualTo(messageCount));
+        }
+
+        [Test]
+        public void LoggingPipeline_LevelHierarchy_RespectsCorrectOrder()
+        {
+            // Arrange
+            var levels = new[] 
+            { 
+                LogLevel.Trace, 
+                LogLevel.Debug, 
+                LogLevel.Info, 
+                LogLevel.Warning, 
+                LogLevel.Error, 
+                LogLevel.Critical 
+            };
+
+            // Test each minimum level
+            foreach (var minimumLevel in levels)
+            {
+                _logger.Clear();
+                _logger.MinimumLevel = minimumLevel;
+
+                // Act - Log all levels
+                foreach (var testLevel in levels)
+                {
+                    _logger.Log(testLevel, $"Message for {testLevel}", "Tag");
+                }
+
+                // Assert - Only levels >= minimum should be logged
+                var expectedCount = levels.Count(l => l >= minimumLevel);
+                Assert.That(_logger.LogEntries.Count, Is.EqualTo(expectedCount), 
+                    $"Failed for minimum level {minimumLevel}");
+
+                // Verify all logged entries are >= minimum level
+                foreach (var entry in _logger.LogEntries)
+                {
+                    Assert.That(entry.Level, Is.GreaterThanOrEqualTo(minimumLevel));
+                }
+            }
+        }
+
+        [Test]
+        public void LoggingPipeline_FlushOperations_ExecuteCorrectly()
+        {
+            // Arrange
+            var logMessage = new LogMessage(LogLevel.Info, "Flush test", "FlushTag");
+            
+            // Act
+            _target.Write(logMessage);
+            _target.Write(logMessage);
+            _target.Flush();
+            _target.Write(logMessage);
+            _target.Flush();
+
+            // Assert
+            Assert.That(_target.ReceivedMessages.Count, Is.EqualTo(3));
+            Assert.That(_target.FlushCallCount, Is.EqualTo(2));
+        }
+
+        [Test]
+        public void LoggingPipeline_ComplexScenario_HandlesCorrectly()
+        {
+            // Arrange - Complex scenario with multiple components and configurations
+            using var target2 = new MockLogTarget("ComplexTarget2");
+            _disposables.Add(target2);
+
+            _logger.MinimumLevel = LogLevel.Debug;
+            _target.MinimumLevel = LogLevel.Info;
+            _target.SetTagFilters(new[] { "Important" }, null, true);
+            
+            target2.MinimumLevel = LogLevel.Warning;
+            target2.SetTagFilters(null, new[] { "Spam" }, true);
+
+            using var properties = new LogProperties(Allocator.Temp);
+            _disposables.Add(properties);
+            properties.Add("SessionId", "ABC123");
+            properties.Add("Operation", "ComplexTest");
+
+            var scenarios = new[]
+            {
+                (LogLevel.Trace, "Trace message", "Debug", false),      // Filtered by logger
+                (LogLevel.Debug, "Debug message", "Debug", false),      // Filtered by target1
+                (LogLevel.Info, "Info message", "Important", true),     // Passes target1, filtered by target2
+                (LogLevel.Warning, "Warning message", "Important", true), // Passes both targets
+                (LogLevel.Error, "Error message", "Spam", false),       // Passes target1, filtered by target2
+                (LogLevel.Critical, "Critical message", "Critical", true)     // Passes both targets
+            };
+
+            // Act
+            foreach (var (level, message, tag, withProps) in scenarios)
+            {
+                if (withProps)
+                {
+                    _logger.Log(level, message, tag, properties);
+                }
+                else
+                {
+                    _logger.Log(level, message, tag);
+                }
+
+                var logMessage = new LogMessage(level, message, tag);
+                _target.Write(logMessage);
+                target2.Write(logMessage);
+            }
+
+            // Assert
+            Assert.That(_logger.LogEntries.Count, Is.EqualTo(5)); // All except Trace
+            Assert.That(_target.ReceivedMessages.Count, Is.EqualTo(3)); // Info and above with correct tags
+            Assert.That(target2.ReceivedMessages.Count, Is.EqualTo(2)); // Warning and above, excluding Spam
+
+            // Verify specific messages
+            var target1Tags = _target.ReceivedMessages.Select(m => m.Tag.ToString()).ToArray();
+            var target2Tags = target2.ReceivedMessages.Select(m => m.Tag.ToString()).ToArray();
+
+            Assert.That(target1Tags, Contains.Item("Important"));
+            Assert.That(target1Tags, Does.Not.Contain("Spam"));
+            Assert.That(target2Tags, Does.Not.Contain("Spam"));
+        }
+    }
+}

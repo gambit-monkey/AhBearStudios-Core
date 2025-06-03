@@ -174,7 +174,7 @@ namespace AhBearStudios.Core.Tests.Logging
                 LogLevel.Info, 
                 LogLevel.Warning, 
                 LogLevel.Error, 
-                LogLevel.Fatal 
+                LogLevel.Critical 
             };
 
             // Act & Assert
@@ -283,14 +283,14 @@ namespace AhBearStudios.Core.Tests.Logging
         {
             // Arrange
             _formatter.FormatTemplate = "{Level}|{Message}|{Tag}|{Level}"; // Level appears twice
-            var message = new LogMessage(LogLevel.Fatal, "Fatal error", "FatalTag");
+            var message = new LogMessage(LogLevel.Critical, "Fatal error", "FatalTag");
 
             // Act
             var result = _formatter.Format(message);
 
             // Assert
             var resultString = result.ToString();
-            Assert.That(resultString, Is.EqualTo("Fatal|Fatal error|FatalTag|Fatal"));
+            Assert.That(resultString, Is.EqualTo("Critical|Fatal error|FatalTag|Critical"));
         }
 
         [Test]
