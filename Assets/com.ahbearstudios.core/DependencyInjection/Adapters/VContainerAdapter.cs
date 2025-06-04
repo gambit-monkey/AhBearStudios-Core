@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using AhBearStudios.Core.DependencyInjection.Configuration;
 using AhBearStudios.Core.DependencyInjection.Exceptions;
+using AhBearStudios.Core.DependencyInjection.Extensions;
 using AhBearStudios.Core.DependencyInjection.Interfaces;
 using AhBearStudios.Core.DependencyInjection.Messages;
 using AhBearStudios.Core.MessageBus.Interfaces;
@@ -12,17 +13,18 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
     /// <summary>
     /// VContainer adapter that implements the IDependencyContainer interface.
     /// Provides a consistent abstraction over VContainer's dependency injection functionality.
-    /// Uses MessageBus for event communication.
+    /// Uses MessageBus for event communication with proper lifecycle management.
     /// </summary>
     public sealed class VContainerAdapter : IDependencyContainer
     {
         private readonly IContainerBuilder _builder;
-        private readonly IObjectResolver _resolver;
+        private IObjectResolver _resolver;
         private readonly string _containerName;
-        private readonly IMessageBus _messageBus;
+        private IMessageBus _messageBus;
         private readonly Stopwatch _containerLifetime;
         private bool _disposed;
         private int _registeredServicesCount;
+        private bool _isBuilt;
 
         /// <summary>
         /// Gets whether this container has been disposed.
@@ -36,39 +38,73 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
 
         /// <summary>
         /// Gets the message bus used for publishing container events.
+        /// Lazy-initialized to avoid circular dependencies.
         /// </summary>
-        public IMessageBus MessageBus => _messageBus;
+        public IMessageBus MessageBus
+        {
+            get
+            {
+                if (_messageBus == null && _resolver != null)
+                {
+                    // Try to resolve from container if available
+                    if (_resolver.TryResolve<IMessageBus>(out var messageBus))
+                    {
+                        _messageBus = messageBus;
+                    }
+                }
+                return _messageBus;
+            }
+        }
 
         /// <summary>
         /// Initializes a new instance of the VContainerAdapter class with a container builder.
+        /// MessageBus will be resolved from the container when available.
         /// </summary>
         /// <param name="builder">The VContainer builder to wrap.</param>
-        /// <param name="messageBus">The message bus for publishing events.</param>
         /// <param name="containerName">Optional name for this container.</param>
-        /// <exception cref="ArgumentNullException">Thrown when builder or messageBus is null.</exception>
-        public VContainerAdapter(IContainerBuilder builder, IMessageBus messageBus, string containerName = null)
+        /// <exception cref="ArgumentNullException">Thrown when builder is null.</exception>
+        public VContainerAdapter(IContainerBuilder builder, string containerName = null)
         {
             _builder = builder ?? throw new ArgumentNullException(nameof(builder));
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
             _containerName = containerName ?? $"VContainer_{Guid.NewGuid():N}";
             _containerLifetime = Stopwatch.StartNew();
             _registeredServicesCount = 0;
+            _isBuilt = false;
         }
 
         /// <summary>
         /// Initializes a new instance of the VContainerAdapter class with a resolved container.
         /// </summary>
         /// <param name="resolver">The VContainer resolver to wrap.</param>
-        /// <param name="messageBus">The message bus for publishing events.</param>
         /// <param name="containerName">Optional name for this container.</param>
-        /// <exception cref="ArgumentNullException">Thrown when resolver or messageBus is null.</exception>
-        public VContainerAdapter(IObjectResolver resolver, IMessageBus messageBus, string containerName = null)
+        /// <exception cref="ArgumentNullException">Thrown when resolver is null.</exception>
+        public VContainerAdapter(IObjectResolver resolver, string containerName = null)
         {
-            _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            if (resolver == null) throw new ArgumentNullException(nameof(resolver));
+            
+            _resolver = resolver;
             _containerName = containerName ?? $"VContainer_{Guid.NewGuid():N}";
             _containerLifetime = Stopwatch.StartNew();
             _registeredServicesCount = 0;
+            _isBuilt = true;
+
+            // Try to resolve MessageBus immediately if available
+            if (_resolver.TryResolve<IMessageBus>(out var messageBus))
+            {
+                _messageBus = messageBus;
+            }
+        }
+
+        /// <summary>
+        /// Initializes a new instance with a pre-built resolver and explicit message bus.
+        /// </summary>
+        /// <param name="resolver">The VContainer resolver to wrap.</param>
+        /// <param name="messageBus">The message bus instance to use.</param>
+        /// <param name="containerName">Optional name for this container.</param>
+        public VContainerAdapter(IObjectResolver resolver, IMessageBus messageBus, string containerName = null)
+            : this(resolver, containerName)
+        {
+            _messageBus = messageBus; // Override lazy resolution
         }
 
         /// <summary>
@@ -81,25 +117,16 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
         public T Resolve<T>()
         {
             ThrowIfDisposed();
+            EnsureBuilt();
 
             var stopwatch = Stopwatch.StartNew();
             try
             {
-                T service;
-                if (_resolver != null)
-                {
-                    service = _resolver.Resolve<T>();
-                }
-                else
-                {
-                    throw new InvalidOperationException("Container has not been built yet. Call Build() first or use a resolved container.");
-                }
-
+                var service = _resolver.Resolve<T>();
                 stopwatch.Stop();
                 
-                // Publish successful resolution message
-                var resolvedMessage = new ServiceResolvedMessage(_containerName, typeof(T), service, stopwatch.Elapsed, true);
-                _messageBus.PublishMessage(resolvedMessage);
+                // Publish successful resolution message if MessageBus is available
+                PublishMessage(new ServiceResolvedMessage(_containerName, typeof(T), service, stopwatch.Elapsed, true));
                 
                 return service;
             }
@@ -108,8 +135,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                 stopwatch.Stop();
                 
                 // Publish failed resolution message
-                var failedMessage = new ServiceResolutionFailedMessage(_containerName, typeof(T), ex.Message, stopwatch.Elapsed);
-                _messageBus.PublishMessage(failedMessage);
+                PublishMessage(new ServiceResolutionFailedMessage(_containerName, typeof(T), ex.Message, stopwatch.Elapsed));
                 
                 throw new ServiceResolutionException(typeof(T), $"Failed to resolve service of type '{typeof(T).FullName}'", ex);
             }
@@ -118,8 +144,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                 stopwatch.Stop();
                 
                 // Publish failed resolution message
-                var failedMessage = new ServiceResolutionFailedMessage(_containerName, typeof(T), ex.Message, stopwatch.Elapsed);
-                _messageBus.PublishMessage(failedMessage);
+                PublishMessage(new ServiceResolutionFailedMessage(_containerName, typeof(T), ex.Message, stopwatch.Elapsed));
                 
                 throw new ServiceResolutionException(typeof(T), $"Unexpected error resolving service of type '{typeof(T).FullName}'", ex);
             }
@@ -145,8 +170,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                 _registeredServicesCount++;
                 
                 // Publish registration message
-                var registeredMessage = new ServiceRegisteredMessage(_containerName, typeof(TInterface), typeof(TImplementation), ServiceLifetime.Singleton);
-                _messageBus.PublishMessage(registeredMessage);
+                PublishMessage(new ServiceRegisteredMessage(_containerName, typeof(TInterface), typeof(TImplementation), ServiceLifetime.Singleton));
                 
                 return this;
             }
@@ -178,8 +202,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                 _registeredServicesCount++;
                 
                 // Publish registration message
-                var registeredMessage = new ServiceRegisteredMessage(_containerName, typeof(TInterface), null, ServiceLifetime.Singleton, true);
-                _messageBus.PublishMessage(registeredMessage);
+                PublishMessage(new ServiceRegisteredMessage(_containerName, typeof(TInterface), null, ServiceLifetime.Singleton, true));
                 
                 return this;
             }
@@ -211,8 +234,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                 _registeredServicesCount++;
                 
                 // Publish registration message
-                var registeredMessage = new ServiceRegisteredMessage(_containerName, typeof(TInterface), instance.GetType(), ServiceLifetime.Instance);
-                _messageBus.PublishMessage(registeredMessage);
+                PublishMessage(new ServiceRegisteredMessage(_containerName, typeof(TInterface), instance.GetType(), ServiceLifetime.Instance));
                 
                 return this;
             }
@@ -242,8 +264,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                 _registeredServicesCount++;
                 
                 // Publish registration message
-                var registeredMessage = new ServiceRegisteredMessage(_containerName, typeof(TInterface), typeof(TImplementation), ServiceLifetime.Transient);
-                _messageBus.PublishMessage(registeredMessage);
+                PublishMessage(new ServiceRegisteredMessage(_containerName, typeof(TInterface), typeof(TImplementation), ServiceLifetime.Transient));
                 
                 return this;
             }
@@ -275,8 +296,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                 _registeredServicesCount++;
                 
                 // Publish registration message
-                var registeredMessage = new ServiceRegisteredMessage(_containerName, typeof(TInterface), null, ServiceLifetime.Transient, true);
-                _messageBus.PublishMessage(registeredMessage);
+                PublishMessage(new ServiceRegisteredMessage(_containerName, typeof(TInterface), null, ServiceLifetime.Transient, true));
                 
                 return this;
             }
@@ -297,7 +317,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
         }
 
         /// <summary>
-        /// Checks if a type is registered in this container.
+        /// Checks if a type is registered in this container using enhanced extensions.
         /// </summary>
         /// <param name="type">The type to check.</param>
         /// <returns>True if the type is registered, false otherwise.</returns>
@@ -308,26 +328,39 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
             
             ThrowIfDisposed();
 
+            // For unbuilt containers, use the enhanced extensions
+            if (!_isBuilt && _builder != null)
+            {
+                try
+                {
+                    return _builder.IsRegistered(type);
+                }
+                catch (Exception)
+                {
+                    return false;
+                }
+            }
+
+            // For built containers, use TryResolve
             if (_resolver != null)
             {
                 try
                 {
-                    // Use reflection to call TryResolve<T>(out T value)
-                    var tryResolveMethod = typeof(IObjectResolver).GetMethod("TryResolve", new[] { type.MakeByRefType() });
+                    // Use VContainer's TryResolve if available
+                    var tryResolveMethod = typeof(IObjectResolver).GetMethod("TryResolve");
                     if (tryResolveMethod != null)
                     {
                         var genericMethod = tryResolveMethod.MakeGenericMethod(type);
                         var parameters = new object[] { null };
-                        var result = (bool)genericMethod.Invoke(_resolver, parameters);
-                        return result;
+                        return (bool)genericMethod.Invoke(_resolver, parameters);
                     }
                 }
                 catch (Exception)
                 {
-                    // If TryResolve method doesn't exist or fails, fall back to try/catch resolve
+                    // Fallback to resolve attempt
                 }
 
-                // Fallback: try to resolve and catch exceptions
+                // Final fallback: try to resolve and catch exceptions
                 try
                 {
                     var resolveMethod = typeof(IObjectResolver).GetMethod(nameof(IObjectResolver.Resolve), Type.EmptyTypes);
@@ -335,21 +368,12 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                     genericResolveMethod.Invoke(_resolver, null);
                     return true;
                 }
-                catch (Exception ex) when (ex.InnerException is VContainerException)
-                {
-                    return false;
-                }
-                catch (System.Reflection.TargetInvocationException ex) when (ex.InnerException is VContainerException)
-                {
-                    return false;
-                }
                 catch (Exception)
                 {
                     return false;
                 }
             }
             
-            // For unbuilt containers, we can't check registration
             return false;
         }
 
@@ -362,6 +386,12 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
         public bool TryResolve<T>(out T service)
         {
             ThrowIfDisposed();
+
+            if (!_isBuilt || _resolver == null)
+            {
+                service = default;
+                return false;
+            }
 
             try
             {
@@ -401,11 +431,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
         public IDependencyContainer CreateChildContainer(string childName = null)
         {
             ThrowIfDisposed();
-
-            if (_resolver == null)
-            {
-                throw new InvalidOperationException("Cannot create child container from unbuilt container. Build the container first.");
-            }
+            EnsureBuilt();
 
             try
             {
@@ -417,11 +443,10 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                 // Register parent resolver for fallback resolution
                 childBuilder.RegisterInstance(_resolver).As<IObjectResolver>();
                 
-                var childContainer = new VContainerAdapter(childBuilder, _messageBus, childContainerName);
+                var childContainer = new VContainerAdapter(childBuilder, childContainerName);
                 
                 // Publish child container created message
-                var childCreatedMessage = new ChildContainerCreatedMessage(_containerName, childContainerName);
-                _messageBus.PublishMessage(childCreatedMessage);
+                PublishMessage(new ChildContainerCreatedMessage(_containerName, childContainerName));
                 
                 return childContainer;
             }
@@ -441,8 +466,14 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
 
             try
             {
+                // For unbuilt containers, use extensions validation
+                if (!_isBuilt && _builder != null)
+                {
+                    return _builder.ValidateRegistrations();
+                }
+
                 // VContainer performs validation during build, so if we have a resolver, it's valid
-                return _resolver != null || _builder != null;
+                return _resolver != null;
             }
             catch (Exception)
             {
@@ -460,7 +491,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
         {
             ThrowIfDisposed();
 
-            if (_resolver != null)
+            if (_isBuilt)
             {
                 throw new InvalidOperationException("Container has already been built.");
             }
@@ -476,16 +507,20 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                 // Cast to ContainerBuilder to access the Build method
                 if (_builder is ContainerBuilder containerBuilder)
                 {
-                    var resolver = containerBuilder.Build();
+                    _resolver = containerBuilder.Build();
+                    _isBuilt = true;
                     buildStopwatch.Stop();
                     
-                    var builtContainer = new VContainerAdapter(resolver, _messageBus, _containerName);
+                    // Try to resolve MessageBus from built container
+                    if (_messageBus == null && _resolver.TryResolve<IMessageBus>(out var messageBus))
+                    {
+                        _messageBus = messageBus;
+                    }
                     
                     // Publish container built message
-                    var builtMessage = new ContainerBuiltMessage(_containerName, _registeredServicesCount, buildStopwatch.Elapsed);
-                    _messageBus.PublishMessage(builtMessage);
+                    PublishMessage(new ContainerBuiltMessage(_containerName, _registeredServicesCount, buildStopwatch.Elapsed));
                     
-                    return builtContainer;
+                    return this; // Return this instance now that it's built
                 }
                 else
                 {
@@ -512,8 +547,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                 _containerLifetime.Stop();
                 
                 // Publish container disposed message
-                var disposedMessage = new ContainerDisposedMessage(_containerName, _containerLifetime.Elapsed);
-                _messageBus.PublishMessage(disposedMessage);
+                PublishMessage(new ContainerDisposedMessage(_containerName, _containerLifetime.Elapsed));
                 
                 if (_resolver is IDisposable disposableResolver)
                 {
@@ -527,6 +561,34 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
             finally
             {
                 _disposed = true;
+            }
+        }
+
+        /// <summary>
+        /// Publishes a message to the MessageBus if available.
+        /// </summary>
+        /// <param name="message">The message to publish.</param>
+        private void PublishMessage<T>(T message) where T : IMessage
+        {
+            try
+            {
+                MessageBus?.PublishMessage(message);
+            }
+            catch (Exception ex)
+            {
+                // Don't let message publishing failures crash the container
+                UnityEngine.Debug.LogWarning($"[VContainerAdapter] Failed to publish message: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Ensures the container is built before operations that require it.
+        /// </summary>
+        private void EnsureBuilt()
+        {
+            if (!_isBuilt)
+            {
+                throw new InvalidOperationException("Container must be built before this operation. Call Build() first.");
             }
         }
 
@@ -548,7 +610,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
         /// <exception cref="InvalidOperationException">Thrown when the container is already built.</exception>
         private void ThrowIfBuilt()
         {
-            if (_resolver != null)
+            if (_isBuilt)
             {
                 throw new InvalidOperationException("Cannot modify container after it has been built.");
             }
@@ -557,6 +619,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
 
     /// <summary>
     /// VContainer implementation of IDependencyProvider that wraps an IObjectResolver.
+    /// Moved to same namespace to avoid conflicts.
     /// </summary>
     internal sealed class VContainerDependencyProvider : IDependencyProvider
     {

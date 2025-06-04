@@ -1,178 +1,243 @@
-
+using System;
+using AhBearStudios.Core.DependencyInjection.Adapters;
 using AhBearStudios.Core.DependencyInjection.Extensions;
-using VContainer;
-using VContainer.Unity;
+using AhBearStudios.Core.DependencyInjection.Factories;
 using AhBearStudios.Core.DependencyInjection.Interfaces;
 using AhBearStudios.Core.DependencyInjection.Unity;
-using AhBearStudios.Core.DependencyInjection.Factories;
 using AhBearStudios.Core.MessageBus.Interfaces;
-using AhBearStudios.Core.MessageBus.MessageBuses;
 using AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe;
 using UnityEngine;
+using VContainer;
+using VContainer.Unity;
+using ServiceProviderAdapter = AhBearStudios.Core.DependencyInjection.Factories.ServiceProviderAdapter;
 
 namespace AhBearStudios.Core.DependencyInjection.Installers.VContainer
 {
     /// <summary>
     /// VContainer installer for the AhBearStudios DependencyInjection system.
     /// Registers all core DI services and abstractions to be resolved by VContainer.
+    /// Properly handles initialization order to avoid circular dependencies.
     /// </summary>
-    public class DependencyInjectionInstaller : IInstaller
+    public sealed class DependencyInjectionInstaller : IInstaller
     {
+        private readonly bool _enableDebugLogging;
+        private readonly bool _registerUnityProvider;
+
+        /// <summary>
+        /// Initializes a new instance of the DependencyInjectionInstaller class.
+        /// </summary>
+        /// <param name="enableDebugLogging">Whether to enable debug logging for the DI system.</param>
+        /// <param name="registerUnityProvider">Whether to register UnityDependencyProvider.</param>
+        public DependencyInjectionInstaller(bool enableDebugLogging = false, bool registerUnityProvider = true)
+        {
+            _enableDebugLogging = enableDebugLogging;
+            _registerUnityProvider = registerUnityProvider;
+        }
+
         /// <summary>
         /// Installs the dependency injection system services into the VContainer.
         /// </summary>
         /// <param name="builder">The VContainer builder instance.</param>
+        /// <exception cref="ArgumentNullException">Thrown when builder is null.</exception>
         public void Install(IContainerBuilder builder)
         {
-            // Register the core MessageBus system first (required by DI system)
-            RegisterMessageBusServices(builder);
-            
-            // Register the main dependency container
-            RegisterDependencyContainer(builder);
-            
-            // Register provider interfaces
-            RegisterProviderInterfaces(builder);
-            
-            // Register Unity-specific services
-            RegisterUnityServices(builder);
-            
-            // Register factory
-            RegisterFactory(builder);
+            if (builder == null) throw new ArgumentNullException(nameof(builder));
+
+            try
+            {
+                if (_enableDebugLogging)
+                    Debug.Log("[DependencyInjectionInstaller] Starting DI system installation...");
+
+                // Step 1: Register core MessageBus system (required foundation)
+                RegisterMessageBusServices(builder);
+                
+                // Step 2: Register core provider interfaces that delegate to VContainer
+                RegisterCoreProviderInterfaces(builder);
+                
+                // Step 3: Register factory services
+                RegisterFactoryServices(builder);
+                
+                // Step 4: Register Unity integration services (optional)
+                if (_registerUnityProvider)
+                {
+                    RegisterUnityServices(builder);
+                }
+
+                if (_enableDebugLogging)
+                    Debug.Log("[DependencyInjectionInstaller] DI system installation completed successfully");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[DependencyInjectionInstaller] Failed to install DI system: {ex.Message}");
+                throw;
+            }
         }
 
+        /// <summary>
+        /// Registers MessageBus services if not already present.
+        /// </summary>
+        /// <param name="builder">The container builder.</param>
         private void RegisterMessageBusServices(IContainerBuilder builder)
         {
-            // Register MessageBus if not already registered
-            builder.RegisterIfNotPresent<IMessageBus, MessagePipeBus>(Lifetime.Singleton);
-            builder.RegisterIfNotPresent<IMessageBus, NullMessageBus>(Lifetime.Singleton);
+            try
+            {
+                // Register MessageBus implementation if not already registered
+                builder.RegisterIfNotPresent<IMessageBus, MessagePipeBus>(Lifetime.Singleton);
+
+                if (_enableDebugLogging)
+                    Debug.Log("[DependencyInjectionInstaller] Registered MessageBus services");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[DependencyInjectionInstaller] Failed to register MessageBus services: {ex.Message}");
+                throw;
+            }
         }
 
-        private void RegisterDependencyContainer(IContainerBuilder builder)
+        /// <summary>
+        /// Registers core provider interfaces that adapt VContainer functionality.
+        /// These allow other parts of the system to use our DI abstractions.
+        /// </summary>
+        /// <param name="builder">The container builder.</param>
+        private void RegisterCoreProviderInterfaces(IContainerBuilder builder)
         {
-            // Register the main dependency container as singleton
-            // This will be the primary container that wraps VContainer
-            builder.Register<IDependencyContainer>(resolver =>
+            try
             {
-                var messageBus = resolver.Resolve<IMessageBus>();
-                
-                // Create a VContainer-based dependency container
-                var container = DependencyContainerFactory.CreateConfigured(
-                    "VContainer_Primary",
-                    containerBuilder => {
-                        // Register any additional services needed for the primary container
-                        // This is where you can add default registrations
-                    },
-                    messageBus
-                );
-                
-                return container;
-            }, Lifetime.Singleton);
+                // Register IDependencyProvider that wraps VContainer's IObjectResolver
+                builder.RegisterIfNotPresent<IDependencyProvider>(resolver =>
+                    new VContainerDependencyProviderAdapter(resolver), Lifetime.Singleton);
+
+                // Register IServiceProvider for .NET compatibility
+                builder.RegisterIfNotPresent<IServiceProvider>(resolver =>
+                {
+                    var dependencyProvider = resolver.Resolve<IDependencyProvider>();
+                    return new ServiceProviderAdapter(dependencyProvider);
+                }, Lifetime.Singleton);
+
+                if (_enableDebugLogging)
+                    Debug.Log("[DependencyInjectionInstaller] Registered core provider interfaces");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[DependencyInjectionInstaller] Failed to register provider interfaces: {ex.Message}");
+                throw;
+            }
         }
 
-        private void RegisterProviderInterfaces(IContainerBuilder builder)
+        /// <summary>
+        /// Registers factory services for creating dependency containers.
+        /// </summary>
+        /// <param name="builder">The container builder.</param>
+        private void RegisterFactoryServices(IContainerBuilder builder)
         {
-            // Register provider interfaces that delegate to the main container
-            builder.Register<IDependencyProvider>(resolver =>
+            try
             {
-                return resolver.Resolve<IDependencyContainer>();
-            }, Lifetime.Singleton);
+                // Register factory configuration callback
+                builder.RegisterBuildCallback(container =>
+                {
+                    try
+                    {
+                        // Set the default MessageBus for the factory
+                        var messageBus = container.Resolve<IMessageBus>();
+                        DependencyContainerFactory.SetDefaultMessageBus(messageBus);
 
-            builder.Register<IDependencyInjector>(resolver =>
-            {
-                return resolver.Resolve<IDependencyContainer>();
-            }, Lifetime.Singleton);
+                        if (_enableDebugLogging)
+                            Debug.Log("[DependencyInjectionInstaller] Configured DependencyContainerFactory");
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"[DependencyInjectionInstaller] Failed to configure factory: {ex.Message}");
+                    }
+                });
 
-            builder.Register<IServiceProvider>(resolver =>
+                if (_enableDebugLogging)
+                    Debug.Log("[DependencyInjectionInstaller] Registered factory services");
+            }
+            catch (Exception ex)
             {
-                var container = resolver.Resolve<IDependencyContainer>();
-                
-                // Create an adapter that implements System.IServiceProvider interface
-                return new ServiceProviderAdapter(container);
-            }, Lifetime.Singleton);
+                Debug.LogError($"[DependencyInjectionInstaller] Failed to register factory services: {ex.Message}");
+                throw;
+            }
         }
 
+        /// <summary>
+        /// Registers Unity-specific services for scene integration.
+        /// </summary>
+        /// <param name="builder">The container builder.</param>
         private void RegisterUnityServices(IContainerBuilder builder)
         {
-            // Register UnityDependencyProvider if it exists in the scene
-            builder.Register<UnityDependencyProvider>(resolver =>
+            try
             {
+                // Register UnityDependencyProvider initialization
+                builder.RegisterBuildCallback(container =>
+                {
+                    try
+                    {
+                        InitializeUnityDependencyProvider(container);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"[DependencyInjectionInstaller] Failed to initialize UnityDependencyProvider: {ex.Message}");
+                    }
+                });
+
+                if (_enableDebugLogging)
+                    Debug.Log("[DependencyInjectionInstaller] Registered Unity services");
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[DependencyInjectionInstaller] Failed to register Unity services: {ex.Message}");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Initializes UnityDependencyProvider after the container is built.
+        /// </summary>
+        /// <param name="container">The built VContainer resolver.</param>
+        private void InitializeUnityDependencyProvider(IObjectResolver container)
+        {
+            try
+            {
+                // Check if there's already a global UnityDependencyProvider
                 var existing = UnityDependencyProvider.Global;
                 if (existing != null && existing.IsInitialized)
                 {
-                    return existing;
+                    if (_enableDebugLogging)
+                        Debug.Log("[DependencyInjectionInstaller] UnityDependencyProvider already initialized");
+                    return;
                 }
 
-                // If no global instance exists, try to find one in the scene
-                var found = Object.FindObjectOfType<UnityDependencyProvider>();
+                // Try to find an existing provider in the scene
+                var found = UnityEngine.Object.FindFirstObjectByType<UnityDependencyProvider>();
                 if (found != null)
                 {
                     if (!found.IsInitialized)
                     {
-                        // Initialize with our container and message bus
-                        var container = resolver.Resolve<IDependencyContainer>();
-                        var messageBus = resolver.Resolve<IMessageBus>();
-                        found.Initialize(container, messageBus);
+                        // Initialize the found provider using the regular Initialize() method
+                        found.Initialize();
+                        
+                        if (_enableDebugLogging)
+                            Debug.Log("[DependencyInjectionInstaller] Initialized existing UnityDependencyProvider");
                     }
-                    return found;
+                    return;
                 }
 
-                // If none found, create a new GameObject with UnityDependencyProvider
-                var go = new GameObject("Unity Dependency Provider");
-                Object.DontDestroyOnLoad(go);
+                // Create new UnityDependencyProvider if none exists
+                var go = new GameObject("[UnityDependencyProvider]");
+                UnityEngine.Object.DontDestroyOnLoad(go);
                 var provider = go.AddComponent<UnityDependencyProvider>();
                 
-                var providerContainer = resolver.Resolve<IDependencyContainer>();
-                var providerMessageBus = resolver.Resolve<IMessageBus>();
-                provider.Initialize(providerContainer, providerMessageBus);
+                // Initialize using the standard method
+                provider.Initialize();
                 
-                return provider;
-            }, Lifetime.Singleton);
-        }
-
-        private void RegisterFactory(IContainerBuilder builder)
-        {
-            // Register the factory as a singleton so it can be used throughout the application
-            builder.Register<DependencyContainerFactory>(resolver =>
-            {
-                // The factory is static, so we just return an instance for DI purposes
-                return new DependencyContainerFactory();
-            }, Lifetime.Singleton);
-        }
-    }
-
-    /// <summary>
-    /// Adapter class to bridge IDependencyProvider to System.IServiceProvider
-    /// </summary>
-    internal class ServiceProviderAdapter : AhBearStudios.Core.DependencyInjection.Interfaces.IServiceProvider
-    {
-        private readonly IDependencyProvider _provider;
-
-        public ServiceProviderAdapter(IDependencyProvider provider)
-        {
-            _provider = provider ?? throw new System.ArgumentNullException(nameof(provider));
-        }
-
-        public object GetService(System.Type serviceType)
-        {
-            if (_provider is IDependencyContainer container)
-            {
-                if (container.IsRegistered(serviceType))
-                {
-                    try
-                    {
-                        // Use reflection to call the generic Resolve method
-                        var resolveMethod = typeof(IDependencyProvider).GetMethod(nameof(IDependencyProvider.Resolve));
-                        var genericResolveMethod = resolveMethod.MakeGenericMethod(serviceType);
-                        return genericResolveMethod.Invoke(_provider, null);
-                    }
-                    catch
-                    {
-                        return null;
-                    }
-                }
+                if (_enableDebugLogging)
+                    Debug.Log("[DependencyInjectionInstaller] Created and initialized new UnityDependencyProvider");
             }
-
-            return null;
+            catch (Exception ex)
+            {
+                Debug.LogError($"[DependencyInjectionInstaller] Failed to initialize UnityDependencyProvider: {ex.Message}");
+            }
         }
     }
 }
