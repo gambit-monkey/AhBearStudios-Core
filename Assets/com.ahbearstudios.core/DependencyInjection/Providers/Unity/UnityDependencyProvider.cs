@@ -10,7 +10,7 @@ using AhBearStudios.Core.MessageBus.Extensions;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.MessageBus.Unity;
 
-namespace AhBearStudios.Core.DependencyInjection.Unity
+namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
 {
     /// <summary>
     /// Unity MonoBehaviour that provides dependency injection services to the scene.

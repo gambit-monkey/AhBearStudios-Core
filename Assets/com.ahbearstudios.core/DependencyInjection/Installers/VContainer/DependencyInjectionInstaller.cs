@@ -3,7 +3,7 @@ using AhBearStudios.Core.DependencyInjection.Adapters;
 using AhBearStudios.Core.DependencyInjection.Extensions.VContainer;
 using AhBearStudios.Core.DependencyInjection.Factories;
 using AhBearStudios.Core.DependencyInjection.Interfaces;
-using AhBearStudios.Core.DependencyInjection.Unity;
+using AhBearStudios.Core.DependencyInjection.Providers.Unity;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe;
 using UnityEngine;

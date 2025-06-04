@@ -8,6 +8,7 @@ using AhBearStudios.Core.DependencyInjection.Extensions;
 using AhBearStudios.Core.DependencyInjection.Extensions.VContainer;
 using AhBearStudios.Core.DependencyInjection.Interfaces;
 using AhBearStudios.Core.DependencyInjection.Messages;
+using AhBearStudios.Core.DependencyInjection.Providers.VContainer;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using VContainer;
 

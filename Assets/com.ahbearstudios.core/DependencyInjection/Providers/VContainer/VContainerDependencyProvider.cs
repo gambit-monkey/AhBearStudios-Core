@@ -3,7 +3,7 @@ using AhBearStudios.Core.DependencyInjection.Exceptions;
 using AhBearStudios.Core.DependencyInjection.Interfaces;
 using VContainer;
 
-namespace AhBearStudios.Core.DependencyInjection.Adapters
+namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
 {
     /// <summary>
     /// VContainer implementation of IDependencyProvider that wraps an IObjectResolver.
