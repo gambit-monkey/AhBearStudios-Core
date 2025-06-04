@@ -1,12 +1,14 @@
+
 using System;
+using System.Collections.Generic;
 using AhBearStudios.Core.MessageBus.Interfaces;
 
 namespace AhBearStudios.Core.DependencyInjection.Interfaces
 {
     /// <summary>
-    /// Core interface for dependency injection containers that provides both registration and resolution capabilities.
+    /// Enhanced core interface for dependency injection containers with comprehensive registration and resolution capabilities.
     /// Abstracts the underlying DI implementation to allow swapping between different frameworks.
-    /// Uses MessageBus for event communication instead of traditional events.
+    /// Uses MessageBus for event communication and provides advanced features like collections, decorators, and named services.
     /// </summary>
     public interface IDependencyContainer : IDependencyProvider, IDisposable
     {
@@ -25,6 +27,7 @@ namespace AhBearStudios.Core.DependencyInjection.Interfaces
         /// </summary>
         IMessageBus MessageBus { get; }
         
+        // Core registration methods
         /// <summary>
         /// Registers a singleton instance of the specified type.
         /// </summary>
@@ -67,6 +70,38 @@ namespace AhBearStudios.Core.DependencyInjection.Interfaces
         /// <returns>This container for method chaining.</returns>
         IDependencyContainer RegisterTransient<TInterface>(Func<IDependencyProvider, TInterface> factory);
         
+        // Enhanced registration methods
+        /// <summary>
+        /// Registers a factory function for creating instances on demand.
+        /// </summary>
+        /// <typeparam name="T">The service type.</typeparam>
+        /// <returns>This container for method chaining.</returns>
+        IDependencyContainer RegisterFactory<T>();
+        
+        /// <summary>
+        /// Registers a lazy wrapper for deferred initialization.
+        /// </summary>
+        /// <typeparam name="T">The service type.</typeparam>
+        /// <returns>This container for method chaining.</returns>
+        IDependencyContainer RegisterLazy<T>();
+        
+        /// <summary>
+        /// Registers multiple implementations as a collection.
+        /// </summary>
+        /// <typeparam name="TInterface">The interface type.</typeparam>
+        /// <param name="implementations">The implementation types.</param>
+        /// <returns>This container for method chaining.</returns>
+        IDependencyContainer RegisterCollection<TInterface>(params Type[] implementations);
+        
+        /// <summary>
+        /// Registers a decorator that wraps an existing service.
+        /// </summary>
+        /// <typeparam name="TService">The service type.</typeparam>
+        /// <typeparam name="TDecorator">The decorator type.</typeparam>
+        /// <returns>This container for method chaining.</returns>
+        IDependencyContainer RegisterDecorator<TService, TDecorator>() where TDecorator : class, TService;
+        
+        // Core resolution and query methods
         /// <summary>
         /// Checks if a type is registered in this container.
         /// </summary>
@@ -97,6 +132,32 @@ namespace AhBearStudios.Core.DependencyInjection.Interfaces
         /// <returns>The resolved service or default value.</returns>
         T ResolveOrDefault<T>(T defaultValue = default);
         
+        // Enhanced resolution methods
+        /// <summary>
+        /// Resolves all registered implementations of the specified type.
+        /// </summary>
+        /// <typeparam name="T">The type to resolve.</typeparam>
+        /// <returns>All registered implementations.</returns>
+        IEnumerable<T> ResolveAll<T>();
+        
+        /// <summary>
+        /// Resolves a service by name identifier.
+        /// </summary>
+        /// <typeparam name="T">The type to resolve.</typeparam>
+        /// <param name="name">The name identifier.</param>
+        /// <returns>The named service.</returns>
+        T ResolveNamed<T>(string name);
+        
+        /// <summary>
+        /// Attempts to resolve a named service.
+        /// </summary>
+        /// <typeparam name="T">The type to resolve.</typeparam>
+        /// <param name="name">The name identifier.</param>
+        /// <param name="service">The resolved service if successful.</param>
+        /// <returns>True if resolution was successful.</returns>
+        bool TryResolveNamed<T>(string name, out T service);
+        
+        // Container management
         /// <summary>
         /// Creates a child container that inherits registrations from this container.
         /// </summary>

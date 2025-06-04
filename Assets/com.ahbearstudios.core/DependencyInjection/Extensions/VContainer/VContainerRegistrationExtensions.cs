@@ -5,84 +5,14 @@ using System.Reflection;
 using AhBearStudios.Core.DependencyInjection.Exceptions;
 using VContainer;
 
-namespace AhBearStudios.Core.DependencyInjection.Extensions
+namespace AhBearStudios.Core.DependencyInjection.Extensions.VContainer
 {
     /// <summary>
-    /// Extension methods for VContainer's IContainerBuilder that provide enhanced functionality
-    /// and better integration with the framework's dependency injection abstractions.
+    /// Extension methods for VContainer registration operations.
+    /// Provides enhanced registration capabilities beyond basic VContainer functionality.
     /// </summary>
-    public static class VContainerBuilderExtensions
+    public static class VContainerRegistrationExtensions
     {
-        private static readonly FieldInfo _registrationsField;
-
-        static VContainerBuilderExtensions()
-        {
-            // Use reflection to access the internal registrations collection from VContainer
-            _registrationsField = typeof(ContainerBuilder).GetField("registrations",
-                BindingFlags.Instance | BindingFlags.NonPublic);
-
-            if (_registrationsField == null)
-            {
-                throw new InvalidOperationException(
-                    "Could not find 'registrations' field in VContainer.ContainerBuilder. " +
-                    "This extension might not be compatible with the current VContainer version.");
-            }
-        }
-
-        /// <summary>
-        /// Checks if a type is already registered in the container builder.
-        /// </summary>
-        /// <typeparam name="T">The type to check for registration.</typeparam>
-        /// <param name="builder">The container builder.</param>
-        /// <returns>True if the type is registered, false otherwise.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when builder is null.</exception>
-        public static bool IsRegistered<T>(this IContainerBuilder builder)
-        {
-            return IsRegistered(builder, typeof(T));
-        }
-
-        /// <summary>
-        /// Checks if a type is already registered in the container builder.
-        /// </summary>
-        /// <param name="builder">The container builder.</param>
-        /// <param name="type">The type to check for registration.</param>
-        /// <returns>True if the type is registered, false otherwise.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when builder or type is null.</exception>
-        /// <exception cref="ArgumentException">Thrown when builder is not a ContainerBuilder instance.</exception>
-        public static bool IsRegistered(this IContainerBuilder builder, Type type)
-        {
-            if (builder == null) throw new ArgumentNullException(nameof(builder));
-            if (type == null) throw new ArgumentNullException(nameof(type));
-
-            // Only works with ContainerBuilder
-            if (!(builder is ContainerBuilder containerBuilder))
-            {
-                throw new ArgumentException(
-                    "IsRegistered only works with VContainer.ContainerBuilder instances",
-                    nameof(builder));
-            }
-
-            try
-            {
-                // Get the internal registrations collection
-                var registrations = _registrationsField.GetValue(containerBuilder) as IList<Registration>;
-                if (registrations == null)
-                {
-                    return false;
-                }
-
-                // Check if the type is registered directly or as an interface/base class
-                return registrations.Any(reg =>
-                    reg.InterfaceTypes.Contains(type) || // Registered as interface
-                    reg.ImplementationType == type); // Registered as implementation
-            }
-            catch (Exception)
-            {
-                // If we can't access registrations for any reason, assume not registered
-                return false;
-            }
-        }
-
         /// <summary>
         /// Conditionally registers a type only if it hasn't been registered yet.
         /// </summary>
@@ -217,7 +147,7 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
             if (implementations == null) throw new ArgumentNullException(nameof(implementations));
 
             var implementationArray = implementations.ToArray();
-            
+
             // Register individual implementations
             RegisterMultiple<TInterface>(builder, implementationArray, lifetime);
 
@@ -237,9 +167,11 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
                     }
                     catch (Exception ex)
                     {
-                        UnityEngine.Debug.LogError($"Failed to resolve implementation '{implementationType.FullName}': {ex.Message}");
+                        UnityEngine.Debug.LogError(
+                            $"Failed to resolve implementation '{implementationType.FullName}': {ex.Message}");
                     }
                 }
+
                 return instances;
             }, Lifetime.Transient);
 
@@ -267,7 +199,8 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
                     }
                     catch (Exception ex)
                     {
-                        throw new ServiceResolutionException(typeof(T), $"Failed to lazily resolve service of type '{typeof(T).FullName}'", ex);
+                        throw new ServiceResolutionException(typeof(T),
+                            $"Failed to lazily resolve service of type '{typeof(T).FullName}'", ex);
                     }
                 });
             }, Lifetime.Singleton);
@@ -296,7 +229,8 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
                     }
                     catch (Exception ex)
                     {
-                        throw new ServiceResolutionException(typeof(T), $"Failed to create factory instance of type '{typeof(T).FullName}'", ex);
+                        throw new ServiceResolutionException(typeof(T),
+                            $"Failed to create factory instance of type '{typeof(T).FullName}'", ex);
                     }
                 };
             }, Lifetime.Singleton);
@@ -427,8 +361,9 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
                 }
                 catch (Exception ex)
                 {
-                    throw new ServiceResolutionException(typeof(TService), 
-                        $"Failed to create decorator '{typeof(TDecorator).FullName}' for service '{typeof(TService).FullName}'", ex);
+                    throw new ServiceResolutionException(typeof(TService),
+                        $"Failed to create decorator '{typeof(TDecorator).FullName}' for service '{typeof(TService).FullName}'",
+                        ex);
                 }
             }, lifetime);
 
@@ -456,7 +391,7 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
 
             var interfaceType = typeof(TInterface);
             var implementationTypes = assembly.GetTypes()
-                .Where(type => 
+                .Where(type =>
                     interfaceType.IsAssignableFrom(type) &&
                     type != interfaceType &&
                     (includeAbstract || (!type.IsAbstract && !type.IsInterface)) &&
@@ -466,48 +401,25 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
 
             if (implementationTypes.Length == 0)
             {
-                UnityEngine.Debug.LogWarning($"No implementations of '{interfaceType.FullName}' found in assembly '{assembly.FullName}'");
+                UnityEngine.Debug.LogWarning(
+                    $"No implementations of '{interfaceType.FullName}' found in assembly '{assembly.FullName}'");
                 return builder;
             }
 
             try
             {
                 RegisterMultiple<TInterface>(builder, implementationTypes, lifetime);
-                
-                UnityEngine.Debug.Log($"Registered {implementationTypes.Length} implementations of '{interfaceType.FullName}' from assembly '{assembly.GetName().Name}'");
+
+                UnityEngine.Debug.Log(
+                    $"Registered {implementationTypes.Length} implementations of '{interfaceType.FullName}' from assembly '{assembly.GetName().Name}'");
                 return builder;
             }
             catch (Exception ex)
             {
                 throw new DependencyInjectionException(
-                    $"Failed to register implementations of '{interfaceType.FullName}' from assembly '{assembly.FullName}'", ex);
+                    $"Failed to register implementations of '{interfaceType.FullName}' from assembly '{assembly.FullName}'",
+                    ex);
             }
-        }
-
-        /// <summary>
-        /// Registers a service with validation that it can be constructed.
-        /// </summary>
-        /// <typeparam name="TInterface">The interface type.</typeparam>
-        /// <typeparam name="TImplementation">The implementation type.</typeparam>
-        /// <param name="builder">The container builder.</param>
-        /// <param name="lifetime">The registration lifetime.</param>
-        /// <returns>The builder for chaining.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when builder is null.</exception>
-        /// <exception cref="InvalidOperationException">Thrown when the implementation cannot be constructed.</exception>
-        public static IContainerBuilder RegisterWithValidation<TInterface, TImplementation>(
-            this IContainerBuilder builder,
-            Lifetime lifetime = Lifetime.Transient)
-            where TImplementation : class, TInterface
-        {
-            if (builder == null) throw new ArgumentNullException(nameof(builder));
-
-            // Validate that the implementation type can be constructed
-            var implementationType = typeof(TImplementation);
-            ValidateTypeCanBeConstructed(implementationType);
-
-            builder.Register<TImplementation>(lifetime).As<TInterface>();
-
-            return builder;
         }
 
         /// <summary>
@@ -528,9 +440,9 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
 
             var assembly = typeof(TInterface).Assembly;
             var interfaceType = typeof(TInterface);
-            
+
             var implementationTypes = assembly.GetTypes()
-                .Where(type => 
+                .Where(type =>
                     interfaceType.IsAssignableFrom(type) &&
                     type != interfaceType &&
                     !type.IsAbstract &&
@@ -541,7 +453,8 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
 
             if (implementationTypes.Length == 0)
             {
-                UnityEngine.Debug.LogWarning($"No implementations of '{interfaceType.FullName}' found in assembly '{assembly.GetName().Name}'");
+                UnityEngine.Debug.LogWarning(
+                    $"No implementations of '{interfaceType.FullName}' found in assembly '{assembly.GetName().Name}'");
                 return builder;
             }
 
@@ -558,16 +471,19 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
                 }
                 catch (Exception ex)
                 {
-                    UnityEngine.Debug.LogError($"Failed to register implementation '{implementationType.FullName}': {ex.Message}");
+                    UnityEngine.Debug.LogError(
+                        $"Failed to register implementation '{implementationType.FullName}': {ex.Message}");
                     if (validateTypes)
                     {
                         throw new DependencyInjectionException(
-                            $"Failed to register implementation '{implementationType.FullName}' for interface '{interfaceType.FullName}'", ex);
+                            $"Failed to register implementation '{implementationType.FullName}' for interface '{interfaceType.FullName}'",
+                            ex);
                     }
                 }
             }
 
-            UnityEngine.Debug.Log($"Registered {implementationTypes.Length} implementations of '{interfaceType.FullName}'");
+            UnityEngine.Debug.Log(
+                $"Registered {implementationTypes.Length} implementations of '{interfaceType.FullName}'");
             return builder;
         }
 
@@ -597,16 +513,17 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
                 }
                 catch (Exception primaryEx)
                 {
-                    UnityEngine.Debug.LogWarning($"Primary implementation '{typeof(TPrimary).FullName}' failed, falling back to '{typeof(TFallback).FullName}': {primaryEx.Message}");
-            
+                    UnityEngine.Debug.LogWarning(
+                        $"Primary implementation '{typeof(TPrimary).FullName}' failed, falling back to '{typeof(TFallback).FullName}': {primaryEx.Message}");
+
                     try
                     {
                         return resolver.Resolve<TFallback>();
                     }
                     catch (Exception fallbackEx)
                     {
-                        throw new ServiceResolutionException(typeof(TInterface), 
-                            $"Both primary '{typeof(TPrimary).FullName}' and fallback '{typeof(TFallback).FullName}' implementations failed", 
+                        throw new ServiceResolutionException(typeof(TInterface),
+                            $"Both primary '{typeof(TPrimary).FullName}' and fallback '{typeof(TFallback).FullName}' implementations failed",
                             new AggregateException(primaryEx, fallbackEx));
                     }
                 }
@@ -616,196 +533,29 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
         }
 
         /// <summary>
-        /// Validates that a type can be constructed by the DI container.
+        /// Registers a service with validation that it can be constructed.
         /// </summary>
-        /// <param name="type">The type to validate.</param>
-        /// <exception cref="InvalidOperationException">Thrown when the type cannot be constructed.</exception>
-        private static void ValidateTypeCanBeConstructed(Type type)
-        {
-            if (type == null)
-                throw new ArgumentNullException(nameof(type));
-
-            if (type.IsAbstract)
-                throw new InvalidOperationException($"Cannot register abstract type '{type.FullName}'");
-
-            if (type.IsInterface)
-                throw new InvalidOperationException($"Cannot register interface type '{type.FullName}' as implementation");
-
-            if (type.IsGenericTypeDefinition)
-                throw new InvalidOperationException($"Cannot register open generic type '{type.FullName}'");
-
-            // Check for public constructors
-            var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
-            if (constructors.Length == 0)
-                throw new InvalidOperationException($"Type '{type.FullName}' has no public constructors");
-
-            // Check if there's a parameterless constructor or constructors with injectable parameters
-            var hasParameterlessConstructor = constructors.Any(c => c.GetParameters().Length == 0);
-            var hasInjectableConstructor = constructors.Any(c => 
-                c.GetParameters().All(p => CanParameterBeInjected(p)));
-
-            if (!hasParameterlessConstructor && !hasInjectableConstructor)
-            {
-                throw new InvalidOperationException(
-                    $"Type '{type.FullName}' has no suitable constructors. " +
-                    "Ensure there is either a parameterless constructor or a constructor with only injectable parameters.");
-            }
-        }
-
-        /// <summary>
-        /// Checks if a constructor parameter can be injected.
-        /// </summary>
-        /// <param name="parameter">The parameter to check.</param>
-        /// <returns>True if the parameter can be injected, false otherwise.</returns>
-        private static bool CanParameterBeInjected(ParameterInfo parameter)
-        {
-            var parameterType = parameter.ParameterType;
-
-            // Primitive types and value types generally cannot be injected without explicit registration
-            if (parameterType.IsPrimitive || parameterType.IsValueType)
-                return false;
-
-            // String cannot be injected without explicit registration
-            if (parameterType == typeof(string))
-                return false;
-
-            // Interfaces and classes can typically be injected
-            return parameterType.IsInterface || parameterType.IsClass;
-        }
-
-        /// <summary>
-        /// Gets the count of registrations in the container builder.
-        /// </summary>
+        /// <typeparam name="TInterface">The interface type.</typeparam>
+        /// <typeparam name="TImplementation">The implementation type.</typeparam>
         /// <param name="builder">The container builder.</param>
-        /// <returns>The number of registrations.</returns>
+        /// <param name="lifetime">The registration lifetime.</param>
+        /// <returns>The builder for chaining.</returns>
         /// <exception cref="ArgumentNullException">Thrown when builder is null.</exception>
-        public static int GetRegistrationCount(this IContainerBuilder builder)
+        /// <exception cref="InvalidOperationException">Thrown when the implementation cannot be constructed.</exception>
+        public static IContainerBuilder RegisterWithValidation<TInterface, TImplementation>(
+            this IContainerBuilder builder,
+            Lifetime lifetime = Lifetime.Transient)
+            where TImplementation : class, TInterface
         {
             if (builder == null) throw new ArgumentNullException(nameof(builder));
 
-            if (!(builder is ContainerBuilder containerBuilder))
-                return 0;
+            // Validate that the implementation type can be constructed
+            var implementationType = typeof(TImplementation);
+            ValidateTypeCanBeConstructed(implementationType);
 
-            try
-            {
-                var registrations = _registrationsField.GetValue(containerBuilder) as IList<Registration>;
-                return registrations?.Count ?? 0;
-            }
-            catch (Exception)
-            {
-                return 0;
-            }
-        }
+            builder.Register<TImplementation>(lifetime).As<TInterface>();
 
-        /// <summary>
-        /// Gets information about all registrations in the container builder.
-        /// </summary>
-        /// <param name="builder">The container builder.</param>
-        /// <returns>A list of registration information.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when builder is null.</exception>
-        public static IReadOnlyList<RegistrationInfo> GetRegistrationInfo(this IContainerBuilder builder)
-        {
-            if (builder == null) throw new ArgumentNullException(nameof(builder));
-
-            if (!(builder is ContainerBuilder containerBuilder))
-                return new List<RegistrationInfo>();
-
-            try
-            {
-                var registrations = _registrationsField.GetValue(containerBuilder) as IList<Registration>;
-                if (registrations == null)
-                    return new List<RegistrationInfo>();
-
-                return registrations.Select(reg => new RegistrationInfo
-                {
-                    ImplementationType = reg.ImplementationType,
-                    InterfaceTypes = reg.InterfaceTypes.ToArray(),
-                    Lifetime = reg.Lifetime
-                }).ToList();
-            }
-            catch (Exception)
-            {
-                return new List<RegistrationInfo>();
-            }
-        }
-
-        /// <summary>
-        /// Logs all current registrations to the Unity console for debugging purposes.
-        /// </summary>
-        /// <param name="builder">The container builder.</param>
-        /// <param name="logLevel">The Unity log level to use.</param>
-        /// <exception cref="ArgumentNullException">Thrown when builder is null.</exception>
-        public static void LogRegistrations(this IContainerBuilder builder, UnityEngine.LogType logLevel = UnityEngine.LogType.Log)
-        {
-            if (builder == null) throw new ArgumentNullException(nameof(builder));
-
-            var registrations = builder.GetRegistrationInfo();
-            var message = $"Container has {registrations.Count} registrations:\n" +
-                         string.Join("\n", registrations.Select((r, i) => $"  {i + 1}. {r}"));
-
-            switch (logLevel)
-            {
-                case UnityEngine.LogType.Error:
-                    UnityEngine.Debug.LogError(message);
-                    break;
-                                case UnityEngine.LogType.Warning:
-                    UnityEngine.Debug.LogWarning(message);
-                    break;
-                case UnityEngine.LogType.Log:
-                default:
-                    UnityEngine.Debug.Log(message);
-                    break;
-            }
-        }
-
-        /// <summary>
-        /// Validates all registrations in the container builder to ensure they can be resolved.
-        /// </summary>
-        /// <param name="builder">The container builder.</param>
-        /// <param name="throwOnError">Whether to throw an exception on validation failure.</param>
-        /// <returns>True if all registrations are valid, false otherwise.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when builder is null.</exception>
-        /// <exception cref="DependencyInjectionException">Thrown when validation fails and throwOnError is true.</exception>
-        public static bool ValidateRegistrations(this IContainerBuilder builder, bool throwOnError = false)
-        {
-            if (builder == null) throw new ArgumentNullException(nameof(builder));
-
-            var registrations = builder.GetRegistrationInfo();
-            var errors = new List<string>();
-
-            foreach (var registration in registrations)
-            {
-                try
-                {
-                    if (registration.ImplementationType != null)
-                    {
-                        ValidateTypeCanBeConstructed(registration.ImplementationType);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    var error = $"Registration validation failed for {registration}: {ex.Message}";
-                    errors.Add(error);
-                    
-                    if (!throwOnError)
-                    {
-                        UnityEngine.Debug.LogError(error);
-                    }
-                }
-            }
-
-            if (errors.Count > 0)
-            {
-                if (throwOnError)
-                {
-                    throw new DependencyInjectionException(
-                        $"Container validation failed with {errors.Count} errors:\n" + string.Join("\n", errors));
-                }
-                return false;
-            }
-
-            UnityEngine.Debug.Log($"Container validation passed for {registrations.Count} registrations");
-            return true;
+            return builder;
         }
 
         /// <summary>
@@ -828,8 +578,9 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
             if (instance == null) throw new ArgumentNullException(nameof(instance));
 
             // Register with a wrapper that includes the name
-            builder.Register<NamedService<TInterface>>(resolver => new NamedService<TInterface>(name, instance), Lifetime.Singleton);
-            
+            builder.Register<NamedService<TInterface>>(resolver => new NamedService<TInterface>(name, instance),
+                Lifetime.Singleton);
+
             return builder;
         }
 
@@ -875,8 +626,8 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
         /// <returns>The builder for chaining.</returns>
         /// <exception cref="ArgumentNullException">Thrown when builder or configure is null.</exception>
         public static IContainerBuilder ConfigureIf(
-            this IContainerBuilder builder, 
-            bool condition, 
+            this IContainerBuilder builder,
+            bool condition,
             Action<IContainerBuilder> configure)
         {
             if (builder == null) throw new ArgumentNullException(nameof(builder));
@@ -914,39 +665,64 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
 
             return builder;
         }
-    }
-
-    /// <summary>
-    /// Information about a service registration.
-    /// </summary>
-    public sealed class RegistrationInfo
-    {
-        /// <summary>
-        /// Gets or sets the implementation type.
-        /// </summary>
-        public Type ImplementationType { get; set; }
 
         /// <summary>
-        /// Gets or sets the interface types this registration serves.
+        /// Validates that a type can be constructed by the DI container.
         /// </summary>
-        public Type[] InterfaceTypes { get; set; }
-
-        /// <summary>
-        /// Gets or sets the lifetime of the registration.
-        /// </summary>
-        public Lifetime Lifetime { get; set; }
-
-        /// <summary>
-        /// Returns a string representation of this registration info.
-        /// </summary>
-        /// <returns>A formatted string describing the registration.</returns>
-        public override string ToString()
+        /// <param name="type">The type to validate.</param>
+        /// <exception cref="InvalidOperationException">Thrown when the type cannot be constructed.</exception>
+        private static void ValidateTypeCanBeConstructed(Type type)
         {
-            var interfaces = InterfaceTypes?.Length > 0 
-                ? string.Join(", ", InterfaceTypes.Select(t => t.Name))
-                : "none";
-            
-            return $"{ImplementationType?.Name ?? "Factory"} -> [{interfaces}] ({Lifetime})";
+            if (type == null)
+                throw new ArgumentNullException(nameof(type));
+
+            if (type.IsAbstract)
+                throw new InvalidOperationException($"Cannot register abstract type '{type.FullName}'");
+
+            if (type.IsInterface)
+                throw new InvalidOperationException(
+                    $"Cannot register interface type '{type.FullName}' as implementation");
+
+            if (type.IsGenericTypeDefinition)
+                throw new InvalidOperationException($"Cannot register open generic type '{type.FullName}'");
+
+            // Check for public constructors
+            var constructors = type.GetConstructors(BindingFlags.Public | BindingFlags.Instance);
+            if (constructors.Length == 0)
+                throw new InvalidOperationException($"Type '{type.FullName}' has no public constructors");
+
+            // Check if there's a parameterless constructor or constructors with injectable parameters
+            var hasParameterlessConstructor = constructors.Any(c => c.GetParameters().Length == 0);
+            var hasInjectableConstructor = constructors.Any(c =>
+                c.GetParameters().All(p => CanParameterBeInjected(p)));
+
+            if (!hasParameterlessConstructor && !hasInjectableConstructor)
+            {
+                throw new InvalidOperationException(
+                    $"Type '{type.FullName}' has no suitable constructors. " +
+                    "Ensure there is either a parameterless constructor or a constructor with only injectable parameters.");
+            }
+        }
+
+        /// <summary>
+        /// Checks if a constructor parameter can be injected.
+        /// </summary>
+        /// <param name="parameter">The parameter to check.</param>
+        /// <returns>True if the parameter can be injected, false otherwise.</returns>
+        private static bool CanParameterBeInjected(ParameterInfo parameter)
+        {
+            var parameterType = parameter.ParameterType;
+
+            // Primitive types and value types generally cannot be injected without explicit registration
+            if (parameterType.IsPrimitive || parameterType.IsValueType)
+                return false;
+
+            // String cannot be injected without explicit registration
+            if (parameterType == typeof(string))
+                return false;
+
+            // Interfaces and classes can typically be injected
+            return parameterType.IsInterface || parameterType.IsClass;
         }
     }
 
@@ -1039,7 +815,8 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
                 return service;
             }
 
-            throw new ServiceResolutionException(typeof(T), $"Named service '{name}' of type '{typeof(T).FullName}' not found");
+            throw new ServiceResolutionException(typeof(T),
+                $"Named service '{name}' of type '{typeof(T).FullName}' not found");
         }
 
         /// <summary>
@@ -1054,7 +831,7 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions
             {
                 var namedServices = _resolver.Resolve<IEnumerable<NamedService<T>>>();
                 var namedService = namedServices.FirstOrDefault(ns => ns.Name == name);
-                
+
                 if (namedService != null)
                 {
                     service = namedService.Instance;
