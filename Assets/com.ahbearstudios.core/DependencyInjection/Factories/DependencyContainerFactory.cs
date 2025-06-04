@@ -1,6 +1,7 @@
 using System;
 using AhBearStudios.Core.DependencyInjection.Adapters;
 using AhBearStudios.Core.DependencyInjection.Extensions;
+using AhBearStudios.Core.DependencyInjection.Extensions.VContainer;
 using AhBearStudios.Core.DependencyInjection.Interfaces;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.MessageBus.Unity;

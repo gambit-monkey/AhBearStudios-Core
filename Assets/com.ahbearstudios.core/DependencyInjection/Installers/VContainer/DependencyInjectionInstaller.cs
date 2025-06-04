@@ -1,6 +1,6 @@
 using System;
 using AhBearStudios.Core.DependencyInjection.Adapters;
-using AhBearStudios.Core.DependencyInjection.Extensions;
+using AhBearStudios.Core.DependencyInjection.Extensions.VContainer;
 using AhBearStudios.Core.DependencyInjection.Factories;
 using AhBearStudios.Core.DependencyInjection.Interfaces;
 using AhBearStudios.Core.DependencyInjection.Unity;
