@@ -1,14 +1,15 @@
 ﻿
 using System;
 using System.Collections.Generic;
+using AhBearStudios.Core.DependencyInjection.Adapters;
 using UnityEngine;
-using AhBearStudios.Core.DependencyInjection.Exceptions;
 using AhBearStudios.Core.DependencyInjection.Factories;
 using AhBearStudios.Core.DependencyInjection.Interfaces;
 using AhBearStudios.Core.DependencyInjection.Messages;
 using AhBearStudios.Core.MessageBus.Extensions;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.MessageBus.Unity;
+using ServiceResolutionException = AhBearStudios.Core.DependencyInjection.Exceptions.ServiceResolutionException;
 
 namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
 {
@@ -743,33 +744,5 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         }
 
         #endregion
-    }
-
-    /// <summary>
-    /// Adapter that implements IDependencyProvider using UnityDependencyProvider.
-    /// </summary>
-    internal sealed class UnityDependencyProviderAdapter : IDependencyProvider
-    {
-        private readonly UnityDependencyProvider _provider;
-
-        /// <summary>
-        /// Initializes a new instance of the UnityDependencyProviderAdapter class.
-        /// </summary>
-        /// <param name="provider">The Unity dependency provider to wrap.</param>
-        /// <exception cref="ArgumentNullException">Thrown when provider is null.</exception>
-        public UnityDependencyProviderAdapter(UnityDependencyProvider provider)
-        {
-            _provider = provider ?? throw new ArgumentNullException(nameof(provider));
-        }
-
-        /// <summary>
-        /// Resolves a service of the specified type from the container.
-        /// </summary>
-        /// <typeparam name="T">The type of service to resolve.</typeparam>
-        /// <returns>The resolved service.</returns>
-        public T Resolve<T>()
-        {
-            return _provider.Resolve<T>();
-        }
     }
 }

@@ -3,7 +3,7 @@ using System.Collections;
 using UnityEngine;
 using AhBearStudios.Core.Pooling.Pools.Unity;
 
-namespace AhBearStudios.Core.Pooling.Unity
+namespace AhBearStudios.Core.Pooling.Interfaces
 {
     /// <summary>
     /// Interface for running coroutines in the pooling system.

@@ -45,6 +45,52 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                     $"Unexpected error resolving service of type '{typeof(T).FullName}' from VContainer", ex);
             }
         }
+
+        /// <summary>
+        /// Attempts to resolve a dependency, returning false if not found.
+        /// </summary>
+        /// <typeparam name="T">The type to resolve.</typeparam>
+        /// <param name="service">The resolved service if successful.</param>
+        /// <returns>True if resolution was successful, false otherwise.</returns>
+        public bool TryResolve<T>(out T service)
+        {
+            service = default;
+    
+            try
+            {
+                // Attempt to resolve the service
+                service = Resolve<T>();
+                return true;
+            }
+            catch (ServiceResolutionException)
+            {
+                // Service not found or resolution failed
+                return false;
+            }
+            catch (Exception)
+            {
+                // Any other exception means resolution failed
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Resolves a service or returns a default value if not found.
+        /// </summary>
+        /// <typeparam name="T">The type to resolve.</typeparam>
+        /// <param name="defaultValue">The default value to return if resolution fails.</param>
+        /// <returns>The resolved service or default value.</returns>
+        public T ResolveOrDefault<T>(T defaultValue = default)
+        {
+            // Use TryResolve to attempt resolution
+            if (TryResolve<T>(out T service))
+            {
+                return service;
+            }
+    
+            // Return the default value if resolution failed
+            return defaultValue;
+        }
     }
     
     /// <summary>
