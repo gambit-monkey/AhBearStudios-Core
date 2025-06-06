@@ -4,8 +4,8 @@ using AhBearStudios.Core.DependencyInjection.Interfaces;
 namespace AhBearStudios.Core.DependencyInjection.Adapters
 {
     /// <summary>
-    /// Adapter class to bridge IDependencyProvider to .NET's IServiceProvider interface.
-    /// Provides compatibility with standard .NET dependency injection patterns.
+    /// Adapter class to bridge IDependencyProvider to IServiceProvider.
+    /// Provides compatibility with .NET's standard IServiceProvider interface.
     /// </summary>
     internal sealed class ServiceProviderAdapter : IServiceProvider
     {
@@ -39,7 +39,6 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
             }
             catch (Exception)
             {
-                // IServiceProvider contract requires returning null for unresolvable services
                 return null;
             }
         }

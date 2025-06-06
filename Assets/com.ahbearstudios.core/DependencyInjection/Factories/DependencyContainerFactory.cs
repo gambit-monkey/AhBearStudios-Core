@@ -1,9 +1,10 @@
 using System;
 using AhBearStudios.Core.DependencyInjection.Adapters;
-using AhBearStudios.Core.DependencyInjection.Extensions;
+using AhBearStudios.Core.DependencyInjection.Builders;
 using AhBearStudios.Core.DependencyInjection.Extensions.VContainer;
 using AhBearStudios.Core.DependencyInjection.Interfaces;
 using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.MessageBus.MessageBuses;
 using AhBearStudios.Core.MessageBus.Unity;
 using VContainer;
 
@@ -62,7 +63,7 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
             // Register default MessageBus if available
             if (_defaultMessageBus != null)
             {
-                builder.RegisterInstance(_defaultMessageBus).As<IMessageBus>();
+                VContainer.ContainerBuilderExtensions.RegisterInstance(builder, _defaultMessageBus).As<IMessageBus>();
             }
             else
             {
@@ -103,7 +104,15 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
             if (resolver == null) throw new ArgumentNullException(nameof(resolver));
             
             // Use provided MessageBus or try to resolve from container
-            var effectiveMessageBus = messageBus ?? resolver.ResolveOrDefault<IMessageBus>(_defaultMessageBus);
+            var effectiveMessageBus = messageBus;
+            if (effectiveMessageBus == null)
+            {
+                // Try to resolve from VContainer resolver
+                if (!resolver.TryResolve<IMessageBus>(out effectiveMessageBus))
+                {
+                    effectiveMessageBus = _defaultMessageBus;
+                }
+            }
             
             return new VContainerAdapter(resolver, effectiveMessageBus, containerName);
         }
@@ -244,7 +253,7 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
             try
             {
                 // Check if MessageBus is already registered
-                if (!builder.IsRegistered<IMessageBus>())
+                if (!VContainerInspectionExtensions.IsRegistered(builder, typeof(IMessageBus)))
                 {
                     RegisterDefaultMessageBus(builder);
                 }
@@ -268,12 +277,12 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
             {
                 if (_defaultMessageBus != null)
                 {
-                    builder.RegisterInstance(_defaultMessageBus).As<IMessageBus>();
+                    VContainer.ContainerBuilderExtensions.RegisterInstance(builder, _defaultMessageBus).As<IMessageBus>();
                 }
                 else
                 {
                     // Register a factory that creates MessageBus from Unity provider
-                    builder.Register<IMessageBus>(resolver =>
+                    VContainer.ContainerBuilderExtensions.Register<IMessageBus>(builder, resolver =>
                     {
                         try
                         {
@@ -327,274 +336,5 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
         // Zenject,
         // Microsoft,
         // Custom
-    }
-
-    /// <summary>
-    /// Builder interface for creating and configuring dependency containers.
-    /// </summary>
-    public interface IDependencyContainerBuilder
-    {
-        /// <summary>
-        /// Gets the name of the container being built.
-        /// </summary>
-        string ContainerName { get; }
-
-        /// <summary>
-        /// Registers a singleton service.
-        /// </summary>
-        /// <typeparam name="TInterface">The interface type.</typeparam>
-        /// <typeparam name="TImplementation">The implementation type.</typeparam>
-        /// <returns>This builder for method chaining.</returns>
-        IDependencyContainerBuilder RegisterSingleton<TInterface, TImplementation>()
-            where TImplementation : class, TInterface;
-
-        /// <summary>
-        /// Registers a singleton service with a factory.
-        /// </summary>
-        /// <typeparam name="TInterface">The interface type.</typeparam>
-        /// <param name="factory">Factory method to create the service.</param>
-        /// <returns>This builder for method chaining.</returns>
-        IDependencyContainerBuilder RegisterSingleton<TInterface>(Func<IDependencyProvider, TInterface> factory);
-
-        /// <summary>
-        /// Registers a singleton instance.
-        /// </summary>
-        /// <typeparam name="TInterface">The interface type.</typeparam>
-        /// <param name="instance">The instance to register.</param>
-        /// <returns>This builder for method chaining.</returns>
-        IDependencyContainerBuilder RegisterInstance<TInterface>(TInterface instance);
-
-        /// <summary>
-        /// Registers a transient service.
-        /// </summary>
-        /// <typeparam name="TInterface">The interface type.</typeparam>
-        /// <typeparam name="TImplementation">The implementation type.</typeparam>
-        /// <returns>This builder for method chaining.</returns>
-        IDependencyContainerBuilder RegisterTransient<TInterface, TImplementation>()
-            where TImplementation : class, TInterface;
-
-        /// <summary>
-        /// Registers a transient service with a factory.
-        /// </summary>
-        /// <typeparam name="TInterface">The interface type.</typeparam>
-        /// <param name="factory">Factory method to create services.</param>
-        /// <returns>This builder for method chaining.</returns>
-        IDependencyContainerBuilder RegisterTransient<TInterface>(Func<IDependencyProvider, TInterface> factory);
-
-        /// <summary>
-        /// Builds the dependency container.
-        /// </summary>
-        /// <returns>The configured dependency container.</returns>
-        IDependencyContainer Build();
-    }
-
-    /// <summary>
-    /// Default implementation of IDependencyContainerBuilder.
-    /// </summary>
-    internal sealed class DependencyContainerBuilder : IDependencyContainerBuilder
-    {
-        private readonly IDependencyContainer _container;
-
-        /// <summary>
-        /// Gets the name of the container being built.
-        /// </summary>
-        public string ContainerName { get; }
-
-        /// <summary>
-        /// Initializes a new instance of the DependencyContainerBuilder class.
-        /// </summary>
-        /// <param name="containerName">The name of the container.</param>
-        public DependencyContainerBuilder(string containerName = null)
-        {
-            ContainerName = containerName ?? $"Container_{Guid.NewGuid():N}";
-            _container = DependencyContainerFactory.Create(ContainerName);
-        }
-
-        /// <summary>
-        /// Registers a singleton service.
-        /// </summary>
-        /// <typeparam name="TInterface">The interface type.</typeparam>
-        /// <typeparam name="TImplementation">The implementation type.</typeparam>
-        /// <returns>This builder for method chaining.</returns>
-        public IDependencyContainerBuilder RegisterSingleton<TInterface, TImplementation>()
-            where TImplementation : class, TInterface
-        {
-            _container.RegisterSingleton<TInterface, TImplementation>();
-            return this;
-        }
-
-        /// <summary>
-        /// Registers a singleton service with a factory.
-        /// </summary>
-        /// <typeparam name="TInterface">The interface type.</typeparam>
-        /// <param name="factory">Factory method to create the service.</param>
-        /// <returns>This builder for method chaining.</returns>
-        public IDependencyContainerBuilder RegisterSingleton<TInterface>(Func<IDependencyProvider, TInterface> factory)
-        {
-            _container.RegisterSingleton(factory);
-            return this;
-        }
-
-        /// <summary>
-        /// Registers a singleton instance.
-        /// </summary>
-        /// <typeparam name="TInterface">The interface type.</typeparam>
-        /// <param name="instance">The instance to register.</param>
-        /// <returns>This builder for method chaining.</returns>
-        public IDependencyContainerBuilder RegisterInstance<TInterface>(TInterface instance)
-        {
-            _container.RegisterInstance(instance);
-            return this;
-        }
-
-        /// <summary>
-        /// Registers a transient service.
-        /// </summary>
-        /// <typeparam name="TInterface">The interface type.</typeparam>
-        /// <typeparam name="TImplementation">The implementation type.</typeparam>
-        /// <returns>This builder for method chaining.</returns>
-        public IDependencyContainerBuilder RegisterTransient<TInterface, TImplementation>()
-            where TImplementation : class, TInterface
-        {
-            _container.RegisterTransient<TInterface, TImplementation>();
-            return this;
-        }
-
-        /// <summary>
-        /// Registers a transient service with a factory.
-        /// </summary>
-        /// <typeparam name="TInterface">The interface type.</typeparam>
-        /// <param name="factory">Factory method to create services.</param>
-        /// <returns>This builder for method chaining.</returns>
-        public IDependencyContainerBuilder RegisterTransient<TInterface>(Func<IDependencyProvider, TInterface> factory)
-        {
-            _container.RegisterTransient(factory);
-            return this;
-        }
-
-        /// <summary>
-        /// Builds the dependency container.
-        /// </summary>
-        /// <returns>The configured dependency container.</returns>
-        public IDependencyContainer Build()
-        {
-            // If using VContainer adapter, build it
-            if (_container is VContainerAdapter vcontainerAdapter)
-            {
-                return vcontainerAdapter.Build();
-            }
-
-            return _container;
-        }
-    }
-
-    /// <summary>
-    /// Adapter class to bridge IDependencyProvider to IServiceProvider.
-    /// Provides compatibility with .NET's standard IServiceProvider interface.
-    /// </summary>
-    internal sealed class ServiceProviderAdapter : IServiceProvider
-    {
-        private readonly IDependencyProvider _provider;
-
-        /// <summary>
-        /// Initializes a new instance of the ServiceProviderAdapter class.
-        /// </summary>
-        /// <param name="provider">The dependency provider to wrap.</param>
-        /// <exception cref="ArgumentNullException">Thrown when provider is null.</exception>
-        public ServiceProviderAdapter(IDependencyProvider provider)
-        {
-            _provider = provider ?? throw new ArgumentNullException(nameof(provider));
-        }
-
-        /// <summary>
-        /// Gets the service object of the specified type.
-        /// </summary>
-        /// <param name="serviceType">An object that specifies the type of service object to get.</param>
-        /// <returns>A service object of the specified type, or null if there is no service object of the specified type.</returns>
-        public object GetService(Type serviceType)
-        {
-            if (serviceType == null) return null;
-
-            try
-            {
-                // Use reflection to call the generic Resolve method
-                var resolveMethod = typeof(IDependencyProvider).GetMethod(nameof(IDependencyProvider.Resolve));
-                var genericResolveMethod = resolveMethod?.MakeGenericMethod(serviceType);
-                return genericResolveMethod?.Invoke(_provider, null);
-            }
-            catch (Exception)
-            {
-                return null;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Null implementation of IMessageBus for fallback scenarios.
-    /// </summary>
-    internal sealed class NullMessageBus : IMessageBus
-    {
-        public IMessagePublisher<TMessage> GetPublisher<TMessage>() => new NullPublisher<TMessage>();
-        public IMessageSubscriber<TMessage> GetSubscriber<TMessage>() => new NullSubscriber<TMessage>();
-        public IKeyedMessagePublisher<TKey, TMessage> GetPublisher<TKey, TMessage>() => new NullKeyedPublisher<TKey, TMessage>();
-        public IKeyedMessageSubscriber<TKey, TMessage> GetSubscriber<TKey, TMessage>() => new NullKeyedSubscriber<TKey, TMessage>();
-        public void ClearCaches() { }
-        public void PublishMessage<TMessage>(TMessage message) where TMessage : IMessage { }
-        public IDisposable SubscribeToMessage<TMessage>(Action<TMessage> handler) where TMessage : IMessage => new NullDisposable();
-        public IDisposable SubscribeToAllMessages(Action<IMessage> handler) => new NullDisposable();
-        public IMessageRegistry GetMessageRegistry() => new NullMessageRegistry();
-
-        private class NullPublisher<T> : IMessagePublisher<T>
-        {
-            public void Publish(T message) { }
-            public IDisposable PublishAsync(T message) => new NullDisposable();
-        }
-
-        private class NullSubscriber<T> : IMessageSubscriber<T>
-        {
-            public IDisposable Subscribe(Action<T> handler) => new NullDisposable();
-            public IDisposable Subscribe(Action<T> handler, Func<T, bool> filter) => new NullDisposable();
-        }
-
-        private class NullKeyedPublisher<TKey, TMessage> : IKeyedMessagePublisher<TKey, TMessage>
-        {
-            public void Publish(TKey key, TMessage message) { }
-            public IDisposable PublishAsync(TKey key, TMessage message) => new NullDisposable();
-        }
-
-        private class NullKeyedSubscriber<TKey, TMessage> : IKeyedMessageSubscriber<TKey, TMessage>
-        {
-            public IDisposable Subscribe(TKey key, Action<TMessage> handler) => new NullDisposable();
-            public IDisposable Subscribe(Action<TKey, TMessage> handler) => new NullDisposable();
-            public IDisposable Subscribe(TKey key, Action<TMessage> handler, Func<TMessage, bool> filter) => new NullDisposable();
-        }
-
-        private class NullMessageRegistry : IMessageRegistry
-        {
-            public void DiscoverMessages() { }
-            public void RegisterMessageType(Type messageType) { }
-            public void RegisterMessageType(Type messageType, ushort typeCode) { }
-            public System.Collections.Generic.IReadOnlyDictionary<Type, IMessageInfo> GetAllMessageTypes() => 
-                new System.Collections.Generic.Dictionary<Type, IMessageInfo>();
-            public System.Collections.Generic.IReadOnlyList<string> GetCategories() => 
-                new System.Collections.Generic.List<string>();
-            public System.Collections.Generic.IReadOnlyList<Type> GetMessageTypesByCategory(string category) => 
-                new System.Collections.Generic.List<Type>();
-            public IMessageInfo GetMessageInfo(Type messageType) => null;
-            public IMessageInfo GetMessageInfo<TMessage>() where TMessage : IMessage => null;
-            public bool IsRegistered(Type messageType) => false;
-            public bool IsRegistered<TMessage>() where TMessage : IMessage => false;
-            public ushort GetTypeCode(Type messageType) => 0;
-            public ushort GetTypeCode<TMessage>() where TMessage : IMessage => 0;
-            public Type GetMessageType(ushort typeCode) => null;
-            public System.Collections.Generic.IReadOnlyDictionary<ushort, Type> GetAllTypeCodes() => 
-                new System.Collections.Generic.Dictionary<ushort, Type>();
-            public void Clear() { }
-        }
-
-        private class NullDisposable : IDisposable
-        {
-            public void Dispose() { }
-        }
     }
 }

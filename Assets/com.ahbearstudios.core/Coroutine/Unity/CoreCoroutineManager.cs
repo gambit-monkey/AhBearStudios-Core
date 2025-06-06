@@ -110,24 +110,19 @@ namespace AhBearStudios.Core.Coroutine.Unity
         }
 
         /// <summary>
-        /// Initializes the coroutine manager with optional dependency injection.
+        /// Initializes the coroutine manager.
         /// </summary>
-        /// <param name="dependencyProvider">Optional dependency provider for service registration.</param>
-        public void Initialize(IDependencyProvider dependencyProvider = null)
+        public void Initialize()
         {
             if (_isInitialized)
                 return;
 
-            _dependencyProvider = dependencyProvider;
-
             // Create the default runner
             _defaultRunner = CreateRunner("Default", true);
 
-            // Register services if dependency provider is available
-            _dependencyProvider?.RegisterService<ICoroutineManager>(this);
-            _dependencyProvider?.RegisterService<ICoroutineRunner>(_defaultRunner);
-
             _isInitialized = true;
+    
+            Debug.Log("[CoreCoroutineManager] Initialized successfully");
         }
 
         #endregion

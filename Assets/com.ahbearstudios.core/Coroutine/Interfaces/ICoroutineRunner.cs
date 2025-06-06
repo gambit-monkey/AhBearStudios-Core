@@ -1,5 +1,5 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.Collections;
 
 namespace AhBearStudios.Core.Coroutine.Interfaces
 {
@@ -30,7 +30,7 @@ namespace AhBearStudios.Core.Coroutine.Interfaces
         /// <param name="routine">The coroutine to start.</param>
         /// <param name="tag">Optional tag for categorizing the coroutine.</param>
         /// <returns>A handle that can be used to stop the coroutine.</returns>
-        ICoroutineHandle StartCoroutine(IEnumerator<> routine, string tag = null);
+        ICoroutineHandle StartCoroutine(IEnumerator routine, string tag = null);
 
         /// <summary>
         /// Starts a coroutine with a callback when it completes.

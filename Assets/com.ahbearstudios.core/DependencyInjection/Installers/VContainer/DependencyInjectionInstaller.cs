@@ -9,7 +9,6 @@ using AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe;
 using UnityEngine;
 using VContainer;
 using VContainer.Unity;
-using ServiceProviderAdapter = AhBearStudios.Core.DependencyInjection.Factories.ServiceProviderAdapter;
 
 namespace AhBearStudios.Core.DependencyInjection.Installers.VContainer
 {

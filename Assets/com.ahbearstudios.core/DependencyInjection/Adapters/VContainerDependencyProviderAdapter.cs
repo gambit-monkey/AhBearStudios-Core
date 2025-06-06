@@ -1,4 +1,5 @@
 using System;
+using AhBearStudios.Core.DependencyInjection.Exceptions;
 using AhBearStudios.Core.DependencyInjection.Interfaces;
 using VContainer;
 
@@ -90,29 +91,6 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
     
             // Return the default value if resolution failed
             return defaultValue;
-        }
-    }
-    
-    /// <summary>
-    /// Exception thrown when a service cannot be resolved from the container.
-    /// </summary>
-    internal sealed class ServiceResolutionException : Exception
-    {
-        /// <summary>
-        /// Gets the type that failed to resolve.
-        /// </summary>
-        public Type ServiceType { get; }
-
-        /// <summary>
-        /// Initializes a new instance of the ServiceResolutionException class.
-        /// </summary>
-        /// <param name="serviceType">The type that failed to resolve.</param>
-        /// <param name="message">The error message.</param>
-        /// <param name="innerException">The inner exception.</param>
-        public ServiceResolutionException(Type serviceType, string message, Exception innerException = null) 
-            : base(message, innerException)
-        {
-            ServiceType = serviceType;
         }
     }
 }
