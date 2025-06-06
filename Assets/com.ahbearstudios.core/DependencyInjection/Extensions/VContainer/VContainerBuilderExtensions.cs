@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using VContainer;
 
 namespace AhBearStudios.Core.DependencyInjection.Extensions.VContainer
@@ -22,7 +23,7 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions.VContainer
         /// <code>
         /// builder.WithRegistrations()
         ///        .RegisterIfNotPresent&lt;IService, Service&gt;()
-        ///        .RegisterCollection&lt;IPlugin&gt;(pluginTypes)
+        ///        .RegisterMultiple&lt;IPlugin&gt;(pluginTypes)
         ///        .RegisterLazy&lt;IExpensiveService&gt;();
         /// </code>
         /// </example>
@@ -161,7 +162,7 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions.VContainer
         ///     // Handle validation failures
         ///     foreach (var error in report.Errors)
         ///     {
-        ///         Debug.LogError($"Validation Error: {error.Message}");
+        ///         Debug.LogError($"Validation Error: {error}");
         ///     }
         /// }
         /// </code>
@@ -284,7 +285,7 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions.VContainer
         ///     continueOnError: true,
         ///     b => b.RegisterSingleton&lt;IService, Service&gt;(),
         ///     b => b.RegisterTransient&lt;IRepository, Repository&gt;(),
-        ///     b => b.RegisterCollection&lt;IPlugin&gt;(pluginTypes)
+        ///     b => b.RegisterMultiple&lt;IPlugin&gt;(pluginTypes)
         /// );
         /// </code>
         /// </example>
@@ -322,6 +323,77 @@ namespace AhBearStudios.Core.DependencyInjection.Extensions.VContainer
             if (errors.Count > 0 && !continueOnError)
             {
                 throw new AggregateException("One or more container configurations failed", errors);
+            }
+
+            return builder;
+        }
+
+        /// <summary>
+        /// Convenience method to register multiple services with validation and logging.
+        /// </summary>
+        /// <param name="builder">The container builder.</param>
+        /// <param name="logProgress">Whether to log registration progress.</param>
+        /// <param name="validateAfterRegistration">Whether to validate after each registration.</param>
+        /// <param name="configurations">The configuration actions to apply.</param>
+        /// <returns>The builder for method chaining.</returns>
+        /// <example>
+        /// <code>
+        /// builder.RegisterMultipleWithValidation(
+        ///     logProgress: true,
+        ///     validateAfterRegistration: false,
+        ///     b => b.RegisterSingleton&lt;IService, Service&gt;(),
+        ///     b => b.RegisterTransient&lt;IRepository, Repository&gt;()
+        /// );
+        /// </code>
+        /// </example>
+        public static IContainerBuilder RegisterMultipleWithValidation(
+            this IContainerBuilder builder,
+            bool logProgress = false,
+            bool validateAfterRegistration = false,
+            params Action<IContainerBuilder>[] configurations)
+        {
+            if (builder == null) throw new ArgumentNullException(nameof(builder));
+            if (configurations == null) throw new ArgumentNullException(nameof(configurations));
+
+            var initialCount = builder.GetRegistrationCount();
+
+            if (logProgress)
+            {
+                UnityEngine.Debug.Log($"[VContainerBuilderExtensions] Starting registration of {configurations.Length} services...");
+            }
+
+            for (int i = 0; i < configurations.Length; i++)
+            {
+                var configuration = configurations[i];
+                if (configuration == null) continue;
+
+                try
+                {
+                    configuration(builder);
+
+                    if (logProgress)
+                    {
+                        UnityEngine.Debug.Log($"[VContainerBuilderExtensions] Registered service {i + 1}/{configurations.Length}");
+                    }
+
+                    if (validateAfterRegistration && !builder.IsValid())
+                    {
+                        UnityEngine.Debug.LogWarning($"[VContainerBuilderExtensions] Validation failed after registration {i + 1}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    UnityEngine.Debug.LogError($"[VContainerBuilderExtensions] Failed to register service {i + 1}: {ex.Message}");
+                    throw;
+                }
+            }
+
+            var finalCount = builder.GetRegistrationCount();
+            var addedCount = finalCount - initialCount;
+
+            if (logProgress)
+            {
+                UnityEngine.Debug.Log($"[VContainerBuilderExtensions] Registration complete. Added {addedCount} registrations (Total: {finalCount})");
             }
 
             return builder;

@@ -3,13 +3,19 @@ using System.Collections;
 using System.Collections.Generic;
 using AhBearStudios.Core.Coroutine.Handles;
 using AhBearStudios.Core.Coroutine.Interfaces;
+using AhBearStudios.Core.MessageBus.Interfaces;
+using AhBearStudios.Core.Profiling.Interfaces;
+using AhBearStudios.Core.Profiling.Profilers;
+using AhBearStudios.Core.Profiling.Messages;
+using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Profiling.Sessions;
 using UnityEngine;
 using Unity.Collections;
 
 namespace AhBearStudios.Core.Coroutine
 {
     /// <summary>
-    /// Unity MonoBehaviour-based coroutine runner with advanced management features.
+    /// Unity MonoBehaviour-based coroutine runner with advanced management features and profiling integration.
     /// Provides high-performance coroutine execution with statistics tracking and error handling.
     /// </summary>
     public sealed class UnityCoroutineRunner : MonoBehaviour, ICoroutineRunner, IDisposable
@@ -26,6 +32,17 @@ namespace AhBearStudios.Core.Coroutine
         private bool _isDisposed;
         private bool _isPaused;
         private string _runnerName;
+        private Guid _runnerId;
+        
+        // Dependency injection fields
+        private CoroutineProfiler _profiler;
+        private ICoroutineMetrics _coroutineMetrics;
+        private IMessageBus _messageBus;
+        private bool _profilingEnabled;
+
+        // Subscription tokens for cleanup
+        private IDisposable _sessionCompletedSubscription;
+        private IDisposable _metricAlertSubscription;
 
         #endregion
 
@@ -49,6 +66,12 @@ namespace AhBearStudios.Core.Coroutine
         /// Gets the statistics for this runner.
         /// </summary>
         public ICoroutineStatistics Statistics => _statistics;
+        
+        /// <inheritdoc />
+        public Guid Id => _runnerId;
+        
+        /// <inheritdoc />
+        public string Name => RunnerName;
 
         #endregion
 
@@ -60,36 +83,68 @@ namespace AhBearStudios.Core.Coroutine
         }
 
         /// <summary>
-        /// Initializes the coroutine runner.
+        /// Initializes the coroutine runner with dependency injection.
         /// </summary>
         /// <param name="runnerName">Optional name for this runner instance.</param>
-        public void Initialize(string runnerName = null)
+        /// <param name="profiler">Profiler for performance tracking.</param>
+        /// <param name="coroutineMetrics">Metrics system for coroutine tracking.</param>
+        /// <param name="messageBus">Message bus for event publishing.</param>
+        public void Initialize(
+            string runnerName = null, 
+            CoroutineProfiler profiler = null,
+            ICoroutineMetrics coroutineMetrics = null,
+            IMessageBus messageBus = null)
         {
             if (_isInitialized)
                 return;
 
-            _runnerName = runnerName;
+            _runnerName = runnerName ?? gameObject.name;
+            _runnerId = Guid.NewGuid();
             _activeCoroutineIds = new NativeParallelHashMap<int, byte>(64, Allocator.Persistent);
             _nextCoroutineId = 1;
             _isInitialized = true;
             _isDisposed = false;
             _isPaused = false;
+            
+            // Set up dependencies
+            _profiler = profiler;
+            _coroutineMetrics = coroutineMetrics;
+            _messageBus = messageBus;
+            _profilingEnabled = _profiler?.IsEnabled == true;
+            
+            // Update runner configuration in metrics
+            _coroutineMetrics?.UpdateRunnerConfiguration(_runnerId, _runnerName, GetType().Name);
+            
+            // Subscribe to profiling messages if message bus is available
+            SetupMessageSubscriptions();
 
-            Debug.Log($"[{RunnerName}] Coroutine runner initialized");
+            Debug.Log($"[{RunnerName}] Coroutine runner initialized with ID: {_runnerId}");
         }
 
-        #endregion
-
-        #region MonoBehaviour Lifecycle
-
-        private void OnDestroy()
+        /// <summary>
+        /// Sets up message bus subscriptions for profiling events.
+        /// </summary>
+        private void SetupMessageSubscriptions()
         {
-            Dispose();
+            if (_messageBus == null) return;
+
+            try
+            {
+                _sessionCompletedSubscription = _messageBus.SubscribeToMessage<CoroutineProfilerSessionCompletedMessage>(
+                    OnCoroutineSessionCompleted);
+                
+                _metricAlertSubscription = _messageBus.SubscribeToMessage<CoroutineMetricAlertMessage>(
+                    OnCoroutineMetricAlert);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[{RunnerName}] Failed to setup message subscriptions: {ex.Message}");
+            }
         }
 
         #endregion
 
-        #region ICoroutineRunner Implementation
+        #region Coroutine Management
 
         /// <inheritdoc />
         public ICoroutineHandle StartCoroutine(IEnumerator routine, string tag = null)
@@ -115,90 +170,246 @@ namespace AhBearStudios.Core.Coroutine
             return StartCoroutineInternal(routine, onComplete, onError, tag);
         }
 
+        /// <summary>
+        /// Internal coroutine startup with profiling integration.
+        /// </summary>
+        private ICoroutineHandle StartCoroutineInternal(
+            IEnumerator routine, 
+            Action onComplete, 
+            Action<Exception> onError, 
+            string tag)
+        {
+            if (!IsActive)
+                throw new InvalidOperationException($"[{RunnerName}] Cannot start coroutine: runner is not active");
+
+            if (routine == null)
+                throw new ArgumentNullException(nameof(routine));
+
+            var coroutineId = _nextCoroutineId++;
+            var handle = new CoroutineHandle(coroutineId, this, tag);
+            
+            // Record metrics start
+            var startTime = Time.realtimeSinceStartup;
+            _coroutineMetrics?.RecordStart(_runnerId, 0f, !string.IsNullOrEmpty(tag));
+            
+            // Start profiling session if enabled
+            CoroutineProfilerSession profilingSession = null;
+            if (_profilingEnabled)
+            {
+                var operationType = routine.GetType().Name;
+                profilingSession = _profiler.BeginCoroutineScope(this, operationType, coroutineId, tag);
+            }
+
+            // Wrap the routine with error handling and profiling
+            var wrappedRoutine = WrapCoroutineWithProfiling(routine, handle, onComplete, onError, profilingSession, startTime);
+            var unityCoroutine = base.StartCoroutine(wrappedRoutine);
+            
+            // Store the handle
+            handle.SetUnityCoroutine(unityCoroutine);
+            _activeCoroutines[coroutineId] = handle;
+            _activeCoroutineIds.TryAdd(coroutineId, 0);
+            
+            // Track by tag
+            if (!string.IsNullOrEmpty(tag))
+            {
+                if (!_coroutinesByTag.TryGetValue(tag, out var taggedCoroutines))
+                {
+                    taggedCoroutines = new List<int>();
+                    _coroutinesByTag[tag] = taggedCoroutines;
+                }
+                taggedCoroutines.Add(coroutineId);
+            }
+            
+            _statistics.RecordStart(tag);
+            
+            return handle;
+        }
+
+        /// <summary>
+/// Wraps a coroutine with profiling and error handling.
+/// </summary>
+private IEnumerator WrapCoroutineWithProfiling(
+    IEnumerator originalRoutine,
+    CoroutineHandle handle,
+    Action onComplete,
+    Action<Exception> onError,
+    CoroutineProfilerSession profilingSession,
+    float startTime)
+{
+    var executionStartTime = Time.realtimeSinceStartup;
+    Exception caughtException = null;
+    bool completed = false;
+    
+    // Execute the coroutine with manual exception handling
+    while (!completed)
+    {
+        bool moveNextSucceeded = false;
+        object current = null;
+        
+        try
+        {
+            if (handle.IsCancelled)
+            {
+                _coroutineMetrics?.RecordCancellation(_runnerId, !string.IsNullOrEmpty(handle.Tag));
+                break;
+            }
+            
+            moveNextSucceeded = originalRoutine.MoveNext();
+            if (moveNextSucceeded)
+            {
+                current = originalRoutine.Current;
+            }
+            else
+            {
+                completed = true;
+            }
+        }
+        catch (Exception ex)
+        {
+            caughtException = ex;
+            completed = true;
+        }
+        
+        if (moveNextSucceeded && caughtException == null)
+        {
+            yield return current;
+        }
+    }
+    
+    // Handle completion or error outside the iteration loop
+    if (caughtException != null)
+    {
+        // Handle exception
+        _coroutineMetrics?.RecordFailure(_runnerId, !string.IsNullOrEmpty(handle.Tag), false);
+        handle.Complete(); // Mark as completed even with error
+        
+        if (onError != null)
+        {
+            try
+            {
+                onError(caughtException);
+            }
+            catch (Exception handlerEx)
+            {
+                Debug.LogError($"[{RunnerName}] Exception in error handler: {handlerEx}");
+            }
+        }
+        else
+        {
+            Debug.LogError($"[{RunnerName}] Unhandled coroutine exception: {caughtException}");
+        }
+    }
+    else if (!handle.IsCancelled)
+    {
+        // Successful completion
+        var executionTime = (Time.realtimeSinceStartup - executionStartTime) * 1000f;
+        _coroutineMetrics?.RecordCompletion(_runnerId, executionTime, 0f, !string.IsNullOrEmpty(handle.Tag));
+        
+        handle.Complete();
+        onComplete?.Invoke();
+    }
+    
+    // Clean up profiling session
+    if (profilingSession != null)
+    {
+        if (caughtException != null)
+            profilingSession.MarkAsFailed();
+        
+        profilingSession.Dispose();
+    }
+    
+    // Clean up tracking
+    CleanupCoroutine(handle.Id);
+    
+    var totalTime = (Time.realtimeSinceStartup - startTime) * 1000f;
+    _statistics.RecordCompletion(TimeSpan.FromMilliseconds(totalTime), handle.Tag);
+}
+
         /// <inheritdoc />
         public bool StopCoroutine(ICoroutineHandle handle)
         {
-            if (handle == null || !IsActive)
+            if (handle == null || !(handle is CoroutineHandle coroutineHandle))
                 return false;
 
-            if (handle is CoroutineHandle coroutineHandle && _activeCoroutines.TryGetValue(handle.Id, out var existingHandle))
-            {
-                if (existingHandle == coroutineHandle)
-                {
-                    StopCoroutineInternal(coroutineHandle, true);
-                    return true;
-                }
-            }
+            if (!_activeCoroutines.ContainsKey(coroutineHandle.Id))
+                return false;
 
-            return false;
+            coroutineHandle.Cancel();
+            
+            if (coroutineHandle.UnityCoroutine != null)
+            {
+                base.StopCoroutine(coroutineHandle.UnityCoroutine);
+            }
+            
+            CleanupCoroutine(coroutineHandle.Id);
+            _statistics.RecordCancellation(coroutineHandle.Tag);
+            _coroutineMetrics?.RecordCancellation(_runnerId, !string.IsNullOrEmpty(coroutineHandle.Tag));
+            
+            return true;
         }
 
         /// <inheritdoc />
         public int StopCoroutinesByTag(string tag)
         {
-            if (string.IsNullOrEmpty(tag) || !IsActive)
+            if (string.IsNullOrEmpty(tag) || !_coroutinesByTag.TryGetValue(tag, out var coroutineIds))
                 return 0;
 
-            if (!_coroutinesByTag.TryGetValue(tag, out var coroutineIds))
-                return 0;
-
-            int stoppedCount = 0;
-            var idsToStop = new List<int>(coroutineIds);
-
-            foreach (int id in idsToStop)
+            var stoppedCount = 0;
+            var coroutinesToStop = new List<int>(coroutineIds);
+            
+            foreach (var coroutineId in coroutinesToStop)
             {
-                if (_activeCoroutines.TryGetValue(id, out var handle))
+                if (_activeCoroutines.TryGetValue(coroutineId, out var handle))
                 {
-                    StopCoroutineInternal(handle, true);
-                    stoppedCount++;
+                    if (StopCoroutine(handle))
+                        stoppedCount++;
                 }
             }
-
-            Debug.Log($"[{RunnerName}] Stopped {stoppedCount} coroutines with tag '{tag}'");
+            
             return stoppedCount;
         }
 
         /// <inheritdoc />
         public int StopAllCoroutines()
         {
-            if (!IsActive)
-                return 0;
-
-            int stoppedCount = _activeCoroutines.Count;
-            var handlesToStop = new List<CoroutineHandle>(_activeCoroutines.Values);
-
-            foreach (var handle in handlesToStop)
+            var coroutinesToStop = new List<CoroutineHandle>(_activeCoroutines.Values);
+            var stoppedCount = 0;
+            
+            foreach (var handle in coroutinesToStop)
             {
-                StopCoroutineInternal(handle, true);
+                if (StopCoroutine(handle))
+                    stoppedCount++;
             }
-
-            Debug.Log($"[{RunnerName}] Stopped all {stoppedCount} active coroutines");
+            
             return stoppedCount;
         }
 
         /// <inheritdoc />
         public bool IsCoroutineRunning(ICoroutineHandle handle)
         {
-            return handle != null && handle.IsRunning && _activeCoroutines.ContainsKey(handle.Id);
+            return handle is CoroutineHandle coroutineHandle && 
+                   _activeCoroutines.ContainsKey(coroutineHandle.Id) && 
+                   coroutineHandle.IsRunning;
         }
 
         /// <inheritdoc />
-        public int GetActiveCoroutineCount(string tag)
+        public int GetActiveCoroutineCount(string tag = null)
         {
             if (string.IsNullOrEmpty(tag))
-                return 0;
+                return _activeCoroutines.Count;
 
-            return _coroutinesByTag.TryGetValue(tag, out var coroutineIds) ? coroutineIds.Count : 0;
+            return _coroutinesByTag.TryGetValue(tag, out var taggedCoroutines) ? taggedCoroutines.Count : 0;
         }
+
+        #endregion
+
+        #region Convenience Methods
 
         /// <inheritdoc />
         public ICoroutineHandle StartDelayedAction(float delay, Action action, string tag = null)
         {
             if (action == null)
                 throw new ArgumentNullException(nameof(action));
-
-            if (delay < 0f)
-                throw new ArgumentOutOfRangeException(nameof(delay), "Delay cannot be negative");
 
             return StartCoroutine(DelayedActionCoroutine(delay, action), tag);
         }
@@ -208,9 +419,6 @@ namespace AhBearStudios.Core.Coroutine
         {
             if (action == null)
                 throw new ArgumentNullException(nameof(action));
-
-            if (interval <= 0f)
-                throw new ArgumentOutOfRangeException(nameof(interval), "Interval must be positive");
 
             return StartCoroutine(RepeatingActionCoroutine(interval, action), tag);
         }
@@ -223,402 +431,157 @@ namespace AhBearStudios.Core.Coroutine
             if (action == null)
                 throw new ArgumentNullException(nameof(action));
 
-            if (checkInterval < 0f)
-                throw new ArgumentOutOfRangeException(nameof(checkInterval), "Check interval cannot be negative");
-
             return StartCoroutine(ConditionalActionCoroutine(condition, action, checkInterval), tag);
-        }
-
-        #endregion
-
-        #region Internal Coroutine Management
-
-        private ICoroutineHandle StartCoroutineInternal(IEnumerator routine, Action onComplete, Action<Exception> onError, string tag)
-        {
-            if (routine == null)
-                throw new ArgumentNullException(nameof(routine));
-
-            if (!IsActive)
-                throw new InvalidOperationException($"CoroutineRunner '{RunnerName}' is not active");
-
-            int id = _nextCoroutineId++;
-            var handle = new CoroutineHandle(id, tag, null, OnCoroutineHandleDisposed);
-
-            try
-            {
-                // Wrap the routine with error handling and completion tracking
-                var wrappedRoutine = WrapCoroutineWithHandling(handle, routine, onComplete, onError);
-                var unityCoroutine = base.StartCoroutine(wrappedRoutine);
-                handle.SetCoroutine(unityCoroutine);
-
-                // Track the coroutine
-                _activeCoroutines[id] = handle;
-                if (_activeCoroutineIds.IsCreated)
-                {
-                    _activeCoroutineIds.TryAdd(id, 1);
-                }
-
-                // Track by tag if provided
-                if (!string.IsNullOrEmpty(tag))
-                {
-                    if (!_coroutinesByTag.TryGetValue(tag, out var tagList))
-                    {
-                        tagList = new List<int>();
-                        _coroutinesByTag[tag] = tagList;
-                    }
-                    tagList.Add(id);
-                }
-
-                // Record statistics
-                _statistics.RecordStart(tag);
-
-                return handle;
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[{RunnerName}] Failed to start coroutine: {ex.Message}");
-                handle?.Dispose();
-                throw;
-            }
-        }
-
-        private void StopCoroutineInternal(CoroutineHandle handle, bool cancelled)
-        {
-            if (handle == null)
-                return;
-
-            try
-            {
-                var unityCoroutine = handle.GetCoroutine();
-                if (unityCoroutine != null)
-                {
-                    base.StopCoroutine(unityCoroutine);
-                }
-
-                RemoveCoroutineTracking(handle);
-
-                if (cancelled)
-                {
-                    handle.MarkCancelled();
-                    _statistics.RecordCancellation(handle.Tag);
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[{RunnerName}] Error stopping coroutine {handle.Id}: {ex.Message}");
-            }
-        }
-
-        private void RemoveCoroutineTracking(CoroutineHandle handle)
-        {
-            if (handle == null)
-                return;
-
-            // Remove from active coroutines
-            _activeCoroutines.Remove(handle.Id);
-            
-            if (_activeCoroutineIds.IsCreated)
-            {
-                _activeCoroutineIds.Remove(handle.Id);
-            }
-
-            // Remove from tag tracking
-            if (!string.IsNullOrEmpty(handle.Tag) && _coroutinesByTag.TryGetValue(handle.Tag, out var tagList))
-            {
-                tagList.Remove(handle.Id);
-                if (tagList.Count == 0)
-                {
-                    _coroutinesByTag.Remove(handle.Tag);
-                }
-            }
-        }
-
-        private void OnCoroutineHandleDisposed(CoroutineHandle handle)
-        {
-            if (_isDisposed)
-                return;
-
-            StopCoroutineInternal(handle, true);
-        }
-
-        #endregion
-
-        #region Coroutine Wrappers
-
-        private IEnumerator WrapCoroutineWithHandling(CoroutineHandle handle, IEnumerator routine, Action onComplete, Action<Exception> onError)
-        {
-            Exception caughtException = null;
-            bool routineCompleted = false;
-
-            try
-            {
-                while (true)
-                {
-                    // Check if we're paused
-                    while (_isPaused && !_isDisposed)
-                    {
-                        yield return null;
-                    }
-
-                    // Check if we've been disposed
-                    if (_isDisposed)
-                    {
-                        yield break;
-                    }
-
-                    // Execute the next step of the routine
-                    bool hasNext;
-                    try
-                    {
-                        hasNext = routine.MoveNext();
-                    }
-                    catch (Exception ex)
-                    {
-                        caughtException = ex;
-                        break;
-                    }
-
-                    if (!hasNext)
-                    {
-                        routineCompleted = true;
-                        break;
-                    }
-
-                    yield return routine.Current;
-                }
-            }
-            finally
-            {
-                // Handle completion or error
-                if (caughtException != null)
-                {
-                    try
-                    {
-                        onError?.Invoke(caughtException);
-                    }
-                    catch (Exception callbackEx)
-                    {
-                        Debug.LogError($"[{RunnerName}] Exception in coroutine error callback for {handle.Id}: {callbackEx}");
-                    }
-
-                    Debug.LogError($"[{RunnerName}] Coroutine {handle.Id} failed with exception: {caughtException}");
-                }
-                else if (routineCompleted)
-                {
-                    try
-                    {
-                        onComplete?.Invoke();
-                    }
-                    catch (Exception callbackEx)
-                    {
-                        Debug.LogError($"[{RunnerName}] Exception in coroutine completion callback for {handle.Id}: {callbackEx}");
-                    }
-
-                    handle.MarkCompleted();
-                    _statistics.RecordCompletion(handle.Duration, handle.Tag);
-                }
-
-                // Clean up tracking (only if not disposed)
-                if (!_isDisposed)
-                {
-                    RemoveCoroutineTracking(handle);
-                }
-            }
         }
 
         private IEnumerator DelayedActionCoroutine(float delay, Action action)
         {
             yield return new WaitForSeconds(delay);
-            
-            try
-            {
-                action?.Invoke();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[{RunnerName}] Exception in delayed action: {ex}");
-                throw;
-            }
+            action();
         }
 
         private IEnumerator RepeatingActionCoroutine(float interval, Action action)
         {
-            var wait = new WaitForSeconds(interval);
-            
             while (true)
             {
-                try
-                {
-                    action?.Invoke();
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"[{RunnerName}] Exception in repeating action: {ex}");
-                    // Continue the loop even if action fails
-                }
-                
-                yield return wait;
+                yield return new WaitForSeconds(interval);
+                action();
             }
         }
 
         private IEnumerator ConditionalActionCoroutine(Func<bool> condition, Action action, float checkInterval)
         {
-            WaitForSeconds wait = checkInterval > 0f ? new WaitForSeconds(checkInterval) : null;
-
-            while (true)
+            while (!condition())
             {
-                bool conditionMet = false;
-                try
-                {
-                    conditionMet = condition();
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogError($"[{RunnerName}] Exception checking condition: {ex}");
-                    yield break;
-                }
-
-                if (conditionMet)
-                    break;
-
-                if (wait != null)
-                    yield return wait;
+                if (checkInterval > 0f)
+                    yield return new WaitForSeconds(checkInterval);
                 else
                     yield return null;
             }
-
-            try
-            {
-                action?.Invoke();
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[{RunnerName}] Exception in conditional action: {ex}");
-                throw;
-            }
+            action();
         }
 
         #endregion
 
-        #region Pause/Resume
+        #region Message Handlers
 
         /// <summary>
-        /// Pauses all coroutines managed by this runner.
+        /// Handles coroutine profiler session completed messages.
+        /// </summary>
+        private void OnCoroutineSessionCompleted(CoroutineProfilerSessionCompletedMessage message)
+        {
+            // Only process messages for this runner
+            if (message.RunnerId != _runnerId)
+                return;
+
+            Debug.Log($"[{RunnerName}] Coroutine session completed - Operation: {message.OperationType}, " +
+                     $"Duration: {message.DurationMs:F2}ms, Success: {message.Success}");
+        }
+
+        /// <summary>
+        /// Handles coroutine metric alert messages.
+        /// </summary>
+        private void OnCoroutineMetricAlert(CoroutineMetricAlertMessage message)
+        {
+            // Only process messages for this runner
+            if (message.RunnerId != _runnerId)
+                return;
+
+            var severityText = message.Severity switch
+            {
+                AlertSeverity.Warning => "WARNING",
+                AlertSeverity.Critical => "CRITICAL",
+                _ => "INFO"
+            };
+
+            Debug.LogWarning($"[{RunnerName}] {severityText}: {message.MetricName} = {message.CurrentValue:F2} " +
+                           $"(threshold: {message.Threshold:F2})");
+        }
+
+        #endregion
+
+        #region Cleanup
+
+        /// <summary>
+        /// Cleans up a completed or cancelled coroutine.
+        /// </summary>
+        private void CleanupCoroutine(int coroutineId)
+        {
+            if (!_activeCoroutines.TryGetValue(coroutineId, out var handle))
+                return;
+
+            _activeCoroutines.Remove(coroutineId);
+    
+            // Remove from native collection - NativeParallelHashMap uses Remove, not TryRemove
+            if (_activeCoroutineIds.IsCreated)
+            {
+                _activeCoroutineIds.Remove(coroutineId);
+            }
+
+            // Remove from tag tracking
+            if (!string.IsNullOrEmpty(handle.Tag) && _coroutinesByTag.TryGetValue(handle.Tag, out var taggedCoroutines))
+            {
+                taggedCoroutines.Remove(coroutineId);
+                if (taggedCoroutines.Count == 0)
+                    _coroutinesByTag.Remove(handle.Tag);
+            }
+        }
+
+        /// <summary>
+        /// Pauses all coroutine execution.
         /// </summary>
         public void Pause()
         {
-            if (_isDisposed)
-                return;
-
             _isPaused = true;
-            Debug.Log($"[{RunnerName}] Paused {_activeCoroutines.Count} coroutines");
+            Debug.Log($"[{RunnerName}] Coroutine execution paused");
         }
 
         /// <summary>
-        /// Resumes all paused coroutines managed by this runner.
+        /// Resumes coroutine execution.
         /// </summary>
         public void Resume()
         {
-            if (_isDisposed)
-                return;
-
             _isPaused = false;
-            Debug.Log($"[{RunnerName}] Resumed {_activeCoroutines.Count} coroutines");
-        }
-
-        /// <summary>
-        /// Gets whether this runner is currently paused.
-        /// </summary>
-        public bool IsPaused => _isPaused;
-
-        #endregion
-
-        #region Debug and Diagnostics
-
-        /// <summary>
-        /// Gets detailed information about all active coroutines.
-        /// </summary>
-        /// <returns>A dictionary mapping coroutine IDs to their handles.</returns>
-        public IReadOnlyDictionary<int, ICoroutineHandle> GetActiveCoroutines()
-        {
-            var result = new Dictionary<int, ICoroutineHandle>();
-            foreach (var kvp in _activeCoroutines)
-            {
-                result[kvp.Key] = kvp.Value;
-            }
-            return result;
-        }
-
-        /// <summary>
-        /// Gets all active tags and their coroutine counts.
-        /// </summary>
-        /// <returns>A dictionary mapping tags to coroutine counts.</returns>
-        public IReadOnlyDictionary<string, int> GetTagStatistics()
-        {
-            var result = new Dictionary<string, int>();
-            foreach (var kvp in _coroutinesByTag)
-            {
-                result[kvp.Key] = kvp.Value.Count;
-            }
-            return result;
-        }
-
-        /// <summary>
-        /// Logs detailed statistics about this coroutine runner.
-        /// </summary>
-        public void LogStatistics()
-        {
-            if (_isDisposed)
-                return;
-
-            var stats = _statistics;
-            Debug.Log($"[{RunnerName}] Statistics:\n" +
-                     $"  Active: {ActiveCoroutineCount}\n" +
-                     $"  Total Started: {stats.TotalCoroutinesStarted}\n" +
-                     $"  Total Completed: {stats.TotalCoroutinesCompleted}\n" +
-                     $"  Total Cancelled: {stats.TotalCoroutinesCancelled}\n" +
-                     $"  Peak Active: {stats.PeakActiveCoroutines}\n" +
-                     $"  Average Duration: {stats.AverageCoroutineDuration.TotalMilliseconds:F2}ms");
-
-            var tagStats = GetTagStatistics();
-            if (tagStats.Count > 0)
-            {
-                Debug.Log($"[{RunnerName}] Active by tag: {string.Join(", ", tagStats)}");
-            }
+            Debug.Log($"[{RunnerName}] Coroutine execution resumed");
         }
 
         #endregion
 
-        #region IDisposable Implementation
+        #region IDisposable
 
-        /// <inheritdoc />
+        /// <summary>
+        /// Disposes of the coroutine runner and cleans up resources.
+        /// </summary>
         public void Dispose()
         {
             if (_isDisposed)
                 return;
 
-            Debug.Log($"[{RunnerName}] Disposing coroutine runner with {_activeCoroutines.Count} active coroutines");
+            _isDisposed = true;
 
-            // Stop all active coroutines
+            // Stop all running coroutines
             StopAllCoroutines();
 
-            // Clear collections
+            // Dispose of message subscriptions
+            _sessionCompletedSubscription?.Dispose();
+            _metricAlertSubscription?.Dispose();
+
+            // Dispose of native collections
+            if (_activeCoroutineIds.IsCreated)
+                _activeCoroutineIds.Dispose();
+
+            // Clean up statistics
+            _statistics?.Dispose();
+
             _activeCoroutines.Clear();
             _coroutinesByTag.Clear();
 
-            // Dispose native collections
-            if (_activeCoroutineIds.IsCreated)
-            {
-                _activeCoroutineIds.Dispose();
-            }
-
-            // Dispose statistics
-            _statistics?.Dispose();
-
-            _isDisposed = true;
-            _isInitialized = false;
-
             Debug.Log($"[{RunnerName}] Coroutine runner disposed");
+        }
+
+        private void OnDestroy()
+        {
+            Dispose();
         }
 
         #endregion

@@ -1,17 +1,26 @@
 ﻿using AhBearStudios.Core.Bootstrap.Interfaces;
-using AhBearStudios.Core.Coroutine.Factories;
-using AhBearStudios.Core.Coroutine.Interfaces;
-using AhBearStudios.Core.Coroutine.Unity;
+using AhBearStudios.Core.Coroutine.Installers.VContainer;
 using VContainer;
 
 namespace AhBearStudios.Core.Coroutine.Bootstrap
 {
     /// <summary>
     /// Bootstrap installer for coroutine management services.
-    /// Registers coroutine-related services with the dependency injection container.
+    /// Delegates to the proper VContainer installer for service registration.
     /// </summary>
     public sealed class CoroutineServiceInstaller : IBootstrapInstaller
     {
+        private readonly CoroutineInstaller _coroutineInstaller;
+
+        /// <summary>
+        /// Initializes a new instance of the CoroutineServiceInstaller.
+        /// </summary>
+        /// <param name="enableDebugLogging">Whether to enable debug logging.</param>
+        public CoroutineServiceInstaller(bool enableDebugLogging = false)
+        {
+            _coroutineInstaller = new CoroutineInstaller(enableDebugLogging, true);
+        }
+
         /// <inheritdoc />
         public string InstallerName => "Coroutine Services";
 
@@ -42,23 +51,15 @@ namespace AhBearStudios.Core.Coroutine.Bootstrap
             if (builder == null)
                 throw new System.ArgumentNullException(nameof(builder));
 
-            // Register the coroutine manager as singleton
-            builder.Register<CoreCoroutineManager>(Lifetime.Singleton)
-                .AsImplementedInterfaces()
-                .AsSelf();
-
-            // Register factory for creating coroutine runners
-            builder.Register<ICoroutineRunnerFactory, CoroutineRunnerFactory>(Lifetime.Singleton);
-
-            // The default coroutine runner will be registered by the manager during initialization
+            // Delegate to the proper VContainer installer
+            _coroutineInstaller.Install(builder);
         }
 
         /// <inheritdoc />
         public void PostInstall()
         {
-            // Initialize the coroutine manager
-            var manager = CoreCoroutineManager.Instance;
-            manager.Initialize();
+            // Initialization is handled by the installer's callback
+            // No additional post-install steps needed
         }
     }
 }
