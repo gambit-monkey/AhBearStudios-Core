@@ -2,6 +2,7 @@ using System;
 using AhBearStudios.Core.Logging.Data;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Tags;
+using AhBearStudios.Core.MessageBus.Interfaces;
 
 namespace AhBearStudios.Core.Logging.Messages
 {
@@ -10,7 +11,7 @@ namespace AhBearStudios.Core.Logging.Messages
     /// Burst compilation. Designed for high-performance logging with minimal GC allocations.
     /// </summary>
     [GenerateTestsForBurstCompatibility]
-    public struct LogMessage : IEquatable<LogMessage>
+    public struct LogMessage : IEquatable<LogMessage>, IMessage
     {
         /// <summary>
         /// The category tag for this log message.
@@ -37,8 +38,23 @@ namespace AhBearStudios.Core.Logging.Messages
         /// </summary>
         public long TimestampTicks;
         
-        // New property for structured data
+        /// <summary>
+        /// Property for structured data
+        /// </summary>
         public LogProperties Properties;
+        
+        // IMessage implementation fields
+        private readonly Guid _id;
+        private readonly ushort _typeCode;
+        
+        /// <inheritdoc />
+        public Guid Id => _id;
+        
+        /// <inheritdoc />
+        long IMessage.TimestampTicks => TimestampTicks;
+        
+        /// <inheritdoc />
+        public ushort TypeCode => _typeCode;
         
         /// <summary>
         /// Creates a new log message with the current timestamp.
@@ -46,7 +62,9 @@ namespace AhBearStudios.Core.Logging.Messages
         /// <param name="message">The message content.</param>
         /// <param name="level">The severity level.</param>
         /// <param name="tag">The log tag.</param>
-        public LogMessage(FixedString512Bytes message, LogLevel level, Tagging.LogTag tag, LogProperties properties)
+        /// <param name="properties">Log properties.</param>
+        /// <param name="typeCode">Message type code for the message bus (default: 1001).</param>
+        public LogMessage(FixedString512Bytes message, LogLevel level, Tagging.LogTag tag, LogProperties properties, ushort typeCode = 1001)
         {
             Message = message;
             Level = level;
@@ -54,6 +72,8 @@ namespace AhBearStudios.Core.Logging.Messages
             CustomTag = default;
             TimestampTicks = DateTime.UtcNow.Ticks;
             Properties = properties;
+            _id = Guid.NewGuid();
+            _typeCode = typeCode;
         }
         
         /// <summary>
@@ -63,7 +83,8 @@ namespace AhBearStudios.Core.Logging.Messages
         /// <param name="level">The severity level.</param>
         /// <param name="customTag">A custom tag string.</param>
         /// <param name="properties">Log Properties</param>
-        public LogMessage(FixedString512Bytes message, LogLevel level, FixedString32Bytes customTag, LogProperties properties)
+        /// <param name="typeCode">Message type code for the message bus (default: 1001).</param>
+        public LogMessage(FixedString512Bytes message, LogLevel level, FixedString32Bytes customTag, LogProperties properties, ushort typeCode = 1001)
         {
             Message = message;
             Level = level;
@@ -71,6 +92,8 @@ namespace AhBearStudios.Core.Logging.Messages
             CustomTag = customTag;
             TimestampTicks = DateTime.UtcNow.Ticks;
             Properties = properties;
+            _id = Guid.NewGuid();
+            _typeCode = typeCode;
         }
 
         /// <summary>
@@ -79,7 +102,8 @@ namespace AhBearStudios.Core.Logging.Messages
         /// <param name="message">The message content.</param>
         /// <param name="level">The severity level.</param>
         /// <param name="properties">Structured Log Properties</param>
-        public LogMessage(FixedString512Bytes message, LogLevel level, LogProperties properties)
+        /// <param name="typeCode">Message type code for the message bus (default: 1001).</param>
+        public LogMessage(FixedString512Bytes message, LogLevel level, LogProperties properties, ushort typeCode = 1001)
         {
             Message = message;
             Level = level;
@@ -96,6 +120,27 @@ namespace AhBearStudios.Core.Logging.Messages
             CustomTag = default;
             TimestampTicks = DateTime.UtcNow.Ticks;
             Properties = properties;
+            _id = Guid.NewGuid();
+            _typeCode = typeCode;
+        }
+        
+        /// <summary>
+        /// Creates a new log message with minimal parameters (for backwards compatibility).
+        /// </summary>
+        /// <param name="message">The message content.</param>
+        /// <param name="level">The severity level.</param>
+        /// <param name="tag">The log tag (default: Default).</param>
+        /// <param name="typeCode">Message type code for the message bus (default: 1001).</param>
+        public LogMessage(FixedString512Bytes message, LogLevel level, Tagging.LogTag tag = Tagging.LogTag.Default, ushort typeCode = 1001)
+        {
+            Message = message;
+            Level = level;
+            Tag = tag;
+            CustomTag = default;
+            TimestampTicks = DateTime.UtcNow.Ticks;
+            Properties = new LogProperties(0); // Empty properties
+            _id = Guid.NewGuid();
+            _typeCode = typeCode;
         }
         
         /// <summary>
@@ -155,6 +200,41 @@ namespace AhBearStudios.Core.Logging.Messages
         }
         
         /// <summary>
+        /// Formats the log message with full date/time timestamp for display.
+        /// </summary>
+        /// <returns>A formatted log message string with full timestamp.</returns>
+        public FixedString512Bytes FormatMessageWithFullTimestamp()
+        {
+            var tagString = GetTagString();
+            
+            // Format full timestamp
+            DateTime dt = new DateTime(TimestampTicks);
+            FixedString64Bytes timestamp = new FixedString64Bytes();
+            timestamp.Append(dt.Year.ToString("0000"));
+            timestamp.Append('-');
+            timestamp.Append(dt.Month.ToString("00"));
+            timestamp.Append('-');
+            timestamp.Append(dt.Day.ToString("00"));
+            timestamp.Append(' ');
+            timestamp.Append(dt.Hour.ToString("00"));
+            timestamp.Append(':');
+            timestamp.Append(dt.Minute.ToString("00"));
+            timestamp.Append(':');
+            timestamp.Append(dt.Second.ToString("00"));
+            
+            // Combine all parts into result
+            FixedString512Bytes result = new FixedString512Bytes();
+            result.Append('[');
+            result.Append(timestamp);
+            result.Append("] [");
+            result.Append(tagString);
+            result.Append("] ");
+            result.Append(Message);
+            
+            return result;
+        }
+        
+        /// <summary>
         /// Checks if this log entry belongs to a specific tag category.
         /// </summary>
         /// <param name="category">The category to check.</param>
@@ -183,6 +263,68 @@ namespace AhBearStudios.Core.Logging.Messages
         }
         
         /// <summary>
+        /// Checks if this log is system-related.
+        /// </summary>
+        /// <returns>True if this log is system-related.</returns>
+        public bool IsSystemRelated()
+        {
+            return Tagging.IsSystemRelated(Tag);
+        }
+        
+        /// <summary>
+        /// Gets the severity level as a string.
+        /// </summary>
+        /// <returns>String representation of the log level.</returns>
+        public FixedString32Bytes GetLevelString()
+        {
+            return Level.ToString();
+        }
+        
+        /// <summary>
+        /// Creates a copy of this log message with a different level.
+        /// </summary>
+        /// <param name="newLevel">The new log level.</param>
+        /// <returns>A new LogMessage with the specified level.</returns>
+        public LogMessage WithLevel(LogLevel newLevel)
+        {
+            return new LogMessage(Message, newLevel, Tag, Properties.Copy(), _typeCode);
+        }
+        
+        /// <summary>
+        /// Creates a copy of this log message with a different tag.
+        /// </summary>
+        /// <param name="newTag">The new log tag.</param>
+        /// <returns>A new LogMessage with the specified tag.</returns>
+        public LogMessage WithTag(Tagging.LogTag newTag)
+        {
+            return new LogMessage(Message, Level, newTag, Properties.Copy(), _typeCode);
+        }
+        
+        /// <summary>
+        /// Creates a copy of this log message with additional properties.
+        /// </summary>
+        /// <param name="additionalProperties">Additional properties to add.</param>
+        /// <returns>A new LogMessage with the additional properties.</returns>
+        public LogMessage WithProperties(in LogProperties additionalProperties)
+        {
+            var newProperties = Properties.Copy();
+            newProperties.AddRange(additionalProperties);
+            
+            return new LogMessage(Message, Level, Tag, newProperties, _typeCode);
+        }
+        
+        /// <summary>
+        /// Disposes any native resources held by this log message.
+        /// </summary>
+        public void Dispose()
+        {
+            if (Properties.IsCreated)
+            {
+                Properties.Dispose();
+            }
+        }
+        
+        /// <summary>
         /// Equality comparison.
         /// </summary>
         public bool Equals(LogMessage other)
@@ -190,7 +332,9 @@ namespace AhBearStudios.Core.Logging.Messages
             return Level == other.Level && 
                    Tag.Equals(other.Tag) && 
                    Message.Equals(other.Message) &&
-                   Properties.Equals(other.Properties);
+                   CustomTag.Equals(other.CustomTag) &&
+                   Properties.Equals(other.Properties) &&
+                   _id.Equals(other._id);
         }
         
         public override bool Equals(object obj)
@@ -209,9 +353,35 @@ namespace AhBearStudios.Core.Logging.Messages
                 hash = hash * 23 + Level.GetHashCode();
                 hash = hash * 23 + Tag.GetHashCode();
                 hash = hash * 23 + Message.GetHashCode();
+                hash = hash * 23 + CustomTag.GetHashCode();
                 hash = hash * 23 + Properties.GetHashCode();
+                hash = hash * 23 + _id.GetHashCode();
                 return hash;
             }
+        }
+        
+        /// <summary>
+        /// Returns a string representation of the log message for debugging.
+        /// </summary>
+        public override string ToString()
+        {
+            return FormatMessage().ToString();
+        }
+        
+        /// <summary>
+        /// Equality operator.
+        /// </summary>
+        public static bool operator ==(LogMessage left, LogMessage right)
+        {
+            return left.Equals(right);
+        }
+        
+        /// <summary>
+        /// Inequality operator.
+        /// </summary>
+        public static bool operator !=(LogMessage left, LogMessage right)
+        {
+            return !(left == right);
         }
     }
 }

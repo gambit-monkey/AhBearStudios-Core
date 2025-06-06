@@ -1,5 +1,4 @@
 using System;
-using AhBearStudios.Core.Logging.Data;
 using AhBearStudios.Core.Logging.Messages;
 using AhBearStudios.Core.Logging.Tags;
 using Unity.Collections;
@@ -70,6 +69,32 @@ namespace AhBearStudios.Core.Logging.Interfaces
         /// Clears all tag filters from this target.
         /// </summary>
         void ClearTagFilters();
+        
+        /// <summary>
+        /// Adds a specific LogTag filter to this target.
+        /// </summary>
+        /// <param name="logTag">The specific log tag to include.</param>
+        void AddLogTagFilter(Tagging.LogTag logTag);
+        
+        /// <summary>
+        /// Removes a specific LogTag filter from this target.
+        /// </summary>
+        /// <param name="logTag">The specific log tag to remove from filtering.</param>
+        void RemoveLogTagFilter(Tagging.LogTag logTag);
+        
+        /// <summary>
+        /// Determines if a message with the specified tag would be processed by this target.
+        /// </summary>
+        /// <param name="logTag">The log tag to check.</param>
+        /// <returns>True if messages with this tag would be processed; otherwise, false.</returns>
+        bool IsLogTagEnabled(Tagging.LogTag logTag);
+        
+        /// <summary>
+        /// Determines if a message would be processed by this target based on all filters.
+        /// </summary>
+        /// <param name="logMessage">The log message to check.</param>
+        /// <returns>True if the message would be processed; otherwise, false.</returns>
+        bool ShouldProcessMessage(in LogMessage logMessage);
         
         /// <summary>
         /// Sets comprehensive tag filters for this target.

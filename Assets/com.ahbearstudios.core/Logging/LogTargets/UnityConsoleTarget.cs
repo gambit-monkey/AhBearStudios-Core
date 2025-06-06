@@ -19,6 +19,8 @@ namespace AhBearStudios.Core.Logging.LogTargets
     {
         private readonly HashSet<Tagging.TagCategory> _includedTagFilters;
         private readonly HashSet<Tagging.TagCategory> _excludedTagFilters;
+        private readonly HashSet<Tagging.LogTag> _includedLogTagFilters;
+        private readonly HashSet<Tagging.LogTag> _excludedLogTagFilters;
         private readonly UnityConsoleTargetConfig _config;
         private readonly IMessageBus _messageBus;
         private readonly ILogFormatter _formatter;
@@ -59,6 +61,8 @@ namespace AhBearStudios.Core.Logging.LogTargets
             
             _includedTagFilters = new HashSet<Tagging.TagCategory>();
             _excludedTagFilters = new HashSet<Tagging.TagCategory>();
+            _includedLogTagFilters = new HashSet<Tagging.LogTag>();
+            _excludedLogTagFilters = new HashSet<Tagging.LogTag>();
             
             // Configure tag filters
             SetTagFilters(config.IncludedTags, config.ExcludedTags, config.ProcessUntaggedMessages);
@@ -81,7 +85,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
                 
             foreach (var entry in entries)
             {
-                if (ShouldLog(entry.Level, entry.Tag))
+                if (ShouldProcessMessage(entry))
                 {
                     WriteToUnityConsole(entry);
                     PublishLogEntryMessage(entry);
@@ -98,7 +102,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
             if (_isDisposed || !IsEnabled)
                 return;
                 
-            if (ShouldLog(entry.Level, entry.Tag))
+            if (ShouldProcessMessage(entry))
             {
                 WriteToUnityConsole(entry);
                 PublishLogEntryMessage(entry);
@@ -133,9 +137,29 @@ namespace AhBearStudios.Core.Logging.LogTargets
                 
             _includedTagFilters?.Clear();
             _excludedTagFilters?.Clear();
+            _includedLogTagFilters?.Clear();
+            _excludedLogTagFilters?.Clear();
             _isDisposed = true;
         }
-        
+
+        /// <summary>
+        /// Determines if a message would be processed by this target based on all filters.
+        /// </summary>
+        /// <param name="logMessage">The log message to check.</param>
+        /// <returns>True if the message would be processed; otherwise, false.</returns>
+        public bool ShouldProcessMessage(in LogMessage logMessage)
+        {
+            if (_isDisposed || !IsEnabled)
+                return false;
+            
+            // Check log level first (most basic filter)
+            if (!IsLevelEnabled(logMessage.Level))
+                return false;
+            
+            // Check tag-based filtering
+            return IsLogTagEnabled(logMessage.Tag);
+        }
+
         /// <summary>
         /// Sets comprehensive tag filters for this target.
         /// </summary>
@@ -146,6 +170,8 @@ namespace AhBearStudios.Core.Logging.LogTargets
         {
             _includedTagFilters.Clear();
             _excludedTagFilters.Clear();
+            _includedLogTagFilters.Clear();
+            _excludedLogTagFilters.Clear();
             _processUntaggedMessages = processUntaggedMessages;
             
             // Convert and add included tags
@@ -153,7 +179,16 @@ namespace AhBearStudios.Core.Logging.LogTargets
             {
                 foreach (var tagString in includedTags)
                 {
-                    if (!string.IsNullOrEmpty(tagString) && TryParseTagCategory(tagString, out var category))
+                    if (string.IsNullOrEmpty(tagString))
+                        continue;
+                    
+                    // Try to parse as specific LogTag first
+                    if (TryParseLogTag(tagString, out var logTag))
+                    {
+                        _includedLogTagFilters.Add(logTag);
+                    }
+                    // Fall back to TagCategory
+                    else if (TryParseTagCategory(tagString, out var category))
                     {
                         _includedTagFilters.Add(category);
                     }
@@ -165,12 +200,39 @@ namespace AhBearStudios.Core.Logging.LogTargets
             {
                 foreach (var tagString in excludedTags)
                 {
-                    if (!string.IsNullOrEmpty(tagString) && TryParseTagCategory(tagString, out var category))
+                    if (string.IsNullOrEmpty(tagString))
+                        continue;
+                    
+                    // Try to parse as specific LogTag first
+                    if (TryParseLogTag(tagString, out var logTag))
+                    {
+                        _excludedLogTagFilters.Add(logTag);
+                    }
+                    // Fall back to TagCategory
+                    else if (TryParseTagCategory(tagString, out var category))
                     {
                         _excludedTagFilters.Add(category);
                     }
                 }
             }
+        }
+        
+        /// <summary>
+        /// Attempts to parse a string tag into a LogTag.
+        /// </summary>
+        /// <param name="tagString">The tag string to parse.</param>
+        /// <param name="logTag">The parsed LogTag.</param>
+        /// <returns>True if parsing succeeded, false otherwise.</returns>
+        private static bool TryParseLogTag(string tagString, out Tagging.LogTag logTag)
+        {
+            if (Enum.TryParse<Tagging.LogTag>(tagString, true, out logTag))
+            {
+                return true;
+            }
+            
+            // Try common aliases using the Tagging class method
+            logTag = Tagging.GetLogTag(tagString);
+            return logTag != Tagging.LogTag.Default;
         }
         
         /// <summary>
@@ -200,17 +262,24 @@ namespace AhBearStudios.Core.Logging.LogTargets
                 case "interface":
                     tagCategory = Tagging.TagCategory.UI;
                     return true;
-                case "network":
-                case "networking":
-                    tagCategory = Tagging.TagCategory.Gameplay;
+                case "debug":
+                case "debugging":
+                    tagCategory = Tagging.TagCategory.Debug;
                     return true;
-                case "audio":
-                case "sound":
-                    tagCategory = Tagging.TagCategory.Gameplay;
+                case "error":
+                case "errors":
+                    tagCategory = Tagging.TagCategory.Error;
                     return true;
-                case "graphics":
-                case "rendering":
-                    tagCategory = Tagging.TagCategory.Gameplay;
+                case "development":
+                case "dev":
+                    tagCategory = Tagging.TagCategory.Development;
+                    return true;
+                case "features":
+                case "feature":
+                    tagCategory = Tagging.TagCategory.Features;
+                    return true;
+                case "custom":
+                    tagCategory = Tagging.TagCategory.Custom;
                     return true;
                 default:
                     tagCategory = Tagging.TagCategory.None;
@@ -229,22 +298,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
             if (level < MinimumLevel)
                 return false;
             
-            var category = Tagging.GetTagCategory(tag);
-            
-            // Check if tag is explicitly excluded
-            if (_excludedTagFilters.Contains(category))
-                return false;
-            
-            // Handle untagged messages
-            if (category == Tagging.TagCategory.None)
-                return _processUntaggedMessages;
-            
-            // If no include filters are set, allow all (except excluded)
-            if (_includedTagFilters.Count == 0)
-                return true;
-            
-            // Check if this tag's category is in our include filters
-            return _includedTagFilters.Contains(category);
+            return IsLogTagEnabled(tag);
         }
         
         
@@ -287,9 +341,80 @@ namespace AhBearStudios.Core.Logging.LogTargets
         
             _includedTagFilters.Clear();
             _excludedTagFilters.Clear();
+            _includedLogTagFilters.Clear();
+            _excludedLogTagFilters.Clear();
             _processUntaggedMessages = true;
         }
-        
+
+        /// <summary>
+        /// Adds a specific LogTag filter to this target.
+        /// </summary>
+        /// <param name="logTag">The specific log tag to include.</param>
+        public void AddLogTagFilter(Tagging.LogTag logTag)
+        {
+            if (_isDisposed)
+                return;
+            
+            if (logTag != Tagging.LogTag.None && logTag != Tagging.LogTag.Undefined)
+            {
+                _includedLogTagFilters.Add(logTag);
+                // Remove from excluded if it was there
+                _excludedLogTagFilters.Remove(logTag);
+            }
+        }
+
+        /// <summary>
+        /// Removes a specific LogTag filter from this target.
+        /// </summary>
+        /// <param name="logTag">The specific log tag to remove from filtering.</param>
+        public void RemoveLogTagFilter(Tagging.LogTag logTag)
+        {
+            if (_isDisposed)
+                return;
+            
+            _includedLogTagFilters.Remove(logTag);
+            _excludedLogTagFilters.Remove(logTag);
+        }
+
+        /// <summary>
+        /// Determines if a message with the specified tag would be processed by this target.
+        /// </summary>
+        /// <param name="logTag">The log tag to check.</param>
+        /// <returns>True if messages with this tag would be processed; otherwise, false.</returns>
+        public bool IsLogTagEnabled(Tagging.LogTag logTag)
+        {
+            if (_isDisposed || !IsEnabled)
+                return false;
+            
+            // Check if tag is explicitly excluded
+            if (_excludedLogTagFilters.Contains(logTag))
+                return false;
+            
+            // Handle special cases
+            if (logTag == Tagging.LogTag.None || logTag == Tagging.LogTag.Undefined)
+                return _processUntaggedMessages;
+            
+            // If no specific log tag filters are set, fall back to category filtering
+            if (_includedLogTagFilters.Count == 0)
+            {
+                var category = Tagging.GetTagCategory(logTag);
+                
+                // Check category exclusions
+                if (_excludedTagFilters.Contains(category))
+                    return false;
+                
+                // If no category filters are set either, allow all
+                if (_includedTagFilters.Count == 0)
+                    return true;
+                
+                // Check if category is included
+                return _includedTagFilters.Contains(category);
+            }
+            
+            // Check if this specific log tag is included
+            return _includedLogTagFilters.Contains(logTag);
+        }
+
         /// <summary>
         /// Writes a formatted message to the Unity console.
         /// </summary>

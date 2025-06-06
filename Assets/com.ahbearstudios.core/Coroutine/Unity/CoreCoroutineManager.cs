@@ -279,7 +279,7 @@ namespace AhBearStudios.Core.Coroutine.Unity
         public static CoreCoroutineManager Create(IDependencyProvider dependencyProvider = null)
         {
             var instance = Instance;
-            instance.Initialize(dependencyProvider);
+            instance.Initialize();
             return instance;
         }
 
