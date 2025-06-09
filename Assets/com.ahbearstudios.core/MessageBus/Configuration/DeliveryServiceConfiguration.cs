@@ -1,4 +1,5 @@
 using System;
+using AhBearStudios.Core.Logging;
 
 namespace AhBearStudios.Core.MessageBus.Configuration
 {
@@ -48,7 +49,7 @@ namespace AhBearStudios.Core.MessageBus.Configuration
         /// <summary>
         /// Gets or sets the log level for delivery operations.
         /// </summary>
-        public byte LogLevel { get; set; } = AhBearStudios.Core.Logging.LogLevel.Debug;
+        public LogLevel LogLevel { get; set; } = LogLevel.Debug;
         
         /// <summary>
         /// Gets or sets the exponential backoff base multiplier for retry delays.

@@ -1,3 +1,4 @@
+
 {
   "name": "AhBearStudios.Core",
   "rootNamespace": "AhBearStudios.Core",
@@ -8,7 +9,8 @@
     "Unity.Mathematics",
     "VContainer",
     "MemoryPack",
-    "MessagePipe"
+    "MessagePipe",
+    "UniTask"
   ],
   "includePlatforms": [],
   "excludePlatforms": [],
