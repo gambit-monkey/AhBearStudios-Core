@@ -9,7 +9,8 @@ using Unity.Profiling;
 namespace AhBearStudios.Core.Profiling.Sessions
 {
     /// <summary>
-    /// A specialized profiler session for coroutine operations that captures additional coroutine metrics
+    /// A specialized profiler session for coroutine operations that captures additional coroutine metrics.
+    /// Provides intelligent tag selection and lightweight null pattern for disabled profiling.
     /// </summary>
     public class CoroutineProfilerSession : IProfilerSession
     {
@@ -21,6 +22,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         private long _startTimeNs;
         private long _endTimeNs;
         private readonly Guid _sessionId;
+        private readonly bool _isNullSession;
         
         /// <summary>
         /// Runner identifier
@@ -58,7 +60,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         private bool _success = true;
         
         /// <summary>
-        /// Creates a new coroutine profiler session
+        /// Creates a new coroutine profiler session with explicit tag
         /// </summary>
         /// <param name="tag">Profiler tag</param>
         /// <param name="runnerId">Runner identifier</param>
@@ -78,27 +80,93 @@ namespace AhBearStudios.Core.Profiling.Sessions
         {
             _tag = tag;
             RunnerId = runnerId;
-            RunnerName = runnerName;
+            RunnerName = runnerName ?? string.Empty;
             CoroutineId = coroutineId;
-            CoroutineTag = coroutineTag;
+            CoroutineTag = coroutineTag ?? string.Empty;
             _coroutineMetrics = coroutineMetrics;
             _messageBus = messageBus;
             _isDisposed = false;
             _sessionId = Guid.NewGuid();
             _operationType = GetOperationTypeFromTag(tag.Name);
-            _marker = new ProfilerMarker(_tag.FullName);
+            _isNullSession = coroutineMetrics == null && messageBus == null;
             
-            // Begin the profiler marker
-            _marker.Begin();
-            _startTimeNs = GetHighPrecisionTimestampNs();
-            
-            // Notify via message bus that session started
-            if (_messageBus != null)
+            // Only create marker and start timing if this isn't a null session
+            if (!_isNullSession)
             {
-                var message = new CoroutineProfilerSessionStartedMessage(
-                    _tag, _sessionId, RunnerId, RunnerName, CoroutineId, CoroutineTag);
-                _messageBus.PublishMessage(message);
+                _marker = new ProfilerMarker(_tag.FullName);
+                
+                // Begin the profiler marker
+                _marker.Begin();
+                _startTimeNs = GetHighPrecisionTimestampNs();
+                
+                // Notify via message bus that session started
+                if (_messageBus != null)
+                {
+                    var message = new CoroutineProfilerSessionStartedMessage(
+                        _tag, _sessionId, RunnerId, RunnerName, CoroutineId, CoroutineTag);
+                    _messageBus.PublishMessage(message);
+                }
             }
+        }
+
+        /// <summary>
+        /// Factory method to create a session with appropriate tag based on parameters.
+        /// Uses intelligent tag selection hierarchy for optimal profiling granularity.
+        /// </summary>
+        /// <param name="operationType">Operation type</param>
+        /// <param name="runnerId">Runner identifier</param>
+        /// <param name="runnerName">Runner name</param>
+        /// <param name="coroutineId">Coroutine identifier</param>
+        /// <param name="coroutineTag">Coroutine tag</param>
+        /// <param name="coroutineMetrics">Coroutine metrics interface for recording</param>
+        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <returns>A new coroutine profiler session with appropriate tag</returns>
+        public static CoroutineProfilerSession Create(
+            string operationType,
+            Guid runnerId, 
+            string runnerName, 
+            int coroutineId, 
+            string coroutineTag,
+            ICoroutineMetrics coroutineMetrics,
+            IMessageBus messageBus = null)
+        {
+            if (string.IsNullOrEmpty(operationType))
+                operationType = "Unknown";
+
+            // Choose the most specific tag available using hierarchy
+            ProfilerTag tag = SelectOptimalTag(operationType, runnerId, runnerName, coroutineId, coroutineTag);
+            
+            return new CoroutineProfilerSession(
+                tag, runnerId, runnerName, coroutineId, coroutineTag, coroutineMetrics, messageBus);
+        }
+
+        /// <summary>
+        /// Factory method for creating sessions with runner interface
+        /// </summary>
+        /// <param name="operationType">Operation type</param>
+        /// <param name="runner">Coroutine runner instance</param>
+        /// <param name="coroutineId">Coroutine identifier</param>
+        /// <param name="coroutineTag">Coroutine tag</param>
+        /// <param name="coroutineMetrics">Coroutine metrics interface for recording</param>
+        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <returns>A new coroutine profiler session</returns>
+        public static CoroutineProfilerSession CreateFromRunner(
+            string operationType,
+            object runner,
+            int coroutineId,
+            string coroutineTag,
+            ICoroutineMetrics coroutineMetrics,
+            IMessageBus messageBus = null)
+        {
+            if (runner == null)
+            {
+                return Create(operationType, Guid.Empty, "Unknown", coroutineId, coroutineTag, coroutineMetrics, messageBus);
+            }
+
+            string runnerName = runner.GetType().Name;
+            Guid runnerId = CreateDeterministicGuid($"{runnerName}_{runner.GetHashCode()}");
+            
+            return Create(operationType, runnerId, runnerName, coroutineId, coroutineTag, coroutineMetrics, messageBus);
         }
 
         /// <summary>
@@ -113,6 +181,8 @@ namespace AhBearStudios.Core.Profiling.Sessions
         {
             get
             {
+                if (_isNullSession) return 0.0;
+                
                 long currentTimeNs = _isDisposed ? _endTimeNs : GetHighPrecisionTimestampNs();
                 return (currentTimeNs - _startTimeNs) / 1000000.0;
             }
@@ -125,6 +195,8 @@ namespace AhBearStudios.Core.Profiling.Sessions
         {
             get
             {
+                if (_isNullSession) return 0L;
+                
                 return _isDisposed ? (_endTimeNs - _startTimeNs) : (GetHighPrecisionTimestampNs() - _startTimeNs);
             }
         }
@@ -139,7 +211,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// </summary>
         public void RecordMetric(string metricName, double value)
         {
-            if (string.IsNullOrEmpty(metricName))
+            if (string.IsNullOrEmpty(metricName) || _isNullSession)
                 return;
                 
             _customMetrics[metricName] = value;
@@ -164,11 +236,43 @@ namespace AhBearStudios.Core.Profiling.Sessions
         }
 
         /// <summary>
+        /// Records additional context about the coroutine operation
+        /// </summary>
+        /// <param name="memoryAllocated">Memory allocated during operation</param>
+        /// <param name="isGCAllocation">Whether allocation was GC allocation</param>
+        public void RecordMemoryAllocation(long memoryAllocated, bool isGCAllocation = false)
+        {
+            RecordMetric("MemoryAllocated", memoryAllocated);
+            RecordMetric("IsGCAllocation", isGCAllocation ? 1.0 : 0.0);
+        }
+
+        /// <summary>
+        /// Records cleanup time for completion operations
+        /// </summary>
+        /// <param name="cleanupTimeMs">Time spent on cleanup in milliseconds</param>
+        public void RecordCleanupTime(double cleanupTimeMs)
+        {
+            RecordMetric("CleanupTime", cleanupTimeMs);
+        }
+
+        /// <summary>
+        /// Records execution step information
+        /// </summary>
+        /// <param name="stepCount">Number of execution steps</param>
+        /// <param name="yieldCount">Number of yield operations</param>
+        public void RecordExecutionSteps(int stepCount, int yieldCount = 0)
+        {
+            RecordMetric("StepCount", stepCount);
+            if (yieldCount > 0)
+                RecordMetric("YieldCount", yieldCount);
+        }
+
+        /// <summary>
         /// End the profiler marker and record duration
         /// </summary>
         public void Dispose()
         {
-            if (_isDisposed)
+            if (_isDisposed || _isNullSession)
                 return;
 
             _marker.End();
@@ -186,6 +290,45 @@ namespace AhBearStudios.Core.Profiling.Sessions
                     ElapsedMilliseconds, _customMetrics, _operationType, _success);
                 _messageBus.PublishMessage(message);
             }
+        }
+
+        /// <summary>
+        /// Selects the most appropriate ProfilerTag based on available parameters
+        /// </summary>
+        /// <param name="operationType">Operation type</param>
+        /// <param name="runnerId">Runner identifier</param>
+        /// <param name="runnerName">Runner name</param>
+        /// <param name="coroutineId">Coroutine identifier</param>
+        /// <param name="coroutineTag">Coroutine tag</param>
+        /// <returns>The most specific ProfilerTag available</returns>
+        private static ProfilerTag SelectOptimalTag(string operationType, Guid runnerId, string runnerName, int coroutineId, string coroutineTag)
+        {
+            // Priority 1: Coroutine-specific tag (most specific)
+            if (coroutineId > 0)
+            {
+                return CoroutineProfilerTags.ForCoroutine(operationType, coroutineId);
+            }
+            
+            // Priority 2: Tagged coroutine operations
+            if (!string.IsNullOrEmpty(coroutineTag))
+            {
+                return CoroutineProfilerTags.ForTag(operationType, coroutineTag);
+            }
+            
+            // Priority 3: Runner with GUID (more specific than name)
+            if (runnerId != Guid.Empty)
+            {
+                return CoroutineProfilerTags.ForRunner(operationType, runnerId);
+            }
+            
+            // Priority 4: Runner by name
+            if (!string.IsNullOrEmpty(runnerName) && runnerName != "Unknown")
+            {
+                return CoroutineProfilerTags.ForRunnerName(operationType, runnerName);
+            }
+            
+            // Priority 5: Generic operation tag (least specific)
+            return CoroutineProfilerTags.ForOperation(operationType);
         }
         
         /// <summary>
@@ -238,6 +381,9 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// </summary>
         private string GetOperationTypeFromTag(string tagName)
         {
+            if (string.IsNullOrEmpty(tagName))
+                return "Unknown";
+                
             // Extract operation type (after the last dot)
             int lastDot = tagName.LastIndexOf('.');
             if (lastDot >= 0 && lastDot < tagName.Length - 1)
@@ -255,6 +401,21 @@ namespace AhBearStudios.Core.Profiling.Sessions
             long timestamp = System.Diagnostics.Stopwatch.GetTimestamp();
             long frequency = System.Diagnostics.Stopwatch.Frequency;
             return (long)((double)timestamp / frequency * 1_000_000_000);
+        }
+
+        /// <summary>
+        /// Creates a deterministic GUID from a string
+        /// </summary>
+        private static Guid CreateDeterministicGuid(string input)
+        {
+            if (string.IsNullOrEmpty(input))
+                return Guid.Empty;
+                
+            using (var md5 = System.Security.Cryptography.MD5.Create())
+            {
+                byte[] hash = md5.ComputeHash(System.Text.Encoding.UTF8.GetBytes(input));
+                return new Guid(hash);
+            }
         }
     }
 }

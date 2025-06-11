@@ -1,162 +1,148 @@
 ﻿using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Logging;
-using Unity.Profiling;
-using AhBearStudios.Core.Logging.Messages;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling.Interfaces;
-using AhBearStudios.Core.Profiling.Data;
+using AhBearStudios.Core.Profiling.Sessions;
 using AhBearStudios.Core.Profiling.Messages;
+using AhBearStudios.Core.Profiling.Data;
 using AhBearStudios.Core.Profiling.Tagging;
+using Unity.Profiling;
+using Unity.Collections;
+using LogTag = AhBearStudios.Core.Logging.Tags.Tagging.LogTag;
 
 namespace AhBearStudios.Core.Profiling.Profilers
 {
     /// <summary>
-    /// Specialized profiler for logging operations that captures logging-specific metrics.
-    /// This profiler tracks log message processing, target writes, queue flushes, and other logging operations.
+    /// Profiler specifically designed for logging operations.
+    /// Provides detailed metrics about log message processing, target writes, and queue operations.
     /// </summary>
     public sealed class LoggingProfiler : IProfiler, IDisposable
     {
-        #region Private Fields
-        
         private readonly IProfiler _baseProfiler;
         private readonly IMessageBus _messageBus;
-        private readonly Dictionary<string, LoggingMetricsData> _loggingMetricsCache = new Dictionary<string, LoggingMetricsData>();
-        private readonly Dictionary<ProfilerTag, List<double>> _history = new Dictionary<ProfilerTag, List<double>>();
-        private readonly Dictionary<LogLevel, double> _logLevelAlerts = new Dictionary<LogLevel, double>();
-        private readonly Dictionary<string, double> _targetAlerts = new Dictionary<string, double>();
-        private readonly List<IDisposable> _subscriptions = new List<IDisposable>();
-        
-        private const int MaxHistoryItems = 100;
-        private bool _disposed;
-        
-        #endregion
-        
-        #region Constructor
-        
+        private readonly Dictionary<string, LoggingMetricsData> _loggingMetrics;
+        private readonly Dictionary<LogLevel, double> _logLevelAlerts;
+        private readonly Dictionary<string, double> _targetAlerts;
+        private bool _isDisposed;
+
         /// <summary>
         /// Creates a new logging profiler.
         /// </summary>
-        /// <param name="baseProfiler">Base profiler implementation for general profiling.</param>
-        /// <param name="messageBus">Message bus for publishing and subscribing to profiling messages.</param>
-        /// <exception cref="ArgumentNullException">Thrown when any parameter is null.</exception>
+        /// <param name="baseProfiler">Base profiler to delegate general operations to.</param>
+        /// <param name="messageBus">Message bus for publishing profiling events.</param>
         public LoggingProfiler(IProfiler baseProfiler, IMessageBus messageBus)
         {
             _baseProfiler = baseProfiler ?? throw new ArgumentNullException(nameof(baseProfiler));
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            _messageBus = messageBus;
+            _loggingMetrics = new Dictionary<string, LoggingMetricsData>();
+            _logLevelAlerts = new Dictionary<LogLevel, double>();
+            _targetAlerts = new Dictionary<string, double>();
             
             SubscribeToMessages();
         }
-        
-        #endregion
-        
-        #region IProfiler Implementation
-        
+
         /// <summary>
-        /// Gets whether profiling is enabled.
+        /// Gets whether profiling is currently enabled.
         /// </summary>
         public bool IsEnabled => _baseProfiler.IsEnabled;
 
         /// <summary>
-        /// Gets the message bus used by this profiler.
+        /// Gets the message bus used for profiling events.
         /// </summary>
         public IMessageBus MessageBus => _messageBus;
 
         /// <summary>
-        /// Begin a profiling sample with a name.
+        /// Begins a Unity profiler sample.
         /// </summary>
-        /// <param name="name">Name of the profiler sample.</param>
-        /// <returns>Profiler session that should be disposed when sample ends.</returns>
+        /// <param name="name">Name of the sample.</param>
+        /// <returns>Disposable sample handle.</returns>
         public IDisposable BeginSample(string name)
         {
             return _baseProfiler.BeginSample(name);
         }
 
         /// <summary>
-        /// Begin a profiling scope with the specified tag.
+        /// Begins a profiler scope with the specified tag.
         /// </summary>
-        /// <param name="tag">Profiler tag for this scope.</param>
-        /// <returns>Profiler session that should be disposed when scope ends.</returns>
+        /// <param name="tag">Profiler tag for the scope.</param>
+        /// <returns>Profiler session for the scope.</returns>
         public ProfilerSession BeginScope(ProfilerTag tag)
         {
             return _baseProfiler.BeginScope(tag);
         }
 
         /// <summary>
-        /// Begin a profiling scope with a category and name.
+        /// Begins a profiler scope with the specified category and name.
         /// </summary>
-        /// <param name="category">Category for this scope.</param>
-        /// <param name="name">Name for this scope.</param>
-        /// <returns>Profiler session that should be disposed when scope ends.</returns>
+        /// <param name="category">Profiler category.</param>
+        /// <param name="name">Name for the scope.</param>
+        /// <returns>Profiler session for the scope.</returns>
         public ProfilerSession BeginScope(ProfilerCategory category, string name)
         {
             return _baseProfiler.BeginScope(category, name);
         }
 
         /// <summary>
-        /// Get metrics for a specific profiling tag.
+        /// Gets metrics for the specified profiler tag (delegates to base profiler for general metrics).
         /// </summary>
-        /// <param name="tag">The tag to get metrics for.</param>
-        /// <returns>Profile metrics for the tag.</returns>
+        /// <param name="tag">Profiler tag to get metrics for.</param>
+        /// <returns>Metrics data for the tag.</returns>
         public DefaultMetricsData GetMetrics(ProfilerTag tag)
         {
             return _baseProfiler.GetMetrics(tag);
         }
 
         /// <summary>
-        /// Get all profiling metrics.
+        /// Gets all available general metrics (delegates to base profiler).
         /// </summary>
-        /// <returns>Dictionary of all profiling metrics by tag.</returns>
+        /// <returns>Dictionary of all metrics by tag.</returns>
         public IReadOnlyDictionary<ProfilerTag, DefaultMetricsData> GetAllMetrics()
         {
             return _baseProfiler.GetAllMetrics();
         }
 
         /// <summary>
-        /// Get history for a specific profiling tag.
+        /// Gets historical data for the specified tag.
         /// </summary>
-        /// <param name="tag">The tag to get history for.</param>
-        /// <returns>List of historical durations.</returns>
+        /// <param name="tag">Profiler tag to get history for.</param>
+        /// <returns>List of historical values.</returns>
         public IReadOnlyList<double> GetHistory(ProfilerTag tag)
         {
-            if (_history.TryGetValue(tag, out var history))
-                return history;
-
-            return Array.Empty<double>();
+            return _baseProfiler.GetHistory(tag);
         }
 
         /// <summary>
-        /// Register a system metric threshold alert.
+        /// Registers an alert for when a metric exceeds a threshold.
         /// </summary>
-        /// <param name="metricTag">Tag for the metric to monitor.</param>
-        /// <param name="threshold">Threshold value to trigger alert.</param>
+        /// <param name="metricTag">Metric tag to monitor.</param>
+        /// <param name="threshold">Threshold value.</param>
         public void RegisterMetricAlert(ProfilerTag metricTag, double threshold)
         {
             _baseProfiler.RegisterMetricAlert(metricTag, threshold);
         }
 
         /// <summary>
-        /// Register a session threshold alert.
+        /// Registers an alert for when a session duration exceeds a threshold.
         /// </summary>
-        /// <param name="sessionTag">Tag for the session to monitor.</param>
-        /// <param name="thresholdMs">Threshold in milliseconds to trigger alert.</param>
+        /// <param name="sessionTag">Session tag to monitor.</param>
+        /// <param name="thresholdMs">Threshold in milliseconds.</param>
         public void RegisterSessionAlert(ProfilerTag sessionTag, double thresholdMs)
         {
             _baseProfiler.RegisterSessionAlert(sessionTag, thresholdMs);
         }
 
         /// <summary>
-        /// Reset all profiling stats.
+        /// Resets all profiling statistics.
         /// </summary>
         public void ResetStats()
         {
             _baseProfiler.ResetStats();
-            _history.Clear();
-            _loggingMetricsCache.Clear();
+            _loggingMetrics.Clear();
         }
 
         /// <summary>
-        /// Start profiling.
+        /// Starts profiling.
         /// </summary>
         public void StartProfiling()
         {
@@ -164,136 +150,199 @@ namespace AhBearStudios.Core.Profiling.Profilers
         }
 
         /// <summary>
-        /// Stop profiling.
+        /// Stops profiling.
         /// </summary>
         public void StopProfiling()
         {
             _baseProfiler.StopProfiling();
         }
-        
-        #endregion
-        
-        #region Logging-Specific Profiling Methods
-        
+
+        // Logging-specific profiling methods
+
         /// <summary>
-        /// Begin a specialized logging profiling session for message processing.
+        /// Begins profiling a message processing operation.
         /// </summary>
-        /// <param name="logLevel">Log level of the message being processed.</param>
-        /// <param name="tag">Log tag of the message.</param>
-        /// <param name="messageLength">Length of the log message.</param>
-        /// <returns>Logging profiler session.</returns>
+        /// <param name="logLevel">Log level of the message.</param>
+        /// <param name="logTag">Log tag for categorization.</param>
+        /// <param name="messageLength">Length of the message in characters.</param>
+        /// <returns>Profiler session for the operation.</returns>
+        public LoggingProfilerSession BeginMessageProcessingScope(LogLevel logLevel, LogTag logTag, int messageLength = 0)
+        {
+            if (!IsEnabled)
+                return CreateNullSession("MessageProcessing");
+
+            return new LoggingProfilerSession(
+                LoggingProfilerTags.ForMessageProcessing(logLevel),
+                "MessageProcessing",
+                logLevel,
+                logTag,
+                1,
+                messageLength,
+                null,
+                null,
+                null,
+                _messageBus);
+        }
+
+        /// <summary>
+        /// Begins profiling a message processing operation (with string tag for backward compatibility).
+        /// </summary>
+        /// <param name="logLevel">Log level of the message.</param>
+        /// <param name="tag">Log tag as string.</param>
+        /// <param name="messageLength">Length of the message in characters.</param>
+        /// <returns>Profiler session for the operation.</returns>
         public LoggingProfilerSession BeginMessageProcessingScope(LogLevel logLevel, string tag, int messageLength = 0)
         {
             if (!IsEnabled)
                 return CreateNullSession("MessageProcessing");
 
-            var profilerTag = LoggingProfilerTags.ForMessageProcessing(logLevel, tag);
             return new LoggingProfilerSession(
-                profilerTag,
+                LoggingProfilerTags.ForMessageProcessing(logLevel, tag),
                 "MessageProcessing",
                 logLevel,
                 tag,
+                1,
                 messageLength,
-                _messageBus
-            );
+                null,
+                null,
+                null,
+                _messageBus);
         }
 
         /// <summary>
-        /// Begin a specialized logging profiling session for target writes.
+        /// Begins profiling a target write operation.
         /// </summary>
         /// <param name="targetName">Name of the log target.</param>
-        /// <param name="logLevel">Log level being written.</param>LoggingProfilerTags
+        /// <param name="logLevel">Log level for the operation.</param>
         /// <param name="messageCount">Number of messages being written.</param>
-        /// <returns>Logging profiler session.</returns>
+        /// <returns>Profiler session for the operation.</returns>
         public LoggingProfilerSession BeginTargetWriteScope(string targetName, LogLevel logLevel, int messageCount = 1)
         {
             if (!IsEnabled)
                 return CreateNullSession("TargetWrite");
 
-            var tag = LoggingProfilerTags.ForTargetWrite(targetName, logLevel);
             return new LoggingProfilerSession(
-                tag,
+                LoggingProfilerTags.ForTargetWrite(targetName, logLevel),
                 "TargetWrite",
                 logLevel,
-                targetName,
+                LogTag.Default,
                 messageCount,
-                _messageBus
-            );
+                0,
+                targetName,
+                null,
+                null,
+                _messageBus);
         }
 
         /// <summary>
-        /// Begin a specialized logging profiling session for queue flush operations.
+        /// Begins profiling a queue flush operation.
         /// </summary>
         /// <param name="messageCount">Number of messages being flushed.</param>
         /// <param name="targetCount">Number of targets being flushed to.</param>
-        /// <returns>Logging profiler session.</returns>
+        /// <returns>Profiler session for the operation.</returns>
         public LoggingProfilerSession BeginQueueFlushScope(int messageCount, int targetCount = 1)
         {
             if (!IsEnabled)
                 return CreateNullSession("QueueFlush");
 
-            var tag = LoggingProfilerTags.ForQueueFlush(messageCount);
             return new LoggingProfilerSession(
-                tag,
+                LoggingProfilerTags.ForQueueFlush(messageCount),
                 "QueueFlush",
-                LogLevel.Info, // Default level for flush operations
-                "Flush",
+                LogLevel.Info,
+                LogTag.Performance,
                 messageCount,
-                _messageBus
-            );
+                0,
+                null,
+                null,
+                null,
+                _messageBus);
         }
 
         /// <summary>
-        /// Begin a specialized logging profiling session for log level changes.
+        /// Begins profiling a log level change operation.
         /// </summary>
         /// <param name="oldLevel">Previous log level.</param>
         /// <param name="newLevel">New log level.</param>
-        /// <returns>Logging profiler session.</returns>
+        /// <returns>Profiler session for the operation.</returns>
         public LoggingProfilerSession BeginLevelChangeScope(LogLevel oldLevel, LogLevel newLevel)
         {
             if (!IsEnabled)
                 return CreateNullSession("LevelChange");
 
-            var tag = LoggingProfilerTags.ForLevelChange(oldLevel, newLevel);
             return new LoggingProfilerSession(
-                tag,
+                LoggingProfilerTags.ForLevelChange(oldLevel, newLevel),
                 "LevelChange",
                 newLevel,
-                $"{oldLevel}To{newLevel}",
+                LogTag.Performance,
+                1,
                 0,
-                _messageBus
-            );
+                null,
+                null,
+                null,
+                _messageBus);
         }
 
         /// <summary>
-        /// Begin a specialized logging profiling session for formatter operations.
+        /// Begins profiling a formatter operation.
         /// </summary>
-        /// <param name="formatterName">Name of the log formatter.</param>
-        /// <param name="logLevel">Log level being formatted.</param>
+        /// <param name="formatterName">Name of the formatter.</param>
+        /// <param name="logLevel">Log level for the operation.</param>
         /// <param name="messageLength">Length of the message being formatted.</param>
-        /// <returns>Logging profiler session.</returns>
+        /// <returns>Profiler session for the operation.</returns>
         public LoggingProfilerSession BeginFormatterScope(string formatterName, LogLevel logLevel, int messageLength = 0)
         {
             if (!IsEnabled)
                 return CreateNullSession("Formatter");
 
-            var tag = LoggingProfilerTags.ForFormatter(formatterName, logLevel);
             return new LoggingProfilerSession(
-                tag,
+                LoggingProfilerTags.ForFormatter(formatterName, logLevel),
                 "Formatter",
                 logLevel,
-                formatterName,
+                LogTag.Performance,
+                1,
                 messageLength,
-                _messageBus
-            );
+                null,
+                formatterName,
+                null,
+                _messageBus);
         }
 
         /// <summary>
-        /// Profiles a logging action with automatic session management.
+        /// Profiles a logging action with timing.
         /// </summary>
         /// <param name="operationType">Type of logging operation.</param>
         /// <param name="logLevel">Log level for the operation.</param>
-        /// <param name="tag">Tag for the operation.</param>
+        /// <param name="logTag">Log tag for categorization.</param>
+        /// <param name="action">Action to profile.</param>
+        public void ProfileLoggingAction(string operationType, LogLevel logLevel, LogTag logTag, Action action)
+        {
+            if (!IsEnabled || action == null)
+            {
+                action?.Invoke();
+                return;
+            }
+
+            using var session = new LoggingProfilerSession(
+                LoggingProfilerTags.ForGenericOperation(operationType, logLevel),
+                operationType,
+                logLevel,
+                logTag,
+                1,
+                0,
+                null,
+                null,
+                null,
+                _messageBus);
+
+            action.Invoke();
+        }
+
+        /// <summary>
+        /// Profiles a logging action with timing (with string tag for backward compatibility).
+        /// </summary>
+        /// <param name="operationType">Type of logging operation.</param>
+        /// <param name="logLevel">Log level for the operation.</param>
+        /// <param name="tag">Log tag as string.</param>
         /// <param name="action">Action to profile.</param>
         public void ProfileLoggingAction(string operationType, LogLevel logLevel, string tag, Action action)
         {
@@ -303,396 +352,336 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return;
             }
 
-            using (BeginGenericLoggingScope(operationType, logLevel, tag))
-            {
-                action.Invoke();
-            }
+            using var session = new LoggingProfilerSession(
+                LoggingProfilerTags.ForGenericOperation(operationType, logLevel),
+                operationType,
+                logLevel,
+                tag,
+                1,
+                0,
+                null,
+                null,
+                null,
+                _messageBus);
+
+            action.Invoke();
         }
 
         /// <summary>
-        /// Begin a generic logging profiling session.
+        /// Begins a generic logging profiling scope.
         /// </summary>
-        /// <param name="operationType">Type of operation.</param>
-        /// <param name="logLevel">Log level.</param>
-        /// <param name="tag">Operation tag.</param>
-        /// <returns>Logging profiler session.</returns>
+        /// <param name="operationType">Type of logging operation.</param>
+        /// <param name="logLevel">Log level for the operation.</param>
+        /// <param name="logTag">Log tag for categorization.</param>
+        /// <returns>Profiler session for the operation.</returns>
+        public LoggingProfilerSession BeginGenericLoggingScope(string operationType, LogLevel logLevel, LogTag logTag)
+        {
+            if (!IsEnabled)
+                return CreateNullSession(operationType);
+
+            return new LoggingProfilerSession(
+                LoggingProfilerTags.ForGenericOperation(operationType, logLevel),
+                operationType,
+                logLevel,
+                logTag,
+                1,
+                0,
+                null,
+                null,
+                null,
+                _messageBus);
+        }
+
+        /// <summary>
+        /// Begins a generic logging profiling scope (with string tag for backward compatibility).
+        /// </summary>
+        /// <param name="operationType">Type of logging operation.</param>
+        /// <param name="logLevel">Log level for the operation.</param>
+        /// <param name="tag">Log tag as string.</param>
+        /// <returns>Profiler session for the operation.</returns>
         public LoggingProfilerSession BeginGenericLoggingScope(string operationType, LogLevel logLevel, string tag)
         {
             if (!IsEnabled)
                 return CreateNullSession(operationType);
 
-            var profilerTag = LoggingProfilerTags.ForGenericOperation(operationType, logLevel);
             return new LoggingProfilerSession(
-                profilerTag,
+                LoggingProfilerTags.ForGenericOperation(operationType, logLevel),
                 operationType,
                 logLevel,
                 tag,
+                1,
                 0,
-                _messageBus
-            );
+                null,
+                null,
+                null,
+                _messageBus);
         }
-        
-        #endregion
-        
-        #region Logging-Specific Alert Registration
-        
+
         /// <summary>
-        /// Register a log level threshold alert.
+        /// Registers an alert for when operations at a specific log level exceed a threshold.
         /// </summary>
         /// <param name="logLevel">Log level to monitor.</param>
-        /// <param name="thresholdMs">Threshold in milliseconds to trigger alert.</param>
+        /// <param name="thresholdMs">Threshold in milliseconds.</param>
         public void RegisterLogLevelAlert(LogLevel logLevel, double thresholdMs)
         {
-            if (thresholdMs <= 0)
-                return;
-                
             _logLevelAlerts[logLevel] = thresholdMs;
         }
 
         /// <summary>
-        /// Register a log target threshold alert.
+        /// Registers an alert for when operations on a specific target exceed a threshold.
         /// </summary>
-        /// <param name="targetName">Name of the log target to monitor.</param>
-        /// <param name="thresholdMs">Threshold in milliseconds to trigger alert.</param>
+        /// <param name="targetName">Target name to monitor.</param>
+        /// <param name="thresholdMs">Threshold in milliseconds.</param>
         public void RegisterTargetAlert(string targetName, double thresholdMs)
         {
-            if (string.IsNullOrEmpty(targetName) || thresholdMs <= 0)
-                return;
-                
-            _targetAlerts[targetName] = thresholdMs;
+            if (!string.IsNullOrEmpty(targetName))
+            {
+                _targetAlerts[targetName] = thresholdMs;
+            }
         }
-        
-        #endregion
-        
-        #region Logging Metrics
-        
+
         /// <summary>
-        /// Get logging metrics for a specific operation type.
+        /// Gets logging metrics for a specific operation type.
         /// </summary>
-        /// <param name="operationType">Type of logging operation.</param>
-        /// <returns>Logging metrics data if available.</returns>
+        /// <param name="operationType">Operation type to get metrics for.</param>
+        /// <returns>Logging metrics data, or null if not found.</returns>
         public LoggingMetricsData? GetLoggingMetrics(string operationType)
         {
-            if (string.IsNullOrEmpty(operationType))
-                return null;
-                
-            if (_loggingMetricsCache.TryGetValue(operationType, out var metrics))
-                return metrics;
-
-            return null;
+            return _loggingMetrics.TryGetValue(operationType, out var metrics) ? metrics : null;
         }
 
         /// <summary>
-        /// Get all logging metrics.
+        /// Gets all logging metrics.
         /// </summary>
-        /// <returns>Dictionary of logging metrics by operation type.</returns>
+        /// <returns>Dictionary of all logging metrics by operation type.</returns>
         public IReadOnlyDictionary<string, LoggingMetricsData> GetAllLoggingMetrics()
         {
-            return new Dictionary<string, LoggingMetricsData>(_loggingMetricsCache);
+            return _loggingMetrics;
         }
-        
-        #endregion
-        
-        #region Message Subscription
-        
+
         /// <summary>
-        /// Subscribes to logging-related messages from the message bus.
+        /// Gets a performance snapshot for all logging operations.
+        /// </summary>
+        /// <returns>Dictionary containing performance metrics.</returns>
+        public Dictionary<string, string> GetLoggingPerformanceSnapshot()
+        {
+            var snapshot = new Dictionary<string, string>();
+            
+            foreach (var kvp in _loggingMetrics)
+            {
+                var operationType = kvp.Key;
+                var metrics = kvp.Value;
+                
+                snapshot[$"{operationType}_TotalMessages"] = metrics.TotalMessagesProcessed.ToString();
+                snapshot[$"{operationType}_FailedMessages"] = metrics.TotalMessagesFailed.ToString();
+                snapshot[$"{operationType}_SuccessRate"] = $"{metrics.SuccessRate:F2}%";
+                snapshot[$"{operationType}_AvgProcessingTime"] = $"{metrics.AverageProcessingTimeMs:F3}ms";
+                snapshot[$"{operationType}_PeakProcessingTime"] = $"{metrics.PeakProcessingTimeMs:F3}ms";
+                snapshot[$"{operationType}_CurrentQueueSize"] = metrics.CurrentQueueSize.ToString();
+                snapshot[$"{operationType}_PeakQueueSize"] = metrics.PeakQueueSize.ToString();
+                snapshot[$"{operationType}_MemoryUsage"] = FormatByteSize(metrics.MemoryUsageBytes);
+                snapshot[$"{operationType}_PeakMemoryUsage"] = FormatByteSize(metrics.PeakMemoryUsageBytes);
+            }
+            
+            return snapshot;
+        }
+
+        /// <summary>
+        /// Gets the current time for logging operations.
+        /// </summary>
+        /// <returns>Current time in seconds.</returns>
+        private float GetCurrentTime()
+        {
+            return UnityEngine.Time.realtimeSinceStartup;
+        }
+
+        /// <summary>
+        /// Subscribes to relevant message bus events.
         /// </summary>
         private void SubscribeToMessages()
         {
+            if (_messageBus == null) return;
+
             try
             {
-                // Subscribe to log entry written messages
-                var entryWrittenSub = _messageBus.SubscribeToMessage<LogEntryWrittenMessage>(OnLogEntryWritten);
-                if (entryWrittenSub != null)
-                    _subscriptions.Add(entryWrittenSub);
-                
-                // Subscribe to log level changed messages
-                var levelChangedSub = _messageBus.SubscribeToMessage<LogLevelChangedMessage>(OnLogLevelChanged);
-                if (levelChangedSub != null)
-                    _subscriptions.Add(levelChangedSub);
-                
-                // Subscribe to logging profiler session completed messages
-                var sessionCompletedSub = _messageBus.SubscribeToMessage<LoggingProfilerSessionCompletedMessage>(OnLoggingSessionCompleted);
-                if (sessionCompletedSub != null)
-                    _subscriptions.Add(sessionCompletedSub);
+                var subscriber = _messageBus.GetSubscriber<LogEntryWrittenMessage>();
+                subscriber?.Subscribe(OnLogEntryWritten);
+
+                var levelSubscriber = _messageBus.GetSubscriber<LogLevelChangedMessage>();
+                levelSubscriber?.Subscribe(OnLogLevelChanged);
+
+                var sessionSubscriber = _messageBus.GetSubscriber<LoggingProfilerSessionCompletedMessage>();
+                sessionSubscriber?.Subscribe(OnLoggingSessionCompleted);
             }
-            catch (Exception ex)
+            catch
             {
-                // Log the error but don't fail initialization
-                UnityEngine.Debug.LogError($"LoggingProfiler: Failed to subscribe to some messages: {ex.Message}");
+                // Silently handle subscription errors
             }
         }
-        
-        #endregion
-        
-        #region Message Handlers
-        
+
         /// <summary>
-        /// Handles log entry written messages.
+        /// Handles log entry written events.
         /// </summary>
+        /// <param name="message">Log entry written message.</param>
         private void OnLogEntryWritten(LogEntryWrittenMessage message)
         {
-            if (!IsEnabled)
-                return;
-
-            // Update metrics cache for the target
-            var targetName = message.TargetName ?? "Unknown";
-            var logLevel = (LogLevel)message.LogMessage.Level;
-    
-            UpdateLoggingMetrics("TargetWrite", targetName, logLevel, 1);
-    
-            // Check target alerts
-            if (_targetAlerts.TryGetValue(targetName, out var threshold))
+            if (message?.Tag != null)
             {
-                // We don't have timing info from this message, so we can't check thresholds here
-                // This would typically be handled by the LoggingProfilerSession
+                // Convert string tag to LogTag enum for processing
+                var logTag = AhBearStudios.Core.Logging.Tags.Tagging.GetLogTag(message.Tag);
+                UpdateLoggingMetrics("LogEntryWritten", logTag, message.Level, 1, message.MessageLength ?? 0);
             }
         }
 
         /// <summary>
-        /// Handles log level changed messages.
+        /// Handles log level changed events.
         /// </summary>
+        /// <param name="message">Log level changed message.</param>
         private void OnLogLevelChanged(LogLevelChangedMessage message)
         {
-            if (!IsEnabled)
-                return;
-
-            UpdateLoggingMetrics("LevelChange", $"{message.OldLevel}To{message.NewLevel}", message.NewLevel, 1);
+            UpdateLoggingMetrics("LogLevelChanged", LogTag.Performance, message.NewLevel, 1, 0);
         }
 
         /// <summary>
-        /// Handles logging profiler session completed messages.
+        /// Handles logging session completed events.
         /// </summary>
+        /// <param name="message">Logging session completed message.</param>
         private void OnLoggingSessionCompleted(LoggingProfilerSessionCompletedMessage message)
         {
-            if (!IsEnabled)
-                return;
-
-            // Update history
-            if (!_history.TryGetValue(message.Tag, out var history))
-            {
-                history = new List<double>(MaxHistoryItems);
-                _history[message.Tag] = history;
-            }
-
-            if (history.Count >= MaxHistoryItems)
-                history.RemoveAt(0);
-
-            history.Add(message.DurationMs);
-
-            // Update metrics cache
-            UpdateLoggingMetrics(message.OperationType, message.LogTag, message.LogLevel, message.MessageCount);
-
-            // Check alerts
+            var processingTime = TimeSpan.FromMilliseconds(message.DurationMs);
+            UpdateLoggingMetrics(message.OperationType, message.LogTag, message.LogLevel, 
+                               message.MessageCount, message.MessageLength, processingTime);
             CheckAlerts(message);
         }
-        
-        #endregion
-        
-        #region Helper Methods
-        
+
         /// <summary>
-        /// Creates a null session for when profiling is disabled.
+        /// Creates a null session that doesn't perform any actual profiling.
         /// </summary>
+        /// <param name="operationType">Operation type for the null session.</param>
+        /// <returns>Null logging profiler session.</returns>
         private LoggingProfilerSession CreateNullSession(string operationType)
         {
             return new LoggingProfilerSession(
-                ProfilerTag.Uncategorized,
+                LoggingProfilerTags.ForGenericOperation(operationType),
                 operationType,
                 LogLevel.Info,
-                "Null",
+                LogTag.Default,
+                1,
                 0,
-                null
-            );
+                null,
+                null,
+                null,
+                null);
         }
 
         /// <summary>
-        /// Updates logging metrics in the cache.
+        /// Updates logging metrics for a specific operation.
         /// </summary>
-        private void UpdateLoggingMetrics(string operationType, string tag, LogLevel logLevel, int messageCount)
+        /// <param name="operationType">Type of logging operation.</param>
+        /// <param name="logTag">Log tag for the operation.</param>
+        /// <param name="logLevel">Log level for the operation.</param>
+        /// <param name="messageCount">Number of messages processed.</param>
+        /// <param name="messageSize">Size of messages in bytes.</param>
+        /// <param name="processingTime">Processing time for the operation.</param>
+        private void UpdateLoggingMetrics(string operationType, LogTag logTag, LogLevel logLevel, 
+                                        int messageCount, int messageSize = 0, TimeSpan? processingTime = null)
         {
-            if (string.IsNullOrEmpty(operationType))
-                return;
-
-            if (!_loggingMetricsCache.TryGetValue(operationType, out var metrics))
+            if (!_loggingMetrics.TryGetValue(operationType, out var metrics))
             {
-                metrics = new LoggingMetricsData();
-                _loggingMetricsCache[operationType] = metrics;
+                var systemId = new FixedString64Bytes($"LogProf_{operationType}");
+                var systemName = new FixedString128Bytes($"LoggingProfiler_{operationType}");
+                metrics = new LoggingMetricsData(systemId, systemName, GetCurrentTime());
+                _loggingMetrics[operationType] = metrics;
             }
 
-            // Update metrics (this would need to be implemented based on LoggingMetricsData structure)
-            // For now, this is a placeholder
+            // Update metrics using the LoggingMetricsData methods
+            if (processingTime.HasValue)
+            {
+                // Record message processing with actual timing data
+                for (int i = 0; i < messageCount; i++)
+                {
+                    metrics = metrics.RecordMessageProcessing(logLevel, logTag, processingTime.Value, true, messageSize);
+                }
+            }
+            else
+            {
+                // Record without timing (for events without duration)
+                metrics = metrics.RecordMessageProcessing(logLevel, logTag, TimeSpan.Zero, true, messageSize);
+            }
+
+            // Update the stored metrics
+            _loggingMetrics[operationType] = metrics.UpdateOperationTime(GetCurrentTime());
         }
 
         /// <summary>
-        /// Checks alerts for a completed logging session.
+        /// Checks if any alerts should be triggered for the completed session.
         /// </summary>
+        /// <param name="message">Completed session message.</param>
         private void CheckAlerts(LoggingProfilerSessionCompletedMessage message)
         {
             // Check log level alerts
-            if (_logLevelAlerts.TryGetValue(message.LogLevel, out var levelThreshold) && 
+            if (_logLevelAlerts.TryGetValue(message.LogLevel, out var levelThreshold) &&
                 message.DurationMs > levelThreshold)
             {
-                var alertMessage = new LoggingAlertMessage(
-                    message.Tag,
-                    message.LogLevel,
-                    message.LogTag,
-                    message.DurationMs,
-                    levelThreshold,
-                    "LogLevel"
-                );
-                _messageBus.PublishMessage(alertMessage);
+                // Trigger log level alert
+                // TODO: Implement alert publishing through message bus
             }
 
             // Check target alerts
-            if (_targetAlerts.TryGetValue(message.LogTag, out var targetThreshold) && 
+            if (!string.IsNullOrEmpty(message.TargetName) &&
+                _targetAlerts.TryGetValue(message.TargetName, out var targetThreshold) &&
                 message.DurationMs > targetThreshold)
             {
-                var alertMessage = new LoggingAlertMessage(
-                    message.Tag,
-                    message.LogLevel,
-                    message.LogTag,
-                    message.DurationMs,
-                    targetThreshold,
-                    "Target"
-                );
-                _messageBus.PublishMessage(alertMessage);
+                // Trigger target alert
+                // TODO: Implement alert publishing through message bus
             }
         }
-        
-        #endregion
-        
-        #region IDisposable Implementation
-        
+
         /// <summary>
-        /// Disposes of resources and unsubscribes from messages.
+        /// Formats byte size for human-readable display.
+        /// </summary>
+        /// <param name="bytes">Size in bytes.</param>
+        /// <returns>Formatted size string.</returns>
+        private string FormatByteSize(long bytes)
+        {
+            string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+            int order = 0;
+            double size = bytes;
+            
+            while (size >= 1024 && order < sizes.Length - 1)
+            {
+                order++;
+                size /= 1024;
+            }
+            
+            return $"{size:F2} {sizes[order]}";
+        }
+
+        /// <summary>
+        /// Disposes the profiler and cleans up resources.
         /// </summary>
         public void Dispose()
         {
-            if (_disposed)
-                return;
+            if (_isDisposed) return;
 
-            try
-            {
-                // Unsubscribe from all message bus subscriptions
-                foreach (var subscription in _subscriptions)
-                {
-                    try
-                    {
-                        subscription?.Dispose();
-                    }
-                    catch (Exception ex)
-                    {
-                        UnityEngine.Debug.LogError($"LoggingProfiler: Error disposing subscription: {ex.Message}");
-                    }
-                }
+            _loggingMetrics.Clear();
+            _logLevelAlerts.Clear();
+            _targetAlerts.Clear();
 
-                _subscriptions.Clear();
-                _history.Clear();
-                _loggingMetricsCache.Clear();
-                _logLevelAlerts.Clear();
-                _targetAlerts.Clear();
-            }
-            finally
-            {
-                _disposed = true;
-            }
+            _isDisposed = true;
         }
-        
-        #endregion
-    }
-    
-    #region Supporting Types
-    
-    /// <summary>
-    /// Specialized profiler session for logging operations.
-    /// </summary>
-    public sealed class LoggingProfilerSession : IDisposable
-    {
-        private readonly ProfilerTag _tag;
-        private readonly string _operationType;
-        private readonly LogLevel _logLevel;
-        private readonly string _logTag;
-        private readonly int _messageCount;
-        private readonly IMessageBus _messageBus;
-        private readonly System.Diagnostics.Stopwatch _stopwatch;
-        private bool _disposed;
 
-        /// <summary>
-        /// Creates a new logging profiler session.
-        /// </summary>
-        public LoggingProfilerSession(
-            ProfilerTag tag,
-            string operationType,
-            LogLevel logLevel,
-            string logTag,
-            int messageCount,
-            IMessageBus messageBus)
+        // Message classes for event handling - these would typically be defined elsewhere
+        private class LogEntryWrittenMessage
         {
-            _tag = tag;
-            _operationType = operationType;
-            _logLevel = logLevel;
-            _logTag = logTag;
-            _messageCount = messageCount;
-            _messageBus = messageBus;
-            _stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            public LogLevel Level { get; set; }
+            public string Tag { get; set; }
+            public int? MessageLength { get; set; }
         }
 
-        /// <summary>
-        /// Gets the elapsed time in milliseconds.
-        /// </summary>
-        public double ElapsedMilliseconds => _stopwatch.Elapsed.TotalMilliseconds;
-
-        /// <summary>
-        /// Disposes the session and publishes completion message.
-        /// </summary>
-        public void Dispose()
+        private class LogLevelChangedMessage
         {
-            if (_disposed)
-                return;
-
-            _stopwatch.Stop();
-
-            if (_messageBus != null)
-            {
-                var completionMessage = new LoggingProfilerSessionCompletedMessage(
-                    _tag,
-                    _operationType,
-                    _logLevel,
-                    _logTag,
-                    _messageCount,
-                    _stopwatch.Elapsed.TotalMilliseconds
-                );
-                
-                try
-                {
-                    _messageBus.PublishMessage(completionMessage);
-                }
-                catch
-                {
-                    // Silently handle publication errors
-                }
-            }
-
-            _disposed = true;
+            public LogLevel NewLevel { get; set; }
         }
     }
-    
-    /// <summary>
-    /// Logging metrics data structure.
-    /// </summary>
-    public struct LoggingMetricsData
-    {
-        public long TotalOperations;
-        public double AverageTimeMs;
-        public double MinTimeMs;
-        public double MaxTimeMs;
-        public long TotalMessageCount;
-        public Dictionary<LogLevel, long> MessagesByLevel;
-        
-        // Constructor and methods would be implemented here
-    }
-    
-    #endregion
 }

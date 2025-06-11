@@ -93,6 +93,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
         /// <summary>
         /// Ensures factories are available, creating them with minimal dependencies if needed
         /// </summary>
+        
         private void EnsureFactories()
         {
             // Create delivery service factory if not injected
@@ -103,12 +104,15 @@ namespace AhBearStudios.Core.MessageBus.Unity
 
                 // Create minimal dependencies for MessageDeliveryServiceFactory
                 var logger = CreateDefaultLogger();
-                var messageRegistry = CreateDefaultMessageRegistry();
-                var statisticsTracker = CreateDefaultStatisticsTracker();
-                var config = _runtimeConfig ?? CreateDefaultConfig();
+                var profiler = CreateDefaultProfiler();
+                var config = CreateDefaultDeliveryServiceConfiguration();
+
+                // Note: We need to create a temporary message bus or use null pattern
+                // Since this is called before the main message bus is created, we'll use a placeholder
+                var tempMessageBus = new NullMessageBus();
 
                 _deliveryServiceFactory =
-                    new MessageDeliveryServiceFactory(logger, messageRegistry, statisticsTracker, config);
+                    new MessageDeliveryServiceFactory(tempMessageBus, logger, profiler, config);
             }
 
             // Create serializer factory if not injected
@@ -144,6 +148,28 @@ namespace AhBearStudios.Core.MessageBus.Unity
             var registry = new MessageRegistry();
             registry.DiscoverMessages(); // Auto-discover message types
             return registry;
+        }
+        
+        /// <summary>
+        /// Creates a default profiler for factory dependencies
+        /// </summary>
+        private IProfiler CreateDefaultProfiler()
+        {
+            // Return a basic profiler implementation or null profiler
+            return new NullProfiler(); // You'll need to implement this or use an existing one
+        }
+
+        /// <summary>
+        /// Creates a default delivery service configuration
+        /// </summary>
+        private DeliveryServiceConfiguration CreateDefaultDeliveryServiceConfiguration()
+        {
+            return new DeliveryServiceConfiguration
+            {
+                MaxConcurrentDeliveries = 10,
+                ProcessingInterval = TimeSpan.FromMilliseconds(100),
+                DefaultTimeout = TimeSpan.FromSeconds(5)
+            };
         }
 
         /// <summary>

@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Profiling.Data;
 using AhBearStudios.Core.Profiling.Interfaces;
+using AhBearStudios.Core.Profiling.Messages;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using Unity.Collections;
 using UnityEngine;
@@ -29,9 +31,9 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
         private readonly Dictionary<LogTag, long> _tagCounts;
         private readonly Dictionary<string, long> _targetCounts;
         
-        // Alert storage
-        private readonly Dictionary<Guid, Dictionary<string, MetricAlert>> _systemAlerts;
-        private readonly Dictionary<string, MetricAlert> _globalAlerts;
+        // Alert storage - using simple struct instead of class
+        private readonly Dictionary<Guid, Dictionary<string, AlertConfig>> _systemAlerts;
+        private readonly Dictionary<string, AlertConfig> _globalAlerts;
         
         // Message bus for alerts
         private readonly IMessageBus _messageBus;
@@ -39,6 +41,19 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
         // State
         private bool _isCreated;
         private bool _isEnabled;
+        
+        /// <summary>
+        /// Simple alert configuration for logging metrics
+        /// </summary>
+        private struct AlertConfig
+        {
+            public string MetricName;
+            public double Threshold;
+            public string AlertType;
+            public float LastTriggeredTime;
+            public float CooldownPeriod;
+            public float CurrentCooldown;
+        }
         
         /// <summary>
         /// Whether the metrics tracker is created and initialized
@@ -63,26 +78,23 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
         {
             // Create storage
             _loggingSystemMetrics = new Dictionary<Guid, LoggingMetricsData>(initialCapacity);
-            _systemAlerts = new Dictionary<Guid, Dictionary<string, MetricAlert>>();
-            _globalAlerts = new Dictionary<string, MetricAlert>();
+            _systemAlerts = new Dictionary<Guid, Dictionary<string, AlertConfig>>();
+            _globalAlerts = new Dictionary<string, AlertConfig>();
             _metricsLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
             _messageBus = messageBus;
-            
+    
             // Create tracking dictionaries
             _levelCounts = new Dictionary<LogLevel, long>();
             _tagCounts = new Dictionary<LogTag, long>();
             _targetCounts = new Dictionary<string, long>();
-            
-            // Initialize global metrics
+    
+            // Initialize global metrics with current time
             float currentTime = GetCurrentTime();
             _globalMetrics = new LoggingMetricsData(
                 new FixedString64Bytes("Global"), 
-                new FixedString128Bytes("Global Logging System"))
-            {
-                _creationTime = currentTime,
-                _lastResetTime = currentTime
-            };
-            
+                new FixedString128Bytes("Global Logging System"),
+                currentTime);
+    
             _isCreated = true;
             _isEnabled = true;
         }
@@ -596,7 +608,7 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
             _metricsLock.EnterWriteLock();
             try
             {
-                var alert = new MetricAlert 
+                var alert = new AlertConfig 
                 { 
                     MetricName = metricName,
                     Threshold = threshold,
@@ -786,8 +798,6 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
                     ["SystemCount"] = _loggingSystemMetrics.Count,
                     ["AlertCount"] = _globalAlerts.Count,
                     ["HasMessageBus"] = _messageBus != null,
-                    ["CreationTime"] = _globalMetrics._creationTime,
-                    ["LastResetTime"] = _globalMetrics._lastResetTime,
                     ["UptimeSeconds"] = _globalMetrics.UptimeSeconds
                 };
             }
@@ -839,11 +849,8 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
                 {
                     var systemMetrics = new LoggingMetricsData(
                         new FixedString64Bytes(systemId.ToString()),
-                        new FixedString128Bytes(systemName ?? systemId.ToString()))
-                    {
-                        _creationTime = GetCurrentTime(),
-                        _lastResetTime = GetCurrentTime()
-                    };
+                        new FixedString128Bytes(systemName ?? systemId.ToString()),
+                        GetCurrentTime());
                     
                     _loggingSystemMetrics.Add(systemId, systemMetrics);
                     
@@ -928,7 +935,7 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
         }
         
         /// <summary>
-        /// Checks global alerts
+        /// Checks global alerts using existing message types
         /// </summary>
         private void CheckGlobalAlerts()
         {
@@ -936,9 +943,12 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
                 return;
                 
             float currentTime = GetCurrentTime();
+            var alertsToUpdate = new List<string>();
             
-            foreach (var alert in _globalAlerts.Values)
+            foreach (var kvp in _globalAlerts)
             {
+                var alert = kvp.Value;
+                
                 // Skip if on cooldown
                 if (alert.CurrentCooldown > 0)
                     continue;
@@ -953,18 +963,48 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
                     
                 if (shouldTrigger)
                 {
-                    // Trigger alert
+                    // Update alert state
                     alert.LastTriggeredTime = currentTime;
                     alert.CurrentCooldown = alert.CooldownPeriod;
+                    alertsToUpdate.Add(kvp.Key);
                     
-                    // Create and publish message
-                    var message = new LoggingMetricAlertMessage(
-                        alert.MetricName, 
-                        metricValue, 
+                    // Create and publish LoggingAlertMessage using existing message type
+                    var loggingAlert = new LoggingAlertMessage(
+                        ProfilerTag.GameplayUpdate,
+                        LogLevel.Warning,
+                        alert.MetricName,
+                        metricValue,
                         alert.Threshold,
                         alert.AlertType);
+                    
+                    // Also create MetricAlertMessage for general metric alerts
+                    var metricAlert = new MetricAlertMessage(
+                        ProfilerTag.GameplayUpdate,
+                        metricValue,
+                        alert.Threshold);
+                    
+                    try
+                    {
+                        // Publish both messages to ensure compatibility
+                        var loggingPublisher = _messageBus.GetPublisher<LoggingAlertMessage>();
+                        loggingPublisher?.Publish(loggingAlert);
                         
-                    _messageBus.PublishMessage(message);
+                        var metricPublisher = _messageBus.GetPublisher<MetricAlertMessage>();
+                        metricPublisher?.Publish(metricAlert);
+                    }
+                    catch
+                    {
+                        // Silently handle publication errors
+                    }
+                }
+            }
+            
+            // Update the alerts that were triggered
+            foreach (var alertKey in alertsToUpdate)
+            {
+                if (_globalAlerts.TryGetValue(alertKey, out var alert))
+                {
+                    _globalAlerts[alertKey] = alert;
                 }
             }
             
@@ -977,11 +1017,24 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
         /// </summary>
         private void UpdateAlertCooldowns(float deltaTime)
         {
-            foreach (var alert in _globalAlerts.Values)
+            var alertsToUpdate = new List<string>();
+            
+            foreach (var kvp in _globalAlerts)
             {
+                var alert = kvp.Value;
                 if (alert.CurrentCooldown > 0)
                 {
                     alert.CurrentCooldown = Math.Max(0, alert.CurrentCooldown - deltaTime);
+                    alertsToUpdate.Add(kvp.Key);
+                }
+            }
+            
+            // Update the alerts with new cooldown values
+            foreach (var alertKey in alertsToUpdate)
+            {
+                if (_globalAlerts.TryGetValue(alertKey, out var alert))
+                {
+                    _globalAlerts[alertKey] = alert;
                 }
             }
         }
@@ -1060,62 +1113,5 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
         }
         
         #endregion
-        
-        /// <summary>
-        /// Represents a metric alert for logging metrics
-        /// </summary>
-        private class MetricAlert
-        {
-            /// <summary>
-            /// Name of the metric
-            /// </summary>
-            public string MetricName;
-            
-            /// <summary>
-            /// Threshold value
-            /// </summary>
-            public double Threshold;
-            
-            /// <summary>
-            /// Type of alert (above/below)
-            /// </summary>
-            public string AlertType;
-            
-            /// <summary>
-            /// Last time this alert was triggered
-            /// </summary>
-            public float LastTriggeredTime;
-            
-            /// <summary>
-            /// Cooldown period in seconds
-            /// </summary>
-            public float CooldownPeriod;
-            
-            /// <summary>
-            /// Current cooldown remaining
-            /// </summary>
-            public float CurrentCooldown;
-        }
-    }
-    
-    /// <summary>
-    /// Message published when a logging metric alert is triggered
-    /// </summary>
-    public class LoggingMetricAlertMessage
-    {
-        public string MetricName { get; }
-        public double CurrentValue { get; }
-        public double Threshold { get; }
-        public string AlertType { get; }
-        public DateTime Timestamp { get; }
-        
-        public LoggingMetricAlertMessage(string metricName, double currentValue, double threshold, string alertType)
-        {
-            MetricName = metricName;
-            CurrentValue = currentValue;
-            Threshold = threshold;
-            AlertType = alertType;
-            Timestamp = DateTime.Now;
-        }
     }
 }
