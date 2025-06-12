@@ -1,69 +1,76 @@
-﻿
-using System;
+﻿using System;
+using AhBearStudios.Core.Bootstrap.Installers;
 using AhBearStudios.Core.DependencyInjection.Attributes;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.MessageBus.Configuration;
 using AhBearStudios.Core.MessageBus.Factories;
-using AhBearStudios.Core.MessageBus.MessageBuses;
+using AhBearStudios.Core.MessageBus.Services;
+using AhBearStudios.Core.Profiling.Data;
 using AhBearStudios.Core.Profiling.Interfaces;
+using AhBearStudios.Core.Profiling.Profilers;
+using AhBearStudios.Core.Profiling.Metrics;
+using Unity.Collections;
 using UnityEngine;
 
 namespace AhBearStudios.Core.MessageBus.Unity
 {
     /// <summary>
-    /// Unity component that provides message bus services.
+    /// Unity component that provides message bus services with integrated profiling.
     /// Manages the message bus lifecycle and provides access to it.
     /// </summary>
     public class MessageBusProvider : MonoBehaviour, IDisposable
     {
-        [Header("Configuration")] [SerializeField]
-        private MessageBusConfig _config;
-
+        [Header("Configuration")]
+        [SerializeField] private MessageBusConfig _config;
         [SerializeField] private bool _persistBetweenScenes = true;
         [SerializeField] private bool _autoInitialize = true;
         [SerializeField] private int _initialCapacity = 100;
-
+        
+        [Header("Profiling")]
+        [SerializeField] private bool _enableProfiling = true;
+        [SerializeField] private bool _enableNativeMetrics = true;
+        [SerializeField] private bool _enableMessageBusProfiler = true;
+        [SerializeField] private int _metricsCapacity = 256;
+        
         private IMessageBus _messageBus;
         private IMessageBusConfig _runtimeConfig;
         private IMessageDeliveryServiceFactory _deliveryServiceFactory;
         private IMessageSerializerFactory _serializerFactory;
+        
+        // Profiling components
+        private IProfiler _baseProfiler;
+        private IMessageBusMetrics _busMetrics;
+        private MessageBusProfiler _messageBusProfiler;
+        
         private bool _isInitialized;
         private bool _isDisposed;
-
+        
         // Static instance for singleton access
         private static MessageBusProvider _instance;
         private static readonly object _lock = new object();
-
-        /// <summary>
-        /// Gets the message bus instance
-        /// </summary>
+        
         public IMessageBus MessageBus => _messageBus;
-
-        /// <summary>
-        /// Gets whether the message bus is initialized
-        /// </summary>
+        public IMessageBusMetrics BusMetrics => _busMetrics;
+        public MessageBusProfiler Profiler => _messageBusProfiler;
         public bool IsInitialized => _isInitialized && !_isDisposed;
-
-        /// <summary>
-        /// Event fired when the message bus is initialized
-        /// </summary>
+        
         public event Action<MessageBusProvider> Initialized;
-
-        /// <summary>
-        /// Event fired when the message bus is disposed
-        /// </summary>
         public event Action<MessageBusProvider> Disposed;
-
+        
         [Inject]
         public void Construct(
             IMessageDeliveryServiceFactory deliveryServiceFactory = null,
-            IMessageSerializerFactory serializerFactory = null)
+            IMessageSerializerFactory serializerFactory = null,
+            IProfiler baseProfiler = null,
+            IMessageBusMetrics busMetrics = null)
         {
             _deliveryServiceFactory = deliveryServiceFactory;
             _serializerFactory = serializerFactory;
+            _baseProfiler = baseProfiler;
+            _busMetrics = busMetrics;
         }
-
+        
         private void Awake()
         {
             // Ensure singleton behavior
@@ -71,11 +78,9 @@ namespace AhBearStudios.Core.MessageBus.Unity
             {
                 if (_instance != null && _instance != this)
                 {
-                    Debug.LogWarning("[MessageBusProvider] Multiple instances detected. Destroying duplicate.");
                     Destroy(gameObject);
                     return;
                 }
-
                 _instance = this;
             }
 
@@ -89,109 +94,160 @@ namespace AhBearStudios.Core.MessageBus.Unity
                 Initialize();
             }
         }
-
-        /// <summary>
-        /// Ensures factories are available, creating them with minimal dependencies if needed
-        /// </summary>
         
+        /// <summary>
+        /// Ensures factories and profiling components are available
+        /// </summary>
         private void EnsureFactories()
         {
             // Create delivery service factory if not injected
             if (_deliveryServiceFactory == null)
             {
-                Debug.LogWarning(
-                    "[MessageBusProvider] MessageDeliveryServiceFactory not injected. Creating with default dependencies.");
-
-                // Create minimal dependencies for MessageDeliveryServiceFactory
                 var logger = CreateDefaultLogger();
-                var profiler = CreateDefaultProfiler();
+                var registry = CreateDefaultMessageRegistry();
+                var profiler = GetOrCreateProfiler();
                 var config = CreateDefaultDeliveryServiceConfiguration();
-
-                // Note: We need to create a temporary message bus or use null pattern
-                // Since this is called before the main message bus is created, we'll use a placeholder
-                var tempMessageBus = new NullMessageBus();
-
-                _deliveryServiceFactory =
-                    new MessageDeliveryServiceFactory(tempMessageBus, logger, profiler, config);
+                var statistics = CreateDefaultStatisticsTracker();
+                
+                _deliveryServiceFactory = new MessageDeliveryServiceFactory(
+                    logger, registry, profiler, config, statistics);
             }
 
             // Create serializer factory if not injected
             if (_serializerFactory == null)
             {
-                Debug.LogWarning(
-                    "[MessageBusProvider] MessageSerializerFactory not injected. Creating with default dependencies.");
-
-                // Create minimal dependencies for MessageSerializerFactory
                 var logger = CreateDefaultLogger();
-                var messageRegistry = CreateDefaultMessageRegistry();
+                var registry = CreateDefaultMessageRegistry();
                 var metrics = CreateDefaultSerializerMetrics();
-
-                _serializerFactory = new MessageSerializerFactory(logger, messageRegistry, metrics);
+                
+                _serializerFactory = new MessageSerializerFactory(logger, registry, metrics);
             }
         }
-
+        
+        /// <summary>
+        /// Gets or creates the base profiler
+        /// </summary>
+        private IProfiler GetOrCreateProfiler()
+        {
+            if (_baseProfiler != null)
+                return _baseProfiler;
+                
+            if (!_enableProfiling)
+                return CreateNullProfiler();
+                
+            return CreateDefaultProfiler();
+        }
+        
+        /// <summary>
+        /// Gets or creates the message bus metrics
+        /// </summary>
+        private IMessageBusMetrics GetOrCreateBusMetrics()
+        {
+            if (_busMetrics != null)
+                return _busMetrics;
+                
+            if (!_enableProfiling)
+                return CreateNullMetrics();
+                
+            if (_enableNativeMetrics)
+            {
+                return new NativeMessageBusMetrics(_metricsCapacity, Allocator.Persistent);
+            }
+            else
+            {
+                return new MessageBusMetrics(_messageBus, _metricsCapacity);
+            }
+        }
+        
+        /// <summary>
+        /// Creates the message bus profiler if enabled
+        /// </summary>
+        private void CreateMessageBusProfiler()
+        {
+            if (!_enableProfiling || !_enableMessageBusProfiler)
+                return;
+                
+            var baseProfiler = GetOrCreateProfiler();
+            var busMetrics = GetOrCreateBusMetrics();
+            
+            if (baseProfiler != null && busMetrics != null && _messageBus != null)
+            {
+                _messageBusProfiler = new MessageBusProfiler(baseProfiler, busMetrics, _messageBus);
+                
+                // Configure common alert thresholds
+                ConfigureProfilerAlerts();
+                
+                Debug.Log("[MessageBusProvider] MessageBusProfiler created and configured");
+            }
+        }
+        
+        /// <summary>
+        /// Configures common profiler alert thresholds
+        /// </summary>
+        private void ConfigureProfilerAlerts()
+        {
+            if (_messageBusProfiler == null) return;
+            
+            // Configure typical performance thresholds
+            _messageBusProfiler.RegisterBusMetricAlert(Guid.Empty, "DeliveryTime", 50.0); // 50ms delivery threshold
+            _messageBusProfiler.RegisterBusMetricAlert(Guid.Empty, "QueueSize", 1000.0); // 1000 message queue threshold
+            _messageBusProfiler.RegisterMessageTypeAlert("IMessage", 100.0); // 100ms per message type
+            _messageBusProfiler.RegisterOperationAlert("Publish", 25.0); // 25ms publish threshold
+            _messageBusProfiler.RegisterOperationAlert("Subscribe", 10.0); // 10ms subscribe threshold
+        }
+        
         /// <summary>
         /// Creates a default logger for factory dependencies
         /// </summary>
         private IBurstLogger CreateDefaultLogger()
         {
-            // Create a simple Unity logger implementation
             return new UnityBurstLogger();
         }
-
-        /// <summary>
-        /// Creates a default message registry for factory dependencies
-        /// </summary>
+        
         private IMessageRegistry CreateDefaultMessageRegistry()
         {
-            // Create a basic message registry
-            var registry = new MessageRegistry();
-            registry.DiscoverMessages(); // Auto-discover message types
-            return registry;
+            return new MessageRegistry();
         }
         
-        /// <summary>
-        /// Creates a default profiler for factory dependencies
-        /// </summary>
         private IProfiler CreateDefaultProfiler()
         {
-            // Return a basic profiler implementation or null profiler
-            return new NullProfiler(); // You'll need to implement this or use an existing one
+            return new UnityProfiler();
         }
-
-        /// <summary>
-        /// Creates a default delivery service configuration
-        /// </summary>
+        
+        private IProfiler CreateNullProfiler()
+        {
+            return new NullProfiler();
+        }
+        
+        private IMessageBusMetrics CreateNullMetrics()
+        {
+            return new NullMessageBusMetrics();
+        }
+        
         private DeliveryServiceConfiguration CreateDefaultDeliveryServiceConfiguration()
         {
             return new DeliveryServiceConfiguration
             {
-                MaxConcurrentDeliveries = 10,
-                ProcessingInterval = TimeSpan.FromMilliseconds(100),
-                DefaultTimeout = TimeSpan.FromSeconds(5)
+                MaxRetryAttempts = 3,
+                RetryDelayMs = 100,
+                EnableReliableDelivery = true,
+                BatchSize = 50,
+                MaxConcurrentOperations = Environment.ProcessorCount
             };
         }
-
-        /// <summary>
-        /// Creates a default statistics tracker for delivery service factory
-        /// </summary>
+        
         private IDeliveryStatistics CreateDefaultStatisticsTracker()
         {
-            // Return a basic statistics implementation
-            return new EnhancedDeliveryStatistics();
+            return new DeliveryStatistics();
         }
-
-        /// <summary>
-        /// Creates default serializer metrics
-        /// </summary>
+        
         private ISerializerMetrics CreateDefaultSerializerMetrics()
         {
-            // Return a basic metrics implementation or null if interface allows it
-            return new DefaultSerializerMetrics();
+            return new SerializerMetrics();
         }
-
+        
         /// <summary>
-        /// Initializes the message bus
+        /// Initializes the message bus with profiling integration
         /// </summary>
         public void Initialize()
         {
@@ -207,11 +263,30 @@ namespace AhBearStudios.Core.MessageBus.Unity
 
                 // Create the message bus using the proper implementation
                 _messageBus = CreateMessageBus(_runtimeConfig);
+                
+                // Initialize profiling components after message bus creation
+                _baseProfiler = GetOrCreateProfiler();
+                _busMetrics = GetOrCreateBusMetrics();
+                
+                // Create the specialized message bus profiler
+                CreateMessageBusProfiler();
+                
+                // Configure bus metrics with the message bus instance
+                if (_busMetrics != null && _messageBus != null)
+                {
+                    var busId = _messageBus.Id;
+                    var busName = _messageBus.Name ?? "MessageBus";
+                    var busType = _messageBus.GetType().Name;
+                    
+                    _busMetrics.UpdateBusConfiguration(busId, 0, 0, busName, busType);
+                    
+                    Debug.Log($"[MessageBusProvider] Bus metrics configured for {busName} ({busId})");
+                }
 
                 _isInitialized = true;
                 Initialized?.Invoke(this);
 
-                Debug.Log("[MessageBusProvider] Initialized successfully");
+                Debug.Log("[MessageBusProvider] Initialized successfully with profiling support");
             }
             catch (Exception ex)
             {
@@ -219,52 +294,28 @@ namespace AhBearStudios.Core.MessageBus.Unity
                 Debug.LogException(ex);
             }
         }
-
-        /// <summary>
-        /// Creates a message bus instance based on the configuration
-        /// </summary>
+        
         private IMessageBus CreateMessageBus(IMessageBusConfig config)
         {
-            // Try to create a MessagePipe-based message bus if available
-            // Otherwise fallback to NullMessageBus
-            try
-            {
-                // Look for MessagePipe implementation in the MessageBuses/MessagePipe folder
-                var messagePipeType =
-                    System.Type.GetType("AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe.MessagePipeMessageBus");
-                if (messagePipeType != null)
-                {
-                    return (IMessageBus)Activator.CreateInstance(messagePipeType, config, _deliveryServiceFactory,
-                        _serializerFactory);
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[MessageBusProvider] Failed to create MessagePipe implementation: {ex.Message}");
-            }
-
-            // Fallback to NullMessageBus
-            Debug.LogWarning(
-                "[MessageBusProvider] Using NullMessageBus as fallback. Consider implementing a proper message bus.");
-            return new NullMessageBus();
+            return new MessageBus.MessageBuses.MessageBus(
+                config,
+                _deliveryServiceFactory,
+                _serializerFactory);
         }
-
-        /// <summary>
-        /// Creates a default configuration
-        /// </summary>
+        
         private IMessageBusConfig CreateDefaultConfig()
         {
-            var configBuilder = new MessageBusConfigBuilder();
-            return configBuilder
-                .WithInitialCapacity(_initialCapacity)
-                .WithLoggingEnabled(true)
-                .WithProfilingEnabled(Application.isEditor)
-                .Build();
+            return new MessageBusConfig
+            {
+                Name = "DefaultMessageBus",
+                InitialCapacity = _initialCapacity,
+                EnableReliableDelivery = true,
+                EnableBatching = true,
+                BatchSize = 50,
+                FlushInterval = TimeSpan.FromMilliseconds(100)
+            };
         }
-
-        /// <summary>
-        /// Gets the singleton instance (creates one if none exists)
-        /// </summary>
+        
         public static MessageBusProvider Instance
         {
             get
@@ -292,7 +343,42 @@ namespace AhBearStudios.Core.MessageBus.Unity
                 }
             }
         }
-
+        
+        /// <summary>
+        /// Gets profiling metrics for the message bus
+        /// </summary>
+        public MessageBusMetricsData GetMetrics()
+        {
+            if (_busMetrics == null || _messageBus == null)
+                return default;
+                
+            return _busMetrics.GetMetricsData(_messageBus.Id);
+        }
+        
+        /// <summary>
+        /// Starts profiling if not already started
+        /// </summary>
+        public void StartProfiling()
+        {
+            _messageBusProfiler?.StartProfiling();
+        }
+        
+        /// <summary>
+        /// Stops profiling and returns summary
+        /// </summary>
+        public void StopProfiling()
+        {
+            _messageBusProfiler?.StopProfiling();
+        }
+        
+        /// <summary>
+        /// Resets profiling statistics
+        /// </summary>
+        public void ResetProfilingStats()
+        {
+            _messageBusProfiler?.ResetStats();
+        }
+        
         /// <summary>
         /// Disposes the message bus and cleans up resources
         /// </summary>
@@ -303,10 +389,24 @@ namespace AhBearStudios.Core.MessageBus.Unity
 
             try
             {
+                // Dispose profiling components first
+                _messageBusProfiler?.Dispose();
+                
+                if (_busMetrics is IDisposable disposableMetrics)
+                {
+                    disposableMetrics.Dispose();
+                }
+                
+                // Dispose message bus
                 _messageBus?.Dispose();
+                
+                // Clear references
                 _deliveryServiceFactory = null;
                 _serializerFactory = null;
                 _runtimeConfig = null;
+                _baseProfiler = null;
+                _busMetrics = null;
+                _messageBusProfiler = null;
 
                 _isDisposed = true;
                 _isInitialized = false;
@@ -320,33 +420,21 @@ namespace AhBearStudios.Core.MessageBus.Unity
                 Debug.LogError($"[MessageBusProvider] Error during disposal: {ex.Message}");
             }
         }
-
+        
         private void OnDestroy()
         {
-            if (_instance == this)
-            {
-                lock (_lock)
-                {
-                    if (_instance == this)
-                        _instance = null;
-                }
-            }
-
             Dispose();
         }
-
+        
         private void OnApplicationQuit()
         {
             Dispose();
         }
-
-        /// <summary>
-        /// Validates the configuration in the editor
-        /// </summary>
+        
         private void OnValidate()
         {
-            if (_initialCapacity <= 0)
-                _initialCapacity = 100;
+            _initialCapacity = Mathf.Max(1, _initialCapacity);
+            _metricsCapacity = Mathf.Max(16, _metricsCapacity);
         }
     }
 }
