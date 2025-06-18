@@ -108,6 +108,19 @@ namespace AhBearStudios.Core.Profiling.Data
             _isCreated = true;
         }
         
+        /// <summary>
+        /// Creates a new LoggingMetricsData with specified creation and reset times
+        /// </summary>
+        /// <param name="systemId">Logging system identifier</param>
+        /// <param name="systemName">Logging system name</param>
+        /// <param name="currentTime">Current time for creation and reset timestamps</param>
+        public LoggingMetricsData(FixedString64Bytes systemId, FixedString128Bytes systemName, float currentTime) : this(systemId, systemName)
+        {
+            _creationTime = currentTime;
+            _lastResetTime = currentTime;
+            _lastOperationTime = currentTime;
+        }
+        
         #region ILoggingMetrics Implementation
         
         public long TotalMessagesProcessed => _totalMessagesProcessed;
@@ -137,6 +150,14 @@ namespace AhBearStudios.Core.Profiling.Data
         public long TotalTargetFailures => _totalTargetFailures;
         public long MemoryUsageBytes => _memoryUsageBytes;
         public long PeakMemoryUsageBytes => _peakMemoryUsageBytes;
+        
+        public float CreationTime => _creationTime;
+        public float LastOperationTime => _lastOperationTime;
+        public float LastResetTime => _lastResetTime;
+        public double ProcessingTimeThresholdMs => _processingTimeThresholdMs;
+        public double QueueSizeThreshold => _queueSizeThreshold;
+        public double MemoryThresholdBytes => _memoryThresholdBytes;
+        public bool IsInitialized => _isCreated;
         
         public bool IsCreated => _isCreated;
         public bool IsEnabled 

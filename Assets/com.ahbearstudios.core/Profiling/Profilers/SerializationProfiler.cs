@@ -11,7 +11,8 @@ using AhBearStudios.Core.Profiling.Tagging;
 namespace AhBearStudios.Core.Profiling.Profilers
 {
     /// <summary>
-    /// Specialized profiler for serialization operations that captures serialization-specific metrics
+    /// Specialized profiler for serialization operations that captures serialization-specific metrics.
+    /// Implements intelligent tag selection and provides comprehensive serialization profiling capabilities.
     /// </summary>
     public class SerializationProfiler : IProfiler
     {
@@ -22,6 +23,8 @@ namespace AhBearStudios.Core.Profiling.Profilers
         private readonly int _maxHistoryItems = 100;
         private readonly Dictionary<ProfilerTag, List<double>> _history = new Dictionary<ProfilerTag, List<double>>();
         private readonly Dictionary<string, double> _serializerMetricAlerts = new Dictionary<string, double>();
+        private readonly Dictionary<string, double> _operationAlerts = new Dictionary<string, double>();
+        private readonly List<IDisposable> _subscriptions = new List<IDisposable>();
 
         /// <summary>
         /// Gets whether profiling is enabled
@@ -45,9 +48,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
             _serializerMetrics = serializerMetrics ?? throw new ArgumentNullException(nameof(serializerMetrics));
             _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
             
-            // Subscribe to profiler session messages if there are any specific ones for serialization
-            _messageBus.GetSubscriber<SerializationProfilerSessionCompletedMessage>().Subscribe(OnSerializationSessionCompleted);
-            _messageBus.GetSubscriber<SerializerMetricAlertMessage>().Subscribe(OnSerializerMetricAlert);
+            SubscribeToMessages();
         }
 
         /// <summary>
@@ -81,30 +82,75 @@ namespace AhBearStudios.Core.Profiling.Profilers
             return _baseProfiler.BeginScope(category, name);
         }
 
+        #region Serialization-Specific Profiling Methods
+
+        /// <summary>
+        /// Begin a specialized serialization profiling session using intelligent tag selection
+        /// </summary>
+        /// <param name="operationType">Type of operation (serialize/deserialize)</param>
+        /// <param name="serializerId">Identifier of the serializer</param>
+        /// <param name="serializerName">Name of the serializer</param>
+        /// <param name="messageId">Message identifier</param>
+        /// <param name="messageTypeCode">Message type code</param>
+        /// <param name="dataSize">Size of the data in bytes</param>
+        /// <param name="batchSize">Batch size for batch operations</param>
+        /// <returns>Serialization profiler session</returns>
+        public SerializationProfilerSession BeginSerializationScope(
+            string operationType,
+            Guid serializerId,
+            string serializerName,
+            Guid messageId = default,
+            ushort messageTypeCode = 0,
+            int dataSize = 0,
+            int batchSize = 0)
+        {
+            if (!IsEnabled)
+                return CreateNullSession(operationType, serializerName);
+
+            return SerializationProfilerSession.Create(
+                operationType, serializerId, serializerName, messageId, messageTypeCode, dataSize, batchSize, _serializerMetrics, _messageBus);
+        }
+
         /// <summary>
         /// Begin a specialized serialization profiling session for a specific serializer
         /// </summary>
         /// <param name="serializerId">Identifier of the serializer</param>
         /// <param name="serializerName">Name of the serializer</param>
         /// <param name="operationType">Type of operation (serialize/deserialize)</param>
+        /// <param name="dataSize">Size of the data in bytes</param>
         /// <returns>Serialization profiler session</returns>
-        public SerializationProfilerSession BeginSerializerScope(Guid serializerId, string serializerName, string operationType)
+        public SerializationProfilerSession BeginSerializerScope(
+            Guid serializerId, 
+            string serializerName, 
+            string operationType,
+            int dataSize = 0)
         {
             if (!IsEnabled)
-                return new SerializationProfilerSession(ProfilerTag.Uncategorized, serializerId, serializerName, 
-                    Guid.Empty, 0, 0, null, null);
+                return CreateNullSession(operationType, serializerName);
+
+            var tag = SerializationProfilerTags.ForSerializer(operationType, serializerId);
+            return new SerializationProfilerSession(
+                tag, serializerId, serializerName, operationType, Guid.Empty, 0, dataSize, 0, _serializerMetrics, _messageBus);
+        }
+
+        /// <summary>
+        /// Begin a serialization profiling session by serializer name
+        /// </summary>
+        /// <param name="serializerName">Name of the serializer</param>
+        /// <param name="operationType">Type of operation (serialize/deserialize)</param>
+        /// <param name="dataSize">Size of the data in bytes</param>
+        /// <returns>Serialization profiler session</returns>
+        public SerializationProfilerSession BeginSerializerNameScope(
+            string serializerName, 
+            string operationType,
+            int dataSize = 0)
+        {
+            if (!IsEnabled)
+                return CreateNullSession(operationType, serializerName);
 
             var tag = SerializationProfilerTags.ForSerializerName(operationType, serializerName);
             return new SerializationProfilerSession(
-                tag,
-                serializerId,
-                serializerName,
-                Guid.Empty, // No specific message ID
-                0, // Default message type code
-                0, // Default data size
-                _serializerMetrics,
-                _messageBus
-            );
+                tag, Guid.Empty, serializerName, operationType, Guid.Empty, 0, dataSize, 0, _serializerMetrics, _messageBus);
         }
 
         /// <summary>
@@ -115,50 +161,18 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <param name="operationType">Type of operation (serialize/deserialize)</param>
         /// <param name="dataSize">Size of the data in bytes</param>
         /// <returns>Serialization profiler session</returns>
-        public SerializationProfilerSession BeginMessageScope(IMessage message, string serializerName, string operationType, int dataSize = 0)
+        public SerializationProfilerSession BeginMessageScope(
+            IMessage message, 
+            string serializerName, 
+            string operationType, 
+            int dataSize = 0)
         {
             if (!IsEnabled || message == null)
-                return new SerializationProfilerSession(ProfilerTag.Uncategorized, Guid.Empty, string.Empty, 
-                    Guid.Empty, 0, 0, null, null);
+                return CreateNullSession(operationType, serializerName);
 
             var tag = SerializationProfilerTags.ForSerializerAndMessageType(operationType, serializerName, message.TypeCode);
             return new SerializationProfilerSession(
-                tag,
-                Guid.Empty, // No specific serializer ID
-                serializerName,
-                message.Id,
-                message.TypeCode,
-                dataSize,
-                _serializerMetrics,
-                _messageBus
-            );
-        }
-
-        /// <summary>
-        /// Begin a specialized serialization profiling session for batch operations
-        /// </summary>
-        /// <param name="serializerName">Name of the serializer</param>
-        /// <param name="operationType">Type of operation (serialize/deserialize)</param>
-        /// <param name="batchSize">Number of messages in the batch</param>
-        /// <param name="totalDataSize">Total size of the data in bytes</param>
-        /// <returns>Serialization profiler session</returns>
-        public SerializationProfilerSession BeginBatchScope(string serializerName, string operationType, int batchSize, int totalDataSize)
-        {
-            if (!IsEnabled)
-                return new SerializationProfilerSession(ProfilerTag.Uncategorized, Guid.Empty, string.Empty, 
-                    Guid.Empty, 0, 0, null, null);
-
-            var tag = SerializationProfilerTags.ForBatch(operationType, batchSize);
-            return new SerializationProfilerSession(
-                tag,
-                Guid.Empty, // No specific serializer ID
-                serializerName,
-                Guid.Empty, // No specific message ID
-                0, // No specific message type
-                totalDataSize,
-                _serializerMetrics,
-                _messageBus
-            );
+                tag, Guid.Empty, serializerName, operationType, message.Id, message.TypeCode, dataSize, 0, _serializerMetrics, _messageBus);
         }
 
         /// <summary>
@@ -169,43 +183,110 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <param name="operationType">Type of operation (serialize/deserialize)</param>
         /// <param name="dataSize">Size of the data in bytes</param>
         /// <returns>Serialization profiler session</returns>
-        public SerializationProfilerSession BeginMessageTypeScope(ushort messageTypeCode, string serializerName, string operationType, int dataSize = 0)
+        public SerializationProfilerSession BeginMessageTypeScope(
+            ushort messageTypeCode, 
+            string serializerName, 
+            string operationType, 
+            int dataSize = 0)
         {
             if (!IsEnabled)
-                return new SerializationProfilerSession(ProfilerTag.Uncategorized, Guid.Empty, string.Empty, 
-                    Guid.Empty, 0, 0, null, null);
+                return CreateNullSession(operationType, serializerName);
 
-            var tag = SerializationProfilerTags.ForMessageType(operationType, messageTypeCode);
+            return SerializationProfilerSession.CreateForMessageType(
+                operationType, serializerName, messageTypeCode, dataSize, _serializerMetrics, _messageBus);
+        }
+
+        /// <summary>
+        /// Begin a specialized serialization profiling session for batch operations
+        /// </summary>
+        /// <param name="serializerName">Name of the serializer</param>
+        /// <param name="operationType">Type of operation (serialize/deserialize)</param>
+        /// <param name="batchSize">Number of messages in the batch</param>
+        /// <param name="totalDataSize">Total size of the data in bytes</param>
+        /// <returns>Serialization profiler session</returns>
+        public SerializationProfilerSession BeginBatchScope(
+            string serializerName, 
+            string operationType, 
+            int batchSize, 
+            int totalDataSize = 0)
+        {
+            if (!IsEnabled)
+                return CreateNullSession(operationType, serializerName);
+
+            return SerializationProfilerSession.CreateBatch(
+                operationType, serializerName, batchSize, totalDataSize, _serializerMetrics, _messageBus);
+        }
+
+        /// <summary>
+        /// Begin a size-categorized serialization profiling session
+        /// </summary>
+        /// <param name="serializerName">Name of the serializer</param>
+        /// <param name="operationType">Type of operation (serialize/deserialize)</param>
+        /// <param name="messageSize">Size of the message</param>
+        /// <returns>Serialization profiler session</returns>
+        public SerializationProfilerSession BeginSizedOperationScope(
+            string serializerName, 
+            string operationType, 
+            int messageSize)
+        {
+            if (!IsEnabled)
+                return CreateNullSession(operationType, serializerName);
+
+            return SerializationProfilerSession.CreateForSizedOperation(
+                operationType, serializerName, messageSize, _serializerMetrics, _messageBus);
+        }
+
+        /// <summary>
+        /// Begin a generic serialization profiling session using predefined tags
+        /// </summary>
+        /// <param name="operationType">Operation type</param>
+        /// <returns>Serialization profiler session</returns>
+        public SerializationProfilerSession BeginGenericSerializationScope(string operationType)
+        {
+            if (!IsEnabled)
+                return CreateNullSession(operationType, "Generic");
+
+            return SerializationProfilerSession.CreateGeneric(operationType, _serializerMetrics, _messageBus);
+        }
+
+        /// <summary>
+        /// Begin a profiling session for payload operations
+        /// </summary>
+        /// <param name="operationType">Operation type (SerializePayload/DeserializePayload)</param>
+        /// <param name="serializerName">Name of the serializer</param>
+        /// <param name="payloadSize">Size of the payload in bytes</param>
+        /// <returns>Serialization profiler session</returns>
+        public SerializationProfilerSession BeginPayloadScope(
+            string operationType, 
+            string serializerName, 
+            int payloadSize = 0)
+        {
+            if (!IsEnabled)
+                return CreateNullSession(operationType, serializerName);
+
+            // Use predefined payload tags for common operations
+            ProfilerTag tag;
+            switch (operationType.ToLowerInvariant())
+            {
+                case "serializepayload":
+                    tag = SerializationProfilerTags.SerializePayload;
+                    break;
+                case "deserializepayload":
+                    tag = SerializationProfilerTags.DeserializePayload;
+                    break;
+                default:
+                    tag = SerializationProfilerTags.ForSerializerName(operationType, serializerName);
+                    break;
+            }
+
             return new SerializationProfilerSession(
-                tag,
-                Guid.Empty, // No specific serializer ID
-                serializerName,
-                Guid.Empty, // No specific message ID
-                messageTypeCode,
-                dataSize,
-                _serializerMetrics,
-                _messageBus
-            );
+                tag, Guid.Empty, serializerName, operationType, Guid.Empty, 0, payloadSize, 0, _serializerMetrics, _messageBus);
         }
 
         /// <summary>
-        /// Begins a profiling session for a generic serialization operation
+        /// Profiles a serialization action with automatic session management
         /// </summary>
-        /// <param name="operationType">Operation type (serialize, deserialize, etc.)</param>
-        /// <returns>A profiler session</returns>
-        public ProfilerSession BeginGenericSerializationScope(string operationType)
-        {
-            if (!IsEnabled)
-                return null;
-                
-            var tag = SerializationProfilerTags.ForOperation(operationType);
-            return BeginScope(tag);
-        }
-        
-        /// <summary>
-        /// Profiles a serialization action
-        /// </summary>
-        /// <param name="operationType">Operation type (serialize, deserialize)</param>
+        /// <param name="operationType">Type of serialization operation</param>
         /// <param name="serializerName">Name of the serializer</param>
         /// <param name="messageTypeCode">Type code of the message</param>
         /// <param name="dataSize">Size of the data in bytes</param>
@@ -230,6 +311,56 @@ namespace AhBearStudios.Core.Profiling.Profilers
         }
 
         /// <summary>
+        /// Profiles a batch serialization action
+        /// </summary>
+        /// <param name="operationType">Type of serialization operation</param>
+        /// <param name="serializerName">Name of the serializer</param>
+        /// <param name="batchSize">Size of the batch</param>
+        /// <param name="totalDataSize">Total size of data in the batch</param>
+        /// <param name="action">Action to profile</param>
+        public void ProfileBatchAction(
+            string operationType,
+            string serializerName,
+            int batchSize,
+            int totalDataSize,
+            Action action)
+        {
+            if (!IsEnabled || action == null)
+            {
+                action?.Invoke();
+                return;
+            }
+            
+            using (BeginBatchScope(serializerName, operationType, batchSize, totalDataSize))
+            {
+                action.Invoke();
+            }
+        }
+
+        /// <summary>
+        /// Profiles a simple serialization action with minimal context
+        /// </summary>
+        /// <param name="operationType">Type of serialization operation</param>
+        /// <param name="action">Action to profile</param>
+        public void ProfileGenericAction(string operationType, Action action)
+        {
+            if (!IsEnabled || action == null)
+            {
+                action?.Invoke();
+                return;
+            }
+            
+            using (BeginGenericSerializationScope(operationType))
+            {
+                action.Invoke();
+            }
+        }
+
+        #endregion
+
+        #region Standard IProfiler Implementation
+
+        /// <summary>
         /// Get metrics for a specific profiling tag
         /// </summary>
         /// <param name="tag">The tag to get metrics for</param>
@@ -246,15 +377,6 @@ namespace AhBearStudios.Core.Profiling.Profilers
         public IReadOnlyDictionary<ProfilerTag, DefaultMetricsData> GetAllMetrics()
         {
             return _baseProfiler.GetAllMetrics();
-        }
-
-        /// <summary>
-        /// Get serializer metrics data
-        /// </summary>
-        /// <returns>Current serializer metrics</returns>
-        public SerializerMetricsData GetSerializerMetrics()
-        {
-            return (SerializerMetricsData)_serializerMetrics;
         }
 
         /// <summary>
@@ -291,23 +413,6 @@ namespace AhBearStudios.Core.Profiling.Profilers
         }
 
         /// <summary>
-        /// Register a serializer metric threshold alert
-        /// </summary>
-        /// <param name="metricName">Name of the serializer metric (e.g., "AverageSerializationTimeMs")</param>
-        /// <param name="threshold">Threshold value to trigger alert</param>
-        public void RegisterSerializerMetricAlert(string metricName, double threshold)
-        {
-            if (string.IsNullOrEmpty(metricName))
-                return;
-                
-            // Store locally for tracking
-            _serializerMetricAlerts[metricName] = threshold;
-            
-            // No direct registration with serializer metrics since ISerializerMetrics doesn't have alert functionality
-            // This could be added in the future if needed
-        }
-
-        /// <summary>
         /// Reset all profiling stats
         /// </summary>
         public void ResetStats()
@@ -334,6 +439,119 @@ namespace AhBearStudios.Core.Profiling.Profilers
             _baseProfiler.StopProfiling();
         }
 
+        #endregion
+
+        #region Serialization-Specific Metrics and Alerts
+
+        /// <summary>
+        /// Get serializer metrics data
+        /// </summary>
+        /// <returns>Current serializer metrics</returns>
+        public SerializerMetricsData GetSerializerMetrics()
+        {
+            return (SerializerMetricsData)_serializerMetrics;
+        }
+
+        /// <summary>
+        /// Register a serializer metric threshold alert
+        /// </summary>
+        /// <param name="metricName">Name of the serializer metric (e.g., "AverageSerializationTimeMs")</param>
+        /// <param name="threshold">Threshold value to trigger alert</param>
+        public void RegisterSerializerMetricAlert(string metricName, double threshold)
+        {
+            if (string.IsNullOrEmpty(metricName))
+                return;
+                
+            // Store locally for tracking
+            _serializerMetricAlerts[metricName] = threshold;
+        }
+
+        /// <summary>
+        /// Register an operation type threshold alert using predefined tags
+        /// </summary>
+        /// <param name="operationType">Type of operation to monitor</param>
+        /// <param name="thresholdMs">Threshold in milliseconds to trigger alert</param>
+        public void RegisterOperationAlert(string operationType, double thresholdMs)
+        {
+            if (string.IsNullOrEmpty(operationType) || thresholdMs <= 0)
+                return;
+                
+            _operationAlerts[operationType] = thresholdMs;
+            
+            // Register with base profiler using predefined tags
+            var tag = SerializationProfilerTags.ForOperation(operationType);
+            RegisterSessionAlert(tag, thresholdMs);
+        }
+
+        /// <summary>
+        /// Register alerts for common serialization operations
+        /// </summary>
+        /// <param name="serializeThresholdMs">Threshold for serialize operations</param>
+        /// <param name="deserializeThresholdMs">Threshold for deserialize operations</param>
+        public void RegisterCommonOperationAlerts(double serializeThresholdMs, double deserializeThresholdMs)
+        {
+            RegisterSessionAlert(SerializationProfilerTags.SerializeMessage, serializeThresholdMs);
+            RegisterSessionAlert(SerializationProfilerTags.DeserializeMessage, deserializeThresholdMs);
+            RegisterSessionAlert(SerializationProfilerTags.SerializePayload, serializeThresholdMs);
+            RegisterSessionAlert(SerializationProfilerTags.DeserializePayload, deserializeThresholdMs);
+            RegisterSessionAlert(SerializationProfilerTags.SerializeBatch, serializeThresholdMs * 2); // Batches expected to take longer
+            RegisterSessionAlert(SerializationProfilerTags.DeserializeBatch, deserializeThresholdMs * 2);
+        }
+
+        #endregion
+
+        #region Private Helper Methods
+
+        /// <summary>
+        /// Creates a null/disabled session for when profiling is disabled
+        /// </summary>
+        private SerializationProfilerSession CreateNullSession(string operationType, string serializerName)
+        {
+            return new SerializationProfilerSession(
+                SerializationProfilerTags.ForOperation("Disabled"),
+                Guid.Empty,
+                serializerName ?? string.Empty,
+                operationType,
+                Guid.Empty,
+                0,
+                0,
+                0,
+                null,
+                null
+            );
+        }
+
+        /// <summary>
+        /// Subscribes to serialization-related messages from the message bus
+        /// </summary>
+        private void SubscribeToMessages()
+        {
+            try
+            {
+                // Subscribe to profiler session messages
+                var sessionCompletedSub = _messageBus.GetSubscriber<SerializationProfilerSessionCompletedMessage>();
+                if (sessionCompletedSub != null)
+                {
+                    sessionCompletedSub.Subscribe(OnSerializationSessionCompleted);
+                }
+
+                var alertSub = _messageBus.GetSubscriber<SerializerMetricAlertMessage>();
+                if (alertSub != null)
+                {
+                    alertSub.Subscribe(OnSerializerMetricAlert);
+                }
+            }
+            catch (Exception ex)
+            {
+                // Log the error but don't fail initialization
+                UnityEngine.Debug.LogError($"SerializationProfiler: Failed to subscribe to some messages: {ex.Message}");
+            }
+        }
+
+        #endregion
+
+        #region Message Handlers
+
         /// <summary>
         /// Handler for serialization session completed messages
         /// </summary>
@@ -354,6 +572,14 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 history.RemoveAt(0);
 
             history.Add(message.DurationMs);
+
+            // Check operation-specific alerts
+            if (_operationAlerts.TryGetValue(message.OperationType, out var threshold) && 
+                message.DurationMs > threshold)
+            {
+                // Log or handle operation threshold exceeded
+                UnityEngine.Debug.LogWarning($"Serialization operation '{message.OperationType}' exceeded threshold: {message.DurationMs}ms > {threshold}ms");
+            }
         }
         
         /// <summary>
@@ -366,5 +592,30 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 
             // Additional handling could be added here, like logging
         }
+
+        #endregion
+
+        #region IDisposable Implementation
+
+        /// <summary>
+        /// Dispose of resources and unsubscribe from messages
+        /// </summary>
+        public void Dispose()
+        {
+            // Dispose of any subscriptions
+            foreach (var subscription in _subscriptions)
+            {
+                subscription?.Dispose();
+            }
+            _subscriptions.Clear();
+
+            // Clear caches
+            _serializerMetricsCache.Clear();
+            _history.Clear();
+            _serializerMetricAlerts.Clear();
+            _operationAlerts.Clear();
+        }
+
+        #endregion
     }
 }

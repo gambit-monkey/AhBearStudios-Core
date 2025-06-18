@@ -12,7 +12,8 @@ using AhBearStudios.Core.Profiling.Messages;
 namespace AhBearStudios.Core.Profiling.Profilers
 {
     /// <summary>
-    /// Specialized profiler for coroutine operations that captures coroutine-specific metrics
+    /// Specialized profiler for coroutine operations that captures coroutine-specific metrics.
+    /// Implements intelligent tag selection based on available parameters for optimal profiling granularity.
     /// </summary>
     public class CoroutineProfiler : IProfiler
     {
@@ -83,7 +84,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         }
 
         /// <summary>
-        /// Begin a specialized coroutine profiling session
+        /// Begin a specialized coroutine profiling session using intelligent tag selection
         /// </summary>
         /// <param name="runner">Coroutine runner to profile</param>
         /// <param name="operationType">Type of operation being performed</param>
@@ -93,15 +94,14 @@ namespace AhBearStudios.Core.Profiling.Profilers
         public CoroutineProfilerSession BeginCoroutineScope(ICoroutineRunner runner, string operationType, int coroutineId = 0, string coroutineTag = null)
         {
             if (!IsEnabled || runner == null)
-                return new CoroutineProfilerSession(ProfilerTag.Uncategorized, Guid.Empty, string.Empty, 0, string.Empty, null, null);
+                return CreateNullSession();
 
             // Create a deterministic GUID for the runner if needed
             Guid runnerId = GetRunnerIdFromRunner(runner);
             string runnerName = GetRunnerNameFromRunner(runner);
             
-            var tag = CoroutineProfilerTags.ForRunnerName(operationType, runnerName);
-            return new CoroutineProfilerSession(
-                tag,
+            return CoroutineProfilerSession.Create(
+                operationType,
                 runnerId,
                 runnerName,
                 coroutineId,
@@ -112,7 +112,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         }
 
         /// <summary>
-        /// Begins a profiling session for a coroutine operation
+        /// Begins a profiling session for a coroutine operation with full parameters
         /// </summary>
         /// <param name="operationType">Operation type (start, complete, etc.)</param>
         /// <param name="runnerId">Runner identifier</param>
@@ -128,17 +128,17 @@ namespace AhBearStudios.Core.Profiling.Profilers
             string coroutineTag = null)
         {
             if (!IsEnabled)
-                return new CoroutineProfilerSession(ProfilerTag.Uncategorized, Guid.Empty, string.Empty, 0, string.Empty, null, null);
+                return CreateNullSession();
                 
-            var tag = CoroutineProfilerTags.ForRunner(operationType, runnerId);
-            return new CoroutineProfilerSession(
-                tag, 
-                runnerId, 
-                runnerName, 
-                coroutineId, 
-                coroutineTag, 
-                _coroutineMetrics, 
-                _messageBus);
+            return CoroutineProfilerSession.Create(
+                operationType,
+                runnerId,
+                runnerName,
+                coroutineId,
+                coroutineTag,
+                _coroutineMetrics,
+                _messageBus
+            );
         }
         
         /// <summary>
@@ -152,25 +152,24 @@ namespace AhBearStudios.Core.Profiling.Profilers
         public CoroutineProfilerSession BeginCoroutineScope(
             string operationType,
             string runnerName,
-            int coroutineId,
+            int coroutineId = 0,
             string coroutineTag = null)
         {
             if (!IsEnabled)
-                return new CoroutineProfilerSession(ProfilerTag.Uncategorized, Guid.Empty, string.Empty, 0, string.Empty, null, null);
+                return CreateNullSession();
                 
-            var tag = CoroutineProfilerTags.ForRunnerName(operationType, runnerName);
-            
             // Create a deterministic GUID from the name
             Guid runnerId = CreateDeterministicGuid(runnerName);
             
-            return new CoroutineProfilerSession(
-                tag, 
-                runnerId, 
-                runnerName, 
-                coroutineId, 
-                coroutineTag, 
-                _coroutineMetrics, 
-                _messageBus);
+            return CoroutineProfilerSession.Create(
+                operationType,
+                runnerId,
+                runnerName,
+                coroutineId,
+                coroutineTag,
+                _coroutineMetrics,
+                _messageBus
+            );
         }
         
         /// <summary>
@@ -186,9 +185,30 @@ namespace AhBearStudios.Core.Profiling.Profilers
             var tag = CoroutineProfilerTags.ForOperation(operationType);
             return BeginScope(tag);
         }
+
+        /// <summary>
+        /// Begins a coroutine scope with minimal parameters using intelligent defaults
+        /// </summary>
+        /// <param name="operationType">Operation type</param>
+        /// <returns>A lightweight coroutine profiler session</returns>
+        public CoroutineProfilerSession BeginLightweightCoroutineScope(string operationType)
+        {
+            if (!IsEnabled)
+                return CreateNullSession();
+
+            return CoroutineProfilerSession.Create(
+                operationType,
+                Guid.Empty,
+                "Unknown",
+                0,
+                null,
+                _coroutineMetrics,
+                _messageBus
+            );
+        }
         
         /// <summary>
-        /// Profiles a coroutine action
+        /// Profiles a coroutine action with full context
         /// </summary>
         /// <param name="operationType">Operation type</param>
         /// <param name="runnerId">Runner identifier</param>
@@ -211,6 +231,45 @@ namespace AhBearStudios.Core.Profiling.Profilers
             }
             
             using (BeginCoroutineScope(operationType, runnerId, runnerName, coroutineId, coroutineTag))
+            {
+                action.Invoke();
+            }
+        }
+
+        /// <summary>
+        /// Profiles a coroutine action with runner context only
+        /// </summary>
+        /// <param name="operationType">Operation type</param>
+        /// <param name="runnerName">Runner name</param>
+        /// <param name="action">Action to profile</param>
+        public void ProfileCoroutineAction(string operationType, string runnerName, Action action)
+        {
+            if (!IsEnabled || action == null)
+            {
+                action?.Invoke();
+                return;
+            }
+            
+            using (BeginCoroutineScope(operationType, runnerName))
+            {
+                action.Invoke();
+            }
+        }
+
+        /// <summary>
+        /// Profiles a simple coroutine action with minimal context
+        /// </summary>
+        /// <param name="operationType">Operation type</param>
+        /// <param name="action">Action to profile</param>
+        public void ProfileCoroutineAction(string operationType, Action action)
+        {
+            if (!IsEnabled || action == null)
+            {
+                action?.Invoke();
+                return;
+            }
+            
+            using (BeginLightweightCoroutineScope(operationType))
             {
                 action.Invoke();
             }
@@ -360,6 +419,22 @@ namespace AhBearStudios.Core.Profiling.Profilers
         public void StopProfiling()
         {
             _baseProfiler.StopProfiling();
+        }
+
+        /// <summary>
+        /// Creates a null/disabled session for when profiling is disabled
+        /// </summary>
+        private CoroutineProfilerSession CreateNullSession()
+        {
+            return new CoroutineProfilerSession(
+                ProfilerTag.Uncategorized, 
+                Guid.Empty, 
+                string.Empty, 
+                0, 
+                string.Empty, 
+                null, 
+                null
+            );
         }
 
         /// <summary>
