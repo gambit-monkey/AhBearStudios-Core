@@ -221,50 +221,48 @@ namespace AhBearStudios.Core.Logging.Builders
         internal ConfigData GetData() => _data;
 
         /// <summary>
-        /// Builds a new ScriptableObject instance with the configured settings
+        /// Builds a new instance with the configured settings
         /// </summary>
         public SerilogFileTargetConfig Build()
         {
-            var config = ScriptableObject.CreateInstance<SerilogFileTargetConfig>();
-            
-            // Apply all the configured settings to the ScriptableObject
-            // Note: This requires either reflection or exposing internal setters
-            ApplyDataToScriptableObject(_data, config);
-            
+            var config = new SerilogFileTargetConfig();
+            ApplyDataToConfig(_data, config);
             return config;
         }
-
-        /// <summary>
-        /// Applies the builder data to an existing ScriptableObject targetConfig
-        /// </summary>
-        public void ApplyTo(SerilogFileTargetConfig targetConfig)
+        
+        public void ApplyTo(SerilogFileTargetConfig config)
         {
-            if (targetConfig == null)
-                throw new ArgumentNullException(nameof(targetConfig));
-                
-            ApplyDataToScriptableObject(_data, targetConfig);
+            if (config == null)
+                throw new ArgumentNullException(nameof(config));
+        
+            ApplyDataToConfig(_data, config);
         }
 
-        private static void ApplyDataToScriptableObject(ConfigData data, SerilogFileTargetConfig targetConfig)
+        private static void ApplyDataToConfig(ConfigData data, SerilogFileTargetConfig config)
         {
-            targetConfig.TargetName = data.TargetName;
-            targetConfig.Enabled = data.Enabled;
-            targetConfig.MinimumLevel = data.MinimumLevel;
-            targetConfig.IncludedTags = data.IncludedTags;
-            targetConfig.ExcludedTags = data.ExcludedTags;
-            targetConfig.ProcessUntaggedMessages = data.ProcessUntaggedMessages;
-            targetConfig.CaptureUnityLogs = data.CaptureUnityLogs;
-            targetConfig.IncludeStackTraces = data.IncludeStackTraces;
-            targetConfig.IncludeTimestamps = data.IncludeTimestamps;
-            targetConfig.TimestampFormat = data.TimestampFormat;
-            targetConfig.IncludeSourceContext = data.IncludeSourceContext;
-            targetConfig.IncludeThreadId = data.IncludeThreadId;
-            targetConfig.EnableStructuredLogging = data.EnableStructuredLogging;
-            targetConfig.AutoFlush = data.AutoFlush;
-            targetConfig.BufferSize = data.BufferSize;
-            targetConfig.FlushIntervalSeconds = data.FlushIntervalSeconds;
-            targetConfig.LimitMessageLength = data.LimitMessageLength;
-            targetConfig.MaxMessageLength = data.MaxMessageLength;
+            // Apply all the configured settings to the POCO
+            config.TargetName = data.TargetName;
+            config.Enabled = data.Enabled;
+            config.MinimumLevel = data.MinimumLevel;
+            config.LogFilePath = data.LogFilePath;
+            config.UseJsonFormat = data.UseJsonFormat;
+            config.LogToConsole = data.LogToConsole;
+            config.RetainedDays = data.RetainedDays;
+            config.IncludedTags = data.IncludedTags ?? Array.Empty<string>();
+            config.ExcludedTags = data.ExcludedTags ?? Array.Empty<string>();
+            config.ProcessUntaggedMessages = data.ProcessUntaggedMessages;
+            config.CaptureUnityLogs = data.CaptureUnityLogs;
+            config.IncludeStackTraces = data.IncludeStackTraces;
+            config.IncludeTimestamps = data.IncludeTimestamps;
+            config.TimestampFormat = data.TimestampFormat;
+            config.IncludeSourceContext = data.IncludeSourceContext;
+            config.IncludeThreadId = data.IncludeThreadId;
+            config.EnableStructuredLogging = data.EnableStructuredLogging;
+            config.AutoFlush = data.AutoFlush;
+            config.BufferSize = data.BufferSize;
+            config.FlushIntervalSeconds = data.FlushIntervalSeconds;
+            config.LimitMessageLength = data.LimitMessageLength;
+            config.MaxMessageLength = data.MaxMessageLength;
         }
     }
 }

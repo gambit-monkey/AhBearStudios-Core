@@ -1,299 +1,107 @@
 using System;
-using AhBearStudios.Core.Logging.Data;
 using Unity.Collections;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.Logging.Tags;
+using AhBearStudios.Core.Logging.Data;
 
-namespace AhBearStudios.Core.Logging
+namespace AhBearStudios.Core.Logging.Extensions
 {
     /// <summary>
-    /// Provides extension methods for the IBurstLogger interface to support additional functionality.
+    /// Extension methods for <see cref="IBurstLoggingService"/>, honoring
+    /// the new LogTag + LogProperties constructors on LogMessage.
     /// </summary>
-    public static class LoggerExtensions
+    public static class BurstLoggingServiceExtensions
     {
-        /// <summary>
-        /// Logs a message with the specified level and tag.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="level">The severity level of the log (cast to byte).</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="tag">The tag identifying the source or category of the log.</param>
-        public static void Log(this IBurstLogger burstLogger, int level, string message, string tag)
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
+        // ——— Simple message (default tag) ———
 
-            // Clamp level to byte range
-            byte byteLevel = level < 0 ? (byte)0 : level > 255 ? (byte)255 : (byte)level;
-            burstLogger.Log(byteLevel, message, tag);
+        public static void Log(this IBurstLoggingService logger, LogLevel level, string message)
+        {
+            if (logger is null) throw new ArgumentNullException(nameof(logger));
+            var fsMsg = new FixedString512Bytes(message);
+            logger.Log(fsMsg, level);
         }
 
-        /// <summary>
-        /// Logs a message with the specified level and tag.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="level">The severity level of the log.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="tag">The tag identifying the source or category of the log.</param>
-        public static void Log(this IBurstLogger burstLogger, byte level, string message, Tagging.LogTag tag)
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
+        public static void Debug(this IBurstLoggingService logger, string message)
+            => logger.Log(LogLevel.Debug, message);
+        public static void Info(this IBurstLoggingService logger, string message)
+            => logger.Log(LogLevel.Info, message);
+        public static void Warn(this IBurstLoggingService logger, string message)
+            => logger.Log(LogLevel.Warning, message);
+        public static void Error(this IBurstLoggingService logger, string message)
+            => logger.Log(LogLevel.Error, message);
+        public static void Critical(this IBurstLoggingService logger, string message)
+            => logger.Log(LogLevel.Critical, message);
 
-            burstLogger.Log(level, message, tag.ToString());
+        // ——— Message + structured properties (default tag) ———
+
+        public static void Log(this IBurstLoggingService logger, LogLevel level, string message, in LogProperties properties)
+        {
+            if (logger is null) throw new ArgumentNullException(nameof(logger));
+            var fsMsg = new FixedString512Bytes(message);
+            logger.Log(fsMsg, level, properties);
         }
 
-        /// <summary>
-        /// Logs a message with the specified fixed string content.
-        /// Useful for Burst-compatible contexts.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="level">The severity level of the log.</param>
-        /// <param name="message">The message content as a FixedString.</param>
-        /// <param name="tag">The tag identifying the source or category of the log.</param>
-        public static void Log(this IBurstLogger burstLogger, byte level, in FixedString512Bytes message,
-            in FixedString32Bytes tag)
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
+        // ——— Tagged message ———
 
-            burstLogger.Log(level, message.ToString(), tag.ToString());
+        public static void Log(this IBurstLoggingService logger, Tagging.LogTag tag, string message, LogLevel level)
+        {
+            if (logger is null) throw new ArgumentNullException(nameof(logger));
+            var fsMsg = new FixedString512Bytes(message);
+            logger.Log(tag, fsMsg, level);
         }
 
-        /// <summary>
-        /// Logs a debug message.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="tag">Optional tag identifying the source or category.</param>
-        public static void Debug(this IBurstLogger burstLogger, string message, string tag = "Debug")
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
+        public static void Debug(this IBurstLoggingService logger, Tagging.LogTag tag, string message)
+            => logger.Log(tag, message, LogLevel.Debug);
+        public static void Info(this IBurstLoggingService logger, Tagging.LogTag tag, string message)
+            => logger.Log(tag, message, LogLevel.Info);
+        public static void Warn(this IBurstLoggingService logger, Tagging.LogTag tag, string message)
+            => logger.Log(tag, message, LogLevel.Warning);
+        public static void Error(this IBurstLoggingService logger, Tagging.LogTag tag, string message)
+            => logger.Log(tag, message, LogLevel.Error);
+        public static void Critical(this IBurstLoggingService logger, Tagging.LogTag tag, string message)
+            => logger.Log(tag, message, LogLevel.Critical);
 
-            burstLogger.Log(LogLevel.Debug, message, tag);
+        // ——— Tagged + structured properties ———
+
+        public static void Log(this IBurstLoggingService logger, Tagging.LogTag tag, string message, LogLevel level, in LogProperties properties)
+        {
+            if (logger is null) throw new ArgumentNullException(nameof(logger));
+            var fsMsg = new FixedString512Bytes(message);
+            logger.Log(tag, fsMsg, level, properties);
         }
 
-        /// <summary>
-        /// Logs a debug message with a LogTag enum.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="tag">The tag to categorize the message.</param>
-        public static void Debug(this IBurstLogger burstLogger, string message, Tagging.LogTag tag)
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
+        // ——— Dynamic string → LogTag resolution ———
 
-            burstLogger.Log(LogLevel.Debug, message, tag.ToString());
+        public static void Log(this IBurstLoggingService logger, string category, string message, LogLevel level)
+        {
+            if (logger is null) throw new ArgumentNullException(nameof(logger));
+            var tag = Tagging.GetLogTag(category);
+            logger.Log(tag, message, level);
         }
 
-        /// <summary>
-        /// Logs an info message.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="tag">Optional tag identifying the source or category.</param>
-        public static void Info(this IBurstLogger burstLogger, string message, string tag = "Info")
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
+        public static void Debug(this IBurstLoggingService logger, string category, string message)
+            => logger.Log(category, message, LogLevel.Debug);
+        public static void Info(this IBurstLoggingService logger, string category, string message)
+            => logger.Log(category, message, LogLevel.Info);
+        public static void Warn(this IBurstLoggingService logger, string category, string message)
+            => logger.Log(category, message, LogLevel.Warning);
+        public static void Error(this IBurstLoggingService logger, string category, string message)
+            => logger.Log(category, message, LogLevel.Error);
+        public static void Critical(this IBurstLoggingService logger, string category, string message)
+            => logger.Log(category, message, LogLevel.Critical);
 
-            burstLogger.Log(LogLevel.Info, message, tag);
-        }
+        // ——— Raw FixedString overloads ———
 
-        /// <summary>
-        /// Logs an info message with a LogTag enum.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="tag">The tag to categorize the message.</param>
-        public static void Info(this IBurstLogger burstLogger, string message, Tagging.LogTag tag)
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
+        public static void Log(this IBurstLoggingService logger, in FixedString512Bytes message, LogLevel level)
+            => logger.Log(message, level);
 
-            burstLogger.Log(LogLevel.Info, message, tag.ToString());
-        }
+        public static void Log(this IBurstLoggingService logger, in FixedString512Bytes message, LogLevel level, in LogProperties properties)
+            => logger.Log(message, level, properties);
 
-        /// <summary>
-        /// Logs a warning message.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="tag">Optional tag identifying the source or category.</param>
-        public static void Warning(this IBurstLogger burstLogger, string message, string tag = "Warning")
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
+        public static void Log(this IBurstLoggingService logger, Tagging.LogTag tag, in FixedString512Bytes message, LogLevel level)
+            => logger.Log(tag, message, level);
 
-            burstLogger.Log(LogLevel.Warning, message, tag);
-        }
-
-        /// <summary>
-        /// Logs a warning message with a LogTag enum.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="tag">The tag to categorize the message.</param>
-        public static void Warning(this IBurstLogger burstLogger, string message, Tagging.LogTag tag)
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
-
-            burstLogger.Log(LogLevel.Warning, message, tag.ToString());
-        }
-
-        /// <summary>
-        /// Logs an error message.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="tag">Optional tag identifying the source or category.</param>
-        public static void Error(this IBurstLogger burstLogger, string message, string tag = "Error")
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
-
-            burstLogger.Log(LogLevel.Error, message, tag);
-        }
-
-        /// <summary>
-        /// Logs an error message with a LogTag enum.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="tag">The tag to categorize the message.</param>
-        public static void Error(this IBurstLogger burstLogger, string message, Tagging.LogTag tag)
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
-
-            burstLogger.Log(LogLevel.Error, message, tag.ToString());
-        }
-
-        /// <summary>
-        /// Logs a critical error message.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="tag">Optional tag identifying the source or category.</param>
-        public static void Critical(this IBurstLogger burstLogger, string message, string tag = "Critical")
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
-
-            burstLogger.Log(LogLevel.Critical, message, tag);
-        }
-
-        /// <summary>
-        /// Logs a critical error message with a LogTag enum.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="tag">The tag to categorize the message.</param>
-        public static void Critical(this IBurstLogger burstLogger, string message, Tagging.LogTag tag)
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
-
-            burstLogger.Log(LogLevel.Critical, message, tag.ToString());
-        }
-
-        /// <summary>
-        /// Logs a structured message with properties.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="level">The severity level of the log.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="tag">The tag identifying the source or category.</param>
-        /// <param name="properties">Key-value properties providing structured context.</param>
-        public static void Log(this IBurstLogger burstLogger, byte level, string message, string tag,
-            LogProperties properties)
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
-
-            burstLogger.Log(level, message, tag, properties);
-        }
-
-        /// <summary>
-        /// Logs a structured debug message with properties.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="properties">Key-value properties providing structured context.</param>
-        /// <param name="tag">Optional tag identifying the source or category.</param>
-        public static void Debug(this IBurstLogger burstLogger, string message, LogProperties properties,
-            string tag = "Debug")
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
-
-            burstLogger.Log(LogLevel.Debug, message, tag, properties);
-        }
-
-        /// <summary>
-        /// Logs a structured info message with properties.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="properties">Key-value properties providing structured context.</param>
-        /// <param name="tag">Optional tag identifying the source or category.</param>
-        public static void Info(this IBurstLogger burstLogger, string message, LogProperties properties,
-            string tag = "Info")
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
-
-            burstLogger.Log(LogLevel.Info, message, tag, properties);
-        }
-
-        /// <summary>
-        /// Logs a structured warning message with properties.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="properties">Key-value properties providing structured context.</param>
-        /// <param name="tag">Optional tag identifying the source or category.</param>
-        public static void Warning(this IBurstLogger burstLogger, string message, LogProperties properties,
-            string tag = "Warning")
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
-
-            burstLogger.Log(LogLevel.Warning, message, tag, properties);
-        }
-
-        /// <summary>
-        /// Logs a structured error message with properties.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="properties">Key-value properties providing structured context.</param>
-        /// <param name="tag">Optional tag identifying the source or category.</param>
-        public static void Error(this IBurstLogger burstLogger, string message, LogProperties properties,
-            string tag = "Error")
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
-
-            burstLogger.Log(LogLevel.Error, message, tag, properties);
-        }
-
-        /// <summary>
-        /// Logs a structured critical message with properties.
-        /// </summary>
-        /// <param name="burstLogger">The burstLogger instance.</param>
-        /// <param name="message">The message content.</param>
-        /// <param name="properties">Key-value properties providing structured context.</param>
-        /// <param name="tag">Optional tag identifying the source or category.</param>
-        public static void Critical(this IBurstLogger burstLogger, string message, LogProperties properties,
-            string tag = "Critical")
-        {
-            if (burstLogger == null)
-                throw new ArgumentNullException(nameof(burstLogger));
-
-            burstLogger.Log(LogLevel.Critical, message, tag, properties);
-        }
+        public static void Log(this IBurstLoggingService logger, Tagging.LogTag tag, in FixedString512Bytes message, LogLevel level, in LogProperties properties)
+            => logger.Log(tag, message, level, properties);
     }
 }

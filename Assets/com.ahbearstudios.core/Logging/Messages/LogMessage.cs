@@ -70,7 +70,7 @@ namespace AhBearStudios.Core.Logging.Messages
             Level = level;
             Tag = tag;
             CustomTag = default;
-            TimestampTicks = DateTime.UtcNow.Ticks;
+            TimestampTicks = 0;
             Properties = properties;
             _id = Guid.NewGuid();
             _typeCode = typeCode;
@@ -90,7 +90,7 @@ namespace AhBearStudios.Core.Logging.Messages
             Level = level;
             Tag = Tagging.LogTag.Custom;
             CustomTag = customTag;
-            TimestampTicks = DateTime.UtcNow.Ticks;
+            TimestampTicks = 0;
             Properties = properties;
             _id = Guid.NewGuid();
             _typeCode = typeCode;
@@ -118,7 +118,7 @@ namespace AhBearStudios.Core.Logging.Messages
             
             Tag = Tagging.SuggestTagFromContent(in shorterMessage);
             CustomTag = default;
-            TimestampTicks = DateTime.UtcNow.Ticks;
+            TimestampTicks = 0;
             Properties = properties;
             _id = Guid.NewGuid();
             _typeCode = typeCode;
@@ -137,7 +137,7 @@ namespace AhBearStudios.Core.Logging.Messages
             Level = level;
             Tag = tag;
             CustomTag = default;
-            TimestampTicks = DateTime.UtcNow.Ticks;
+            TimestampTicks = 0;
             Properties = new LogProperties(0); // Empty properties
             _id = Guid.NewGuid();
             _typeCode = typeCode;

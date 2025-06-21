@@ -1,36 +1,40 @@
-using Unity.Collections;
-using AhBearStudios.Core.Logging.Data;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.Logging.Jobs;
 using AhBearStudios.Core.Logging.Messages;
+using AhBearStudios.Core.Logging.Processors;
+using Unity.Collections;
 
-namespace AhBearStudios.Core.Logging
+namespace AhBearStudios.Core.Logging.Factories
 {
     /// <summary>
-    /// Interface for factory classes that create different types of loggers.
+    /// Factory for creating logging primitives from a shared configuration.
     /// </summary>
     public interface ILoggerFactory
     {
         /// <summary>
-        /// Creates a standard logger based on the provided configuration.
+        /// Creates the high-level managed logging service.
         /// </summary>
-        /// <param name="config">Configuration controlling the logger's behavior.</param>
-        /// <returns>A configured IBurstLogger instance.</returns>
-        IBurstLogger CreateLogger(ILoggerConfig config);
-        
+        /// <param name="config">The logging configuration.</param>
+        ILoggingService CreateLoggingService(ILoggerConfig config);
+
         /// <summary>
-        /// Creates a LogBatchProcessor for processing log messages from jobs.
+        /// Creates a burst-friendly logger for use inside jobs.
         /// </summary>
-        /// <param name="burstLogger">The target burstLogger to receive processed messages.</param>
-        /// <param name="config">Configuration controlling processor behavior.</param>
-        /// <returns>A configured LogBatchProcessor instance.</returns>
-        LogBatchProcessor CreateBatchProcessor(IBurstLogger burstLogger, ILoggerConfig config);
-        
+        /// <param name="config">The logging configuration.</param>
+        IBurstLoggingService CreateBurstLoggingService(ILoggerConfig config);
+
         /// <summary>
-        /// Creates a JobLogger for use in Unity job contexts.
+        /// Creates the batch processor that drains burst logs into the managed service.
         /// </summary>
-        /// <param name="queue">The queue to write log messages to.</param>
-        /// <param name="config">Configuration controlling logger behavior.</param>
-        /// <returns>A configured JobLogger instance.</returns>
+        /// <param name="burstLogger">The burst logging service.</param>
+        /// <param name="config">The logging configuration.</param>
+        LogBatchProcessor CreateBatchProcessor(IBurstLoggingService burstLogger, ILoggerConfig config);
+
+        /// <summary>
+        /// Creates a job-side logger that writes into a native queue.
+        /// </summary>
+        /// <param name="queue">The native queue for log messages.</param>
+        /// <param name="config">The logging configuration.</param>
         JobLogger CreateJobLogger(NativeQueue<LogMessage> queue, ILoggerConfig config);
     }
 }

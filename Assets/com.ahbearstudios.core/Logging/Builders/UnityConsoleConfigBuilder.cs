@@ -196,29 +196,32 @@ namespace AhBearStudios.Core.Logging.Builders
 
         internal ConfigData GetData() => _data;
 
+        /// <summary>
+        /// Builds a new instance with the configured settings
+        /// </summary>
         public UnityConsoleTargetConfig Build()
         {
-            var config = ScriptableObject.CreateInstance<UnityConsoleTargetConfig>();
-            ApplyDataToScriptableObject(_data, config);
+            var config = new UnityConsoleTargetConfig();
+            ApplyDataToConfig(_data, config);
             return config;
         }
-
+        
         public void ApplyTo(UnityConsoleTargetConfig config)
         {
             if (config == null)
                 throw new ArgumentNullException(nameof(config));
-                
-            ApplyDataToScriptableObject(_data, config);
+        
+            ApplyDataToConfig(_data, config);
         }
 
-        private static void ApplyDataToScriptableObject(ConfigData data, UnityConsoleTargetConfig config)
+        private static void ApplyDataToConfig(ConfigData data, UnityConsoleTargetConfig config)
         {
             // Apply base LogTargetConfig properties
             config.TargetName = data.TargetName;
             config.Enabled = data.Enabled;
             config.MinimumLevel = data.MinimumLevel;
-            config.IncludedTags = data.IncludedTags ?? new string[0];
-            config.ExcludedTags = data.ExcludedTags ?? new string[0];
+            config.IncludedTags = data.IncludedTags ?? Array.Empty<string>();
+            config.ExcludedTags = data.ExcludedTags ?? Array.Empty<string>();
             config.ProcessUntaggedMessages = data.ProcessUntaggedMessages;
             config.CaptureUnityLogs = data.CaptureUnityLogs;
             config.IncludeStackTraces = data.IncludeStackTraces;
@@ -232,7 +235,7 @@ namespace AhBearStudios.Core.Logging.Builders
             config.FlushIntervalSeconds = data.FlushIntervalSeconds;
             config.LimitMessageLength = data.LimitMessageLength;
             config.MaxMessageLength = data.MaxMessageLength;
-    
+
             // Apply UnityConsoleTargetConfig-specific properties
             config.UseColorizedOutput = data.UseColorizedOutput;
             config.RegisterUnityLogHandler = data.RegisterUnityLogHandler;
