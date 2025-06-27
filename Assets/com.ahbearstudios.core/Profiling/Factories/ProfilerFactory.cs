@@ -28,7 +28,7 @@ namespace AhBearStudios.Core.Profiling.Factories
         /// <returns>Configured profiler instance</returns>
         public IProfiler CreateProfiler()
         {
-            var messageBus = _dependencyProvider.Resolve<IMessageBus>();
+            var messageBus = _dependencyProvider.Resolve<IMessageBusService>();
             return new DefaultProfiler(messageBus);
         }
 

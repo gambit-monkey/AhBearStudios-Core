@@ -91,7 +91,7 @@ namespace AhBearStudios.Core.Tests
         public const string Config = "Config";
         public const string Formatters = "Formatters";
         public const string Targets = "Targets";
-        public const string MessageBus = "MessageBus";
+        public const string MessageBus = "MessageBusService";
         public const string Profiling = "Profiling";
         public const string Pooling = "Pooling";
     }

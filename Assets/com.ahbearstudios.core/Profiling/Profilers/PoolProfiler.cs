@@ -22,7 +22,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
     {
         private readonly IProfiler _baseProfiler;
         private readonly IPoolMetrics _poolMetrics;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly Dictionary<Guid, PoolMetricsData> _poolMetricsCache = new Dictionary<Guid, PoolMetricsData>();
         private readonly int _maxHistoryItems = 100;
         private readonly Dictionary<ProfilerTag, List<double>> _history = new Dictionary<ProfilerTag, List<double>>();
@@ -38,19 +38,19 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <summary>
         /// Gets the message bus used by this profiler
         /// </summary>
-        public IMessageBus MessageBus => _messageBus;
+        public IMessageBusService MessageBusService => _messageBusService;
 
         /// <summary>
         /// Creates a new pool profiler
         /// </summary>
         /// <param name="baseProfiler">Base profiler implementation for general profiling</param>
         /// <param name="poolMetrics">Pool metrics service</param>
-        /// <param name="messageBus">Message bus for publishing profiling messages</param>
-        public PoolProfiler(IProfiler baseProfiler, IPoolMetrics poolMetrics, IMessageBus messageBus)
+        /// <param name="messageBusService">Message bus for publishing profiling messages</param>
+        public PoolProfiler(IProfiler baseProfiler, IPoolMetrics poolMetrics, IMessageBusService messageBusService)
         {
             _baseProfiler = baseProfiler ?? throw new ArgumentNullException(nameof(baseProfiler));
             _poolMetrics = poolMetrics ?? throw new ArgumentNullException(nameof(poolMetrics));
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             
             SubscribeToMessages();
         }
@@ -108,7 +108,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession(operationType, poolId, poolName);
 
             return PoolProfilerSession.Create(
-                operationType, poolId, poolName, activeCount, freeCount, _poolMetrics, _messageBus);
+                operationType, poolId, poolName, activeCount, freeCount, _poolMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -123,7 +123,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession(operationType, Guid.Empty, "Unknown");
 
             return PoolProfilerSession.Create(
-                operationType, pool.Id, pool.PoolName, pool.ActiveCount, pool.InactiveCount, _poolMetrics, _messageBus);
+                operationType, pool.Id, pool.PoolName, pool.ActiveCount, pool.InactiveCount, _poolMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -143,7 +143,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
             int inactiveCount = pool.Capacity - activeCount;
 
             return PoolProfilerSession.Create(
-                operationType, poolId, poolName, activeCount, inactiveCount, _poolMetrics, _messageBus);
+                operationType, poolId, poolName, activeCount, inactiveCount, _poolMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -163,7 +163,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
             if (!IsEnabled)
                 return CreateNullSession(operationType, Guid.Empty, poolName);
 
-            return PoolProfilerSession.CreateMinimal(operationType, poolName, _poolMetrics, _messageBus);
+            return PoolProfilerSession.CreateMinimal(operationType, poolName, _poolMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -176,7 +176,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
             if (!IsEnabled)
                 return CreateNullSession(operationType, Guid.Empty, "Generic");
 
-            return PoolProfilerSession.CreateGeneric(operationType, _poolMetrics, _messageBus);
+            return PoolProfilerSession.CreateGeneric(operationType, _poolMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -540,13 +540,13 @@ namespace AhBearStudios.Core.Profiling.Profilers
             try
             {
                 // Subscribe to profiler session messages
-                var sessionCompletedSub = _messageBus.GetSubscriber<PoolProfilerSessionCompletedMessage>();
+                var sessionCompletedSub = _messageBusService.GetSubscriber<PoolProfilerSessionCompletedMessage>();
                 if (sessionCompletedSub != null)
                 {
                     sessionCompletedSub.Subscribe(OnPoolSessionCompleted);
                 }
 
-                var alertSub = _messageBus.GetSubscriber<PoolMetricAlertMessage>();
+                var alertSub = _messageBusService.GetSubscriber<PoolMetricAlertMessage>();
                 if (alertSub != null)
                 {
                     alertSub.Subscribe(OnPoolMetricAlert);

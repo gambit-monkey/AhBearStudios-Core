@@ -76,7 +76,7 @@ namespace AhBearStudios.Core.Logging.Unity
         private ICoroutineManager _coroutineManager;
         private ICoroutineRunner _coroutineRunner;
         private ICoroutineHandle _autoFlushHandle;
-        private IMessageBus _messageBus;
+        private IMessageBusService _messageBusService;
         private IProfiler _profiler;
         private IDependencyProvider _dependencyProvider;
 
@@ -140,7 +140,7 @@ namespace AhBearStudios.Core.Logging.Unity
         /// <summary>
         /// Gets the message bus instance.
         /// </summary>
-        public IMessageBus MessageBus => _messageBus;
+        public IMessageBusService MessageBusService => _messageBusService;
 
         /// <summary>
         /// Gets the total number of messages processed.
@@ -393,7 +393,7 @@ namespace AhBearStudios.Core.Logging.Unity
             // Configure Unity Console Target
             if (_unityConsoleConfig != null && _unityConsoleConfig.Enabled)
             {
-                var unityTarget = _unityConsoleConfig.CreateTarget(_messageBus);
+                var unityTarget = _unityConsoleConfig.CreateTarget(_messageBusService);
                 AddTarget(unityTarget);
                 LogInfo($"Added Unity Console target: {_unityConsoleConfig.TargetName}",
                     Tagging.LogTag.System);
@@ -402,7 +402,7 @@ namespace AhBearStudios.Core.Logging.Unity
             // Configure Serilog File Target
             if (_serilogFileConfig != null && _serilogFileConfig.Enabled)
             {
-                var serilogTarget = _serilogFileConfig.CreateTarget(_messageBus);
+                var serilogTarget = _serilogFileConfig.CreateTarget(_messageBusService);
                 AddTarget(serilogTarget);
                 LogInfo($"Added Serilog file target: {_serilogFileConfig.TargetName}",
                     Tagging.LogTag.System);
@@ -460,7 +460,7 @@ namespace AhBearStudios.Core.Logging.Unity
             config.MinimumLevel = _globalMinimumLevel;
             config.Enabled = true;
 
-            return config.CreateTarget(_messageBus);
+            return config.CreateTarget(_messageBusService);
         }
 
         /// <summary>
@@ -479,11 +479,11 @@ namespace AhBearStudios.Core.Logging.Unity
         /// </summary>
         private void SubscribeToMessages()
         {
-            if (_messageBus == null) return;
+            if (_messageBusService == null) return;
 
-            var subscription1 = _messageBus.Subscribe<LogProcessingMessage>(OnLogProcessingMessage);
-            var subscription2 = _messageBus.Subscribe<LogFlushMessage>(OnLogFlushMessage);
-            var subscription3 = _messageBus.Subscribe<LogLevelChangedMessage>(OnLogLevelChanged);
+            var subscription1 = _messageBusService.Subscribe<LogProcessingMessage>(OnLogProcessingMessage);
+            var subscription2 = _messageBusService.Subscribe<LogFlushMessage>(OnLogFlushMessage);
+            var subscription3 = _messageBusService.Subscribe<LogLevelChangedMessage>(OnLogLevelChanged);
 
             _messageSubscriptions.Add(subscription1);
             _messageSubscriptions.Add(subscription2);
@@ -532,7 +532,7 @@ namespace AhBearStudios.Core.Logging.Unity
             }
 
             // Optionally publish processing statistics for monitoring
-            if (_enableProfiling && _messageBus != null)
+            if (_enableProfiling && _messageBusService != null)
             {
                 // Could publish a performance metrics message here
                 LogDebug(
@@ -570,7 +570,7 @@ namespace AhBearStudios.Core.Logging.Unity
         /// <param name="newLevel">The new log level.</param>
         private void PublishLogLevelChanged(LogLevel oldLevel, LogLevel newLevel)
         {
-            _messageBus?.Publish(new LogLevelChangedMessage(oldLevel, newLevel));
+            _messageBusService?.Publish(new LogLevelChangedMessage(oldLevel, newLevel));
         }
 
         #endregion
@@ -687,7 +687,7 @@ namespace AhBearStudios.Core.Logging.Unity
 
                 // Publish flush message
                 var duration = (Time.realtimeSinceStartup - startTime) * 1000f;
-                _messageBus?.Publish(new LogFlushMessage(flushedCount, duration));
+                _messageBusService?.Publish(new LogFlushMessage(flushedCount, duration));
             }
             catch (Exception ex)
             {
@@ -758,23 +758,23 @@ namespace AhBearStudios.Core.Logging.Unity
             {
                 case LoggingPreset.Development:
                     var (devManager, devLogger) = JobLoggerFactory.CreateForDevelopment(
-                        "Logs/job_debug.log", defaultTag, _messageBus);
+                        "Logs/job_debug.log", defaultTag, _messageBusService);
                     return devLogger;
 
                 case LoggingPreset.Production:
                     var (prodManager, prodLogger) = JobLoggerFactory.CreateForProduction(
-                        "Logs/job_app.log", defaultTag, _messageBus);
+                        "Logs/job_app.log", defaultTag, _messageBusService);
                     return prodLogger;
 
                 case LoggingPreset.HighPerformance:
                     var (hpManager, hpLogger) = JobLoggerFactory.CreateHighPerformance(
-                        "Logs/job_hp.log", defaultTag, _messageBus);
+                        "Logs/job_hp.log", defaultTag, _messageBusService);
                     return hpLogger;
 
                 default:
                     // Default to console-only for unknown presets
                     var (defaultManager, defaultLogger) = JobLoggerFactory.CreateConsoleOnly(
-                        effectiveLevel, true, defaultTag, _messageBus);
+                        effectiveLevel, true, defaultTag, _messageBusService);
                     return defaultLogger;
             }
         }
@@ -787,7 +787,7 @@ namespace AhBearStudios.Core.Logging.Unity
         public JobLogger CreateDevelopmentJobLogger(Tagging.LogTag defaultTag = default)
         {
             var (manager, logger) = JobLoggerFactory.CreateForDevelopment(
-                "Logs/job_debug.log", defaultTag, _messageBus);
+                "Logs/job_debug.log", defaultTag, _messageBusService);
             return logger;
         }
 
@@ -799,7 +799,7 @@ namespace AhBearStudios.Core.Logging.Unity
         public JobLogger CreateProductionJobLogger(Tagging.LogTag defaultTag = default)
         {
             var (manager, logger) = JobLoggerFactory.CreateForProduction(
-                "Logs/job_app.log", defaultTag, _messageBus);
+                "Logs/job_app.log", defaultTag, _messageBusService);
             return logger;
         }
 
@@ -811,7 +811,7 @@ namespace AhBearStudios.Core.Logging.Unity
         public JobLogger CreateConsoleJobLogger(Tagging.LogTag defaultTag = default)
         {
             var (manager, logger) = JobLoggerFactory.CreateConsoleOnly(
-                _globalMinimumLevel, true, defaultTag, _messageBus);
+                _globalMinimumLevel, true, defaultTag, _messageBusService);
             return logger;
         }
 
@@ -907,7 +907,7 @@ namespace AhBearStudios.Core.Logging.Unity
             _messageQueue.Add(message);
 
             // Publish log entry message
-            _messageBus?.Publish(new LogEntryMessage(message));
+            _messageBusService?.Publish(new LogEntryMessage(message));
         }
 
         /// <summary>
@@ -969,7 +969,7 @@ namespace AhBearStudios.Core.Logging.Unity
             // Publish log written message if message was written to at least one target
             if (targetCount > 0)
             {
-                _messageBus?.Publish(new LogEntryWrittenMessage(message, targetCount, primaryTargetName));
+                _messageBusService?.Publish(new LogEntryWrittenMessage(message, targetCount, primaryTargetName));
             }
         }
 

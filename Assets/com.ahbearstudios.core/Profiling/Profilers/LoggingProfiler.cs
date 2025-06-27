@@ -20,7 +20,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
     public sealed class LoggingProfiler : IProfiler, IDisposable
     {
         private readonly IProfiler _baseProfiler;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly Dictionary<string, LoggingMetricsData> _loggingMetrics;
         private readonly Dictionary<LogLevel, double> _logLevelAlerts;
         private readonly Dictionary<string, double> _targetAlerts;
@@ -30,11 +30,11 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// Creates a new logging profiler.
         /// </summary>
         /// <param name="baseProfiler">Base profiler to delegate general operations to.</param>
-        /// <param name="messageBus">Message bus for publishing profiling events.</param>
-        public LoggingProfiler(IProfiler baseProfiler, IMessageBus messageBus)
+        /// <param name="messageBusService">Message bus for publishing profiling events.</param>
+        public LoggingProfiler(IProfiler baseProfiler, IMessageBusService messageBusService)
         {
             _baseProfiler = baseProfiler ?? throw new ArgumentNullException(nameof(baseProfiler));
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             _loggingMetrics = new Dictionary<string, LoggingMetricsData>();
             _logLevelAlerts = new Dictionary<LogLevel, double>();
             _targetAlerts = new Dictionary<string, double>();
@@ -50,7 +50,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <summary>
         /// Gets the message bus used for profiling events.
         /// </summary>
-        public IMessageBus MessageBus => _messageBus;
+        public IMessageBusService MessageBusService => _messageBusService;
 
         /// <summary>
         /// Begins a Unity profiler sample.
@@ -181,7 +181,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 null,
                 null,
                 null,
-                _messageBus);
+                _messageBusService);
         }
 
         /// <summary>
@@ -206,7 +206,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 null,
                 null,
                 null,
-                _messageBus);
+                _messageBusService);
         }
 
         /// <summary>
@@ -231,7 +231,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 targetName,
                 null,
                 null,
-                _messageBus);
+                _messageBusService);
         }
 
         /// <summary>
@@ -255,7 +255,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 null,
                 null,
                 null,
-                _messageBus);
+                _messageBusService);
         }
 
         /// <summary>
@@ -279,7 +279,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 null,
                 null,
                 null,
-                _messageBus);
+                _messageBusService);
         }
 
         /// <summary>
@@ -304,7 +304,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 null,
                 formatterName,
                 null,
-                _messageBus);
+                _messageBusService);
         }
 
         /// <summary>
@@ -332,7 +332,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 null,
                 null,
                 null,
-                _messageBus);
+                _messageBusService);
 
             action.Invoke();
         }
@@ -362,7 +362,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 null,
                 null,
                 null,
-                _messageBus);
+                _messageBusService);
 
             action.Invoke();
         }
@@ -389,7 +389,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 null,
                 null,
                 null,
-                _messageBus);
+                _messageBusService);
         }
 
         /// <summary>
@@ -414,7 +414,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 null,
                 null,
                 null,
-                _messageBus);
+                _messageBusService);
         }
 
         /// <summary>
@@ -500,17 +500,17 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// </summary>
         private void SubscribeToMessages()
         {
-            if (_messageBus == null) return;
+            if (_messageBusService == null) return;
 
             try
             {
-                var subscriber = _messageBus.GetSubscriber<LogEntryWrittenMessage>();
+                var subscriber = _messageBusService.GetSubscriber<LogEntryWrittenMessage>();
                 subscriber?.Subscribe(OnLogEntryWritten);
 
-                var levelSubscriber = _messageBus.GetSubscriber<LogLevelChangedMessage>();
+                var levelSubscriber = _messageBusService.GetSubscriber<LogLevelChangedMessage>();
                 levelSubscriber?.Subscribe(OnLogLevelChanged);
 
-                var sessionSubscriber = _messageBus.GetSubscriber<LoggingProfilerSessionCompletedMessage>();
+                var sessionSubscriber = _messageBusService.GetSubscriber<LoggingProfilerSessionCompletedMessage>();
                 sessionSubscriber?.Subscribe(OnLoggingSessionCompleted);
             }
             catch

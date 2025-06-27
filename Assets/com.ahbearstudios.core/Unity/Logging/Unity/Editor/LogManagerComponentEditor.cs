@@ -358,7 +358,7 @@ namespace AhBearStudios.Core.Logging.Unity.Editor
                         EditorGUILayout.LabelField($"Service Available: No");
                     }
                     
-                    if (_target.MessageBus != null)
+                    if (_target.MessageBusService != null)
                     {
                         EditorGUILayout.LabelField($"Message Bus: Connected");
                     }

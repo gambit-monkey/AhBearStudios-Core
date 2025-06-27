@@ -10,7 +10,7 @@ namespace AhBearStudios.Core.Profiling
 {
     /// <summary>
     /// System for monitoring and alerting on metric and session thresholds
-    /// using the MessageBus for communication
+    /// using the MessageBusService for communication
     /// </summary>
     public class ThresholdAlertSystem : IDisposable
     {
@@ -22,7 +22,7 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Reference to the message bus for publishing alerts
         /// </summary>
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         
         /// <summary>
         /// Metric alerts mapped by ProfilerTag
@@ -60,17 +60,17 @@ namespace AhBearStudios.Core.Profiling
         /// Creates a new threshold alert system connected to a profiler manager
         /// </summary>
         /// <param name="profilerManager">Reference to the profiler manager implementation</param>
-        /// <param name="messageBus">Reference to the message bus for publishing alerts</param>
+        /// <param name="messageBusService">Reference to the message bus for publishing alerts</param>
         /// <param name="logToConsole">Whether to log alerts to the console</param>
-        public ThresholdAlertSystem(IProfilerManager profilerManager, IMessageBus messageBus, bool logToConsole = true)
+        public ThresholdAlertSystem(IProfilerManager profilerManager, IMessageBusService messageBusService, bool logToConsole = true)
         {
             _profilerManager = profilerManager ?? throw new ArgumentNullException(nameof(profilerManager));
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             LogToConsole = logToConsole;
             _isRunning = false;
             
             // Subscribe to session completed messages
-            _messageBus.GetSubscriber<ProfilerSessionCompletedMessage>().Subscribe(OnSessionCompleted);
+            _messageBusService.GetSubscriber<ProfilerSessionCompletedMessage>().Subscribe(OnSessionCompleted);
         }
         
         /// <summary>
@@ -249,8 +249,8 @@ namespace AhBearStudios.Core.Profiling
                     // Trigger alert
                     threshold.CurrentCooldown = threshold.CooldownPeriod;
                     
-                    // Create and publish message via MessageBus
-                    _messageBus.PublishMessage(new SessionAlertMessage(
+                    // Create and publish message via MessageBusService
+                    _messageBusService.PublishMessage(new SessionAlertMessage(
                         sessionTag, 
                         sessionId,
                         durationMs, 
@@ -304,8 +304,8 @@ namespace AhBearStudios.Core.Profiling
                     // Trigger alert
                     threshold.CurrentCooldown = threshold.CooldownPeriod;
                     
-                    // Create and publish message via MessageBus
-                    _messageBus.PublishMessage(new MetricAlertMessage(
+                    // Create and publish message via MessageBusService
+                    _messageBusService.PublishMessage(new MetricAlertMessage(
                         metricTag, 
                         value, 
                         threshold.ThresholdValue));

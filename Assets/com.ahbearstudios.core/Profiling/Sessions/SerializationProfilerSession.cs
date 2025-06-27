@@ -16,7 +16,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
     {
         private readonly ProfilerMarker _marker;
         private readonly ProfilerTag _tag;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly Dictionary<string, double> _customMetrics = new Dictionary<string, double>();
         private bool _isDisposed;
         private long _startTimeNs;
@@ -81,7 +81,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="dataSize">Size of the data in bytes</param>
         /// <param name="batchSize">Batch size for batch operations</param>
         /// <param name="serializerMetrics">Serializer metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         public SerializationProfilerSession(
             ProfilerTag tag, 
             Guid serializerId, 
@@ -92,7 +92,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             int dataSize,
             int batchSize,
             ISerializerMetrics serializerMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             _tag = tag;
             SerializerId = serializerId;
@@ -103,10 +103,10 @@ namespace AhBearStudios.Core.Profiling.Sessions
             DataSize = dataSize;
             BatchSize = batchSize;
             _serializerMetrics = serializerMetrics;
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             _isDisposed = false;
             _sessionId = Guid.NewGuid();
-            _isNullSession = serializerMetrics == null && messageBus == null;
+            _isNullSession = serializerMetrics == null && messageBusService == null;
             
             // Only create marker and start timing if this isn't a null session
             if (!_isNullSession)
@@ -118,14 +118,14 @@ namespace AhBearStudios.Core.Profiling.Sessions
                 _startTimeNs = GetHighPrecisionTimestampNs();
                 
                 // Notify via message bus that session started
-                if (_messageBus != null)
+                if (_messageBusService != null)
                 {
                     var message = new SerializationProfilerSessionStartedMessage(
                         _tag, _sessionId, SerializerId, SerializerName, MessageId, MessageTypeCode, DataSize);
 
                     try
                     {
-                        var publisher = _messageBus.GetPublisher<SerializationProfilerSessionStartedMessage>();
+                        var publisher = _messageBusService.GetPublisher<SerializationProfilerSessionStartedMessage>();
                         publisher?.Publish(message);
                     }
                     catch
@@ -148,7 +148,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="dataSize">Size of the data in bytes</param>
         /// <param name="batchSize">Batch size for batch operations</param>
         /// <param name="serializerMetrics">Serializer metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         /// <returns>A new serialization profiler session with appropriate tag</returns>
         public static SerializationProfilerSession Create(
             string operationType,
@@ -159,7 +159,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             int dataSize,
             int batchSize,
             ISerializerMetrics serializerMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             if (string.IsNullOrEmpty(operationType))
                 operationType = "Unknown";
@@ -168,7 +168,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             ProfilerTag tag = SelectOptimalTag(operationType, serializerId, serializerName, messageId, messageTypeCode, dataSize, batchSize);
 
             return new SerializationProfilerSession(
-                tag, serializerId, serializerName, operationType, messageId, messageTypeCode, dataSize, batchSize, serializerMetrics, messageBus);
+                tag, serializerId, serializerName, operationType, messageId, messageTypeCode, dataSize, batchSize, serializerMetrics, messageBusService);
         }
 
         /// <summary>
@@ -178,16 +178,16 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="serializerName">Serializer name</param>
         /// <param name="dataSize">Size of the data in bytes</param>
         /// <param name="serializerMetrics">Serializer metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         /// <returns>A new serialization profiler session</returns>
         public static SerializationProfilerSession CreateMinimal(
             string operationType,
             string serializerName,
             int dataSize,
             ISerializerMetrics serializerMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
-            return Create(operationType, Guid.Empty, serializerName, Guid.Empty, 0, dataSize, 0, serializerMetrics, messageBus);
+            return Create(operationType, Guid.Empty, serializerName, Guid.Empty, 0, dataSize, 0, serializerMetrics, messageBusService);
         }
 
         /// <summary>
@@ -195,17 +195,17 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// </summary>
         /// <param name="operationType">Operation type</param>
         /// <param name="serializerMetrics">Serializer metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         /// <returns>A new serialization profiler session</returns>
         public static SerializationProfilerSession CreateGeneric(
             string operationType,
             ISerializerMetrics serializerMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             var tag = SerializationProfilerTags.ForOperation(operationType);
             
             return new SerializationProfilerSession(
-                tag, Guid.Empty, "Generic", operationType, Guid.Empty, 0, 0, 0, serializerMetrics, messageBus);
+                tag, Guid.Empty, "Generic", operationType, Guid.Empty, 0, 0, 0, serializerMetrics, messageBusService);
         }
 
         /// <summary>
@@ -216,7 +216,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="batchSize">Batch size</param>
         /// <param name="totalDataSize">Total size of all data in the batch</param>
         /// <param name="serializerMetrics">Serializer metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         /// <returns>A new serialization profiler session for batch operations</returns>
         public static SerializationProfilerSession CreateBatch(
             string operationType,
@@ -224,12 +224,12 @@ namespace AhBearStudios.Core.Profiling.Sessions
             int batchSize,
             int totalDataSize,
             ISerializerMetrics serializerMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             var tag = SerializationProfilerTags.ForBatch(operationType, batchSize);
             
             return new SerializationProfilerSession(
-                tag, Guid.Empty, serializerName, operationType, Guid.Empty, 0, totalDataSize, batchSize, serializerMetrics, messageBus);
+                tag, Guid.Empty, serializerName, operationType, Guid.Empty, 0, totalDataSize, batchSize, serializerMetrics, messageBusService);
         }
 
         /// <summary>
@@ -240,7 +240,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="messageTypeCode">Message type code</param>
         /// <param name="dataSize">Size of the data</param>
         /// <param name="serializerMetrics">Serializer metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         /// <returns>A new serialization profiler session for message type operations</returns>
         public static SerializationProfilerSession CreateForMessageType(
             string operationType,
@@ -248,12 +248,12 @@ namespace AhBearStudios.Core.Profiling.Sessions
             ushort messageTypeCode,
             int dataSize,
             ISerializerMetrics serializerMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             var tag = SerializationProfilerTags.ForMessageType(operationType, messageTypeCode);
             
             return new SerializationProfilerSession(
-                tag, Guid.Empty, serializerName, operationType, Guid.Empty, messageTypeCode, dataSize, 0, serializerMetrics, messageBus);
+                tag, Guid.Empty, serializerName, operationType, Guid.Empty, messageTypeCode, dataSize, 0, serializerMetrics, messageBusService);
         }
 
         /// <summary>
@@ -263,19 +263,19 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="serializerName">Serializer name</param>
         /// <param name="messageSize">Size of the message</param>
         /// <param name="serializerMetrics">Serializer metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         /// <returns>A new serialization profiler session with size categorization</returns>
         public static SerializationProfilerSession CreateForSizedOperation(
             string operationType,
             string serializerName,
             int messageSize,
             ISerializerMetrics serializerMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             var tag = SerializationProfilerTags.ForSizedOperation(operationType, serializerName, messageSize);
             
             return new SerializationProfilerSession(
-                tag, Guid.Empty, serializerName, operationType, Guid.Empty, 0, messageSize, 0, serializerMetrics, messageBus);
+                tag, Guid.Empty, serializerName, operationType, Guid.Empty, 0, messageSize, 0, serializerMetrics, messageBusService);
         }
 
         /// <summary>
@@ -451,7 +451,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             RecordSerializationMetrics();
             
             // Notify via message bus that session ended
-            if (_messageBus != null)
+            if (_messageBusService != null)
             {
                 var message = new SerializationProfilerSessionCompletedMessage(
                     _tag, _sessionId, SerializerId, SerializerName, MessageId, MessageTypeCode, 
@@ -459,7 +459,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
 
                 try
                 {
-                    var publisher = _messageBus.GetPublisher<SerializationProfilerSessionCompletedMessage>();
+                    var publisher = _messageBusService.GetPublisher<SerializationProfilerSessionCompletedMessage>();
                     publisher?.Publish(message);
                 }
                 catch

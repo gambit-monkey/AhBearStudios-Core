@@ -1,5 +1,6 @@
 using System;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Extensions;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling;
@@ -14,8 +15,8 @@ namespace AhBearStudios.Core.MessageBus.Handlers
     /// <typeparam name="TMessage">The type of message to handle.</typeparam>
     public abstract class BaseMessageHandler<TMessage> : IDisposable
     {
-        private readonly IMessageBus _messageBus;
-        private readonly IBurstLogger _logger;
+        private readonly IMessageBusService _messageBusService;
+        private readonly ILoggingService _logger;
         private readonly IProfiler _profiler;
         private readonly IDisposable _subscription;
         private readonly ProfilerTag _handlerTag;
@@ -23,12 +24,12 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         /// <summary>
         /// Initializes a new instance of the BaseMessageHandler class.
         /// </summary>
-        /// <param name="messageBus">The message bus to use.</param>
+        /// <param name="messageBusService">The message bus to use.</param>
         /// <param name="logger">The logger to use for logging.</param>
         /// <param name="profiler">The profiler to use for performance monitoring.</param>
-        protected BaseMessageHandler(IMessageBus messageBus, IBurstLogger logger, IProfiler profiler)
+        protected BaseMessageHandler(IMessageBusService messageBusService, ILoggingService logger, IProfiler profiler)
         {
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
             
@@ -37,7 +38,7 @@ namespace AhBearStudios.Core.MessageBus.Handlers
             
             _handlerTag = new ProfilerTag(new ProfilerCategory("MessageHandler"), $"{handlerType.Name}_{messageType.Name}");
             
-            _subscription = _messageBus.Subscribe<TMessage>(HandleMessageInternal);
+            _subscription = _messageBusService.Subscribe<TMessage>(HandleMessageInternal);
             
             _logger.Log(LogLevel.Debug, $"Registered message handler {handlerType.Name} for message type {messageType.Name}", "MessageHandler");
         }

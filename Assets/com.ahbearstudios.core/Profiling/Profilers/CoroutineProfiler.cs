@@ -19,7 +19,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
     {
         private readonly IProfiler _baseProfiler;
         private readonly ICoroutineMetrics _coroutineMetrics;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly Dictionary<Guid, CoroutineMetricsData> _runnerMetricsCache = new Dictionary<Guid, CoroutineMetricsData>();
         private readonly int _maxHistoryItems = 100;
         private readonly Dictionary<ProfilerTag, List<double>> _history = new Dictionary<ProfilerTag, List<double>>();
@@ -33,23 +33,23 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <summary>
         /// Gets the message bus used by this profiler
         /// </summary>
-        public IMessageBus MessageBus => _messageBus;
+        public IMessageBusService MessageBusService => _messageBusService;
 
         /// <summary>
         /// Creates a new coroutine profiler
         /// </summary>
         /// <param name="baseProfiler">Base profiler implementation for general profiling</param>
         /// <param name="coroutineMetrics">Coroutine metrics service</param>
-        /// <param name="messageBus">Message bus for publishing profiling messages</param>
-        public CoroutineProfiler(IProfiler baseProfiler, ICoroutineMetrics coroutineMetrics, IMessageBus messageBus)
+        /// <param name="messageBusService">Message bus for publishing profiling messages</param>
+        public CoroutineProfiler(IProfiler baseProfiler, ICoroutineMetrics coroutineMetrics, IMessageBusService messageBusService)
         {
             _baseProfiler = baseProfiler ?? throw new ArgumentNullException(nameof(baseProfiler));
             _coroutineMetrics = coroutineMetrics ?? throw new ArgumentNullException(nameof(coroutineMetrics));
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             
             // Subscribe to profiler session messages
-            _messageBus.GetSubscriber<CoroutineProfilerSessionCompletedMessage>().Subscribe(OnCoroutineSessionCompleted);
-            _messageBus.GetSubscriber<CoroutineMetricAlertMessage>().Subscribe(OnCoroutineMetricAlert);
+            _messageBusService.GetSubscriber<CoroutineProfilerSessionCompletedMessage>().Subscribe(OnCoroutineSessionCompleted);
+            _messageBusService.GetSubscriber<CoroutineMetricAlertMessage>().Subscribe(OnCoroutineMetricAlert);
         }
 
         /// <summary>
@@ -107,7 +107,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 coroutineId,
                 coroutineTag,
                 _coroutineMetrics,
-                _messageBus
+                _messageBusService
             );
         }
 
@@ -137,7 +137,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 coroutineId,
                 coroutineTag,
                 _coroutineMetrics,
-                _messageBus
+                _messageBusService
             );
         }
         
@@ -168,7 +168,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 coroutineId,
                 coroutineTag,
                 _coroutineMetrics,
-                _messageBus
+                _messageBusService
             );
         }
         
@@ -203,7 +203,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 0,
                 null,
                 _coroutineMetrics,
-                _messageBus
+                _messageBusService
             );
         }
         

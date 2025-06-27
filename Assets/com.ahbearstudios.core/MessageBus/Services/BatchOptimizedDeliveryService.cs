@@ -24,7 +24,7 @@ namespace AhBearStudios.Core.MessageBus.Services
     /// </summary>
     public sealed class BatchOptimizedDeliveryService : IMessageDeliveryService
     {
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly IBurstLogger _logger;
         private readonly IProfiler _profiler;
         private readonly BatchOptimizedConfiguration _configuration;
@@ -87,17 +87,17 @@ namespace AhBearStudios.Core.MessageBus.Services
         /// <summary>
         /// Initializes a new instance of the BatchOptimizedDeliveryService class.
         /// </summary>
-        /// <param name="messageBus">The message bus to use for sending messages.</param>
+        /// <param name="messageBusService">The message bus to use for sending messages.</param>
         /// <param name="logger">The logger to use for logging.</param>
         /// <param name="profiler">The profiler to use for performance monitoring.</param>
         /// <param name="configuration">Configuration for batch optimization.</param>
         public BatchOptimizedDeliveryService(
-            IMessageBus messageBus,
+            IMessageBusService messageBusService,
             IBurstLogger logger,
             IProfiler profiler,
             BatchOptimizedConfiguration configuration = null)
         {
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
             _configuration = configuration ?? new BatchOptimizedConfiguration();
@@ -149,7 +149,7 @@ namespace AhBearStudios.Core.MessageBus.Services
                 _cancellationTokenSource = new CancellationTokenSource();
 
                 // Subscribe to acknowledgment messages
-                _acknowledgmentSubscription = _messageBus.Subscribe<MessageAcknowledged>(OnMessageAcknowledgedReceived);
+                _acknowledgmentSubscription = _messageBusService.Subscribe<MessageAcknowledged>(OnMessageAcknowledgedReceived);
 
                 // Start the batch processing timer
                 _batchTimer = new Timer(
@@ -456,7 +456,7 @@ namespace AhBearStudios.Core.MessageBus.Services
         {
             using var scope = _profiler.BeginScope(_profileTag);
 
-            _messageBus.Publish(new MessageAcknowledged
+            _messageBusService.Publish(new MessageAcknowledged
             {
                 AcknowledgedMessageId = messageId,
                 AcknowledgedDeliveryId = deliveryId,
@@ -665,7 +665,7 @@ namespace AhBearStudios.Core.MessageBus.Services
 
         private async Task ProcessSingleBatchedMessage(BatchedMessage batchedMessage)
         {
-            _messageBus.PublishMessage(batchedMessage.Message);
+            _messageBusService.PublishMessage(batchedMessage.Message);
 
             if (batchedMessage.DeliveryType == DeliveryType.FireAndForget)
             {

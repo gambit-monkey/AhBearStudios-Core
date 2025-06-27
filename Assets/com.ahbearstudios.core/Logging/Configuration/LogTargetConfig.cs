@@ -187,9 +187,9 @@ namespace AhBearStudios.Core.Logging.Configuration
         /// <summary>
         /// Creates a log target based on this configuration with optional message bus.
         /// </summary>
-        /// <param name="messageBus">Optional message bus for publishing log events.</param>
+        /// <param name="messageBusService">Optional message bus for publishing log events.</param>
         /// <returns>A configured log target.</returns>
-        public virtual ILogTarget CreateTarget(IMessageBus messageBus)
+        public virtual ILogTarget CreateTarget(IMessageBusService messageBusService)
         {
             return CreateTarget();
         }

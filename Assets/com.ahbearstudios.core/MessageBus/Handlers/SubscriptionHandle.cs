@@ -1,5 +1,6 @@
 using System;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 
 namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 {
@@ -11,7 +12,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         private readonly IDisposable _innerSubscription;
         private readonly Action _onDispose;
         private readonly TKey _key;
-        private readonly IBurstLogger _logger;
+        private readonly ILoggingService _logger;
         private readonly string _subscriberName;
         private bool _disposed;
 
@@ -27,7 +28,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             IDisposable innerSubscription,
             Action onDispose,
             TKey key,
-            IBurstLogger logger,
+            ILoggingService logger,
             string subscriberName)
         {
             _innerSubscription = innerSubscription ?? throw new ArgumentNullException(nameof(innerSubscription));
@@ -76,7 +77,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
     {
         private readonly IDisposable _innerSubscription;
         private readonly Action _onDispose;
-        private readonly IBurstLogger _logger;
+        private readonly ILoggingService _logger;
         private readonly string _subscriberName;
         private bool _disposed;
 
@@ -90,7 +91,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         public SubscriptionHandle(
             IDisposable innerSubscription,
             Action onDispose,
-            IBurstLogger logger,
+            ILoggingService logger,
             string subscriberName)
         {
             _innerSubscription = innerSubscription ?? throw new ArgumentNullException(nameof(innerSubscription));

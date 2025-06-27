@@ -10,10 +10,10 @@ using MessagePipe;
 namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 {
     /// <summary>
-    /// Implementation of the IMessageBus interface using MessagePipe.
+    /// Implementation of the IMessageBusService interface using MessagePipe.
     /// Provides efficient message publishing and subscription with caching support.
     /// </summary>
-    public sealed class MessagePipeBus : IMessageBus, IDisposable
+    public sealed class MessagePipeBusService : IMessageBusService, IDisposable
     {
         private readonly IDependencyProvider _dependencyProvider;
         private readonly IBurstLogger _logger;
@@ -30,13 +30,13 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         private bool _disposed;
 
         /// <summary>
-        /// Initializes a new instance of the MessagePipeBus class.
+        /// Initializes a new instance of the MessagePipeBusService class.
         /// </summary>
         /// <param name="dependencyProvider">The dependency provider to use for resolving MessagePipe services.</param>
         /// <param name="logger">The logger to use for logging.</param>
         /// <param name="profiler">The profiler to use for performance monitoring.</param>
         /// <param name="messageRegistry">The message registry to use for message discovery.</param>
-        public MessagePipeBus(
+        public MessagePipeBusService(
             IDependencyProvider dependencyProvider, 
             IBurstLogger logger, 
             IProfiler profiler,
@@ -47,7 +47,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
             _messageRegistry = messageRegistry ?? throw new ArgumentNullException(nameof(messageRegistry));
 
-            _logger.Log(LogLevel.Info, "MessagePipeBus initialized", "MessageBus");
+            _logger.Log(LogLevel.Info, "MessagePipeBusService initialized", "MessageBusService");
         }
 
         /// <inheritdoc />
@@ -61,7 +61,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             {
                 if (!_publishers.TryGetValue(messageType, out var publisher))
                 {
-                    using (_profiler.BeginSample("MessagePipeBus.GetPublisher"))
+                    using (_profiler.BeginSample("MessagePipeBusService.GetPublisher"))
                     {
                         var messagePipePublisher = _dependencyProvider.Resolve<IAsyncPublisher<TMessage>>();
                         if (messagePipePublisher == null)
@@ -76,7 +76,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 
                         _logger.Log(LogLevel.Debug, 
                             $"Created publisher for message type {messageType.Name}", 
-                            "MessageBus");
+                            "MessageBusService");
 
                         // Register the message type if it implements IMessage and is not already registered
                         if (typeof(IMessage).IsAssignableFrom(messageType) && !_messageRegistry.IsRegistered(messageType))
@@ -101,7 +101,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             {
                 if (!_subscribers.TryGetValue(messageType, out var subscriber))
                 {
-                    using (_profiler.BeginSample("MessagePipeBus.GetSubscriber"))
+                    using (_profiler.BeginSample("MessagePipeBusService.GetSubscriber"))
                     {
                         var messagePipeSubscriber = _dependencyProvider.Resolve<ISubscriber<TMessage>>();
                         if (messagePipeSubscriber == null)
@@ -116,7 +116,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 
                         _logger.Log(LogLevel.Debug, 
                             $"Created subscriber for message type {messageType.Name}", 
-                            "MessageBus");
+                            "MessageBusService");
 
                         // Register the message type if it implements IMessage and is not already registered
                         if (typeof(IMessage).IsAssignableFrom(messageType) && !_messageRegistry.IsRegistered(messageType))
@@ -141,7 +141,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             {
                 if (!_keyedPublishers.TryGetValue(key, out var publisher))
                 {
-                    using (_profiler.BeginSample("MessagePipeBus.GetKeyedPublisher"))
+                    using (_profiler.BeginSample("MessagePipeBusService.GetKeyedPublisher"))
                     {
                         var messagePipePublisher = _dependencyProvider.Resolve<IAsyncPublisher<TKey, TMessage>>();
                         if (messagePipePublisher == null)
@@ -156,7 +156,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 
                         _logger.Log(LogLevel.Debug,
                             $"Created keyed publisher for key type {typeof(TKey).Name} and message type {typeof(TMessage).Name}",
-                            "MessageBus");
+                            "MessageBusService");
 
                         // Register the message type if it implements IMessage and is not already registered
                         if (typeof(IMessage).IsAssignableFrom(typeof(TMessage)) &&
@@ -182,7 +182,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             {
                 if (!_keyedSubscribers.TryGetValue(key, out var subscriber))
                 {
-                    using (_profiler.BeginSample("MessagePipeBus.GetKeyedSubscriber"))
+                    using (_profiler.BeginSample("MessagePipeBusService.GetKeyedSubscriber"))
                     {
                         // Resolve both keyed and global subscribers
                         var keyedSubscriber = _dependencyProvider.Resolve<ISubscriber<TKey, TMessage>>();
@@ -212,7 +212,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 
                         _logger.Log(LogLevel.Debug,
                             $"Created keyed subscriber for key type {typeof(TKey).Name} and message type {typeof(TMessage).Name}",
-                            "MessageBus");
+                            "MessageBusService");
 
                         // Register the message type if it implements IMessage and is not already registered
                         if (typeof(IMessage).IsAssignableFrom(typeof(TMessage)) &&
@@ -245,7 +245,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                 _keyedPublishers.Clear();
                 _keyedSubscribers.Clear();
 
-                _logger.Log(LogLevel.Info, "MessageBus caches cleared", "MessageBus");
+                _logger.Log(LogLevel.Info, "MessageBusService caches cleared", "MessageBusService");
             }
         }
 
@@ -257,7 +257,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
 
-            using (_profiler.BeginSample("MessagePipeBus.PublishMessage"))
+            using (_profiler.BeginSample("MessagePipeBusService.PublishMessage"))
             {
                 try
                 {
@@ -267,13 +267,13 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 
                     _logger.Log(LogLevel.Debug,
                         $"Published message of type {typeof(TMessage).Name} with ID {message.Id}",
-                        "MessageBus");
+                        "MessageBusService");
                 }
                 catch (Exception ex)
                 {
                     _logger.Log(LogLevel.Error,
                         $"Error publishing message of type {typeof(TMessage).Name}: {ex.Message}",
-                        "MessageBus");
+                        "MessageBusService");
                     throw;
                 }
             }
@@ -287,7 +287,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             if (handler == null)
                 throw new ArgumentNullException(nameof(handler));
 
-            using (_profiler.BeginSample("MessagePipeBus.SubscribeToMessage"))
+            using (_profiler.BeginSample("MessagePipeBusService.SubscribeToMessage"))
             {
                 try
                 {
@@ -303,7 +303,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 
                     _logger.Log(LogLevel.Debug,
                         $"Subscribed to messages of type {typeof(TMessage).Name}",
-                        "MessageBus");
+                        "MessageBusService");
 
                     // The subscription already includes proper cleanup through the subscriber's tracker
                     // Just need to ensure we remove it from our active subscriptions list when disposed
@@ -319,7 +319,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                 {
                     _logger.Log(LogLevel.Error,
                         $"Error subscribing to messages of type {typeof(TMessage).Name}: {ex.Message}",
-                        "MessageBus");
+                        "MessageBusService");
                     throw;
                 }
             }
@@ -333,7 +333,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             if (handler == null)
                 throw new ArgumentNullException(nameof(handler));
 
-            using (_profiler.BeginSample("MessagePipeBus.SubscribeToAllMessages"))
+            using (_profiler.BeginSample("MessagePipeBusService.SubscribeToAllMessages"))
             {
                 try
                 {
@@ -347,7 +347,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                     {
                         _logger.Log(LogLevel.Warning, 
                             "No message types registered in the registry", 
-                            "MessageBus");
+                            "MessageBusService");
                         return null;
                     }
 
@@ -377,7 +377,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                         {
                             _logger.Log(LogLevel.Warning, 
                                 $"Failed to create subscription for message type {messageType.Name}: {ex.Message}", 
-                                "MessageBus");
+                                "MessageBusService");
                         }
                     }
 
@@ -389,7 +389,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
 
                     _logger.Log(LogLevel.Info,
                         $"Subscribed to all message types ({subscriptions.Count} successful subscriptions out of {messageTypes.Count} types)",
-                        "MessageBus");
+                        "MessageBusService");
 
                     return new CompositeSubscriptionHandle(subscriptions, () =>
                     {
@@ -406,7 +406,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                 {
                     _logger.Log(LogLevel.Error,
                         $"Error subscribing to all messages: {ex.Message}",
-                        "MessageBus");
+                        "MessageBusService");
                     throw;
                 }
             }
@@ -446,7 +446,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                     {
                         _logger.Log(LogLevel.Warning, 
                             $"Error disposing subscription: {ex.Message}", 
-                            "MessageBus");
+                            "MessageBusService");
                     }
                 }
 
@@ -458,13 +458,13 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                 _disposed = true;
             }
 
-            _logger.Log(LogLevel.Info, "MessagePipeBus disposed", "MessageBus");
+            _logger.Log(LogLevel.Info, "MessagePipeBusService disposed", "MessageBusService");
         }
 
         private void ThrowIfDisposed()
         {
             if (_disposed)
-                throw new ObjectDisposedException(nameof(MessagePipeBus));
+                throw new ObjectDisposedException(nameof(MessagePipeBusService));
         }
 
         private void DisposeCollection(IEnumerable<object> collection)
@@ -481,7 +481,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                     {
                         _logger.Log(LogLevel.Warning,
                             $"Error disposing cached item: {ex.Message}",
-                            "MessageBus");
+                            "MessageBusService");
                     }
                 }
             }

@@ -5,11 +5,9 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Configuration;
 using AhBearStudios.Core.MessageBus.Data;
-using AhBearStudios.Core.MessageBus.Events;
-using AhBearStudios.Core.MessageBus.Extensions;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.MessageBus.Messages;
 using AhBearStudios.Core.Profiling;
@@ -19,895 +17,546 @@ using Unity.Profiling;
 namespace AhBearStudios.Core.MessageBus.Services
 {
     /// <summary>
-    /// Reliable message delivery service that provides guaranteed message delivery with retry logic.
+    /// Reliable message delivery service that provides guaranteed message delivery with retry logic,
+    /// publishing all delivery and status notifications as bus messages instead of .NET events.
     /// </summary>
     public sealed class ReliableMessageDeliveryService : IMessageDeliveryService
     {
-        private readonly IMessageBus _messageBus;
-        private readonly IBurstLogger _logger;
-        private readonly IProfiler _profiler;
-        private readonly DeliveryServiceConfiguration _configuration;
+        private readonly IMessageBusService _bus;
+        private readonly ILoggingService    _logger;
+        private readonly IProfiler          _profiler;
+        private readonly DeliveryServiceConfiguration _config;
 
-        private readonly ConcurrentDictionary<(Guid, Guid), PendingDelivery> _pendingDeliveries;
-        private readonly SemaphoreSlim _deliveryLock;
-        private readonly DeliveryStatistics _statistics;
-        private readonly ProfilerTag _profileTag;
-        private readonly object _statusLock = new object();
+        private readonly ConcurrentDictionary<(Guid,Guid), PendingDelivery> _pending;
+        private readonly SemaphoreSlim     _lock;
+        private readonly DeliveryStatistics _stats;
+        private readonly ProfilerTag       _tag;
+        private readonly object            _statusLock = new object();
 
-        private Timer _deliveryTimer;
-        private DeliveryServiceStatus _status = DeliveryServiceStatus.Stopped;
-        private CancellationTokenSource _cancellationTokenSource;
-        private IDisposable _acknowledgmentSubscription;
-        private bool _isDisposed;
+        private Timer                      _timer;
+        private CancellationTokenSource    _cts;
+        private IDisposable                _ackSub;
+        private bool                       _disposed;
+        private DeliveryServiceStatus      _status = DeliveryServiceStatus.Stopped;
 
-        /// <inheritdoc />
         public string Name => "ReliableMessageDelivery";
-
-        /// <inheritdoc />
-        public bool IsActive
+        public bool   IsActive
         {
-            get
-            {
-                lock (_statusLock)
-                {
-                    return _status == DeliveryServiceStatus.Running;
-                }
-            }
+            get { lock(_statusLock) { return _status == DeliveryServiceStatus.Running; } }
         }
-
-        /// <inheritdoc />
         public DeliveryServiceStatus Status
         {
-            get
-            {
-                lock (_statusLock)
-                {
-                    return _status;
-                }
-            }
+            get { lock(_statusLock) { return _status; } }
         }
 
-        /// <inheritdoc />
-        public event EventHandler<MessageDeliveredEventArgs> MessageDelivered;
-
-        /// <inheritdoc />
-        public event EventHandler<MessageDeliveryFailedEventArgs> MessageDeliveryFailed;
-
-        /// <inheritdoc />
-        public event EventHandler<MessageAcknowledgedEventArgs> MessageAcknowledged;
-
-        /// <inheritdoc />
-        public event EventHandler<DeliveryServiceStatusChangedEventArgs> StatusChanged;
-
-        /// <summary>
-        /// Initializes a new instance of the ReliableMessageDeliveryService class.
-        /// </summary>
-        /// <param name="messageBus">The message bus to use for sending messages.</param>
-        /// <param name="logger">The logger to use for logging.</param>
-        /// <param name="profiler">The profiler to use for performance monitoring.</param>
-        /// <param name="configuration">Configuration for the delivery service.</param>
         public ReliableMessageDeliveryService(
-            IMessageBus messageBus,
-            IBurstLogger logger,
-            IProfiler profiler,
-            DeliveryServiceConfiguration configuration = null)
+            IMessageBusService bus,
+            ILoggingService    logger,
+            IProfiler          profiler,
+            DeliveryServiceConfiguration config = null)
         {
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
-            _configuration = configuration ?? new DeliveryServiceConfiguration();
+            _bus     = bus     ?? throw new ArgumentNullException(nameof(bus));
+            _logger  = logger  ?? throw new ArgumentNullException(nameof(logger));
+            _profiler= profiler?? throw new ArgumentNullException(nameof(profiler));
+            _config  = config  ?? new DeliveryServiceConfiguration();
 
-            _pendingDeliveries = new ConcurrentDictionary<(Guid, Guid), PendingDelivery>();
-            _deliveryLock = new SemaphoreSlim(1, 1);
-            _statistics = new DeliveryStatistics();
-            _profileTag = new ProfilerTag(new ProfilerCategory("DeliveryService"), Name);
+            _pending = new ConcurrentDictionary<(Guid,Guid), PendingDelivery>();
+            _lock    = new SemaphoreSlim(1,1);
+            _stats   = new DeliveryStatistics();
+            _tag     = new ProfilerTag(new ProfilerCategory("DeliveryService"), Name);
 
-            _logger.Log(LogLevel.Info, "ReliableMessageDeliveryService initialized", "DeliveryService");
+            _logger.LogInfo("ReliableMessageDeliveryService initialized");
         }
 
-        /// <inheritdoc />
-        public async Task StartAsync(CancellationToken cancellationToken = default)
+        public async Task StartAsync(CancellationToken token = default)
         {
-            using var scope = _profiler.BeginScope(_profileTag);
+            using var scope = _profiler.BeginScope(_tag);
 
-            DeliveryServiceStatus currentStatus;
-            lock (_statusLock)
+            lock(_statusLock)
             {
-                currentStatus = _status;
-                if (currentStatus != DeliveryServiceStatus.Stopped)
-                {
-                    _logger.Log(LogLevel.Warning,
-                        $"Cannot start service - current status: {currentStatus}",
-                        "DeliveryService");
+                if (_status != DeliveryServiceStatus.Stopped)
                     return;
-                }
-
                 _status = DeliveryServiceStatus.Starting;
             }
 
-            ChangeStatus(DeliveryServiceStatus.Starting, "Service startup initiated");
+            PublishStatusChanged(DeliveryServiceStatus.Starting, "Startup initiated");
 
-            try
-            {
-                _cancellationTokenSource = new CancellationTokenSource();
+            _cts = new CancellationTokenSource();
+            _ackSub = _bus.Subscribe<MessageAcknowledged>(OnAckReceived);
+            _timer  = new Timer(_ => _ = Task.Run(ProcessPendingDeliveries), 
+                                null,
+                                _config.ProcessingInterval,
+                                _config.ProcessingInterval);
 
-                // Subscribe to acknowledgment messages
-                _acknowledgmentSubscription = _messageBus.Subscribe<MessageAcknowledged>(OnMessageAcknowledgedReceived);
-
-                // Start the delivery timer
-                _deliveryTimer = new Timer(
-                    OnDeliveryTimerTick,
-                    null,
-                    _configuration.ProcessingInterval,
-                    _configuration.ProcessingInterval);
-
-                ChangeStatus(DeliveryServiceStatus.Running, "Service started successfully");
-                _logger.Log(LogLevel.Info, "ReliableMessageDeliveryService started", "DeliveryService");
-            }
-            catch (Exception ex)
-            {
-                ChangeStatus(DeliveryServiceStatus.Error, $"Failed to start service: {ex.Message}");
-                _logger.Log(LogLevel.Error,
-                    $"Failed to start ReliableMessageDeliveryService: {ex.Message}",
-                    "DeliveryService");
-                throw;
-            }
+            lock(_statusLock) { _status = DeliveryServiceStatus.Running; }
+            PublishStatusChanged(DeliveryServiceStatus.Running, "Service running");
+            _logger.LogInfo("ReliableMessageDeliveryService started");
         }
 
-        /// <inheritdoc />
-        public async Task StopAsync(CancellationToken cancellationToken = default)
+        public async Task StopAsync(CancellationToken token = default)
         {
-            using var scope = _profiler.BeginScope(_profileTag);
+            using var scope = _profiler.BeginScope(_tag);
 
-            lock (_statusLock)
+            lock(_statusLock)
             {
                 if (_status == DeliveryServiceStatus.Stopped)
-                {
                     return;
-                }
+                _status = DeliveryServiceStatus.Stopping;
             }
+            PublishStatusChanged(DeliveryServiceStatus.Stopping, "Shutdown initiated");
 
-            ChangeStatus(DeliveryServiceStatus.Stopping, "Service shutdown initiated");
+            _cts.Cancel();
+            await _timer.DisposeAsync();
+            _timer = null;
+            _ackSub.Dispose();
+            _ackSub = null;
 
+            // wait up to 30s for all pending
+            var sw = Stopwatch.StartNew();
+            while (_pending.Count > 0 && sw.Elapsed < TimeSpan.FromSeconds(30))
+                await Task.Delay(100, token);
+
+            lock(_statusLock) { _status = DeliveryServiceStatus.Stopped; }
+            PublishStatusChanged(DeliveryServiceStatus.Stopped, "Service stopped");
+            _logger.LogInfo("ReliableMessageDeliveryService stopped");
+        }
+
+        public async Task SendAsync<T>(T message, CancellationToken token = default)
+            where T:IMessage
+        {
+            using var scope = _profiler.BeginScope(_tag);
+            if (message==null) throw new ArgumentNullException(nameof(message));
+            EnsureRunning();
+
+            var sw = Stopwatch.StartNew();
             try
             {
-                // Cancel the cancellation token to stop all operations
-                _cancellationTokenSource?.Cancel();
+                _bus.Publish(message);
+                _stats.RecordMessageSent();
+                _stats.RecordMessageDelivered(); // fire-and-forget
 
-                // Stop the delivery timer
-                await DisposeTimerAsync();
+                sw.Stop();
+                _stats.RecordDeliveryTime(sw.ElapsedMilliseconds);
 
-                // Unsubscribe from acknowledgment messages
-                _acknowledgmentSubscription?.Dispose();
-                _acknowledgmentSubscription = null;
-
-                // Wait for any pending deliveries to complete or timeout
-                await WaitForPendingDeliveries(cancellationToken);
-
-                ChangeStatus(DeliveryServiceStatus.Stopped, "Service stopped successfully");
-                _logger.Log(LogLevel.Info, "ReliableMessageDeliveryService stopped", "DeliveryService");
+                // publish as a bus message
+                _bus.Publish(new DeliverySucceeded<T>
+                {
+                    Message = message,
+                    DeliveryId = Guid.NewGuid(),
+                    Timestamp = DateTime.UtcNow,
+                    Attempts = 1
+                });
+                _logger.LogDebug($"Fire-and-forget sent: {typeof(T).Name}");
             }
-            catch (Exception ex)
+            catch(Exception ex)
             {
-                ChangeStatus(DeliveryServiceStatus.Error, $"Error during service shutdown: {ex.Message}");
-                _logger.Log(LogLevel.Error,
-                    $"Error stopping ReliableMessageDeliveryService: {ex.Message}",
-                    "DeliveryService");
+                _stats.RecordMessageFailed();
+                _bus.Publish(new DeliveryFailed<T>
+                {
+                    Message = message,
+                    DeliveryId = Guid.NewGuid(),
+                    Error = ex.Message,
+                    Exception = ex,
+                    Attempts = 1,
+                    WillRetry = false
+                });
+                _logger.LogError($"Fire-and-forget failed: {ex.Message}");
                 throw;
             }
         }
 
-        /// <inheritdoc />
-        public async Task SendAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default)
-            where TMessage : IMessage
+        public async Task<DeliveryResult> SendWithConfirmationAsync<T>(T message, CancellationToken token = default)
+            where T:IMessage
         {
-            using var scope = _profiler.BeginScope(_profileTag);
-
-            if (message == null) throw new ArgumentNullException(nameof(message));
-
-            EnsureServiceRunning();
-
-            var stopwatch = Stopwatch.StartNew();
-
-            try
-            {
-                _messageBus.Publish(message);
-                _statistics.RecordMessageSent();
-                _statistics.RecordMessageDelivered(); // Fire-and-forget is immediately "delivered"
-
-                stopwatch.Stop();
-                _statistics.RecordDeliveryTime((long)stopwatch.Elapsed.TotalMilliseconds);
-
-                MessageDelivered?.Invoke(this, new MessageDeliveredEventArgs(
-                    message,
-                    Guid.NewGuid(),
-                    DateTime.UtcNow,
-                    1));
-
-                _logger.Log(LogLevel.Debug,
-                    $"Sent fire-and-forget message of type {typeof(TMessage).Name} with ID {message.Id}",
-                    "DeliveryService");
-            }
-            catch (Exception ex)
-            {
-                _statistics.RecordMessageFailed();
-
-                MessageDeliveryFailed?.Invoke(this, new MessageDeliveryFailedEventArgs(
-                    message,
-                    Guid.NewGuid(),
-                    ex.Message,
-                    ex,
-                    1,
-                    false));
-
-                _logger.Log(LogLevel.Error,
-                    $"Failed to send message: {ex.Message}",
-                    "DeliveryService");
-                throw;
-            }
-        }
-
-        /// <inheritdoc />
-        public async Task<DeliveryResult> SendWithConfirmationAsync<TMessage>(TMessage message,
-            CancellationToken cancellationToken = default)
-            where TMessage : IMessage
-        {
-            using var scope = _profiler.BeginScope(_profileTag);
-
-            if (message == null) throw new ArgumentNullException(nameof(message));
-
-            EnsureServiceRunning();
+            using var scope = _profiler.BeginScope(_tag);
+            if (message==null) throw new ArgumentNullException(nameof(message));
+            EnsureRunning();
 
             var deliveryId = Guid.NewGuid();
             var tcs = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var delivery = new PendingDelivery(message, deliveryId, 1, false, tcs);
-
-            var key = (message.Id, deliveryId);
-            _pendingDeliveries[key] = delivery;
+            var pd  = new PendingDelivery(message, deliveryId, 1, false, tcs);
+            _pending[(message.Id,deliveryId)] = pd;
 
             try
             {
-                delivery.UpdateStatus(MessageDeliveryStatus.Sending);
-                _messageBus.Publish(message);
-                _statistics.RecordMessageSent();
-                delivery.UpdateStatus(MessageDeliveryStatus.Sent);
+                pd.UpdateStatus(MessageDeliveryStatus.Sending);
+                _bus.Publish(message);
+                _stats.RecordMessageSent();
+                pd.UpdateStatus(MessageDeliveryStatus.Sent);
 
-                _logger.Log(LogLevel.Debug,
-                    $"Sent message with confirmation of type {typeof(TMessage).Name} with ID {message.Id} and delivery ID {deliveryId}",
-                    "DeliveryService");
+                // wait ack or timeout
+                var timeout = Task.Delay(_config.DefaultTimeout, token);
+                var done    = await Task.WhenAny(tcs.Task, timeout);
+                if (done==tcs.Task)
+                    return (DeliveryResult)await tcs.Task;
 
-                // Wait for acknowledgment or timeout
-                using var timeoutCts = new CancellationTokenSource(_configuration.DefaultTimeout);
-                using var combinedCts =
-                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeoutCts.Token);
-
-                try
+                // timeout
+                _pending.TryRemove((message.Id,deliveryId), out _);
+                _stats.RecordMessageFailed();
+                var msg = token.IsCancellationRequested ? "Cancelled" : "Timed out";
+                _bus.Publish(new DeliveryFailed<T>
                 {
-                    // Use Task.WhenAny to implement timeout functionality
-                    var completionTask = tcs.Task;
-                    var timeoutTask = Task.Delay(_configuration.DefaultTimeout, combinedCts.Token);
-
-                    var completedTask = await Task.WhenAny(completionTask, timeoutTask);
-                    if (completedTask == completionTask)
-                    {
-                        return (DeliveryResult)await completionTask;
-                    }
-
-                    // If we get here, the timeout task completed first
-                    _pendingDeliveries.TryRemove(key, out _);
-                    _statistics.RecordMessageFailed();
-
-                    var errorMessage = cancellationToken.IsCancellationRequested
-                        ? "Operation was cancelled"
-                        : "Message delivery timed out";
-
-                    MessageDeliveryFailed?.Invoke(this, new MessageDeliveryFailedEventArgs(
-                        message,
-                        deliveryId,
-                        errorMessage,
-                        null,
-                        1,
-                        false));
-
-                    return DeliveryResult.Failure(message.Id, deliveryId, errorMessage);
-                }
-                catch (OperationCanceledException)
-                {
-                    _pendingDeliveries.TryRemove(key, out _);
-                    _statistics.RecordMessageFailed();
-
-                    var errorMessage = cancellationToken.IsCancellationRequested
-                        ? "Operation was cancelled"
-                        : "Message delivery timed out";
-
-                    MessageDeliveryFailed?.Invoke(this, new MessageDeliveryFailedEventArgs(
-                        message,
-                        deliveryId,
-                        errorMessage,
-                        null,
-                        1,
-                        false));
-
-                    return DeliveryResult.Failure(message.Id, deliveryId, errorMessage);
-                }
+                    Message = message,
+                    DeliveryId = deliveryId,
+                    Error = msg,
+                    Exception = null,
+                    Attempts = 1,
+                    WillRetry = false
+                });
+                return DeliveryResult.Failure(message.Id, deliveryId, msg);
             }
-            catch (Exception ex)
+            catch(Exception ex)
             {
-                _pendingDeliveries.TryRemove(key, out _);
-                _statistics.RecordMessageFailed();
-
-                MessageDeliveryFailed?.Invoke(this, new MessageDeliveryFailedEventArgs(
-                    message,
-                    deliveryId,
-                    ex.Message,
-                    ex,
-                    1,
-                    false));
-
-                _logger.Log(LogLevel.Error,
-                    $"Failed to send message with confirmation: {ex.Message}",
-                    "DeliveryService");
-
+                _pending.TryRemove((message.Id,deliveryId), out _);
+                _stats.RecordMessageFailed();
+                _bus.Publish(new DeliveryFailed<T>
+                {
+                    Message = message,
+                    DeliveryId = deliveryId,
+                    Error = ex.Message,
+                    Exception = ex,
+                    Attempts = 1,
+                    WillRetry = false
+                });
+                _logger.LogError($"SendWithConfirmation failed: {ex.Message}");
                 return DeliveryResult.Failure(message.Id, deliveryId, ex.Message, ex);
             }
         }
 
-        /// <inheritdoc />
-        public async Task<ReliableDeliveryResult> SendReliableAsync<TMessage>(TMessage message,
-            CancellationToken cancellationToken = default)
-            where TMessage : IReliableMessage
+        public async Task<ReliableDeliveryResult> SendReliableAsync<T>(T message, CancellationToken token = default)
+            where T:IReliableMessage
         {
-            using var scope = _profiler.BeginScope(_profileTag);
+            using var scope = _profiler.BeginScope(_tag);
+            if (message==null) throw new ArgumentNullException(nameof(message));
+            EnsureRunning();
 
-            if (message == null) throw new ArgumentNullException(nameof(message));
-
-            EnsureServiceRunning();
-
-            // Ensure the message has proper configuration
-            if (message.MaxDeliveryAttempts <= 0)
-            {
-                message.MaxDeliveryAttempts = _configuration.DefaultMaxDeliveryAttempts;
-            }
+            if (message.MaxDeliveryAttempts<=0)
+                message.MaxDeliveryAttempts = _config.DefaultMaxDeliveryAttempts;
 
             var tcs = new TaskCompletionSource<object>(TaskCreationOptions.RunContinuationsAsynchronously);
-            var delivery = new PendingDelivery(message, message.DeliveryId, message.MaxDeliveryAttempts, true, tcs);
-
-            var key = (message.Id, message.DeliveryId);
-            _pendingDeliveries[key] = delivery;
+            var pd  = new PendingDelivery(message, message.DeliveryId, message.MaxDeliveryAttempts, true, tcs);
+            _pending[(message.Id, message.DeliveryId)] = pd;
 
             try
             {
-                // Send the initial message
+                // initial send
                 message.DeliveryAttempts = 1;
                 message.ScheduleNextAttempt();
-                delivery.IncrementAttempts();
-                delivery.UpdateStatus(MessageDeliveryStatus.Sending);
+                pd.IncrementAttempts();
+                pd.UpdateStatus(MessageDeliveryStatus.Sending);
 
-                _messageBus.Publish(message);
-                _statistics.RecordMessageSent();
+                _bus.Publish(message);
+                _stats.RecordMessageSent();
+                pd.UpdateStatus(MessageDeliveryStatus.Sent);
 
-                delivery.UpdateStatus(MessageDeliveryStatus.Sent);
+                _logger.LogDebug($"Reliable send attempt 1/{message.MaxDeliveryAttempts}");
 
-                _logger.Log(LogLevel.Debug,
-                    $"Sent reliable message of type {typeof(TMessage).Name} with ID {message.Id} and delivery ID {message.DeliveryId} (attempt 1/{message.MaxDeliveryAttempts})",
-                    "DeliveryService");
-
-                // Return the task - it will be completed when the message is acknowledged or expires
-                var result = await tcs.Task;
-                return (ReliableDeliveryResult)result;
+                // wait for ack or expiry
+                var result = (ReliableDeliveryResult)await tcs.Task;
+                return result;
             }
-            catch (Exception ex)
+            catch(Exception ex)
             {
-                _pendingDeliveries.TryRemove(key, out _);
-                _statistics.RecordMessageFailed();
-
-                MessageDeliveryFailed?.Invoke(this, new MessageDeliveryFailedEventArgs(
-                    message,
-                    message.DeliveryId,
-                    ex.Message,
-                    ex,
-                    1,
-                    false));
-
-                _logger.Log(LogLevel.Error,
-                    $"Failed to send reliable message: {ex.Message}",
-                    "DeliveryService");
-
+                _pending.TryRemove((message.Id, message.DeliveryId), out _);
+                _stats.RecordMessageFailed();
+                _bus.Publish(new DeliveryFailed<T>
+                {
+                    Message = message,
+                    DeliveryId = message.DeliveryId,
+                    Error = ex.Message,
+                    Exception = ex,
+                    Attempts = message.DeliveryAttempts,
+                    WillRetry = false
+                });
+                _logger.LogError($"Reliable send failed: {ex.Message}");
                 return ReliableDeliveryResult.Failure(
                     message.Id,
                     message.DeliveryId,
-                    1,
+                    message.DeliveryAttempts,
                     MessageDeliveryStatus.Failed,
-                    ex.Message,
-                    ex);
+                    ex.Message, ex);
             }
         }
 
-        /// <inheritdoc />
         public async Task<BatchDeliveryResult> SendBatchAsync(
             IEnumerable<IMessage> messages,
             BatchDeliveryOptions options,
-            CancellationToken cancellationToken = default)
+            CancellationToken token = default)
         {
-            using var scope = _profiler.BeginScope(_profileTag);
+            using var scope = _profiler.BeginScope(_tag);
+            if (messages==null) throw new ArgumentNullException(nameof(messages));
+            if (options==null) throw new ArgumentNullException(nameof(options));
+            EnsureRunning();
 
-            if (messages == null) throw new ArgumentNullException(nameof(messages));
-            if (options == null) throw new ArgumentNullException(nameof(options));
+            var list = messages.ToList();
+            if (list.Count==0)
+                return new BatchDeliveryResult(new List<DeliveryResult>(), DateTime.UtcNow, TimeSpan.Zero);
 
-            EnsureServiceRunning();
-
-            var messageList = messages.ToList();
-            var startTime = DateTime.UtcNow;
+            _logger.LogInfo($"Batch send {list.Count} messages");
+            var sw = Stopwatch.StartNew();
             var results = new List<DeliveryResult>();
 
-            if (messageList.Count == 0)
-            {
-                return new BatchDeliveryResult(results, DateTime.UtcNow, TimeSpan.Zero);
-            }
-
-            _logger.Log(LogLevel.Info,
-                $"Starting batch delivery of {messageList.Count} messages with max concurrency {options.MaxConcurrency}",
-                "DeliveryService");
-
             try
             {
-                using var semaphore = new SemaphoreSlim(options.MaxConcurrency);
+                using var sem = new SemaphoreSlim(options.MaxConcurrency);
                 using var batchCts = new CancellationTokenSource(options.BatchTimeout);
-                using var combinedCts =
-                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, batchCts.Token);
+                using var linked  = CancellationTokenSource.CreateLinkedTokenSource(token, batchCts.Token);
 
-                var tasks = new List<Task<DeliveryResult>>();
+                var tasks = list
+                    .Select(msg => ProcessSingleAsync(msg, options, sem, linked.Token))
+                    .ToList();
 
-                foreach (var message in messageList)
+                if (options.StopOnFirstError)
                 {
-                    if (combinedCts.Token.IsCancellationRequested)
-                        break;
-
-                    var task = ProcessSingleMessageAsync(message, options, semaphore, combinedCts.Token);
-                    tasks.Add(task);
-
-                    if (options.StopOnFirstError)
+                    foreach(var t in tasks)
                     {
-                        var result = await task;
-                        results.Add(result);
-                        if (!result.IsSuccess)
-                            break;
+                        var r = await t;
+                        results.Add(r);
+                        if (!r.IsSuccess) break;
                     }
-                }
-
-                if (!options.StopOnFirstError)
-                {
-                    var completedTasks = await Task.WhenAll(tasks);
-                    results.AddRange(completedTasks);
-                }
-
-                var completionTime = DateTime.UtcNow;
-                var duration = completionTime - startTime;
-
-                var successCount = results.Count(r => r.IsSuccess);
-                var failureCount = results.Count - successCount;
-
-                _logger.Log(LogLevel.Info,
-                    $"Batch delivery completed: {successCount} successful, {failureCount} failed in {duration.TotalSeconds:F2} seconds",
-                    "DeliveryService");
-
-                return new BatchDeliveryResult(results, completionTime, duration);
-            }
-            catch (Exception ex)
-            {
-                _logger.Log(LogLevel.Error,
-                    $"Batch delivery failed: {ex.Message}",
-                    "DeliveryService");
-
-                // Fill in failure results for any messages that weren't processed
-                while (results.Count < messageList.Count)
-                {
-                    var message = messageList[results.Count];
-                    results.Add(DeliveryResult.Failure(message.Id, Guid.NewGuid(), "Batch operation failed", ex));
-                }
-
-                return new BatchDeliveryResult(results, DateTime.UtcNow, DateTime.UtcNow - startTime);
-            }
-        }
-
-        /// <inheritdoc />
-        public async Task AcknowledgeMessageAsync(Guid messageId, Guid deliveryId,
-            CancellationToken cancellationToken = default)
-        {
-            using var scope = _profiler.BeginScope(_profileTag);
-
-            _messageBus.Publish(new MessageAcknowledged
-            {
-                AcknowledgedMessageId = messageId,
-                AcknowledgedDeliveryId = deliveryId,
-                AcknowledgmentTime = DateTime.UtcNow
-            });
-
-            _logger.Log(LogLevel.Debug,
-                $"Sent acknowledgment for message {messageId} with delivery ID {deliveryId}",
-                "DeliveryService");
-        }
-
-        /// <inheritdoc />
-        public MessageDeliveryStatus? GetMessageStatus(Guid messageId, Guid deliveryId)
-        {
-            var key = (messageId, deliveryId);
-            if (_pendingDeliveries.TryGetValue(key, out var delivery))
-            {
-                return delivery.Status;
-            }
-
-            return null;
-        }
-
-        /// <inheritdoc />
-        public IReadOnlyCollection<IPendingDelivery> GetPendingDeliveries()
-        {
-            return _pendingDeliveries.Values.Cast<IPendingDelivery>().ToList();
-        }
-
-        /// <inheritdoc />
-        public IDeliveryStatistics GetStatistics()
-        {
-            _statistics.UpdatePendingCount(_pendingDeliveries.Count);
-            return _statistics;
-        }
-
-        /// <inheritdoc />
-        public bool CancelDelivery(Guid messageId, Guid deliveryId)
-        {
-            var key = (messageId, deliveryId);
-            if (_pendingDeliveries.TryRemove(key, out var delivery))
-            {
-                delivery.Cancel();
-                _logger.Log(LogLevel.Debug,
-                    $"Cancelled delivery for message {messageId} with delivery ID {deliveryId}",
-                    "DeliveryService");
-                return true;
-            }
-
-            return false;
-        }
-
-        /// <inheritdoc />
-        public void Dispose()
-        {
-            if (_isDisposed) return;
-
-            try
-            {
-                StopAsync().Wait(TimeSpan.FromSeconds(10));
-            }
-            catch (Exception ex)
-            {
-                _logger.Log(LogLevel.Error,
-                    $"Error during ReliableMessageDeliveryService disposal: {ex.Message}",
-                    "DeliveryService");
-            }
-
-            _deliveryTimer?.Dispose();
-            _deliveryLock?.Dispose();
-            _cancellationTokenSource?.Dispose();
-            _acknowledgmentSubscription?.Dispose();
-
-            // Cancel any remaining pending deliveries
-            foreach (var delivery in _pendingDeliveries.Values)
-            {
-                delivery.Cancel();
-            }
-
-            _pendingDeliveries.Clear();
-            _isDisposed = true;
-
-            _logger.Log(LogLevel.Info, "ReliableMessageDeliveryService disposed", "DeliveryService");
-        }
-
-        private async Task<DeliveryResult> ProcessSingleMessageAsync(
-            IMessage message,
-            BatchDeliveryOptions options,
-            SemaphoreSlim semaphore,
-            CancellationToken cancellationToken)
-        {
-            await semaphore.WaitAsync(cancellationToken);
-            try
-            {
-                using var messageCts = new CancellationTokenSource(options.MessageTimeout);
-                using var messageTokens =
-                    CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, messageCts.Token);
-
-                if (options.RequireConfirmation)
-                {
-                    return await SendWithConfirmationAsync(message, messageTokens.Token);
                 }
                 else
                 {
-                    await SendAsync(message, messageTokens.Token);
+                    var all = await Task.WhenAll(tasks);
+                    results.AddRange(all);
+                }
+
+                sw.Stop();
+                _logger.LogInfo($"Batch completed in {sw.Elapsed.TotalSeconds:F2}s");
+                return new BatchDeliveryResult(results, DateTime.UtcNow, sw.Elapsed);
+            }
+            catch(Exception ex)
+            {
+                _logger.LogError($"Batch failed: {ex.Message}");
+                // fill failures
+                while(results.Count<list.Count)
+                    results.Add(DeliveryResult.Failure(list[results.Count].Id, Guid.NewGuid(), ex.Message, ex));
+                return new BatchDeliveryResult(results, DateTime.UtcNow, sw.Elapsed);
+            }
+        }
+
+        public async Task AcknowledgeMessageAsync(Guid messageId, Guid deliveryId, CancellationToken token = default)
+        {
+            using var scope = _profiler.BeginScope(_tag);
+            _bus.Publish(new MessageAcknowledged
+            {
+                AcknowledgedMessageId = messageId,
+                AcknowledgedDeliveryId = deliveryId,
+                AcknowledgmentTime    = DateTime.UtcNow
+            });
+            _logger.LogDebug($"Ack sent for {messageId}/{deliveryId}");
+        }
+
+        public MessageDeliveryStatus? GetMessageStatus(Guid messageId, Guid deliveryId)
+        {
+            return _pending.TryGetValue((messageId,deliveryId), out var pd)
+                ? pd.Status
+                : (MessageDeliveryStatus?)null;
+        }
+
+        public IReadOnlyCollection<IPendingDelivery> GetPendingDeliveries()
+        {
+            _stats.UpdatePendingCount(_pending.Count);
+            return _pending.Values.ToList();
+        }
+
+        public IDeliveryStatistics GetStatistics() => _stats;
+
+        public bool CancelDelivery(Guid messageId, Guid deliveryId)
+        {
+            if (_pending.TryRemove((messageId,deliveryId), out var pd))
+            {
+                pd.Cancel();
+                _logger.LogDebug($"Cancelled {messageId}/{deliveryId}");
+                return true;
+            }
+            return false;
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            try { StopAsync().Wait(TimeSpan.FromSeconds(10)); } catch{}
+            _timer?.Dispose();
+            _lock.Dispose();
+            _cts?.Dispose();
+            _ackSub?.Dispose();
+            foreach(var pd in _pending.Values) pd.Cancel();
+            _pending.Clear();
+            _disposed = true;
+            _logger.LogInfo("ReliableMessageDeliveryService disposed");
+        }
+
+        // ——————————————————————————————————————————————————————————————————
+        private void EnsureRunning()
+        {
+            if (!IsActive)
+                throw new InvalidOperationException($"Service not running (status={Status})");
+        }
+
+        private async Task<DeliveryResult> ProcessSingleAsync(
+            IMessage message,
+            BatchDeliveryOptions opts,
+            SemaphoreSlim sem,
+            CancellationToken token)
+        {
+            await sem.WaitAsync(token);
+            try
+            {
+                if (opts.RequireConfirmation)
+                    return await SendWithConfirmationAsync(message, token);
+                else
+                {
+                    await SendAsync(message, token);
                     return DeliveryResult.Success(message.Id, Guid.NewGuid(), DateTime.UtcNow);
                 }
             }
-            catch (Exception ex)
+            catch(Exception ex)
             {
                 return DeliveryResult.Failure(message.Id, Guid.NewGuid(), ex.Message, ex);
             }
-            finally
-            {
-                semaphore.Release();
-            }
-        }
-
-        private void OnMessageAcknowledgedReceived(MessageAcknowledged ack)
-        {
-            using var scope = _profiler.BeginScope(_profileTag);
-
-            var key = (ack.AcknowledgedMessageId, ack.AcknowledgedDeliveryId);
-            if (_pendingDeliveries.TryRemove(key, out var delivery))
-            {
-                var stopwatch = Stopwatch.StartNew();
-
-                var result = delivery.IsReliable
-                    ? (object)ReliableDeliveryResult.Success(
-                        ack.AcknowledgedMessageId,
-                        ack.AcknowledgedDeliveryId,
-                        delivery.DeliveryAttempts,
-                        ack.AcknowledgmentTime)
-                    : DeliveryResult.Success(
-                        ack.AcknowledgedMessageId,
-                        ack.AcknowledgedDeliveryId,
-                        ack.AcknowledgmentTime);
-
-                delivery.Complete(result);
-
-                stopwatch.Stop();
-                var deliveryTime = (long)(ack.AcknowledgmentTime - delivery.FirstAttemptTime).TotalMilliseconds;
-
-                _statistics.RecordMessageDelivered();
-                _statistics.RecordMessageAcknowledged();
-                _statistics.RecordDeliveryTime(deliveryTime);
-
-                MessageAcknowledged?.Invoke(this, new MessageAcknowledgedEventArgs(
-                    ack.AcknowledgedMessageId,
-                    ack.AcknowledgedDeliveryId,
-                    ack.AcknowledgmentTime));
-
-                MessageDelivered?.Invoke(this, new MessageDeliveredEventArgs(
-                    delivery.Message,
-                    delivery.DeliveryId,
-                    ack.AcknowledgmentTime,
-                    delivery.DeliveryAttempts));
-
-                _logger.Log(LogLevel.Debug,
-                    $"Message {ack.AcknowledgedMessageId} with delivery ID {ack.AcknowledgedDeliveryId} acknowledged",
-                    "DeliveryService");
-            }
-        }
-
-        private void OnDeliveryTimerTick(object state)
-        {
-            if (!IsActive) return;
-
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    await ProcessPendingDeliveries();
-                }
-                catch (Exception ex)
-                {
-                    _logger.Log(LogLevel.Error,
-                        $"Error processing pending deliveries: {ex.Message}",
-                        "DeliveryService");
-                }
-            }, _cancellationTokenSource?.Token ?? CancellationToken.None);
+            finally { sem.Release(); }
         }
 
         private async Task ProcessPendingDeliveries()
         {
-            using var scope = _profiler.BeginScope(_profileTag);
-
-            if (!await _deliveryLock.WaitAsync(100))
-            {
-                return; // Skip this cycle if we can't get the lock quickly
-            }
-
+            using var scope = _profiler.BeginScope(_tag);
+            if (!await _lock.WaitAsync(100)) return;
             try
             {
-                var now = DateTime.UtcNow;
-                var nowTicks = now.Ticks;
-                var deliveriesToProcess = new List<(PendingDelivery delivery, (Guid, Guid) key)>();
+                var now = DateTime.UtcNow.Ticks;
+                var toProcess = new List<(PendingDelivery pd,(Guid,Guid) key)>();
 
-                // First pass: identify deliveries to process
-                foreach (var kvp in _pendingDeliveries)
+                foreach(var kvp in _pending)
                 {
-                    var key = kvp.Key;
-                    var delivery = kvp.Value;
-
-                    if (ShouldProcessDelivery(delivery, nowTicks))
+                    var pd = kvp.Value;
+                    if (pd.Status==MessageDeliveryStatus.Cancelled ||
+                        (pd.IsReliable && pd.DeliveryAttempts<pd.MaxDeliveryAttempts && pd.Message is IReliableMessage rm
+                         && rm.NextAttemptTicks<=now))
                     {
-                        deliveriesToProcess.Add((delivery, key));
+                        toProcess.Add((pd, kvp.Key));
                     }
                 }
 
-                // Second pass: process identified deliveries
-                foreach (var (delivery, key) in deliveriesToProcess)
+                foreach(var (pd,key) in toProcess)
+                    await HandleSingle(pd,key);
+            }
+            finally { _lock.Release(); }
+        }
+
+        private async Task HandleSingle(PendingDelivery pd, (Guid,Guid) key)
+        {
+            if (pd.Status==MessageDeliveryStatus.Cancelled)
+            {
+                _pending.TryRemove(key, out _);
+                return;
+            }
+
+            if (!(pd.Message is IReliableMessage rm)) return;
+
+            if (pd.DeliveryAttempts>=pd.MaxDeliveryAttempts)
+            {
+                // expired
+                pd.Expire(ReliableDeliveryResult.Failure(
+                    rm.Id, rm.DeliveryId, pd.DeliveryAttempts, MessageDeliveryStatus.Expired,
+                    $"Max attempts {pd.MaxDeliveryAttempts} reached"));
+                _pending.TryRemove(key, out _);
+                _stats.RecordMessageFailed();
+
+                _bus.Publish(new DeliveryFailed<IReliableMessage>
                 {
-                    await ProcessSingleDelivery(delivery, key, now);
-                }
-            }
-            finally
-            {
-                _deliveryLock.Release();
-            }
-        }
-
-        private bool ShouldProcessDelivery(PendingDelivery delivery, long nowTicks)
-        {
-            if (delivery.Status == MessageDeliveryStatus.Cancelled)
-                return true;
-
-            if (!delivery.IsReliable)
-                return false;
-
-            if (!(delivery.Message is IReliableMessage reliableMessage))
-                return false;
-
-            // Check if max attempts reached
-            if (delivery.DeliveryAttempts >= delivery.MaxDeliveryAttempts)
-                return true;
-
-            // Check if it's time to retry
-            return reliableMessage.NextAttemptTicks <= nowTicks;
-        }
-
-        private async Task ProcessSingleDelivery(PendingDelivery delivery, (Guid, Guid) key, DateTime now)
-        {
-            if (delivery.Status == MessageDeliveryStatus.Cancelled)
-            {
-                _pendingDeliveries.TryRemove(key, out _);
+                    Message = rm,
+                    DeliveryId = rm.DeliveryId,
+                    Error = "Expired",
+                    Exception = null,
+                    Attempts = pd.DeliveryAttempts,
+                    WillRetry = false
+                });
+                _logger.LogWarning($"Expired {rm.Id}/{rm.DeliveryId}");
                 return;
             }
 
-            if (!(delivery.Message is IReliableMessage reliableMessage))
-                return;
+            // retry
+            pd.IncrementAttempts();
+            rm.DeliveryAttempts = pd.DeliveryAttempts;
+            var delay = Math.Min(
+                Math.Pow(_config.BackoffMultiplier, pd.DeliveryAttempts-1),
+                _config.MaxRetryDelay.TotalSeconds);
+            var next   = DateTime.UtcNow.AddSeconds(delay);
+            rm.NextAttemptTicks = next.Ticks;
+            pd.UpdateNextAttemptTime(next);
+            pd.UpdateStatus(MessageDeliveryStatus.Sending);
 
-            if (delivery.DeliveryAttempts >= delivery.MaxDeliveryAttempts)
-            {
-                // Max attempts reached
-                ExpireDelivery(delivery, key, reliableMessage);
-                return;
-            }
-
-            if (reliableMessage.NextAttemptTicks <= now.Ticks)
-            {
-                // Time to retry
-                await RetryDelivery(delivery, reliableMessage);
-            }
-        }
-
-        private void ExpireDelivery(PendingDelivery delivery, (Guid, Guid) key, IReliableMessage reliableMessage)
-        {
-            delivery.Expire(ReliableDeliveryResult.Failure(
-                reliableMessage.Id,
-                reliableMessage.DeliveryId,
-                delivery.DeliveryAttempts,
-                MessageDeliveryStatus.Expired,
-                $"Maximum delivery attempts ({delivery.MaxDeliveryAttempts}) reached"));
-
-            _pendingDeliveries.TryRemove(key, out _);
-            _statistics.RecordMessageFailed();
-
-            MessageDeliveryFailed?.Invoke(this, new MessageDeliveryFailedEventArgs(
-                reliableMessage,
-                reliableMessage.DeliveryId,
-                "Maximum delivery attempts reached",
-                null,
-                delivery.DeliveryAttempts,
-                false));
-
-            _logger.Log(LogLevel.Warning,
-                $"Message {reliableMessage.Id} with delivery ID {reliableMessage.DeliveryId} expired after {delivery.DeliveryAttempts} attempts",
-                "DeliveryService");
-        }
-
-        private async Task RetryDelivery(PendingDelivery delivery, IReliableMessage reliableMessage)
-        {
             try
             {
-                delivery.IncrementAttempts();
-                reliableMessage.DeliveryAttempts = delivery.DeliveryAttempts;
-
-                // Calculate next attempt time with exponential backoff
-                var delaySeconds = Math.Min(
-                    Math.Pow(_configuration.BackoffMultiplier, delivery.DeliveryAttempts - 1),
-                    _configuration.MaxRetryDelay.TotalSeconds);
-
-                var nextAttempt = DateTime.UtcNow.AddSeconds(delaySeconds);
-                reliableMessage.NextAttemptTicks = nextAttempt.Ticks;
-                delivery.UpdateNextAttemptTime(nextAttempt);
-
-                delivery.UpdateStatus(MessageDeliveryStatus.Sending);
-
-                _messageBus.Publish(reliableMessage);
-                _statistics.RecordMessageSent();
-
-                delivery.UpdateStatus(MessageDeliveryStatus.Sent);
-
-                _logger.Log(LogLevel.Debug,
-                    $"Retrying reliable message {reliableMessage.Id} with delivery ID {reliableMessage.DeliveryId} " +
-                    $"(attempt {delivery.DeliveryAttempts}/{delivery.MaxDeliveryAttempts})",
-                    "DeliveryService");
+                _bus.Publish(rm);
+                _stats.RecordMessageSent();
+                pd.UpdateStatus(MessageDeliveryStatus.Sent);
+                _logger.LogDebug($"Retrying {rm.Id}/{rm.DeliveryId} attempt {pd.DeliveryAttempts}/{pd.MaxDeliveryAttempts}");
             }
-            catch (Exception ex)
+            catch(Exception ex)
             {
-                _logger.Log(LogLevel.Error,
-                    $"Failed to retry message {reliableMessage.Id}: {ex.Message}",
-                    "DeliveryService");
-
-                MessageDeliveryFailed?.Invoke(this, new MessageDeliveryFailedEventArgs(
-                    reliableMessage,
-                    reliableMessage.DeliveryId,
-                    ex.Message,
-                    ex,
-                    delivery.DeliveryAttempts,
-                    delivery.DeliveryAttempts < delivery.MaxDeliveryAttempts));
-            }
-        }
-
-        private void EnsureServiceRunning()
-        {
-            lock (_statusLock)
-            {
-                if (_status != DeliveryServiceStatus.Running)
+                _bus.Publish(new DeliveryFailed<IReliableMessage>
                 {
-                    throw new InvalidOperationException($"Service is not running. Current status: {_status}");
-                }
+                    Message = rm,
+                    DeliveryId = rm.DeliveryId,
+                    Error = ex.Message,
+                    Exception = ex,
+                    Attempts = pd.DeliveryAttempts,
+                    WillRetry = pd.DeliveryAttempts < pd.MaxDeliveryAttempts
+                });
+                _logger.LogError($"Retry failed: {ex.Message}");
             }
         }
 
-        private void ChangeStatus(DeliveryServiceStatus newStatus, string reason = null)
+        private void OnAckReceived(in MessageAcknowledged ack)
         {
-            DeliveryServiceStatus previousStatus;
+            using var scope = _profiler.BeginScope(_tag);
+            var key = (ack.AcknowledgedMessageId, ack.AcknowledgedDeliveryId);
+            if (!_pending.TryRemove(key, out var pd))
+                return;
 
-            lock (_statusLock)
+            var sw = Stopwatch.StartNew();
+            object result;
+            if (pd.IsReliable)
             {
-                previousStatus = _status;
-                _status = newStatus;
+                result = ReliableDeliveryResult.Success(
+                    ack.AcknowledgedMessageId, ack.AcknowledgedDeliveryId, pd.DeliveryAttempts, ack.AcknowledgmentTime);
             }
+            else
+            {
+                result = DeliveryResult.Success(
+                    ack.AcknowledgedMessageId, ack.AcknowledgedDeliveryId, ack.AcknowledgmentTime);
+            }
+            pd.Complete(result);
 
-            StatusChanged?.Invoke(this, new DeliveryServiceStatusChangedEventArgs(
-                previousStatus,
-                newStatus,
-                DateTime.UtcNow,
-                reason));
+            sw.Stop();
+            _stats.RecordMessageDelivered();
+            _stats.RecordMessageAcknowledged();
+            _stats.RecordDeliveryTime(sw.ElapsedMilliseconds);
+
+            // publish both ack and delivered notifications
+            _bus.Publish(ack);  // struct MessageAcknowledged :contentReference[oaicite:0]{index=0}
+            _bus.Publish(new DeliverySucceeded<IMessage>
+            {
+                Message = pd.Message,
+                DeliveryId = pd.DeliveryId,
+                Timestamp  = ack.AcknowledgmentTime,
+                Attempts   = pd.DeliveryAttempts
+            });
+            _logger.LogDebug($"Acknowledged {ack.AcknowledgedMessageId}/{ack.AcknowledgedDeliveryId}");
         }
 
-        private async Task DisposeTimerAsync()
+        private void PublishStatusChanged(DeliveryServiceStatus newStatus, string reason)
         {
-            if (_deliveryTimer != null)
+            var prev = Status;
+            _bus.Publish(new DeliveryServiceStatusChanged
             {
-                await _deliveryTimer.DisposeAsync();
-                _deliveryTimer = null;
-            }
-        }
-
-        private async Task WaitForPendingDeliveries(CancellationToken cancellationToken)
-        {
-            var timeout = TimeSpan.FromSeconds(30);
-            var stopwatch = Stopwatch.StartNew();
-
-            while (_pendingDeliveries.Count > 0 && stopwatch.Elapsed < timeout)
-            {
-                if (cancellationToken.IsCancellationRequested)
-                    break;
-
-                await Task.Delay(100, cancellationToken);
-            }
-
-            if (_pendingDeliveries.Count > 0)
-            {
-                _logger.Log(LogLevel.Warning,
-                    $"Service stopped with {_pendingDeliveries.Count} pending deliveries",
-                    "DeliveryService");
-            }
+                PreviousStatus = prev,
+                CurrentStatus  = newStatus,
+                Timestamp      = DateTime.UtcNow,
+                Reason         = reason
+            });
         }
     }
 }

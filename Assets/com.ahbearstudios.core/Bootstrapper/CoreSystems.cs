@@ -107,12 +107,12 @@ namespace AhBearStudios.Core.Bootstrap
         /// <summary>
         /// Gets the message bus for inter-system communication.
         /// </summary>
-        public static IMessageBus MessageBus
+        public static IMessageBusService MessageBusService
         {
             get
             {
                 ThrowIfNotInitialized();
-                return resolver.Resolve<IMessageBus>();
+                return resolver.Resolve<IMessageBusService>();
             }
         }
         
@@ -183,7 +183,7 @@ namespace AhBearStudios.Core.Bootstrap
         public static void PublishMessage<T>(T message) where T : IMessage
         {
             ThrowIfNotInitialized();
-            MessageBus.PublishMessage(message);
+            MessageBusService.PublishMessage(message);
         }
         
         /// <summary>
@@ -195,7 +195,7 @@ namespace AhBearStudios.Core.Bootstrap
         public static IDisposable SubscribeToMessage<T>(Action<T> handler) where T : IMessage
         {
             ThrowIfNotInitialized();
-            return MessageBus.SubscribeToMessage(handler);
+            return MessageBusService.SubscribeToMessage(handler);
         }
         
         /// <summary>

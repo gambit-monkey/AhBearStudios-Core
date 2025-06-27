@@ -1,384 +1,318 @@
-using UnityEngine;
+using System;
 using AhBearStudios.Core.MessageBus.Interfaces;
 
 namespace AhBearStudios.Core.MessageBus.Configuration
 {
     /// <summary>
-    /// Configuration for the message bus system that implements IMessageBusConfig.
-    /// Provides ScriptableObject-based configuration with validation and platform optimization.
+    /// Pure-data configuration for the MessageBusService system, composing global and sub-service settings.
     /// </summary>
-    [CreateAssetMenu(menuName = "AhBear/Core/MessageBus Config", fileName = "MessageBusConfig", order = 3)]
-    public sealed class MessageBusConfig : ScriptableObject, IMessageBusConfig
+    public sealed class MessageBusConfig : IMessageBusConfig
     {
-        [Header("Configuration")]
-        [SerializeField]
-        private string configId = "DefaultMessageBusConfig";
-        
-        [Header("Performance")]
-        [SerializeField, Range(10, 10000)]
-        private int maxMessagesPerFrame = 100;
-        
-        [SerializeField, Range(1, 1000)]
-        private int initialMessageQueueCapacity = 50;
-        
-        [SerializeField, Range(0.001f, 0.1f)]
-        private float messageProcessingTimeSliceMs = 0.016f; // 16ms = 60fps
-        
-        [Header("Memory Management")]
-        [SerializeField]
-        private bool enableMessagePooling = true;
-        
-        [SerializeField, Range(10, 1000)]
-        private int messagePoolInitialSize = 100;
-        
-        [SerializeField, Range(100, 10000)]
-        private int messagePoolMaxSize = 1000;
-        
-        [Header("Serialization")]
-        [SerializeField]
-        private bool enableBurstSerialization = true;
-        
-        [SerializeField]
-        private bool enableNetworkSerialization = false;
-        
-        [SerializeField]
-        private bool enableCompressionForNetwork = true;
-        
-        [Header("Delivery Options")]
-        [SerializeField]
-        private bool enableReliableDelivery = true;
-        
-        [SerializeField, Range(1, 10)]
-        private int maxDeliveryRetries = 3;
-        
-        [SerializeField, Range(0.1f, 10f)]
-        private float deliveryTimeoutSeconds = 5f;
-        
-        [SerializeField, Range(0.01f, 1f)]
-        private float retryBackoffMultiplier = 2f;
-        
-        [Header("Statistics")]
-        [SerializeField]
-        private bool enableStatisticsCollection = true;
-        
-        [SerializeField]
-        private bool enableDeliveryTracking = true;
-        
-        [SerializeField]
-        private bool enablePerformanceMetrics = true;
-        
-        [Header("Debugging")]
-        [SerializeField]
-        private bool enableMessageLogging = false;
-        
-        [SerializeField]
-        private bool enableVerboseLogging = false;
-        
-        [SerializeField]
-        private bool logFailedDeliveries = true;
-        
-        [Header("Threading")]
-        [SerializeField]
-        private bool enableMultithreading = true;
-        
-        [SerializeField, Range(1, 8)]
-        private int workerThreadCount = 2;
-        
-        [SerializeField]
-        private bool useJobSystemForProcessing = true;
-        
-        [Header("Platform Optimizations")]
-        [SerializeField]
-        private bool enableMobileOptimizations = true;
-        
-        [SerializeField]
-        private bool enableConsoleOptimizations = true;
-        
-        [SerializeField]
-        private bool enableEditorDebugging = true;
-        
-        // IMessageBusConfig implementation
-        public string ConfigId 
-        { 
-            get => configId; 
-            set => configId = value; 
+        // Global settings
+        private string _configId = "DefaultMessageBusConfig";
+        private int _maxMessagesPerFrame = 100;
+        private int _initialMessageQueueCapacity = 50;
+        private float _messageProcessingTimeSliceMs = 0.016f;
+        private bool _enableMessagePooling = true;
+        private int _messagePoolInitialSize = 100;
+        private int _messagePoolMaxSize = 1000;
+        private bool _enableBurstSerialization = true;
+        private bool _enableNetworkSerialization = false;
+        private bool _enableCompressionForNetwork = true;
+        private bool _enableReliableDelivery = true;
+        private int _maxDeliveryRetries = 3;
+        private float _deliveryTimeoutSeconds = 5f;
+        private float _retryBackoffMultiplier = 2f;
+        private bool _enableStatisticsCollection = true;
+        private bool _enableDeliveryTracking = true;
+        private bool _enablePerformanceMetrics = true;
+        private bool _enableMessageLogging = false;
+        private bool _enableVerboseLogging = false;
+        private bool _logFailedDeliveries = true;
+        private bool _enableMultithreading = true;
+        private int _workerThreadCount = 2;
+        private bool _useJobSystemForProcessing = true;
+
+        /// <inheritdoc/>
+        public string ConfigId
+        {
+            get => _configId;
+            set => _configId = value ?? throw new ArgumentNullException(nameof(value));
         }
-        
-        public int MaxMessagesPerFrame 
-        { 
-            get => maxMessagesPerFrame; 
-            set => maxMessagesPerFrame = Mathf.Max(1, value); 
+
+        /// <inheritdoc/>
+        public int MaxMessagesPerFrame
+        {
+            get => _maxMessagesPerFrame;
+            set => _maxMessagesPerFrame = value < 1
+                    ? throw new ArgumentOutOfRangeException(nameof(value), "Must be >= 1.")
+                    : value;
         }
-        
-        public int InitialMessageQueueCapacity 
-        { 
-            get => initialMessageQueueCapacity; 
-            set => initialMessageQueueCapacity = Mathf.Max(1, value); 
+
+        /// <inheritdoc/>
+        public int InitialMessageQueueCapacity
+        {
+            get => _initialMessageQueueCapacity;
+            set => _initialMessageQueueCapacity = value < 1
+                    ? throw new ArgumentOutOfRangeException(nameof(value), "Must be >= 1.")
+                    : value;
         }
-        
-        public float MessageProcessingTimeSliceMs 
-        { 
-            get => messageProcessingTimeSliceMs; 
-            set => messageProcessingTimeSliceMs = Mathf.Max(0.001f, value); 
+
+        /// <inheritdoc/>
+        public float MessageProcessingTimeSliceMs
+        {
+            get => _messageProcessingTimeSliceMs;
+            set => _messageProcessingTimeSliceMs = value <= 0f
+                    ? throw new ArgumentOutOfRangeException(nameof(value), "Must be > 0.")
+                    : value;
         }
-        
-        public bool EnableMessagePooling 
-        { 
-            get => enableMessagePooling; 
-            set => enableMessagePooling = value; 
+
+        /// <inheritdoc/>
+        public bool EnableMessagePooling
+        {
+            get => _enableMessagePooling;
+            set => _enableMessagePooling = value;
         }
-        
-        public int MessagePoolInitialSize 
-        { 
-            get => messagePoolInitialSize; 
-            set => messagePoolInitialSize = Mathf.Max(1, value); 
+
+        /// <inheritdoc/>
+        public int MessagePoolInitialSize
+        {
+            get => _messagePoolInitialSize;
+            set => _messagePoolInitialSize = value < 1
+                    ? throw new ArgumentOutOfRangeException(nameof(value), "Must be >= 1.")
+                    : value;
         }
-        
-        public int MessagePoolMaxSize 
-        { 
-            get => messagePoolMaxSize; 
-            set => messagePoolMaxSize = Mathf.Max(1, value); 
+
+        /// <inheritdoc/>
+        public int MessagePoolMaxSize
+        {
+            get => _messagePoolMaxSize;
+            set => _messagePoolMaxSize = value < _messagePoolInitialSize
+                    ? throw new ArgumentOutOfRangeException(nameof(value), "Must be >= MessagePoolInitialSize.")
+                    : value;
         }
-        
-        public bool EnableBurstSerialization 
-        { 
-            get => enableBurstSerialization; 
-            set => enableBurstSerialization = value; 
+
+        /// <inheritdoc/>
+        public bool EnableBurstSerialization
+        {
+            get => _enableBurstSerialization;
+            set => _enableBurstSerialization = value;
         }
-        
-        public bool EnableNetworkSerialization 
-        { 
-            get => enableNetworkSerialization; 
-            set => enableNetworkSerialization = value; 
+
+        /// <inheritdoc/>
+        public bool EnableNetworkSerialization
+        {
+            get => _enableNetworkSerialization;
+            set => _enableNetworkSerialization = value;
         }
-        
-        public bool EnableCompressionForNetwork 
-        { 
-            get => enableCompressionForNetwork; 
-            set => enableCompressionForNetwork = value; 
+
+        /// <inheritdoc/>
+        public bool EnableCompressionForNetwork
+        {
+            get => _enableCompressionForNetwork;
+            set => _enableCompressionForNetwork = value;
         }
-        
-        public bool EnableReliableDelivery 
-        { 
-            get => enableReliableDelivery; 
-            set => enableReliableDelivery = value; 
+
+        /// <inheritdoc/>
+        public bool EnableReliableDelivery
+        {
+            get => _enableReliableDelivery;
+            set => _enableReliableDelivery = value;
         }
-        
-        public int MaxDeliveryRetries 
-        { 
-            get => maxDeliveryRetries; 
-            set => maxDeliveryRetries = Mathf.Max(1, value); 
+
+        /// <inheritdoc/>
+        public int MaxDeliveryRetries
+        {
+            get => _maxDeliveryRetries;
+            set => _maxDeliveryRetries = value < 1
+                    ? throw new ArgumentOutOfRangeException(nameof(value), "Must be >= 1.")
+                    : value;
         }
-        
-        public float DeliveryTimeoutSeconds 
-        { 
-            get => deliveryTimeoutSeconds; 
-            set => deliveryTimeoutSeconds = Mathf.Max(0.1f, value); 
+
+        /// <inheritdoc/>
+        public float DeliveryTimeoutSeconds
+        {
+            get => _deliveryTimeoutSeconds;
+            set => _deliveryTimeoutSeconds = value <= 0f
+                    ? throw new ArgumentOutOfRangeException(nameof(value), "Must be > 0.")
+                    : value;
         }
-        
-        public float RetryBackoffMultiplier 
-        { 
-            get => retryBackoffMultiplier; 
-            set => retryBackoffMultiplier = Mathf.Max(0.1f, value); 
+
+        /// <inheritdoc/>
+        public float RetryBackoffMultiplier
+        {
+            get => _retryBackoffMultiplier;
+            set => _retryBackoffMultiplier = value <= 0f
+                    ? throw new ArgumentOutOfRangeException(nameof(value), "Must be > 0.")
+                    : value;
         }
-        
-        public bool EnableStatisticsCollection 
-        { 
-            get => enableStatisticsCollection; 
-            set => enableStatisticsCollection = value; 
+
+        /// <inheritdoc/>
+        public bool EnableStatisticsCollection
+        {
+            get => _enableStatisticsCollection;
+            set => _enableStatisticsCollection = value;
         }
-        
-        public bool EnableDeliveryTracking 
-        { 
-            get => enableDeliveryTracking; 
-            set => enableDeliveryTracking = value; 
+
+        /// <inheritdoc/>
+        public bool EnableDeliveryTracking
+        {
+            get => _enableDeliveryTracking;
+            set => _enableDeliveryTracking = value;
         }
-        
-        public bool EnablePerformanceMetrics 
-        { 
-            get => enablePerformanceMetrics; 
-            set => enablePerformanceMetrics = value; 
+
+        /// <inheritdoc/>
+        public bool EnablePerformanceMetrics
+        {
+            get => _enablePerformanceMetrics;
+            set => _enablePerformanceMetrics = value;
         }
-        
-        public bool EnableMessageLogging 
-        { 
-            get => enableMessageLogging; 
-            set => enableMessageLogging = value; 
+
+        /// <inheritdoc/>
+        public bool EnableMessageLogging
+        {
+            get => _enableMessageLogging;
+            set => _enableMessageLogging = value;
         }
-        
-        public bool EnableVerboseLogging 
-        { 
-            get => enableVerboseLogging; 
-            set => enableVerboseLogging = value; 
+
+        /// <inheritdoc/>
+        public bool EnableVerboseLogging
+        {
+            get => _enableVerboseLogging;
+            set => _enableVerboseLogging = value;
         }
-        
-        public bool LogFailedDeliveries 
-        { 
-            get => logFailedDeliveries; 
-            set => logFailedDeliveries = value; 
+
+        /// <inheritdoc/>
+        public bool LogFailedDeliveries
+        {
+            get => _logFailedDeliveries;
+            set => _logFailedDeliveries = value;
         }
-        
-        public bool EnableMultithreading 
-        { 
-            get => enableMultithreading; 
-            set => enableMultithreading = value; 
+
+        /// <inheritdoc/>
+        public bool EnableMultithreading
+        {
+            get => _enableMultithreading;
+            set => _enableMultithreading = value;
         }
-        
-        public int WorkerThreadCount 
-        { 
-            get => workerThreadCount; 
-            set => workerThreadCount = Mathf.Max(1, value); 
+
+        /// <inheritdoc/>
+        public int WorkerThreadCount
+        {
+            get => _workerThreadCount;
+            set => _workerThreadCount = value < 1
+                    ? throw new ArgumentOutOfRangeException(nameof(value), "Must be >= 1.")
+                    : value;
         }
-        
-        public bool UseJobSystemForProcessing 
-        { 
-            get => useJobSystemForProcessing; 
-            set => useJobSystemForProcessing = value; 
+
+        /// <inheritdoc/>
+        public bool UseJobSystemForProcessing
+        {
+            get => _useJobSystemForProcessing;
+            set => _useJobSystemForProcessing = value;
         }
-        
-        // Additional properties for bootstrapping
-        public bool EnableMobileOptimizations => enableMobileOptimizations;
-        public bool EnableConsoleOptimizations => enableConsoleOptimizations;
-        public bool EnableEditorDebugging => enableEditorDebugging;
-        
+
+        /// <summary>
+        /// Configuration for the batch-optimized delivery service.
+        /// </summary>
+        public BatchOptimizedConfiguration BatchDelivery { get; set; } = new BatchOptimizedConfiguration();
+
+        /// <summary>
+        /// Configuration for the default delivery service.
+        /// </summary>
+        public DeliveryServiceConfiguration DefaultDelivery { get; set; } = new DeliveryServiceConfiguration();
+
+        /// <summary>
+        /// Validates all configuration values and sub-configurations, throwing if invalid.
+        /// </summary>
+        public void Validate()
+        {
+            if (string.IsNullOrEmpty(_configId))
+                throw new InvalidOperationException("ConfigId must be non-empty.");
+            if (_maxMessagesPerFrame < 1)
+                throw new InvalidOperationException("MaxMessagesPerFrame must be >= 1.");
+            if (_initialMessageQueueCapacity < 1)
+                throw new InvalidOperationException("InitialMessageQueueCapacity must be >= 1.");
+            if (_messageProcessingTimeSliceMs <= 0f)
+                throw new InvalidOperationException("MessageProcessingTimeSliceMs must be > 0.");
+            if (_messagePoolInitialSize < 1)
+                throw new InvalidOperationException("MessagePoolInitialSize must be >= 1.");
+            if (_messagePoolMaxSize < _messagePoolInitialSize)
+                throw new InvalidOperationException("MessagePoolMaxSize must be >= MessagePoolInitialSize.");
+            if (_maxDeliveryRetries < 1)
+                throw new InvalidOperationException("MaxDeliveryRetries must be >= 1.");
+            if (_deliveryTimeoutSeconds <= 0f)
+                throw new InvalidOperationException("DeliveryTimeoutSeconds must be > 0.");
+            if (_retryBackoffMultiplier <= 0f)
+                throw new InvalidOperationException("RetryBackoffMultiplier must be > 0.");
+            if (_workerThreadCount < 1)
+                throw new InvalidOperationException("WorkerThreadCount must be >= 1.");
+
+            // Validate sub-configurations
+            // BatchDelivery?.ThrowIfInvalid();
+            // DefaultDelivery?.ThrowIfInvalid();
+        }
+
+        /// <inheritdoc/>
         public IMessageBusConfig Clone()
         {
-            var clone = CreateInstance<MessageBusConfig>();
-            
-            clone.configId = configId;
-            clone.maxMessagesPerFrame = maxMessagesPerFrame;
-            clone.initialMessageQueueCapacity = initialMessageQueueCapacity;
-            clone.messageProcessingTimeSliceMs = messageProcessingTimeSliceMs;
-            clone.enableMessagePooling = enableMessagePooling;
-            clone.messagePoolInitialSize = messagePoolInitialSize;
-            clone.messagePoolMaxSize = messagePoolMaxSize;
-            clone.enableBurstSerialization = enableBurstSerialization;
-            clone.enableNetworkSerialization = enableNetworkSerialization;
-            clone.enableCompressionForNetwork = enableCompressionForNetwork;
-            clone.enableReliableDelivery = enableReliableDelivery;
-            clone.maxDeliveryRetries = maxDeliveryRetries;
-            clone.deliveryTimeoutSeconds = deliveryTimeoutSeconds;
-            clone.retryBackoffMultiplier = retryBackoffMultiplier;
-            clone.enableStatisticsCollection = enableStatisticsCollection;
-            clone.enableDeliveryTracking = enableDeliveryTracking;
-            clone.enablePerformanceMetrics = enablePerformanceMetrics;
-            clone.enableMessageLogging = enableMessageLogging;
-            clone.enableVerboseLogging = enableVerboseLogging;
-            clone.logFailedDeliveries = logFailedDeliveries;
-            clone.enableMultithreading = enableMultithreading;
-            clone.workerThreadCount = workerThreadCount;
-            clone.useJobSystemForProcessing = useJobSystemForProcessing;
-            clone.enableMobileOptimizations = enableMobileOptimizations;
-            clone.enableConsoleOptimizations = enableConsoleOptimizations;
-            clone.enableEditorDebugging = enableEditorDebugging;
-            
+            var clone = new MessageBusConfig
+            {
+                ConfigId = ConfigId,
+                MaxMessagesPerFrame = MaxMessagesPerFrame,
+                InitialMessageQueueCapacity = InitialMessageQueueCapacity,
+                MessageProcessingTimeSliceMs = MessageProcessingTimeSliceMs,
+                EnableMessagePooling = EnableMessagePooling,
+                MessagePoolInitialSize = MessagePoolInitialSize,
+                MessagePoolMaxSize = MessagePoolMaxSize,
+                EnableBurstSerialization = EnableBurstSerialization,
+                EnableNetworkSerialization = EnableNetworkSerialization,
+                EnableCompressionForNetwork = EnableCompressionForNetwork,
+                EnableReliableDelivery = EnableReliableDelivery,
+                MaxDeliveryRetries = MaxDeliveryRetries,
+                DeliveryTimeoutSeconds = DeliveryTimeoutSeconds,
+                RetryBackoffMultiplier = RetryBackoffMultiplier,
+                EnableStatisticsCollection = EnableStatisticsCollection,
+                EnableDeliveryTracking = EnableDeliveryTracking,
+                EnablePerformanceMetrics = EnablePerformanceMetrics,
+                EnableMessageLogging = EnableMessageLogging,
+                EnableVerboseLogging = EnableVerboseLogging,
+                LogFailedDeliveries = LogFailedDeliveries,
+                EnableMultithreading = EnableMultithreading,
+                WorkerThreadCount = WorkerThreadCount,
+                UseJobSystemForProcessing = UseJobSystemForProcessing
+            };
+
+            // Deep-copy sub-configurations
+            clone.BatchDelivery = new BatchOptimizedConfiguration
+            {
+                MaxBatchSize = BatchDelivery.MaxBatchSize,
+                BatchInterval = BatchDelivery.BatchInterval,
+                FlushInterval = BatchDelivery.FlushInterval,
+                ConfirmationTimeout = BatchDelivery.ConfirmationTimeout,
+                ImmediateProcessingForReliable = BatchDelivery.ImmediateProcessingForReliable,
+                MaxConcurrentBatches = BatchDelivery.MaxConcurrentBatches,
+                GroupMessagesByType = BatchDelivery.GroupMessagesByType,
+                ImmediateProcessingThreshold = BatchDelivery.ImmediateProcessingThreshold,
+                EnableAdaptiveBatching = BatchDelivery.EnableAdaptiveBatching,
+                TargetThroughput = BatchDelivery.TargetThroughput
+            };
+
+            clone.DefaultDelivery = new DeliveryServiceConfiguration
+            {
+                DefaultTimeout = DefaultDelivery.DefaultTimeout,
+                DefaultMaxDeliveryAttempts = DefaultDelivery.DefaultMaxDeliveryAttempts,
+                ProcessingInterval = DefaultDelivery.ProcessingInterval,
+                MaxConcurrentDeliveries = DefaultDelivery.MaxConcurrentDeliveries,
+                EnableStatistics = DefaultDelivery.EnableStatistics,
+                EnableProfiling = DefaultDelivery.EnableProfiling,
+                EnableLogging = DefaultDelivery.EnableLogging,
+                LogLevel = DefaultDelivery.LogLevel,
+                BackoffMultiplier = DefaultDelivery.BackoffMultiplier,
+                MaxRetryDelay = DefaultDelivery.MaxRetryDelay
+            };
+
             return clone;
-        }
-        
-        private void OnValidate()
-        {
-            ValidateConfiguration();
-        }
-        
-        private void ValidateConfiguration()
-        {
-            if (maxMessagesPerFrame < 1)
-            {
-                maxMessagesPerFrame = 1;
-                Debug.LogWarning("MaxMessagesPerFrame cannot be less than 1. Reset to 1.");
-            }
-            
-            if (initialMessageQueueCapacity < 1)
-            {
-                initialMessageQueueCapacity = 1;
-                Debug.LogWarning("InitialMessageQueueCapacity cannot be less than 1. Reset to 1.");
-            }
-            
-            if (messagePoolMaxSize < messagePoolInitialSize)
-            {
-                messagePoolMaxSize = messagePoolInitialSize;
-                Debug.LogWarning("MessagePoolMaxSize cannot be less than MessagePoolInitialSize. Adjusted automatically.");
-            }
-            
-            if (maxDeliveryRetries < 1)
-            {
-                maxDeliveryRetries = 1;
-                Debug.LogWarning("MaxDeliveryRetries cannot be less than 1. Reset to 1.");
-            }
-            
-            if (deliveryTimeoutSeconds < 0.1f)
-            {
-                deliveryTimeoutSeconds = 0.1f;
-                Debug.LogWarning("DeliveryTimeoutSeconds cannot be less than 0.1. Reset to 0.1.");
-            }
-            
-            if (workerThreadCount < 1)
-            {
-                workerThreadCount = 1;
-                Debug.LogWarning("WorkerThreadCount cannot be less than 1. Reset to 1.");
-            }
-            
-            if (string.IsNullOrEmpty(configId))
-            {
-                configId = "DefaultMessageBusConfig";
-                Debug.LogWarning("ConfigId cannot be empty. Reset to 'DefaultMessageBusConfig'.");
-            }
-            
-            // Auto-adjust thread count based on platform
-#if UNITY_ANDROID || UNITY_IOS
-            if (workerThreadCount > 2)
-            {
-                workerThreadCount = 2;
-                Debug.LogWarning("WorkerThreadCount limited to 2 on mobile platforms.");
-            }
-#endif
-        }
-        
-        /// <summary>
-        /// Creates a platform-optimized version of this configuration.
-        /// </summary>
-        public MessageBusConfig GetPlatformOptimizedConfig()
-        {
-            var optimized = (MessageBusConfig)Clone();
-            
-#if UNITY_EDITOR
-            if (enableEditorDebugging)
-            {
-                optimized.enableMessageLogging = true;
-                optimized.enableVerboseLogging = true;
-                optimized.enableStatisticsCollection = true;
-                optimized.enablePerformanceMetrics = true;
-            }
-#elif UNITY_ANDROID || UNITY_IOS
-            if (enableMobileOptimizations)
-            {
-                // Mobile optimizations for performance and battery life
-                optimized.maxMessagesPerFrame = Mathf.Min(maxMessagesPerFrame, 50);
-                optimized.messageProcessingTimeSliceMs = Mathf.Max(messageProcessingTimeSliceMs, 0.020f);
-                optimized.enableStatisticsCollection = false;
-                optimized.enablePerformanceMetrics = false;
-                optimized.enableVerboseLogging = false;
-                optimized.workerThreadCount = Mathf.Min(workerThreadCount, 1);
-                optimized.messagePoolMaxSize = Mathf.Min(messagePoolMaxSize, 500);
-                optimized.enableMultithreading = false; // Reduce mobile complexity
-            }
-#elif UNITY_GAMECORE || UNITY_PS4 || UNITY_PS5 || UNITY_SWITCH
-            if (enableConsoleOptimizations)
-            {
-                // Console optimizations for performance
-                optimized.maxMessagesPerFrame = Mathf.Max(maxMessagesPerFrame, 200);
-                optimized.enableMultithreading = true;
-                optimized.workerThreadCount = Mathf.Min(workerThreadCount, 4);
-                optimized.useJobSystemForProcessing = true;
-                optimized.messagePoolMaxSize = Mathf.Max(messagePoolMaxSize, 2000);
-            }
-#elif UNITY_STANDALONE
-            // Desktop can handle more processing
-            optimized.maxMessagesPerFrame = Mathf.Max(maxMessagesPerFrame, 200);
-            optimized.workerThreadCount = Mathf.Min(workerThreadCount, System.Environment.ProcessorCount);
-#endif
-            
-            return optimized;
         }
     }
 }

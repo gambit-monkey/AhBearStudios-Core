@@ -27,7 +27,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         private readonly HashSet<Tagging.LogTag> _includedLogTagFilters;
         private readonly HashSet<Tagging.LogTag> _excludedLogTagFilters;
         private readonly SerilogFileTargetConfig _targetConfig;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private bool _processUntaggedMessages = true;
         private bool _isDisposed;
         
@@ -56,12 +56,12 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// Creates a new SerilogTarget from configuration.
         /// </summary>
         /// <param name="targetConfig">The Serilog configuration to use.</param>
-        /// <param name="messageBus">Optional message bus for publishing log events.</param>
+        /// <param name="messageBusService">Optional message bus for publishing log events.</param>
         /// <exception cref="ArgumentNullException">Thrown when targetConfig is null.</exception>
-        public SerilogTarget(SerilogFileTargetConfig targetConfig, IMessageBus messageBus = null)
+        public SerilogTarget(SerilogFileTargetConfig targetConfig, IMessageBusService messageBusService = null)
         {
             _targetConfig = targetConfig ?? throw new ArgumentNullException(nameof(targetConfig));
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             
             Name = string.IsNullOrEmpty(targetConfig.TargetName) ? "SerilogFile" : targetConfig.TargetName;
             IsEnabled = targetConfig.Enabled;
@@ -544,13 +544,13 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <param name="entry">The log entry to publish.</param>
         private void PublishLogEntryMessage(in LogMessage entry)
         {
-            if (_messageBus == null)
+            if (_messageBusService == null)
                 return;
                 
             try
             {
                 var logEntryMessage = new LogEntryMessage(entry);
-                _messageBus.PublishMessage(logEntryMessage);
+                _messageBusService.PublishMessage(logEntryMessage);
             }
             catch (Exception ex)
             {

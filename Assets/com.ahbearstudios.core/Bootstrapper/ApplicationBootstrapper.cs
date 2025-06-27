@@ -434,7 +434,7 @@ namespace AhBearStudios.Core.Bootstrap
                 
                 if (coreConfig.EnableMessageBus)
                 {
-                    var messageBus = Container.Resolve<MessageBus.Interfaces.IMessageBus>();
+                    var messageBus = Container.Resolve<MessageBus.Interfaces.IMessageBusService>();
                     if (messageBus == null)
                         throw new InvalidOperationException("Failed to resolve message bus system");
                 }
@@ -589,7 +589,7 @@ namespace AhBearStudios.Core.Bootstrap
     
     internal class MessageBusInstaller : BootstrapInstallerBase
     {
-        public override string InstallerName => "MessageBus System";
+        public override string InstallerName => "MessageBusService System";
         public override int Priority => 40;
         public override Type[] Dependencies => new[] { typeof(LoggingInstaller), typeof(ProfilingInstaller), typeof(PoolingInstaller) };
         protected override void InstallCore(IContainerBuilder builder) { /* Implementation */ }

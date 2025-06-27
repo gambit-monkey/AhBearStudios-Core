@@ -50,9 +50,9 @@ namespace AhBearStudios.Core.Logging.Configuration
         /// <summary>
         /// Create a UnityConsoleTarget using this configuration.
         /// </summary>
-        public ILogTarget CreateTarget(IMessageBus messageBus = null)
+        public ILogTarget CreateTarget(IMessageBusService messageBusService = null)
         {
-            var target = new UnityConsoleTarget(this, Formatter, messageBus);
+            var target = new UnityConsoleTarget(this, Formatter, messageBusService);
             ApplyTagFilters(target);
             return target;
         }

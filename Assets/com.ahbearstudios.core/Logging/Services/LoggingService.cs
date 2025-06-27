@@ -21,7 +21,7 @@ namespace AhBearStudios.Core.Logging
         private readonly List<ILogTarget> _targets;
         private readonly LogBatchProcessor _batchProcessor;
         private readonly ILogLevelManager _levelManager;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private bool _disposed;
 
         /// <summary>
@@ -30,13 +30,13 @@ namespace AhBearStudios.Core.Logging
         public LoggingService(
             IBurstLoggingService burstLogger,
             ILogLevelManager levelManager,
-            IMessageBus messageBus,
+            IMessageBusService messageBusService,
             IEnumerable<ILogTarget> initialTargets,
             int maxBatchSize = 100)
         {
             _burstLogger = burstLogger ?? throw new ArgumentNullException(nameof(burstLogger));
             _levelManager = levelManager ?? throw new ArgumentNullException(nameof(levelManager));
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
 
             _targets = initialTargets != null
                 ? new List<ILogTarget>(initialTargets)
@@ -70,22 +70,22 @@ namespace AhBearStudios.Core.Logging
             => LogInternal(tag, level,
                 args == null || args.Length == 0 ? format : string.Format(format, args));
 
-        public void Debug(string message)
+        public void LogDebug(string message)
             => Log(LogLevel.Debug, message);
 
-        public void Info(string message)
+        public void LogInfo(string message)
             => Log(LogLevel.Info, message);
 
-        public void Warning(string message)
+        public void LogWarning(string message)
             => Log(LogLevel.Warning, message);
         
         public void Warn(string message)
             => Log(LogLevel.Warning, message);
 
-        public void Error(string message)
+        public void LogError(string message)
             => Log(LogLevel.Error, message);
 
-        public void Critical(string message)
+        public void LogCritical(string message)
             => Log(LogLevel.Critical, message);
 
         public void Flush()
@@ -127,7 +127,7 @@ namespace AhBearStudios.Core.Logging
             };
 
             _burstLogger.Log(logMsg.Tag, logMsg.Message, logMsg.Level, logMsg.Properties);
-            _messageBus?.Publish(new LogEntryMessage(logMsg));
+            _messageBusService?.Publish(new LogEntryMessage(logMsg));
         }
 
         public void Dispose()

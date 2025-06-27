@@ -1,5 +1,6 @@
 ﻿using System;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Extensions;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling;
@@ -19,13 +20,13 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         /// <summary>
         /// Initializes a new instance of the MessageHandlerContext class.
         /// </summary>
-        /// <param name="messageBus">The message bus instance.</param>
+        /// <param name="messageBusService">The message bus instance.</param>
         /// <param name="logger">The logger instance.</param>
         /// <param name="profiler">The profiler instance.</param>
         /// <param name="handlerType">The type of the handler for profiling purposes.</param>
-        public MessageHandlerContext(IMessageBus messageBus, IBurstLogger logger, IProfiler profiler, Type handlerType)
+        public MessageHandlerContext(IMessageBusService messageBusService, ILoggingService logger, IProfiler profiler, Type handlerType)
         {
-            MessageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            MessageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             Logger = logger ?? throw new ArgumentNullException(nameof(logger));
             Profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
             
@@ -37,10 +38,10 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         }
 
         /// <inheritdoc />
-        public IMessageBus MessageBus { get; }
+        public IMessageBusService MessageBusService { get; }
         
         /// <inheritdoc />
-        public IBurstLogger Logger { get; }
+        public ILoggingService Logger { get; }
         
         /// <inheritdoc />
         public IProfiler Profiler { get; }
@@ -56,14 +57,14 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         public IDisposable SubscribeKeyed<TKey, TMessage>(TKey key, Action<TMessage> handler)
         {
             // Use the extension method for keyed subscription with specific key
-            return MessageBus.SubscribeKeyed<TKey, TMessage>(key, handler);
+            return MessageBusService.SubscribeKeyed<TKey, TMessage>(key, handler);
         }
 
         /// <inheritdoc />
         public IDisposable SubscribeKeyedAll<TKey, TMessage>(Action<TKey, TMessage> handler)
         {
             // Use the extension method for subscribing to all keyed messages
-            return MessageBus.SubscribeKeyedAll<TKey, TMessage>(handler);
+            return MessageBusService.SubscribeKeyedAll<TKey, TMessage>(handler);
         }
 
         /// <inheritdoc />

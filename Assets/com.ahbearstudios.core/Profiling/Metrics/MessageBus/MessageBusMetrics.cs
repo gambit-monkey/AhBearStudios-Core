@@ -27,7 +27,7 @@ namespace AhBearStudios.Core.Profiling.Metrics
         private readonly Dictionary<Guid, Dictionary<string, MetricAlert>> _busAlerts;
         
         // Message bus for alerts
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         
         // State
         private bool _isCreated;
@@ -40,15 +40,15 @@ namespace AhBearStudios.Core.Profiling.Metrics
         /// <summary>
         /// Creates a new message bus metrics tracker
         /// </summary>
-        /// <param name="messageBus">Message bus for sending alerts</param>
+        /// <param name="messageBusService">Message bus for sending alerts</param>
         /// <param name="initialCapacity">Initial capacity for dictionary storage</param>
-        public MessageBusMetrics(IMessageBus messageBus = null, int initialCapacity = 64)
+        public MessageBusMetrics(IMessageBusService messageBusService = null, int initialCapacity = 64)
         {
             // Create storage
             _busMetrics = new Dictionary<Guid, MessageBusMetricsData>(initialCapacity);
             _busAlerts = new Dictionary<Guid, Dictionary<string, MetricAlert>>();
             _metricsLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             
             // Initialize global metrics
             float currentTime = GetCurrentTime();
@@ -67,13 +67,13 @@ namespace AhBearStudios.Core.Profiling.Metrics
         /// <param name="busId">Bus identifier</param>
         /// <param name="busName">Bus name</param>
         /// <param name="busType">Type of message bus</param>
-        /// <param name="messageBus">Message bus for sending alerts</param>
+        /// <param name="messageBusService">Message bus for sending alerts</param>
         public MessageBusMetrics(
             Guid busId,
             string busName,
             string busType,
-            IMessageBus messageBus = null)
-            : this(messageBus)
+            IMessageBusService messageBusService = null)
+            : this(messageBusService)
         {
             // Configure the initial bus
             UpdateBusConfiguration(busId, 0, 0, busName, busType);
@@ -571,7 +571,7 @@ namespace AhBearStudios.Core.Profiling.Metrics
         
         private void CheckAlerts(Guid busId, MessageBusMetricsData metricsData)
         {
-            if (_messageBus == null || !_busAlerts.TryGetValue(busId, out var busAlerts))
+            if (_messageBusService == null || !_busAlerts.TryGetValue(busId, out var busAlerts))
                 return;
     
             float currentTime = GetCurrentTime();
@@ -593,21 +593,21 @@ namespace AhBearStudios.Core.Profiling.Metrics
                     {
                         // Create a profiler tag for this alert
                         var profilerTag = new Profiling.ProfilerTag(
-                            new ProfilerCategory("MessageBus"), 
+                            new ProfilerCategory("MessageBusService"), 
                             $"Alert_{alert.MetricName}");
                 
                         var alertMessage = new MessageBusAlertMessage(
                             profilerTag,
                             busId,
                             metricsData.Name.ToString(),
-                            "MessageBus",
+                            "MessageBusService",
                             currentValue,
                             alert.Threshold,
                             alert.MetricName,
                             "Warning",
                             "Threshold exceeded");
                 
-                        var publisher = _messageBus.GetPublisher<MessageBusAlertMessage>();
+                        var publisher = _messageBusService.GetPublisher<MessageBusAlertMessage>();
                         publisher?.Publish(alertMessage);
                     }
                     catch

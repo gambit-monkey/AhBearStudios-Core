@@ -167,7 +167,7 @@ namespace AhBearStudios.Core.Profiling.Unity
         /// </summary>
         private void InitializeComponents()
         {
-            var messageBus = _messageBusProvider?.MessageBus;
+            var messageBus = _messageBusProvider?.MessageBusService;
             var dependencyProvider = _dependencyProvider?.DependencyProvider;
             
             // Initialize stats collection

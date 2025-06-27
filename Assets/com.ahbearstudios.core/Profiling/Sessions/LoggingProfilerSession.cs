@@ -27,7 +27,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         private readonly string _targetName;
         private readonly string _formatterName;
         private readonly ILoggingMetrics _loggingMetrics;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly Guid _sessionId;
         private readonly Stopwatch _stopwatch;
         private readonly Dictionary<string, double> _customMetrics;
@@ -49,7 +49,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="targetName">Name of the target being written to.</param>
         /// <param name="formatterName">Name of the formatter being used.</param>
         /// <param name="loggingMetrics">Optional logging metrics tracker.</param>
-        /// <param name="messageBus">Optional message bus for publishing events.</param>
+        /// <param name="messageBusService">Optional message bus for publishing events.</param>
         public LoggingProfilerSession(
             ProfilerTag tag,
             string operationType,
@@ -60,7 +60,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             string targetName = null,
             string formatterName = null,
             ILoggingMetrics loggingMetrics = null,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             _tag = tag;
             _operationType = operationType ?? "Unknown";
@@ -72,7 +72,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             _targetName = targetName;
             _formatterName = formatterName;
             _loggingMetrics = loggingMetrics;
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             _sessionId = Guid.NewGuid();
             _customMetrics = new Dictionary<string, double>();
             _startTimestampNs = GetHighPrecisionTimestampNs();
@@ -101,7 +101,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="targetName">Name of the target being written to.</param>
         /// <param name="formatterName">Name of the formatter being used.</param>
         /// <param name="loggingMetrics">Optional logging metrics tracker.</param>
-        /// <param name="messageBus">Optional message bus for publishing events.</param>
+        /// <param name="messageBusService">Optional message bus for publishing events.</param>
         public LoggingProfilerSession(
             ProfilerTag tag,
             string operationType,
@@ -112,7 +112,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             string targetName = null,
             string formatterName = null,
             ILoggingMetrics loggingMetrics = null,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             _tag = tag;
             _operationType = operationType ?? "Unknown";
@@ -124,7 +124,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             _targetName = targetName;
             _formatterName = formatterName;
             _loggingMetrics = loggingMetrics;
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             _sessionId = Guid.NewGuid();
             _customMetrics = new Dictionary<string, double>();
             _startTimestampNs = GetHighPrecisionTimestampNs();
@@ -326,7 +326,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             RecordLoggingMetrics();
 
             // Publish session completed message
-            if (_messageBus != null)
+            if (_messageBusService != null)
             {
                 try
                 {
@@ -343,7 +343,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
                         ElapsedMilliseconds,
                         _customMetrics);
 
-                    var publisher = _messageBus.GetPublisher<LoggingProfilerSessionCompletedMessage>();
+                    var publisher = _messageBusService.GetPublisher<LoggingProfilerSessionCompletedMessage>();
                     publisher?.Publish(completedMessage);
                 }
                 catch

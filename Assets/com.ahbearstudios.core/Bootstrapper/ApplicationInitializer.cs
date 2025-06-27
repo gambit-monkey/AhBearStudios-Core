@@ -19,7 +19,7 @@ namespace AhBearStudios.Core.Bootstrap
         private readonly CoreSystemsConfig coreConfig;
         private readonly InstallerConfig installerConfig;
         private readonly IBurstLogger logger;
-        private readonly IMessageBus messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly IProfiler profiler;
         private readonly IPoolRegistry poolRegistry;
         
@@ -30,14 +30,14 @@ namespace AhBearStudios.Core.Bootstrap
             CoreSystemsConfig coreConfig,
             InstallerConfig installerConfig,
             IBurstLogger logger,
-            IMessageBus messageBus = null,
+            IMessageBusService messageBusService = null,
             IProfiler profiler = null,
             IPoolRegistry poolRegistry = null)
         {
             this.coreConfig = coreConfig ?? throw new ArgumentNullException(nameof(coreConfig));
             this.installerConfig = installerConfig ?? throw new ArgumentNullException(nameof(installerConfig));
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            this.messageBus = messageBus;
+            this._messageBusService = messageBusService;
             this.profiler = profiler;
             this.poolRegistry = poolRegistry;
         }
@@ -87,7 +87,7 @@ namespace AhBearStudios.Core.Bootstrap
             }
             
             // Initialize message bus system
-            if (coreConfig.EnableMessageBus && messageBus != null)
+            if (coreConfig.EnableMessageBus && _messageBusService != null)
             {
                 InitializeMessageBusSystem();
             }
@@ -163,14 +163,14 @@ namespace AhBearStudios.Core.Bootstrap
             try
             {
                 // Discover and register message types
-                var registry = messageBus.GetMessageRegistry();
+                var registry = _messageBusService.GetMessageRegistry();
                 registry.DiscoverMessages();
                 
                 // Setup message processing monitoring
                 if (profiler != null)
                 {
-                    profiler.RegisterMetricAlert(new ProfilerTag("MessageBus", "QueueSize"), 1000);
-                    profiler.RegisterMetricAlert(new ProfilerTag("MessageBus", "ProcessingTime"), 0.016); // 16ms
+                    profiler.RegisterMetricAlert(new ProfilerTag("MessageBusService", "QueueSize"), 1000);
+                    profiler.RegisterMetricAlert(new ProfilerTag("MessageBusService", "ProcessingTime"), 0.016); // 16ms
                 }
                 
                 // Subscribe to system-level events
@@ -239,12 +239,12 @@ namespace AhBearStudios.Core.Bootstrap
         
         private void SubscribeToSystemEvents()
         {
-            if (messageBus == null) return;
+            if (_messageBusService == null) return;
             
             // Subscribe to application lifecycle events
-            messageBus.SubscribeToMessage<ApplicationPauseMessage>(OnApplicationPause);
-            messageBus.SubscribeToMessage<ApplicationFocusMessage>(OnApplicationFocus);
-            messageBus.SubscribeToMessage<MemoryWarningMessage>(OnMemoryWarning);
+            _messageBusService.SubscribeToMessage<ApplicationPauseMessage>(OnApplicationPause);
+            _messageBusService.SubscribeToMessage<ApplicationFocusMessage>(OnApplicationFocus);
+            _messageBusService.SubscribeToMessage<MemoryWarningMessage>(OnMemoryWarning);
         }
         
         private void RegisterForApplicationEvents()
@@ -266,7 +266,7 @@ namespace AhBearStudios.Core.Bootstrap
             // Validate core systems are responding
             try
             {
-                if (messageBus != null)
+                if (_messageBusService != null)
                 {
                     // Test message bus responsiveness
                     var testMessage = new SystemHealthCheckMessage
@@ -275,7 +275,7 @@ namespace AhBearStudios.Core.Bootstrap
                         TimestampTicks = DateTime.UtcNow.Ticks,
                         TypeCode = 9999 // Test message type code
                     };
-                    messageBus.PublishMessage(testMessage);
+                    _messageBusService.PublishMessage(testMessage);
                 }
                 
                 if (poolRegistry != null)
@@ -336,7 +336,7 @@ namespace AhBearStudios.Core.Bootstrap
             if (coreConfig.EnableLogging) enabledSystems.Add("Logging");
             if (coreConfig.EnableProfiling) enabledSystems.Add("Profiling");
             if (coreConfig.EnablePooling) enabledSystems.Add("Pooling");
-            if (coreConfig.EnableMessageBus) enabledSystems.Add("MessageBus");
+            if (coreConfig.EnableMessageBus) enabledSystems.Add("MessageBusService");
             
             logger.Log(Logging.LogLevel.Info, 
                 $"System configuration summary - Enabled systems: [{string.Join(", ", enabledSystems)}], " +
@@ -347,7 +347,7 @@ namespace AhBearStudios.Core.Bootstrap
         
         private void PublishApplicationReadyEvent()
         {
-            if (messageBus == null) return;
+            if (_messageBusService == null) return;
             
             try
             {
@@ -359,7 +359,7 @@ namespace AhBearStudios.Core.Bootstrap
                     InitializationTimeMs = Time.realtimeSinceStartup * 1000f
                 };
                 
-                messageBus.PublishMessage(readyMessage);
+                _messageBusService.PublishMessage(readyMessage);
                 logger.Log(Logging.LogLevel.Info, "Application ready event published", "Bootstrap");
             }
             catch (Exception ex)
@@ -380,7 +380,7 @@ namespace AhBearStudios.Core.Bootstrap
             }
             
             // Flush any pending operations
-            if (messageBus != null)
+            if (_messageBusService != null)
             {
                 // Allow message bus to process remaining messages
             }
@@ -391,7 +391,7 @@ namespace AhBearStudios.Core.Bootstrap
             logger?.Log(Logging.LogLevel.Warning, "Low memory warning received", "Bootstrap");
             
             // Trigger memory cleanup
-            if (messageBus != null)
+            if (_messageBusService != null)
             {
                 var memoryWarning = new MemoryWarningMessage
                 {
@@ -400,7 +400,7 @@ namespace AhBearStudios.Core.Bootstrap
                     TypeCode = 1001,
                     MemoryLevel = MemoryLevel.Critical
                 };
-                messageBus.PublishMessage(memoryWarning);
+                _messageBusService.PublishMessage(memoryWarning);
             }
             
             // Force garbage collection

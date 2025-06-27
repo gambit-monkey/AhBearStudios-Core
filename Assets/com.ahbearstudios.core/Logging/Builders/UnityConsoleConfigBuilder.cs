@@ -18,8 +18,8 @@ namespace AhBearStudios.Core.Logging.Builders
             public bool UseColorizedOutput { get; set; } = true;
             public bool RegisterUnityLogHandler { get; set; } = true;
             public bool DuplicateToOriginalHandler { get; set; } = false;
-            public string[] IncludedTags { get; set; } = new string[0];
-            public string[] ExcludedTags { get; set; } = new string[0];
+            public string[] IncludedTags { get; set; } = Array.Empty<string>();
+            public string[] ExcludedTags { get; set; } = Array.Empty<string>();
             public bool ProcessUntaggedMessages { get; set; } = true;
             public bool CaptureUnityLogs { get; set; } = true;
             public bool IncludeStackTraces { get; set; } = true;
@@ -82,8 +82,8 @@ namespace AhBearStudios.Core.Logging.Builders
 
         public UnityConsoleConfigBuilder WithTagFilters(string[] includedTags, string[] excludedTags, bool processUntagged = true)
         {
-            _data.IncludedTags = includedTags ?? new string[0];
-            _data.ExcludedTags = excludedTags ?? new string[0];
+            _data.IncludedTags = includedTags ?? Array.Empty<string>();
+            _data.ExcludedTags = excludedTags ?? Array.Empty<string>();
             _data.ProcessUntaggedMessages = processUntagged;
             return this;
         }
@@ -142,8 +142,8 @@ namespace AhBearStudios.Core.Logging.Builders
             _data.TargetName = config.TargetName;
             _data.Enabled = config.Enabled;
             _data.MinimumLevel = config.MinimumLevel;
-            _data.IncludedTags = config.IncludedTags ?? new string[0];
-            _data.ExcludedTags = config.ExcludedTags ?? new string[0];
+            _data.IncludedTags = config.IncludedTags ?? Array.Empty<string>();
+            _data.ExcludedTags = config.ExcludedTags ?? Array.Empty<string>();
             _data.ProcessUntaggedMessages = config.ProcessUntaggedMessages;
             _data.CaptureUnityLogs = config.CaptureUnityLogs;
             _data.IncludeStackTraces = config.IncludeStackTraces;

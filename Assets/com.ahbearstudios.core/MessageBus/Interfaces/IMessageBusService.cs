@@ -6,7 +6,7 @@ namespace AhBearStudios.Core.MessageBus.Interfaces
     /// Core interface for the message bus system.
     /// Provides access to publishers and subscribers for different message types.
     /// </summary>
-    public interface IMessageBus
+    public interface IMessageBusService
     {
         /// <summary>
         /// Gets a publisher for the specified message type.

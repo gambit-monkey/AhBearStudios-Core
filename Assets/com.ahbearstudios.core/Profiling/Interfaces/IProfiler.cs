@@ -19,7 +19,7 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         /// <summary>
         /// Gets the message bus used by the profiler
         /// </summary>
-        IMessageBus MessageBus { get; }
+        IMessageBusService MessageBusService { get; }
 
         /// <summary>
         /// Begin a profiling sample with a name

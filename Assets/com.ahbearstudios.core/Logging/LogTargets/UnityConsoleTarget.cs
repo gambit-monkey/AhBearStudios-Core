@@ -22,7 +22,7 @@ namespace AhBearStudios.Core.Logging.LogTargets
         private readonly HashSet<Tagging.LogTag> _includedLogTagFilters;
         private readonly HashSet<Tagging.LogTag> _excludedLogTagFilters;
         private readonly UnityConsoleTargetConfig _config;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly ILogFormatter _formatter;
         private bool _processUntaggedMessages = true;
         private bool _isDisposed;
@@ -47,12 +47,12 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// </summary>
         /// <param name="config">The Unity console configuration to use.</param>
         /// <param name="formatter">Optional custom formatter. If null, uses default formatter.</param>
-        /// <param name="messageBus">Optional message bus for publishing log events.</param>
+        /// <param name="messageBusService">Optional message bus for publishing log events.</param>
         /// <exception cref="ArgumentNullException">Thrown when config is null.</exception>
-        public UnityConsoleTarget(UnityConsoleTargetConfig config, ILogFormatter formatter = null, IMessageBus messageBus = null)
+        public UnityConsoleTarget(UnityConsoleTargetConfig config, ILogFormatter formatter = null, IMessageBusService messageBusService = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             _formatter = formatter ?? new DefaultLogFormatter();
             
             Name = string.IsNullOrEmpty(config.TargetName) ? "UnityConsole" : config.TargetName;
@@ -504,13 +504,13 @@ namespace AhBearStudios.Core.Logging.LogTargets
         /// <param name="entry">The log entry to publish.</param>
         private void PublishLogEntryMessage(in LogMessage entry)
         {
-            if (_messageBus == null)
+            if (_messageBusService == null)
                 return;
                 
             try
             {
                 var logEntryMessage = new LogEntryMessage(entry);
-                _messageBus.PublishMessage(logEntryMessage);
+                _messageBusService.PublishMessage(logEntryMessage);
             }
             catch (Exception ex)
             {

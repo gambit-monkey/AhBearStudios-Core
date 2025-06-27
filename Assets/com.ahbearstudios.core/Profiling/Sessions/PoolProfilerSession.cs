@@ -17,7 +17,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
     {
         private readonly ProfilerMarker _marker;
         private readonly ProfilerTag _tag;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly Dictionary<string, double> _customMetrics = new Dictionary<string, double>();
         private bool _isDisposed;
         private long _startTimeNs;
@@ -70,7 +70,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="activeCount">Active item count</param>
         /// <param name="freeCount">Free item count</param>
         /// <param name="poolMetrics">Pool metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         public PoolProfilerSession(
             ProfilerTag tag, 
             Guid poolId, 
@@ -79,7 +79,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             int activeCount, 
             int freeCount,
             IPoolMetrics poolMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             _tag = tag;
             PoolId = poolId;
@@ -88,10 +88,10 @@ namespace AhBearStudios.Core.Profiling.Sessions
             ActiveCount = activeCount;
             FreeCount = freeCount;
             _poolMetrics = poolMetrics;
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             _isDisposed = false;
             _sessionId = Guid.NewGuid();
-            _isNullSession = poolMetrics == null && messageBus == null;
+            _isNullSession = poolMetrics == null && messageBusService == null;
             
             // Only create marker and start timing if this isn't a null session
             if (!_isNullSession)
@@ -103,14 +103,14 @@ namespace AhBearStudios.Core.Profiling.Sessions
                 _startTimeNs = GetHighPrecisionTimestampNs();
                 
                 // Notify via message bus that session started
-                if (_messageBus != null)
+                if (_messageBusService != null)
                 {
                     var message = new PoolProfilerSessionStartedMessage(
                         _tag, _sessionId, PoolId, PoolName, ActiveCount, FreeCount);
 
                     try
                     {
-                        var publisher = _messageBus.GetPublisher<PoolProfilerSessionStartedMessage>();
+                        var publisher = _messageBusService.GetPublisher<PoolProfilerSessionStartedMessage>();
                         publisher?.Publish(message);
                     }
                     catch
@@ -131,7 +131,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="activeCount">Active item count</param>
         /// <param name="freeCount">Free item count</param>
         /// <param name="poolMetrics">Pool metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         /// <returns>A new pool profiler session with appropriate tag</returns>
         public static PoolProfilerSession Create(
             string operationType,
@@ -140,7 +140,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             int activeCount,
             int freeCount,
             IPoolMetrics poolMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             if (string.IsNullOrEmpty(operationType))
                 operationType = "Unknown";
@@ -149,7 +149,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             ProfilerTag tag = SelectOptimalTag(operationType, poolId, poolName);
 
             return new PoolProfilerSession(
-                tag, poolId, poolName, operationType, activeCount, freeCount, poolMetrics, messageBus);
+                tag, poolId, poolName, operationType, activeCount, freeCount, poolMetrics, messageBusService);
         }
 
         /// <summary>
@@ -158,17 +158,17 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="operationType">Operation type</param>
         /// <param name="poolName">Pool name</param>
         /// <param name="poolMetrics">Pool metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         /// <returns>A new pool profiler session</returns>
         public static PoolProfilerSession CreateMinimal(
             string operationType,
             string poolName,
             IPoolMetrics poolMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             Guid poolId = string.IsNullOrEmpty(poolName) ? Guid.Empty : CreateDeterministicGuid(poolName);
             
-            return Create(operationType, poolId, poolName, 0, 0, poolMetrics, messageBus);
+            return Create(operationType, poolId, poolName, 0, 0, poolMetrics, messageBusService);
         }
 
         /// <summary>
@@ -176,17 +176,17 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// </summary>
         /// <param name="operationType">Operation type</param>
         /// <param name="poolMetrics">Pool metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         /// <returns>A new pool profiler session</returns>
         public static PoolProfilerSession CreateGeneric(
             string operationType,
             IPoolMetrics poolMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             var tag = PoolProfilerTags.ForOperation(operationType);
             
             return new PoolProfilerSession(
-                tag, Guid.Empty, "Generic", operationType, 0, 0, poolMetrics, messageBus);
+                tag, Guid.Empty, "Generic", operationType, 0, 0, poolMetrics, messageBusService);
         }
 
         /// <summary>
@@ -358,7 +358,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             RecordPoolMetrics();
             
             // Notify via message bus that session ended
-            if (_messageBus != null)
+            if (_messageBusService != null)
             {
                 var message = new PoolProfilerSessionCompletedMessage(
                     _tag, _sessionId, PoolId, PoolName, ActiveCount, FreeCount, 
@@ -366,7 +366,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
 
                 try
                 {
-                    var publisher = _messageBus.GetPublisher<PoolProfilerSessionCompletedMessage>();
+                    var publisher = _messageBusService.GetPublisher<PoolProfilerSessionCompletedMessage>();
                     publisher?.Publish(message);
                 }
                 catch

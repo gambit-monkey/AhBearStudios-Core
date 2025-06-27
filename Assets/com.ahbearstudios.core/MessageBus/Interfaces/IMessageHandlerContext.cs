@@ -1,5 +1,5 @@
 using System;
-using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.Profiling.Interfaces;
 
 namespace AhBearStudios.Core.MessageBus.Interfaces
@@ -12,12 +12,12 @@ namespace AhBearStudios.Core.MessageBus.Interfaces
         /// <summary>
         /// Gets the message bus instance.
         /// </summary>
-        IMessageBus MessageBus { get; }
+        IMessageBusService MessageBusService { get; }
         
         /// <summary>
         /// Gets the logger instance.
         /// </summary>
-        IBurstLogger Logger { get; }
+        ILoggingService Logger { get; }
         
         /// <summary>
         /// Gets the profiler instance.

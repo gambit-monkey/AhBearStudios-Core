@@ -18,7 +18,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
     {
         private readonly IProfiler _baseProfiler;
         private readonly ISerializerMetrics _serializerMetrics;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly Dictionary<Guid, SerializerMetricsData> _serializerMetricsCache = new Dictionary<Guid, SerializerMetricsData>();
         private readonly int _maxHistoryItems = 100;
         private readonly Dictionary<ProfilerTag, List<double>> _history = new Dictionary<ProfilerTag, List<double>>();
@@ -34,19 +34,19 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <summary>
         /// Gets the message bus used by this profiler
         /// </summary>
-        public IMessageBus MessageBus => _messageBus;
+        public IMessageBusService MessageBusService => _messageBusService;
 
         /// <summary>
         /// Creates a new serialization profiler
         /// </summary>
         /// <param name="baseProfiler">Base profiler implementation for general profiling</param>
         /// <param name="serializerMetrics">Serializer metrics service</param>
-        /// <param name="messageBus">Message bus for publishing profiling messages</param>
-        public SerializationProfiler(IProfiler baseProfiler, ISerializerMetrics serializerMetrics, IMessageBus messageBus)
+        /// <param name="messageBusService">Message bus for publishing profiling messages</param>
+        public SerializationProfiler(IProfiler baseProfiler, ISerializerMetrics serializerMetrics, IMessageBusService messageBusService)
         {
             _baseProfiler = baseProfiler ?? throw new ArgumentNullException(nameof(baseProfiler));
             _serializerMetrics = serializerMetrics ?? throw new ArgumentNullException(nameof(serializerMetrics));
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             
             SubscribeToMessages();
         }
@@ -108,7 +108,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession(operationType, serializerName);
 
             return SerializationProfilerSession.Create(
-                operationType, serializerId, serializerName, messageId, messageTypeCode, dataSize, batchSize, _serializerMetrics, _messageBus);
+                operationType, serializerId, serializerName, messageId, messageTypeCode, dataSize, batchSize, _serializerMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -130,7 +130,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
 
             var tag = SerializationProfilerTags.ForSerializer(operationType, serializerId);
             return new SerializationProfilerSession(
-                tag, serializerId, serializerName, operationType, Guid.Empty, 0, dataSize, 0, _serializerMetrics, _messageBus);
+                tag, serializerId, serializerName, operationType, Guid.Empty, 0, dataSize, 0, _serializerMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -150,7 +150,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
 
             var tag = SerializationProfilerTags.ForSerializerName(operationType, serializerName);
             return new SerializationProfilerSession(
-                tag, Guid.Empty, serializerName, operationType, Guid.Empty, 0, dataSize, 0, _serializerMetrics, _messageBus);
+                tag, Guid.Empty, serializerName, operationType, Guid.Empty, 0, dataSize, 0, _serializerMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -172,7 +172,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
 
             var tag = SerializationProfilerTags.ForSerializerAndMessageType(operationType, serializerName, message.TypeCode);
             return new SerializationProfilerSession(
-                tag, Guid.Empty, serializerName, operationType, message.Id, message.TypeCode, dataSize, 0, _serializerMetrics, _messageBus);
+                tag, Guid.Empty, serializerName, operationType, message.Id, message.TypeCode, dataSize, 0, _serializerMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -193,7 +193,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession(operationType, serializerName);
 
             return SerializationProfilerSession.CreateForMessageType(
-                operationType, serializerName, messageTypeCode, dataSize, _serializerMetrics, _messageBus);
+                operationType, serializerName, messageTypeCode, dataSize, _serializerMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -214,7 +214,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession(operationType, serializerName);
 
             return SerializationProfilerSession.CreateBatch(
-                operationType, serializerName, batchSize, totalDataSize, _serializerMetrics, _messageBus);
+                operationType, serializerName, batchSize, totalDataSize, _serializerMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -233,7 +233,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession(operationType, serializerName);
 
             return SerializationProfilerSession.CreateForSizedOperation(
-                operationType, serializerName, messageSize, _serializerMetrics, _messageBus);
+                operationType, serializerName, messageSize, _serializerMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -246,7 +246,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
             if (!IsEnabled)
                 return CreateNullSession(operationType, "Generic");
 
-            return SerializationProfilerSession.CreateGeneric(operationType, _serializerMetrics, _messageBus);
+            return SerializationProfilerSession.CreateGeneric(operationType, _serializerMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -280,7 +280,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
             }
 
             return new SerializationProfilerSession(
-                tag, Guid.Empty, serializerName, operationType, Guid.Empty, 0, payloadSize, 0, _serializerMetrics, _messageBus);
+                tag, Guid.Empty, serializerName, operationType, Guid.Empty, 0, payloadSize, 0, _serializerMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -529,13 +529,13 @@ namespace AhBearStudios.Core.Profiling.Profilers
             try
             {
                 // Subscribe to profiler session messages
-                var sessionCompletedSub = _messageBus.GetSubscriber<SerializationProfilerSessionCompletedMessage>();
+                var sessionCompletedSub = _messageBusService.GetSubscriber<SerializationProfilerSessionCompletedMessage>();
                 if (sessionCompletedSub != null)
                 {
                     sessionCompletedSub.Subscribe(OnSerializationSessionCompleted);
                 }
 
-                var alertSub = _messageBus.GetSubscriber<SerializerMetricAlertMessage>();
+                var alertSub = _messageBusService.GetSubscriber<SerializerMetricAlertMessage>();
                 if (alertSub != null)
                 {
                     alertSub.Subscribe(OnSerializerMetricAlert);

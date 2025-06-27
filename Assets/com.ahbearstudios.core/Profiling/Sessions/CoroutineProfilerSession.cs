@@ -16,7 +16,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
     {
         private readonly ProfilerMarker _marker;
         private readonly ProfilerTag _tag;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly Dictionary<string, double> _customMetrics = new Dictionary<string, double>();
         private bool _isDisposed;
         private long _startTimeNs;
@@ -68,7 +68,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="coroutineId">Coroutine identifier</param>
         /// <param name="coroutineTag">Coroutine tag</param>
         /// <param name="coroutineMetrics">Coroutine metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         public CoroutineProfilerSession(
             ProfilerTag tag, 
             Guid runnerId, 
@@ -76,7 +76,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             int coroutineId, 
             string coroutineTag,
             ICoroutineMetrics coroutineMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             _tag = tag;
             RunnerId = runnerId;
@@ -84,11 +84,11 @@ namespace AhBearStudios.Core.Profiling.Sessions
             CoroutineId = coroutineId;
             CoroutineTag = coroutineTag ?? string.Empty;
             _coroutineMetrics = coroutineMetrics;
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             _isDisposed = false;
             _sessionId = Guid.NewGuid();
             _operationType = GetOperationTypeFromTag(tag.Name);
-            _isNullSession = coroutineMetrics == null && messageBus == null;
+            _isNullSession = coroutineMetrics == null && messageBusService == null;
             
             // Only create marker and start timing if this isn't a null session
             if (!_isNullSession)
@@ -100,11 +100,11 @@ namespace AhBearStudios.Core.Profiling.Sessions
                 _startTimeNs = GetHighPrecisionTimestampNs();
                 
                 // Notify via message bus that session started
-                if (_messageBus != null)
+                if (_messageBusService != null)
                 {
                     var message = new CoroutineProfilerSessionStartedMessage(
                         _tag, _sessionId, RunnerId, RunnerName, CoroutineId, CoroutineTag);
-                    _messageBus.PublishMessage(message);
+                    _messageBusService.PublishMessage(message);
                 }
             }
         }
@@ -119,7 +119,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="coroutineId">Coroutine identifier</param>
         /// <param name="coroutineTag">Coroutine tag</param>
         /// <param name="coroutineMetrics">Coroutine metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         /// <returns>A new coroutine profiler session with appropriate tag</returns>
         public static CoroutineProfilerSession Create(
             string operationType,
@@ -128,7 +128,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             int coroutineId, 
             string coroutineTag,
             ICoroutineMetrics coroutineMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             if (string.IsNullOrEmpty(operationType))
                 operationType = "Unknown";
@@ -137,7 +137,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             ProfilerTag tag = SelectOptimalTag(operationType, runnerId, runnerName, coroutineId, coroutineTag);
             
             return new CoroutineProfilerSession(
-                tag, runnerId, runnerName, coroutineId, coroutineTag, coroutineMetrics, messageBus);
+                tag, runnerId, runnerName, coroutineId, coroutineTag, coroutineMetrics, messageBusService);
         }
 
         /// <summary>
@@ -148,7 +148,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="coroutineId">Coroutine identifier</param>
         /// <param name="coroutineTag">Coroutine tag</param>
         /// <param name="coroutineMetrics">Coroutine metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         /// <returns>A new coroutine profiler session</returns>
         public static CoroutineProfilerSession CreateFromRunner(
             string operationType,
@@ -156,17 +156,17 @@ namespace AhBearStudios.Core.Profiling.Sessions
             int coroutineId,
             string coroutineTag,
             ICoroutineMetrics coroutineMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             if (runner == null)
             {
-                return Create(operationType, Guid.Empty, "Unknown", coroutineId, coroutineTag, coroutineMetrics, messageBus);
+                return Create(operationType, Guid.Empty, "Unknown", coroutineId, coroutineTag, coroutineMetrics, messageBusService);
             }
 
             string runnerName = runner.GetType().Name;
             Guid runnerId = CreateDeterministicGuid($"{runnerName}_{runner.GetHashCode()}");
             
-            return Create(operationType, runnerId, runnerName, coroutineId, coroutineTag, coroutineMetrics, messageBus);
+            return Create(operationType, runnerId, runnerName, coroutineId, coroutineTag, coroutineMetrics, messageBusService);
         }
 
         /// <summary>
@@ -283,12 +283,12 @@ namespace AhBearStudios.Core.Profiling.Sessions
             RecordCoroutineMetrics();
             
             // Notify via message bus that session ended
-            if (_messageBus != null)
+            if (_messageBusService != null)
             {
                 var message = new CoroutineProfilerSessionCompletedMessage(
                     _tag, _sessionId, RunnerId, RunnerName, CoroutineId, CoroutineTag, 
                     ElapsedMilliseconds, _customMetrics, _operationType, _success);
-                _messageBus.PublishMessage(message);
+                _messageBusService.PublishMessage(message);
             }
         }
 

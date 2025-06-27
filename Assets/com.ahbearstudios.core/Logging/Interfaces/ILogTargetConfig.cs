@@ -109,9 +109,9 @@ namespace AhBearStudios.Core.Logging.Interfaces
         /// <summary>
         /// Creates a log target based on this configuration with optional message bus.
         /// </summary>
-        /// <param name="messageBus">Optional message bus for publishing log events.</param>
+        /// <param name="messageBusService">Optional message bus for publishing log events.</param>
         /// <returns>A configured log target.</returns>
-        ILogTarget CreateTarget(IMessageBus messageBus);
+        ILogTarget CreateTarget(IMessageBusService messageBusService);
         
         /// <summary>
         /// Applies the tag filters to the specified log target.

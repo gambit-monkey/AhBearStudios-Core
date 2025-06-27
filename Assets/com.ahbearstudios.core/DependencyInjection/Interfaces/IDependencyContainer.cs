@@ -8,7 +8,7 @@ namespace AhBearStudios.Core.DependencyInjection.Interfaces
     /// <summary>
     /// Enhanced core interface for dependency injection containers with comprehensive registration and resolution capabilities.
     /// Abstracts the underlying DI implementation to allow swapping between different frameworks.
-    /// Uses MessageBus for event communication and provides advanced features like collections, decorators, and named services.
+    /// Uses MessageBusService for event communication and provides advanced features like collections, decorators, and named services.
     /// </summary>
     public interface IDependencyContainer : IDependencyProvider, IDisposable
     {
@@ -25,7 +25,7 @@ namespace AhBearStudios.Core.DependencyInjection.Interfaces
         /// <summary>
         /// Gets the message bus used for publishing container events.
         /// </summary>
-        IMessageBus MessageBus { get; }
+        IMessageBusService MessageBusService { get; }
         
         // Core registration methods
         /// <summary>

@@ -50,12 +50,12 @@ namespace AhBearStudios.Core.Logging.Configuration
         /// <summary>
         /// Create a SerilogTarget using this configuration.
         /// </summary>
-        public ILogTarget CreateTarget(IMessageBus messageBus = null)
+        public ILogTarget CreateTarget(IMessageBusService messageBusService = null)
         {
             var path = ResolveFilePath(LogFilePath);
             EnsureDirectoryExists(path);
 
-            var target = new SerilogTarget(this, messageBus);
+            var target = new SerilogTarget(this, messageBusService);
             ApplyTagFilters(target);
             return target;
         }

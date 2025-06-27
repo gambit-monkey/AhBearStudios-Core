@@ -266,7 +266,7 @@ namespace AhBearStudios.Core.Bootstrap.Configuration
             // Auto-enable dependencies for core systems
             if (enableMessageBus && !enableLogging)
             {
-                Debug.LogWarning("MessageBus requires Logging - auto-enabling");
+                Debug.LogWarning("MessageBusService requires Logging - auto-enabling");
                 enableLogging = true;
             }
             
@@ -386,7 +386,7 @@ namespace AhBearStudios.Core.Bootstrap.Configuration
             // Core system dependencies
             if (enableMessageBus && !enableLogging)
             {
-                errorList.Add("MessageBus requires Logging system");
+                errorList.Add("MessageBusService requires Logging system");
             }
             
             if (enableProfiling && !enableLogging)

@@ -23,8 +23,8 @@ namespace AhBearStudios.Core.Logging.Builders
             public bool UseJsonFormat { get; set; } = false;
             public bool LogToConsole { get; set; } = false;
             public int RetainedDays { get; set; } = 7;
-            public string[] IncludedTags { get; set; } = new string[0];
-            public string[] ExcludedTags { get; set; } = new string[0];
+            public string[] IncludedTags { get; set; } = Array.Empty<string>();
+            public string[] ExcludedTags { get; set; } = Array.Empty<string>();
             public bool ProcessUntaggedMessages { get; set; } = true;
             public bool CaptureUnityLogs { get; set; } = true;
             public bool IncludeStackTraces { get; set; } = true;
@@ -97,8 +97,8 @@ namespace AhBearStudios.Core.Logging.Builders
 
         public SerilogFileConfigBuilder WithTagFilters(string[] includedTags, string[] excludedTags, bool processUntagged = true)
         {
-            _data.IncludedTags = includedTags ?? new string[0];
-            _data.ExcludedTags = excludedTags ?? new string[0];
+            _data.IncludedTags = includedTags ?? Array.Empty<string>();
+            _data.ExcludedTags = excludedTags ?? Array.Empty<string>();
             _data.ProcessUntaggedMessages = processUntagged;
             return this;
         }
@@ -161,8 +161,8 @@ namespace AhBearStudios.Core.Logging.Builders
             _data.UseJsonFormat = targetConfig.UseJsonFormat;
             _data.LogToConsole = targetConfig.LogToConsole;
             _data.RetainedDays = targetConfig.RetainedDays;
-            _data.IncludedTags = (string[])targetConfig.IncludedTags?.Clone() ?? new string[0];
-            _data.ExcludedTags = (string[])targetConfig.ExcludedTags?.Clone() ?? new string[0];
+            _data.IncludedTags = (string[])targetConfig.IncludedTags?.Clone() ?? Array.Empty<string>();
+            _data.ExcludedTags = (string[])targetConfig.ExcludedTags?.Clone() ?? Array.Empty<string>();
             _data.ProcessUntaggedMessages = targetConfig.ProcessUntaggedMessages;
             _data.CaptureUnityLogs = targetConfig.CaptureUnityLogs;
             _data.IncludeStackTraces = targetConfig.IncludeStackTraces;

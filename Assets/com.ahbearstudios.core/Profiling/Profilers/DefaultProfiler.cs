@@ -16,7 +16,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
     /// </summary>
     public class DefaultProfiler : IProfiler
     {
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly ProfilerStatsCollection _statsCollection = new ProfilerStatsCollection();
         private readonly Dictionary<ProfilerTag, List<double>> _history = new Dictionary<ProfilerTag, List<double>>();
         private readonly Dictionary<ProfilerTag, double> _metricAlerts = new Dictionary<ProfilerTag, double>();
@@ -33,15 +33,15 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <summary>
         /// Gets the message bus used by the profiler
         /// </summary>
-        public IMessageBus MessageBus => _messageBus;
+        public IMessageBusService MessageBusService => _messageBusService;
 
         /// <summary>
         /// Creates a new DefaultProfiler instance
         /// </summary>
-        /// <param name="messageBus">Message bus for publishing profiling messages</param>
-        public DefaultProfiler(IMessageBus messageBus)
+        /// <param name="messageBusService">Message bus for publishing profiling messages</param>
+        public DefaultProfiler(IMessageBusService messageBusService)
         {
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             
             SubscribeToMessages();
         }
@@ -74,7 +74,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
             if (!IsEnabled)
                 return CreateNullSession(tag);
 
-            return new ProfilerSession(tag, _messageBus);
+            return new ProfilerSession(tag, _messageBusService);
         }
 
         /// <summary>
@@ -269,7 +269,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
             {
                 try
                 {
-                    var publisher = _messageBus.GetPublisher<StatsResetMessage>();
+                    var publisher = _messageBusService.GetPublisher<StatsResetMessage>();
                     publisher?.Publish(new StatsResetMessage());
                 }
                 catch (Exception ex)
@@ -292,7 +292,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
             // Publish profiling started message
             try
             {
-                var publisher = _messageBus.GetPublisher<ProfilingStartedMessage>();
+                var publisher = _messageBusService.GetPublisher<ProfilingStartedMessage>();
                 publisher?.Publish(new ProfilingStartedMessage());
             }
             catch (Exception ex)
@@ -321,7 +321,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
             // Publish profiling stopped message
             try
             {
-                var publisher = _messageBus.GetPublisher<ProfilingStoppedMessage>();
+                var publisher = _messageBusService.GetPublisher<ProfilingStoppedMessage>();
                 publisher?.Publish(new ProfilingStoppedMessage(totalDuration));
             }
             catch (Exception ex)
@@ -464,7 +464,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
             try
             {
                 // Subscribe to profiler session completed messages
-                var sessionCompletedSub = _messageBus.GetSubscriber<ProfilerSessionCompletedMessage>();
+                var sessionCompletedSub = _messageBusService.GetSubscriber<ProfilerSessionCompletedMessage>();
                 if (sessionCompletedSub != null)
                 {
                     sessionCompletedSub.Subscribe(OnSessionCompleted);
@@ -506,7 +506,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
             {
                 try
                 {
-                    var publisher = _messageBus.GetPublisher<SessionAlertMessage>();
+                    var publisher = _messageBusService.GetPublisher<SessionAlertMessage>();
                     publisher?.Publish(new SessionAlertMessage(message.Tag, message.SessionId, durationMs, threshold));
                 }
                 catch (Exception ex)
@@ -523,7 +523,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 {
                     try
                     {
-                        var publisher = _messageBus.GetPublisher<MetricAlertMessage>();
+                        var publisher = _messageBusService.GetPublisher<MetricAlertMessage>();
                         publisher?.Publish(new MetricAlertMessage(metricTag, metric.Value, metricThreshold));
                     }
                     catch (Exception ex)

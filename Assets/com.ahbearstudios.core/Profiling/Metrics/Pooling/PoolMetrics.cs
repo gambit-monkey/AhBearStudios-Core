@@ -27,7 +27,7 @@ namespace AhBearStudios.Core.Profiling.Metrics
         private readonly Dictionary<Guid, Dictionary<string, MetricAlert>> _poolAlerts;
         
         // Message bus for alerts
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         
         // State
         private bool _isCreated;
@@ -40,15 +40,15 @@ namespace AhBearStudios.Core.Profiling.Metrics
         /// <summary>
         /// Creates a new pool metrics tracker
         /// </summary>
-        /// <param name="messageBus">Message bus for sending alerts</param>
+        /// <param name="messageBusService">Message bus for sending alerts</param>
         /// <param name="initialCapacity">Initial capacity for dictionary storage</param>
-        public PoolMetrics(IMessageBus messageBus = null, int initialCapacity = 64)
+        public PoolMetrics(IMessageBusService messageBusService = null, int initialCapacity = 64)
         {
             // Create storage
             _poolMetrics = new Dictionary<Guid, PoolMetricsData>(initialCapacity);
             _poolAlerts = new Dictionary<Guid, Dictionary<string, MetricAlert>>();
             _metricsLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             
             // Initialize global metrics
             float currentTime = GetCurrentTime();
@@ -68,16 +68,16 @@ namespace AhBearStudios.Core.Profiling.Metrics
         /// <param name="poolName">Pool name</param>
         /// <param name="poolType">Type of pool</param>
         /// <param name="itemType">Type of items in the pool</param>
-        /// <param name="messageBus">Message bus for sending alerts</param>
+        /// <param name="messageBusService">Message bus for sending alerts</param>
         /// <param name="estimatedItemSizeBytes">Estimated size of each item in bytes (0 for automatic estimation)</param>
         public PoolMetrics(
             Guid poolId,
             string poolName,
             Type poolType,
             Type itemType,
-            IMessageBus messageBus = null,
+            IMessageBusService messageBusService = null,
             int estimatedItemSizeBytes = 0)
-            : this(messageBus)
+            : this(messageBusService)
         {
             // Configure the initial pool
             string poolTypeName = poolType != null ? poolType.Name : "Unknown";
@@ -800,7 +800,7 @@ namespace AhBearStudios.Core.Profiling.Metrics
         private void CheckAlerts(Guid poolId, PoolMetricsData metricsData)
         {
             // Early return if no message bus or no alerts for this pool
-            if (_messageBus == null || !_poolAlerts.TryGetValue(poolId, out var poolAlerts))
+            if (_messageBusService == null || !_poolAlerts.TryGetValue(poolId, out var poolAlerts))
                 return;
                 
             float currentTime = GetCurrentTime();
@@ -830,7 +830,7 @@ namespace AhBearStudios.Core.Profiling.Metrics
                         metricValue, 
                         alert.Threshold);
                         
-                    _messageBus.PublishMessage(message);
+                    _messageBusService.PublishMessage(message);
                 }
             }
             

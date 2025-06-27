@@ -14,12 +14,12 @@ namespace AhBearStudios.Core.Profiling.Factories
         /// <summary>
         /// Creates a standard pool metrics instance
         /// </summary>
-        /// <param name="messageBus">Optional message bus for alerts</param>
+        /// <param name="messageBusService">Optional message bus for alerts</param>
         /// <param name="initialCapacity">Initial capacity for tracking pools</param>
         /// <returns>A new pool metrics instance</returns>
-        public static IPoolMetrics CreateStandard(IMessageBus messageBus = null, int initialCapacity = 64)
+        public static IPoolMetrics CreateStandard(IMessageBusService messageBusService = null, int initialCapacity = 64)
         {
-            return new PoolMetrics(messageBus, initialCapacity);
+            return new PoolMetrics(messageBusService, initialCapacity);
         }
         
         /// <summary>
@@ -29,7 +29,7 @@ namespace AhBearStudios.Core.Profiling.Factories
         /// <param name="poolName">Pool name</param>
         /// <param name="poolType">Type of pool</param>
         /// <param name="itemType">Type of items in the pool</param>
-        /// <param name="messageBus">Optional message bus for alerts</param>
+        /// <param name="messageBusService">Optional message bus for alerts</param>
         /// <param name="estimatedItemSizeBytes">Estimated size of each item in bytes (0 for automatic estimation)</param>
         /// <returns>A new pool metrics instance</returns>
         public static IPoolMetrics CreateStandard(
@@ -37,7 +37,7 @@ namespace AhBearStudios.Core.Profiling.Factories
             string poolName,
             Type poolType,
             Type itemType,
-            IMessageBus messageBus = null,
+            IMessageBusService messageBusService = null,
             int estimatedItemSizeBytes = 0)
         {
             return new PoolMetrics(
@@ -45,7 +45,7 @@ namespace AhBearStudios.Core.Profiling.Factories
                 poolName,
                 poolType,
                 itemType,
-                messageBus,
+                messageBusService,
                 estimatedItemSizeBytes);
         }
         

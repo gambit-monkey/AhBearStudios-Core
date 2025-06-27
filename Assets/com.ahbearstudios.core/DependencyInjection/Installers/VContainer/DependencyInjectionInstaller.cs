@@ -47,7 +47,7 @@ namespace AhBearStudios.Core.DependencyInjection.Installers.VContainer
                 if (_enableDebugLogging)
                     Debug.Log("[DependencyInjectionInstaller] Starting DI system installation...");
 
-                // Step 1: Register core MessageBus system (required foundation)
+                // Step 1: Register core MessageBusService system (required foundation)
                 RegisterMessageBusServices(builder);
                 
                 // Step 2: Register core provider interfaces that delegate to VContainer
@@ -73,22 +73,22 @@ namespace AhBearStudios.Core.DependencyInjection.Installers.VContainer
         }
 
         /// <summary>
-        /// Registers MessageBus services if not already present.
+        /// Registers MessageBusService services if not already present.
         /// </summary>
         /// <param name="builder">The container builder.</param>
         private void RegisterMessageBusServices(IContainerBuilder builder)
         {
             try
             {
-                // Register MessageBus implementation if not already registered
-                builder.RegisterIfNotPresent<IMessageBus, MessagePipeBus>(Lifetime.Singleton);
+                // Register MessageBusService implementation if not already registered
+                builder.RegisterIfNotPresent<IMessageBusService, MessagePipeBusService>(Lifetime.Singleton);
 
                 if (_enableDebugLogging)
-                    Debug.Log("[DependencyInjectionInstaller] Registered MessageBus services");
+                    Debug.Log("[DependencyInjectionInstaller] Registered MessageBusService services");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[DependencyInjectionInstaller] Failed to register MessageBus services: {ex.Message}");
+                Debug.LogError($"[DependencyInjectionInstaller] Failed to register MessageBusService services: {ex.Message}");
                 throw;
             }
         }
@@ -136,8 +136,8 @@ namespace AhBearStudios.Core.DependencyInjection.Installers.VContainer
                 {
                     try
                     {
-                        // Set the default MessageBus for the factory
-                        var messageBus = container.Resolve<IMessageBus>();
+                        // Set the default MessageBusService for the factory
+                        var messageBus = container.Resolve<IMessageBusService>();
                         DependencyContainerFactory.SetDefaultMessageBus(messageBus);
 
                         if (_enableDebugLogging)

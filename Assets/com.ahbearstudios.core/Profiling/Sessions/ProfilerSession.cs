@@ -15,7 +15,7 @@ namespace AhBearStudios.Core.Profiling
     {
         private readonly ProfilerMarker _marker;
         private readonly ProfilerTag _tag;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private bool _isDisposed;
         private long _startTimeNs;
         private long _endTimeNs;
@@ -27,14 +27,14 @@ namespace AhBearStudios.Core.Profiling
         /// Creates a new ProfilerSession
         /// </summary>
         /// <param name="tag">The profiler tag</param>
-        /// <param name="messageBus">Message bus for sending profiling messages (null for disabled sessions)</param>
-        internal ProfilerSession(ProfilerTag tag, IMessageBus messageBus)
+        /// <param name="messageBusService">Message bus for sending profiling messages (null for disabled sessions)</param>
+        internal ProfilerSession(ProfilerTag tag, IMessageBusService messageBusService)
         {
             _tag = tag;
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             _isDisposed = false;
             _sessionId = Guid.NewGuid();
-            _isNullSession = messageBus == null;
+            _isNullSession = messageBusService == null;
             
             // Only create marker and start timing if this isn't a null session
             if (!_isNullSession)
@@ -48,7 +48,7 @@ namespace AhBearStudios.Core.Profiling
                 // Notify that session started via message bus
                 try
                 {
-                    var publisher = _messageBus.GetPublisher<ProfilerSessionStartedMessage>();
+                    var publisher = _messageBusService.GetPublisher<ProfilerSessionStartedMessage>();
                     publisher?.Publish(new ProfilerSessionStartedMessage(_tag, _sessionId));
                 }
                 catch
@@ -62,141 +62,141 @@ namespace AhBearStudios.Core.Profiling
         /// Factory method to create a session with a predefined tag
         /// </summary>
         /// <param name="predefinedTag">One of the predefined ProfilerTag constants</param>
-        /// <param name="messageBus">Message bus for sending profiling messages</param>
+        /// <param name="messageBusService">Message bus for sending profiling messages</param>
         /// <returns>A new ProfilerSession with the predefined tag</returns>
-        public static ProfilerSession CreateWithPredefinedTag(ProfilerTag predefinedTag, IMessageBus messageBus)
+        public static ProfilerSession CreateWithPredefinedTag(ProfilerTag predefinedTag, IMessageBusService messageBusService)
         {
-            return new ProfilerSession(predefinedTag, messageBus);
+            return new ProfilerSession(predefinedTag, messageBusService);
         }
 
         /// <summary>
         /// Factory method to create a session for rendering operations
         /// </summary>
-        /// <param name="messageBus">Message bus for sending profiling messages</param>
+        /// <param name="messageBusService">Message bus for sending profiling messages</param>
         /// <param name="operation">Specific rendering operation (defaults to "Main")</param>
         /// <returns>A new ProfilerSession for rendering</returns>
-        public static ProfilerSession CreateForRendering(IMessageBus messageBus, string operation = "Main")
+        public static ProfilerSession CreateForRendering(IMessageBusService messageBusService, string operation = "Main")
         {
             if (operation == "Main")
-                return new ProfilerSession(ProfilerTag.RenderingMain, messageBus);
+                return new ProfilerSession(ProfilerTag.RenderingMain, messageBusService);
             
-            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Render, operation), messageBus);
+            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Render, operation), messageBusService);
         }
 
         /// <summary>
         /// Factory method to create a session for physics operations
         /// </summary>
-        /// <param name="messageBus">Message bus for sending profiling messages</param>
+        /// <param name="messageBusService">Message bus for sending profiling messages</param>
         /// <param name="operation">Specific physics operation (defaults to "Update")</param>
         /// <returns>A new ProfilerSession for physics</returns>
-        public static ProfilerSession CreateForPhysics(IMessageBus messageBus, string operation = "Update")
+        public static ProfilerSession CreateForPhysics(IMessageBusService messageBusService, string operation = "Update")
         {
             if (operation == "Update")
-                return new ProfilerSession(ProfilerTag.PhysicsUpdate, messageBus);
+                return new ProfilerSession(ProfilerTag.PhysicsUpdate, messageBusService);
             
-            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Physics, operation), messageBus);
+            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Physics, operation), messageBusService);
         }
 
         /// <summary>
         /// Factory method to create a session for animation operations
         /// </summary>
-        /// <param name="messageBus">Message bus for sending profiling messages</param>
+        /// <param name="messageBusService">Message bus for sending profiling messages</param>
         /// <param name="operation">Specific animation operation (defaults to "Update")</param>
         /// <returns>A new ProfilerSession for animation</returns>
-        public static ProfilerSession CreateForAnimation(IMessageBus messageBus, string operation = "Update")
+        public static ProfilerSession CreateForAnimation(IMessageBusService messageBusService, string operation = "Update")
         {
             if (operation == "Update")
-                return new ProfilerSession(ProfilerTag.AnimationUpdate, messageBus);
+                return new ProfilerSession(ProfilerTag.AnimationUpdate, messageBusService);
             
-            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Animation, operation), messageBus);
+            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Animation, operation), messageBusService);
         }
 
         /// <summary>
         /// Factory method to create a session for AI operations
         /// </summary>
-        /// <param name="messageBus">Message bus for sending profiling messages</param>
+        /// <param name="messageBusService">Message bus for sending profiling messages</param>
         /// <param name="operation">Specific AI operation (defaults to "Update")</param>
         /// <returns>A new ProfilerSession for AI</returns>
-        public static ProfilerSession CreateForAI(IMessageBus messageBus, string operation = "Update")
+        public static ProfilerSession CreateForAI(IMessageBusService messageBusService, string operation = "Update")
         {
             if (operation == "Update")
-                return new ProfilerSession(ProfilerTag.AIUpdate, messageBus);
+                return new ProfilerSession(ProfilerTag.AIUpdate, messageBusService);
             
-            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Ai, operation), messageBus);
+            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Ai, operation), messageBusService);
         }
 
         /// <summary>
         /// Factory method to create a session for gameplay operations
         /// </summary>
-        /// <param name="messageBus">Message bus for sending profiling messages</param>
+        /// <param name="messageBusService">Message bus for sending profiling messages</param>
         /// <param name="operation">Specific gameplay operation (defaults to "Update")</param>
         /// <returns>A new ProfilerSession for gameplay</returns>
-        public static ProfilerSession CreateForGameplay(IMessageBus messageBus, string operation = "Update")
+        public static ProfilerSession CreateForGameplay(IMessageBusService messageBusService, string operation = "Update")
         {
             if (operation == "Update")
-                return new ProfilerSession(ProfilerTag.GameplayUpdate, messageBus);
+                return new ProfilerSession(ProfilerTag.GameplayUpdate, messageBusService);
             
-            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Internal, operation), messageBus);
+            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Internal, operation), messageBusService);
         }
 
         /// <summary>
         /// Factory method to create a session for UI operations
         /// </summary>
-        /// <param name="messageBus">Message bus for sending profiling messages</param>
+        /// <param name="messageBusService">Message bus for sending profiling messages</param>
         /// <param name="operation">Specific UI operation (defaults to "Update")</param>
         /// <returns>A new ProfilerSession for UI</returns>
-        public static ProfilerSession CreateForUI(IMessageBus messageBus, string operation = "Update")
+        public static ProfilerSession CreateForUI(IMessageBusService messageBusService, string operation = "Update")
         {
             if (operation == "Update")
-                return new ProfilerSession(ProfilerTag.UIUpdate, messageBus);
+                return new ProfilerSession(ProfilerTag.UIUpdate, messageBusService);
             
-            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Gui, operation), messageBus);
+            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Gui, operation), messageBusService);
         }
 
         /// <summary>
         /// Factory method to create a session for loading operations
         /// </summary>
-        /// <param name="messageBus">Message bus for sending profiling messages</param>
+        /// <param name="messageBusService">Message bus for sending profiling messages</param>
         /// <param name="operation">Specific loading operation (defaults to "Main")</param>
         /// <returns>A new ProfilerSession for loading</returns>
-        public static ProfilerSession CreateForLoading(IMessageBus messageBus, string operation = "Main")
+        public static ProfilerSession CreateForLoading(IMessageBusService messageBusService, string operation = "Main")
         {
             if (operation == "Main")
-                return new ProfilerSession(ProfilerTag.LoadingMain, messageBus);
+                return new ProfilerSession(ProfilerTag.LoadingMain, messageBusService);
             
-            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Loading, operation), messageBus);
+            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Loading, operation), messageBusService);
         }
 
         /// <summary>
         /// Factory method to create a session for memory operations
         /// </summary>
-        /// <param name="messageBus">Message bus for sending profiling messages</param>
+        /// <param name="messageBusService">Message bus for sending profiling messages</param>
         /// <param name="operation">Specific memory operation (defaults to "Allocation")</param>
         /// <returns>A new ProfilerSession for memory</returns>
-        public static ProfilerSession CreateForMemory(IMessageBus messageBus, string operation = "Allocation")
+        public static ProfilerSession CreateForMemory(IMessageBusService messageBusService, string operation = "Allocation")
         {
             if (operation == "Allocation")
-                return new ProfilerSession(ProfilerTag.MemoryAllocation, messageBus);
+                return new ProfilerSession(ProfilerTag.MemoryAllocation, messageBusService);
             
-            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Memory, operation), messageBus);
+            return new ProfilerSession(new ProfilerTag(ProfilerCategory.Memory, operation), messageBusService);
         }
 
         /// <summary>
         /// Factory method to create a session for network operations
         /// </summary>
-        /// <param name="messageBus">Message bus for sending profiling messages</param>
+        /// <param name="messageBusService">Message bus for sending profiling messages</param>
         /// <param name="operation">Network operation ("Send" or "Receive")</param>
         /// <returns>A new ProfilerSession for network operations</returns>
-        public static ProfilerSession CreateForNetwork(IMessageBus messageBus, string operation)
+        public static ProfilerSession CreateForNetwork(IMessageBusService messageBusService, string operation)
         {
             switch (operation?.ToLowerInvariant())
             {
                 case "send":
-                    return new ProfilerSession(ProfilerTag.NetworkSend, messageBus);
+                    return new ProfilerSession(ProfilerTag.NetworkSend, messageBusService);
                 case "receive":
-                    return new ProfilerSession(ProfilerTag.NetworkReceive, messageBus);
+                    return new ProfilerSession(ProfilerTag.NetworkReceive, messageBusService);
                 default:
-                    return new ProfilerSession(new ProfilerTag(ProfilerCategory.Network, operation ?? "Unknown"), messageBus);
+                    return new ProfilerSession(new ProfilerTag(ProfilerCategory.Network, operation ?? "Unknown"), messageBusService);
             }
         }
 
@@ -345,11 +345,11 @@ namespace AhBearStudios.Core.Profiling
             OnDispose();
             
             // Notify that session ended via message bus
-            if (_messageBus != null)
+            if (_messageBusService != null)
             {
                 try
                 {
-                    var publisher = _messageBus.GetPublisher<ProfilerSessionCompletedMessage>();
+                    var publisher = _messageBusService.GetPublisher<ProfilerSessionCompletedMessage>();
                     publisher?.Publish(new ProfilerSessionCompletedMessage(_tag, ElapsedMilliseconds, _customMetrics, _sessionId));
                 }
                 catch
@@ -383,11 +383,11 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Profile a block of code with a custom tag
         /// </summary>
-        public static void Profile(this Action action, ProfilerTag tag, IMessageBus messageBus = null)
+        public static void Profile(this Action action, ProfilerTag tag, IMessageBusService messageBusService = null)
         {
             if (action == null) return;
             
-            using (new ProfilerSession(tag, messageBus))
+            using (new ProfilerSession(tag, messageBusService))
             {
                 action();
             }
@@ -396,11 +396,11 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Profile a function with a return value
         /// </summary>
-        public static T Profile<T>(this Func<T> func, ProfilerTag tag, IMessageBus messageBus = null)
+        public static T Profile<T>(this Func<T> func, ProfilerTag tag, IMessageBusService messageBusService = null)
         {
             if (func == null) return default(T);
             
-            using (new ProfilerSession(tag, messageBus))
+            using (new ProfilerSession(tag, messageBusService))
             {
                 return func();
             }
@@ -409,17 +409,17 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Profile a block of code with a predefined ProfilerTag
         /// </summary>
-        public static void ProfileWithPredefinedTag(this Action action, ProfilerTag predefinedTag, IMessageBus messageBus = null)
+        public static void ProfileWithPredefinedTag(this Action action, ProfilerTag predefinedTag, IMessageBusService messageBusService = null)
         {
-            action.Profile(predefinedTag, messageBus);
+            action.Profile(predefinedTag, messageBusService);
         }
 
         /// <summary>
         /// Profile a rendering operation
         /// </summary>
-        public static void ProfileRendering(this Action action, IMessageBus messageBus = null, string operation = "Main")
+        public static void ProfileRendering(this Action action, IMessageBusService messageBusService = null, string operation = "Main")
         {
-            using (ProfilerSession.CreateForRendering(messageBus, operation))
+            using (ProfilerSession.CreateForRendering(messageBusService, operation))
             {
                 action?.Invoke();
             }
@@ -428,9 +428,9 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Profile a physics operation
         /// </summary>
-        public static void ProfilePhysics(this Action action, IMessageBus messageBus = null, string operation = "Update")
+        public static void ProfilePhysics(this Action action, IMessageBusService messageBusService = null, string operation = "Update")
         {
-            using (ProfilerSession.CreateForPhysics(messageBus, operation))
+            using (ProfilerSession.CreateForPhysics(messageBusService, operation))
             {
                 action?.Invoke();
             }
@@ -439,9 +439,9 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Profile an animation operation
         /// </summary>
-        public static void ProfileAnimation(this Action action, IMessageBus messageBus = null, string operation = "Update")
+        public static void ProfileAnimation(this Action action, IMessageBusService messageBusService = null, string operation = "Update")
         {
-            using (ProfilerSession.CreateForAnimation(messageBus, operation))
+            using (ProfilerSession.CreateForAnimation(messageBusService, operation))
             {
                 action?.Invoke();
             }
@@ -450,9 +450,9 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Profile an AI operation
         /// </summary>
-        public static void ProfileAI(this Action action, IMessageBus messageBus = null, string operation = "Update")
+        public static void ProfileAI(this Action action, IMessageBusService messageBusService = null, string operation = "Update")
         {
-            using (ProfilerSession.CreateForAI(messageBus, operation))
+            using (ProfilerSession.CreateForAI(messageBusService, operation))
             {
                 action?.Invoke();
             }
@@ -461,9 +461,9 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Profile a gameplay operation
         /// </summary>
-        public static void ProfileGameplay(this Action action, IMessageBus messageBus = null, string operation = "Update")
+        public static void ProfileGameplay(this Action action, IMessageBusService messageBusService = null, string operation = "Update")
         {
-            using (ProfilerSession.CreateForGameplay(messageBus, operation))
+            using (ProfilerSession.CreateForGameplay(messageBusService, operation))
             {
                 action?.Invoke();
             }
@@ -472,9 +472,9 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Profile a UI operation
         /// </summary>
-        public static void ProfileUI(this Action action, IMessageBus messageBus = null, string operation = "Update")
+        public static void ProfileUI(this Action action, IMessageBusService messageBusService = null, string operation = "Update")
         {
-            using (ProfilerSession.CreateForUI(messageBus, operation))
+            using (ProfilerSession.CreateForUI(messageBusService, operation))
             {
                 action?.Invoke();
             }
@@ -483,9 +483,9 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Profile a loading operation
         /// </summary>
-        public static void ProfileLoading(this Action action, IMessageBus messageBus = null, string operation = "Main")
+        public static void ProfileLoading(this Action action, IMessageBusService messageBusService = null, string operation = "Main")
         {
-            using (ProfilerSession.CreateForLoading(messageBus, operation))
+            using (ProfilerSession.CreateForLoading(messageBusService, operation))
             {
                 action?.Invoke();
             }
@@ -494,9 +494,9 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Profile a memory operation
         /// </summary>
-        public static void ProfileMemory(this Action action, IMessageBus messageBus = null, string operation = "Allocation")
+        public static void ProfileMemory(this Action action, IMessageBusService messageBusService = null, string operation = "Allocation")
         {
-            using (ProfilerSession.CreateForMemory(messageBus, operation))
+            using (ProfilerSession.CreateForMemory(messageBusService, operation))
             {
                 action?.Invoke();
             }
@@ -505,9 +505,9 @@ namespace AhBearStudios.Core.Profiling
         /// <summary>
         /// Profile a network operation
         /// </summary>
-        public static void ProfileNetwork(this Action action, string operation, IMessageBus messageBus = null)
+        public static void ProfileNetwork(this Action action, string operation, IMessageBusService messageBusService = null)
         {
-            using (ProfilerSession.CreateForNetwork(messageBus, operation))
+            using (ProfilerSession.CreateForNetwork(messageBusService, operation))
             {
                 action?.Invoke();
             }

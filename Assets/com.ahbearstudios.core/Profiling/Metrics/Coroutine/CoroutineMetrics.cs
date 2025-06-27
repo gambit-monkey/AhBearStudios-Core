@@ -29,7 +29,7 @@ namespace AhBearStudios.Core.Profiling.Metrics
         private readonly Dictionary<Guid, Dictionary<string, MetricAlert>> _runnerAlerts;
         
         // Message bus for alerts
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         
         // State
         private bool _isCreated;
@@ -43,16 +43,16 @@ namespace AhBearStudios.Core.Profiling.Metrics
         /// <summary>
         /// Creates a new coroutine metrics tracker
         /// </summary>
-        /// <param name="messageBus">Message bus for sending alerts</param>
+        /// <param name="messageBusService">Message bus for sending alerts</param>
         /// <param name="initialCapacity">Initial capacity for dictionary storage</param>
-        public CoroutineMetrics(IMessageBus messageBus = null, int initialCapacity = 32)
+        public CoroutineMetrics(IMessageBusService messageBusService = null, int initialCapacity = 32)
         {
             // Create storage
             _runnerMetrics = new Dictionary<Guid, CoroutineMetricsData>(initialCapacity);
             _tagCounts = new Dictionary<Guid, Dictionary<string, int>>();
             _runnerAlerts = new Dictionary<Guid, Dictionary<string, MetricAlert>>();
             _metricsLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             
             // Initialize global metrics
             float currentTime = GetCurrentTime();
@@ -755,7 +755,7 @@ namespace AhBearStudios.Core.Profiling.Metrics
         private void CheckAlerts(Guid runnerId, CoroutineMetricsData metricsData)
         {
             // Early return if no message bus or no alerts for this runner
-            if (_messageBus == null || !_runnerAlerts.TryGetValue(runnerId, out var runnerAlerts))
+            if (_messageBusService == null || !_runnerAlerts.TryGetValue(runnerId, out var runnerAlerts))
                 return;
                 
             float currentTime = GetCurrentTime();
@@ -794,7 +794,7 @@ namespace AhBearStudios.Core.Profiling.Metrics
                         alert.Threshold,
                         severity);
                         
-                    _messageBus.PublishMessage(message);
+                    _messageBusService.PublishMessage(message);
                 }
             }
             

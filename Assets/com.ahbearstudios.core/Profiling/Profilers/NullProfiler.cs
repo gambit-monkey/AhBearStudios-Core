@@ -28,7 +28,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <summary>
         /// Returns null since this profiler doesn't use a message bus
         /// </summary>
-        public IMessageBus MessageBus => null;
+        public IMessageBusService MessageBusService => null;
 
         /// <summary>
         /// No-op implementation that returns a disposable that does nothing

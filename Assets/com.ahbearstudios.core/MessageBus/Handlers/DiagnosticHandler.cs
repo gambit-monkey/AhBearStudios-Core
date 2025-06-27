@@ -1,5 +1,6 @@
 using System;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using MessagePipe;
 
 namespace AhBearStudios.Core.MessageBus.Handlers
@@ -9,13 +10,13 @@ namespace AhBearStudios.Core.MessageBus.Handlers
     /// </summary>
     internal sealed class DiagnosticHandler : MessageHandlerFilter<object>
     {
-        private readonly IBurstLogger _logger;
+        private readonly ILoggingService _logger;
         
         /// <summary>
         /// Initializes a new instance of the DiagnosticHandler class.
         /// </summary>
         /// <param name="logger">The logger to use for logging.</param>
-        public DiagnosticHandler(IBurstLogger logger)
+        public DiagnosticHandler(ILoggingService logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }
@@ -25,9 +26,9 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         {
             var messageType = message.GetType();
             
-            _logger.Log(LogLevel.Trace, $"Processing message of type {messageType.Name}", "MessageBus");
+            _logger.Log(LogLevel.Trace, $"Processing message of type {messageType.Name}", "MessageBusService");
             next(message);
-            _logger.Log(LogLevel.Trace, $"Completed processing message of type {messageType.Name}", "MessageBus");
+            _logger.Log(LogLevel.Trace, $"Completed processing message of type {messageType.Name}", "MessageBusService");
         }
     }
 }

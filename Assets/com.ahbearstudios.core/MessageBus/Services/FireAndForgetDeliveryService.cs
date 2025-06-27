@@ -20,7 +20,7 @@ namespace AhBearStudios.Core.MessageBus.Services
     /// </summary>
     public sealed class FireAndForgetDeliveryService : IMessageDeliveryService
     {
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly IBurstLogger _logger;
         private readonly IProfiler _profiler;
         private readonly DeliveryStatistics _statistics;
@@ -52,12 +52,12 @@ namespace AhBearStudios.Core.MessageBus.Services
         /// <summary>
         /// Initializes a new instance of the FireAndForgetDeliveryService class.
         /// </summary>
-        /// <param name="messageBus">The message bus to use for sending messages.</param>
+        /// <param name="messageBusService">The message bus to use for sending messages.</param>
         /// <param name="logger">The logger to use for logging.</param>
         /// <param name="profiler">The profiler to use for performance monitoring.</param>
-        public FireAndForgetDeliveryService(IMessageBus messageBus, IBurstLogger logger, IProfiler profiler)
+        public FireAndForgetDeliveryService(IMessageBusService messageBusService, IBurstLogger logger, IProfiler profiler)
         {
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
             _statistics = new DeliveryStatistics();
@@ -90,7 +90,7 @@ namespace AhBearStudios.Core.MessageBus.Services
             
             try
             {
-                _messageBus.Publish(message);
+                _messageBusService.Publish(message);
                 _statistics.RecordMessageSent();
                 _statistics.RecordMessageDelivered(); // Assume success for fire-and-forget
                 

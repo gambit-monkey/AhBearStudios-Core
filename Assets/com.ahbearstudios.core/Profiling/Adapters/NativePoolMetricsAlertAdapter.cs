@@ -12,7 +12,7 @@ namespace AhBearStudios.Core.Profiling.Metrics
     {
         private readonly NativePoolMetrics _nativeMetrics;
         private readonly ThresholdAlertSystem _alertSystem;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private bool _disposed;
 
         /// <summary>
@@ -20,12 +20,12 @@ namespace AhBearStudios.Core.Profiling.Metrics
         /// </summary>
         /// <param name="nativeMetrics">Reference to native pool metrics to monitor</param>
         /// <param name="alertSystem">Reference to the alert system</param>
-        /// <param name="messageBus">Reference to the message bus for publishing alerts</param>
-        public NativePoolMetricsAlertAdapter(NativePoolMetrics nativeMetrics, ThresholdAlertSystem alertSystem, IMessageBus messageBus)
+        /// <param name="messageBusService">Reference to the message bus for publishing alerts</param>
+        public NativePoolMetricsAlertAdapter(NativePoolMetrics nativeMetrics, ThresholdAlertSystem alertSystem, IMessageBusService messageBusService)
         {
             _nativeMetrics = nativeMetrics;
             _alertSystem = alertSystem;
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             _disposed = false;
         }
 
@@ -42,7 +42,7 @@ namespace AhBearStudios.Core.Profiling.Metrics
         }
 
         /// <summary>
-        /// Translates native pool metric alerts to managed alert messages via the MessageBus
+        /// Translates native pool metric alerts to managed alert messages via the MessageBusService
         /// </summary>
         /// <param name="poolId">Native pool ID</param>
         /// <param name="metricName">Name of the metric that triggered the alert</param>
@@ -50,7 +50,7 @@ namespace AhBearStudios.Core.Profiling.Metrics
         /// <param name="thresholdValue">Threshold value that was exceeded</param>
         private void SendAlertMessage(FixedString64Bytes poolId, FixedString64Bytes metricName, double currentValue, double thresholdValue)
         {
-            if (_messageBus != null)
+            if (_messageBusService != null)
             {
                 var poolIdStr = poolId.ToString();
                 var poolName = _nativeMetrics.GetMetricsData(poolId).Name.ToString();
@@ -63,7 +63,7 @@ namespace AhBearStudios.Core.Profiling.Metrics
                     currentValue,
                     thresholdValue);
 
-                _messageBus.PublishMessage(message);
+                _messageBusService.PublishMessage(message);
             }
         }
 

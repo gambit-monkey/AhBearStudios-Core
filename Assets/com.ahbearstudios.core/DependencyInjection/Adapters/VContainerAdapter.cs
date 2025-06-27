@@ -19,7 +19,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
         private readonly IContainerBuilder _builder;
         private IObjectResolver _resolver;
         private readonly string _containerName;
-        private IMessageBus _messageBus;
+        private IMessageBusService _messageBusService;
         private readonly Stopwatch _containerLifetime;
         private bool _disposed;
         private int _registeredServicesCount;
@@ -38,16 +38,16 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
         /// <summary>
         /// Gets the message bus used for publishing container events.
         /// </summary>
-        public IMessageBus MessageBus
+        public IMessageBusService MessageBusService
         {
             get
             {
-                if (_messageBus == null && _resolver != null)
+                if (_messageBusService == null && _resolver != null)
                 {
                     // Try to resolve from container if available
-                    _resolver.TryResolve<IMessageBus>(out _messageBus);
+                    _resolver.TryResolve<IMessageBusService>(out _messageBusService);
                 }
-                return _messageBus;
+                return _messageBusService;
             }
         }
 
@@ -80,20 +80,20 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
             _registeredServicesCount = 0;
             _isBuilt = true;
 
-            // Try to resolve MessageBus immediately if available
-            _resolver.TryResolve<IMessageBus>(out _messageBus);
+            // Try to resolve MessageBusService immediately if available
+            _resolver.TryResolve<IMessageBusService>(out _messageBusService);
         }
 
         /// <summary>
         /// Initializes a new instance with a pre-built resolver and explicit message bus.
         /// </summary>
         /// <param name="resolver">The VContainer resolver to wrap.</param>
-        /// <param name="messageBus">The message bus instance to use.</param>
+        /// <param name="messageBusService">The message bus instance to use.</param>
         /// <param name="containerName">Optional name for this container.</param>
-        public VContainerAdapter(IObjectResolver resolver, IMessageBus messageBus, string containerName = null)
+        public VContainerAdapter(IObjectResolver resolver, IMessageBusService messageBusService, string containerName = null)
             : this(resolver, containerName)
         {
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
         }
 
         /// <summary>
@@ -530,7 +530,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                 var childScope = _resolver.CreateScope();
                 var childContainerName = childName ?? $"{_containerName}_Child_{Guid.NewGuid():N}";
                 
-                return new VContainerAdapter(childScope, _messageBus, childContainerName);
+                return new VContainerAdapter(childScope, _messageBusService, childContainerName);
             }
             catch (Exception ex)
             {
@@ -589,10 +589,10 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                     _resolver = containerBuilder.Build();
                     _isBuilt = true;
 
-                    // Try to resolve MessageBus from built container
-                    if (_messageBus == null)
+                    // Try to resolve MessageBusService from built container
+                    if (_messageBusService == null)
                     {
-                        _resolver.TryResolve<IMessageBus>(out _messageBus);
+                        _resolver.TryResolve<IMessageBusService>(out _messageBusService);
                     }
                     
                     return this;

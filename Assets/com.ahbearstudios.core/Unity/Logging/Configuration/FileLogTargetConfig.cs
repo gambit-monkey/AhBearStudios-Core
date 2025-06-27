@@ -308,13 +308,13 @@ namespace AhBearStudios.Core.Logging.Targets.Configuration
         /// <summary>
         /// Creates a log target based on this configuration with optional message bus.
         /// </summary>
-        /// <param name="messageBus">Optional message bus for publishing log events.</param>
+        /// <param name="messageBusService">Optional message bus for publishing log events.</param>
         /// <returns>A configured file log target.</returns>
-        public ILogTarget CreateTarget(IMessageBus messageBus)
+        public ILogTarget CreateTarget(IMessageBusService messageBusService)
         {
             // This would create and return your actual file log target implementation
             // For example:
-            // var target = new FileLogTarget(this, messageBus);
+            // var target = new FileLogTarget(this, messageBusService);
             // ApplyTagFilters(target);
             // return target;
             

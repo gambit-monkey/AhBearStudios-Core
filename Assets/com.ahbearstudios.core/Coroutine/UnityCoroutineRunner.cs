@@ -37,7 +37,7 @@ namespace AhBearStudios.Core.Coroutine
         // Dependency injection fields
         private CoroutineProfiler _profiler;
         private ICoroutineMetrics _coroutineMetrics;
-        private IMessageBus _messageBus;
+        private IMessageBusService _messageBusService;
         private bool _profilingEnabled;
 
         // Subscription tokens for cleanup
@@ -88,12 +88,12 @@ namespace AhBearStudios.Core.Coroutine
         /// <param name="runnerName">Optional name for this runner instance.</param>
         /// <param name="profiler">Profiler for performance tracking.</param>
         /// <param name="coroutineMetrics">Metrics system for coroutine tracking.</param>
-        /// <param name="messageBus">Message bus for event publishing.</param>
+        /// <param name="messageBusService">Message bus for event publishing.</param>
         public void Initialize(
             string runnerName = null, 
             CoroutineProfiler profiler = null,
             ICoroutineMetrics coroutineMetrics = null,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             if (_isInitialized)
                 return;
@@ -109,7 +109,7 @@ namespace AhBearStudios.Core.Coroutine
             // Set up dependencies
             _profiler = profiler;
             _coroutineMetrics = coroutineMetrics;
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             _profilingEnabled = _profiler?.IsEnabled == true;
             
             // Update runner configuration in metrics
@@ -126,14 +126,14 @@ namespace AhBearStudios.Core.Coroutine
         /// </summary>
         private void SetupMessageSubscriptions()
         {
-            if (_messageBus == null) return;
+            if (_messageBusService == null) return;
 
             try
             {
-                _sessionCompletedSubscription = _messageBus.SubscribeToMessage<CoroutineProfilerSessionCompletedMessage>(
+                _sessionCompletedSubscription = _messageBusService.SubscribeToMessage<CoroutineProfilerSessionCompletedMessage>(
                     OnCoroutineSessionCompleted);
                 
-                _metricAlertSubscription = _messageBus.SubscribeToMessage<CoroutineMetricAlertMessage>(
+                _metricAlertSubscription = _messageBusService.SubscribeToMessage<CoroutineMetricAlertMessage>(
                     OnCoroutineMetricAlert);
             }
             catch (Exception ex)

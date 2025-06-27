@@ -26,7 +26,7 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         public override void Handle(object message, Action<object> next)
         {
             var messageType = message.GetType();
-            var tag = new ProfilerTag(new ProfilerCategory("MessageBus"), $"HandleMessage_{messageType.Name}");
+            var tag = new ProfilerTag(new ProfilerCategory("MessageBusService"), $"HandleMessage_{messageType.Name}");
             
             using var scope = _profiler.BeginScope(tag);
             next(message);

@@ -1,251 +1,182 @@
 using System;
 using System.Collections.Generic;
-using Unity.Collections;
 using Unity.Jobs;
+using Unity.Collections;
+using Unity.Collections.LowLevel.Unsafe;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.MessageBus.Interfaces;
-using AhBearStudios.Core.MessageBus.Jobs;
 using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.MessageBus.Processors;
 using AhBearStudios.Core.Profiling.Interfaces;
-using Unity.Burst;
-using Unity.Profiling;
 
 namespace AhBearStudios.Core.MessageBus.Processors
 {
     /// <summary>
-    /// Processor for handling batches of messages, supporting both managed and unmanaged types.
+    /// Enterprise-ready batch processor that delegates unmanaged payload batching
+    /// to <see cref="IMessageBusJobProcessor"/>, while handling managed messages inline.
     /// </summary>
     public sealed class MessageBatchProcessor : IDisposable
     {
+        private readonly IMessageBusJobProcessor _jobProcessor;
         private readonly IBurstLogger _logger;
         private readonly IProfiler _profiler;
-        private readonly Dictionary<Type, object> _processors = new Dictionary<Type, object>();
-        private bool _isDisposed;
-        
+
+        private readonly Dictionary<Type, Delegate> _unmanagedHandlers;
+        private readonly Dictionary<Type, Delegate> _managedHandlers;
+        private bool _disposed;
+
         /// <summary>
-        /// Initializes a new instance of the MessageBatchProcessor class.
+        /// Constructs a new MessageBatchProcessor.
         /// </summary>
-        /// <param name="logger">The logger to use for logging.</param>
-        /// <param name="profiler">The profiler to use for performance monitoring.</param>
-        public MessageBatchProcessor(IBurstLogger logger, IProfiler profiler)
+        /// <param name="jobProcessor">Injected Burst-friendly job processor.</param>
+        /// <param name="logger">Injected Burst-capable logger.</param>
+        /// <param name="profiler">Injected profiler for timing samples.</param>
+        public MessageBatchProcessor(
+            IMessageBusJobProcessor jobProcessor,
+            IBurstLogger logger,
+            IProfiler profiler)
         {
+            _jobProcessor = jobProcessor ?? throw new ArgumentNullException(nameof(jobProcessor));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            _unmanagedHandlers = new Dictionary<Type, Delegate>();
+            _managedHandlers = new Dictionary<Type, Delegate>();
+            _disposed = false;
         }
-        
+
         /// <summary>
-        /// Registers a processor for unmanaged messages that can be processed in Burst-compiled jobs.
+        /// Registers a handler for unmanaged messages of type T.
         /// </summary>
-        /// <typeparam name="TMessage">The type of unmanaged message.</typeparam>
-        /// <param name="processor">The processor function pointer.</param>
-        public void RegisterUnmanagedProcessor<TMessage>(FunctionPointer<MessageProcessor<TMessage>> processor)
-            where TMessage : unmanaged, IUnmanagedMessage
+        /// <typeparam name="T">Unmanaged struct type.</typeparam>
+        /// <param name="handler">Delegate to invoke when messages are dispatched.</param>
+        public void RegisterUnmanagedProcessor<T>(Action<T> handler) where T : unmanaged
         {
-            _processors[typeof(TMessage)] = processor;
-            _logger.Log(LogLevel.Debug, 
-                $"Registered unmanaged processor for message type {typeof(TMessage).Name}",
-                "MessageBatchProcessor");
+            if (handler == null) throw new ArgumentNullException(nameof(handler));
+            _unmanagedHandlers[typeof(T)] = handler;
         }
-        
+
         /// <summary>
-        /// Registers a processor for managed messages.
+        /// Schedules a batch processing job for an array of unmanaged messages.
         /// </summary>
-        /// <typeparam name="TMessage">The type of managed message.</typeparam>
-        /// <param name="processor">The processor action.</param>
-        public void RegisterManagedProcessor<TMessage>(Action<TMessage> processor)
-            where TMessage : IMessage
+        /// <typeparam name="T">Unmanaged struct type.</typeparam>
+        /// <param name="messages">NativeArray of messages to enqueue.</param>
+        /// <param name="dependency">Optional prior JobHandle dependency.</param>
+        /// <returns>JobHandle for the scheduled job.</returns>
+        public JobHandle ProcessUnmanagedBatch<T>(NativeArray<T> messages, JobHandle dependency = default)
+            where T : unmanaged
         {
-            _processors[typeof(TMessage)] = processor;
-            _logger.Log(LogLevel.Debug, 
-                $"Registered managed processor for message type {typeof(TMessage).Name}",
-                "MessageBatchProcessor");
+            if (_disposed) throw new ObjectDisposedException(nameof(MessageBatchProcessor));
+            if (!messages.IsCreated) throw new ArgumentException("Messages must be a valid NativeArray", nameof(messages));
+
+            var type = typeof(T);
+            if (!_unmanagedHandlers.ContainsKey(type))
+                throw new InvalidOperationException($"No handler registered for {type.Name}");
+
+            _logger.LogBurst($"Enqueueing {messages.Length} messages of type {type.Name}");
+            _profiler.BeginSample($"ProcessUnmanagedBatch<{type.Name}>");
+
+            // Serialize and enqueue each message
+            for (int i = 0; i < messages.Length; i++)
+            {
+                var payload = SerializeUnmanaged(messages[i]);
+                _jobProcessor.Enqueue(payload);
+            }
+
+            // Schedule the batching job
+            var handle = _jobProcessor.ScheduleProcessing(dependency, messages.Length);
+            _profiler.EndSample($"ProcessUnmanagedBatch<{type.Name}>");
+            return handle;
         }
-        
+
         /// <summary>
-        /// Processes a batch of unmanaged messages using a Burst-compiled job.
+        /// Completes the batch job and dispatches payloads to registered handlers.
         /// </summary>
-        /// <typeparam name="TMessage">The type of unmanaged message.</typeparam>
-        /// <param name="messages">The messages to process.</param>
-        /// <param name="allocator">The allocator to use for temporary collections.</param>
-        /// <returns>A JobHandle for the processing job.</returns>
-        public JobHandle ProcessUnmanagedBatch<TMessage>(IEnumerable<TMessage> messages, Allocator allocator = Allocator.TempJob)
-            where TMessage : unmanaged, IUnmanagedMessage
+        /// <typeparam name="T">Unmanaged struct type.</typeparam>
+        public void CompleteAndDispatchUnmanaged<T>() where T : unmanaged
         {
-            using var scope = _profiler.BeginScope(new ProfilerTag(new ProfilerCategory("MessageBatchProcessor"), $"ProcessUnmanaged_{typeof(TMessage).Name}"));
-            
-            if (!_processors.TryGetValue(typeof(TMessage), out var processorObj) || 
-                !(processorObj is FunctionPointer<MessageProcessor<TMessage>> processor))
+            if (_disposed) throw new ObjectDisposedException(nameof(MessageBatchProcessor));
+
+            var type = typeof(T);
+            if (!_unmanagedHandlers.TryGetValue(type, out var del))
+                throw new InvalidOperationException($"No handler registered for {type.Name}");
+
+            var handler = (Action<T>)del;
+            _profiler.BeginSample($"CompleteAndDispatchUnmanaged<{type.Name}>");
+
+            _jobProcessor.CompleteAndDispatch(payload =>
             {
-                _logger.Log(LogLevel.Warning, 
-                    $"No processor registered for unmanaged message type {typeof(TMessage).Name}",
-                    "MessageBatchProcessor");
-                return default;
-            }
-            
-            var messageList = new List<TMessage>(messages);
-            if (messageList.Count == 0)
-            {
-                return default;
-            }
-            
-            var messageArray = new NativeArray<TMessage>(messageList.ToArray(), allocator);
-            var resultsArray = new NativeArray<int>(messageList.Count, allocator);
-            
-            var job = new ProcessMessagesParallelJob<TMessage>
-            {
-                Messages = messageArray,
-                ProcessorFunction = processor,
-                Results = resultsArray
-            };
-            
-            var jobHandle = job.Schedule(messageList.Count, 32);
-            
-            // Schedule cleanup job
-            var cleanupJob = new CleanupArraysJob<TMessage>
-            {
-                MessageArray = messageArray,
-                ResultsArray = resultsArray
-            };
-            
-            var cleanupHandle = cleanupJob.Schedule(jobHandle);
-            
-            _logger.Log(LogLevel.Debug, 
-                $"Scheduled processing of {messageList.Count} unmanaged messages of type {typeof(TMessage).Name}",
-                "MessageBatchProcessor");
-            
-            return cleanupHandle;
+                var msg = DeserializeUnmanaged<T>(payload);
+                handler(msg);
+            });
+
+            _profiler.EndSample($"CompleteAndDispatchUnmanaged<{type.Name}>");
         }
-        
+
         /// <summary>
-        /// Processes a batch of managed messages synchronously.
+        /// Registers a handler for managed messages of type T.
         /// </summary>
-        /// <typeparam name="TMessage">The type of managed message.</typeparam>
-        /// <param name="messages">The messages to process.</param>
-        public void ProcessManagedBatch<TMessage>(IEnumerable<TMessage> messages)
-            where TMessage : IMessage
+        public void RegisterManagedProcessor<T>(Action<T> handler) where T : class
         {
-            using var scope = _profiler.BeginScope(new ProfilerTag(new ProfilerCategory("MessageBatchProcessor"), $"ProcessManaged_{typeof(TMessage).Name}"));
-            
-            if (!_processors.TryGetValue(typeof(TMessage), out var processorObj) || 
-                !(processorObj is Action<TMessage> processor))
-            {
-                _logger.Log(LogLevel.Warning, 
-                    $"No processor registered for managed message type {typeof(TMessage).Name}",
-                    "MessageBatchProcessor");
-                return;
-            }
-            
-            int processedCount = 0;
-            foreach (var message in messages)
-            {
-                try
-                {
-                    processor(message);
-                    processedCount++;
-                }
-                catch (Exception ex)
-                {
-                    _logger.Log(LogLevel.Error, 
-                        $"Error processing managed message: {ex.Message}",
-                        "MessageBatchProcessor");
-                }
-            }
-            
-            _logger.Log(LogLevel.Debug, 
-                $"Processed {processedCount} managed messages of type {typeof(TMessage).Name}",
-                "MessageBatchProcessor");
+            if (handler == null) throw new ArgumentNullException(nameof(handler));
+            _managedHandlers[typeof(T)] = handler;
         }
-        
+
         /// <summary>
-        /// Processes a queue of unmanaged messages using a single-threaded job.
+        /// Processes a batch of managed messages on the calling thread.
         /// </summary>
-        /// <typeparam name="TMessage">The type of unmanaged message.</typeparam>
-        /// <param name="messageQueue">The message queue to process.</param>
-        /// <returns>A JobHandle for the processing job.</returns>
-        public JobHandle ProcessUnmanagedQueue<TMessage>(MessageQueue<TMessage> messageQueue)
-            where TMessage : unmanaged, IUnmanagedMessage
+        public void ProcessManagedBatch<T>(IReadOnlyList<T> messages) where T : class
         {
-            using var scope = _profiler.BeginScope(new ProfilerTag(new ProfilerCategory("MessageBatchProcessor"), $"ProcessQueue_{typeof(TMessage).Name}"));
-            
-            if (!_processors.TryGetValue(typeof(TMessage), out var processorObj) || 
-                !(processorObj is FunctionPointer<MessageProcessor<TMessage>> processor))
-            {
-                _logger.Log(LogLevel.Warning, 
-                    $"No processor registered for unmanaged message type {typeof(TMessage).Name}",
-                    "MessageBatchProcessor");
-                return default;
-            }
-            
-            var processedCount = new NativeReference<int>(Allocator.TempJob);
-            
-            var job = new ProcessMessagesJob<TMessage>
-            {
-                Queue = messageQueue.Queue,
-                ProcessedCount = processedCount,
-                ProcessorFunction = processor
-            };
-            
-            var jobHandle = job.Schedule();
-            
-            // Schedule cleanup job
-            var cleanupJob = new CleanupReferenceJob
-            {
-                Reference = processedCount
-            };
-            
-            var cleanupHandle = cleanupJob.Schedule(jobHandle);
-            
-            _logger.Log(LogLevel.Debug, 
-                $"Scheduled processing of queued unmanaged messages of type {typeof(TMessage).Name}",
-                "MessageBatchProcessor");
-            
-            return cleanupHandle;
+            if (_disposed) throw new ObjectDisposedException(nameof(MessageBatchProcessor));
+            if (messages == null) throw new ArgumentNullException(nameof(messages));
+
+            var type = typeof(T);
+            if (!_managedHandlers.TryGetValue(type, out var del))
+                throw new InvalidOperationException($"No handler registered for {type.Name}");
+
+            var handler = (Action<T>)del;
+            _logger.LogBurst($"Processing {messages.Count} managed messages of type {type.Name}");
+            _profiler.BeginSample($"ProcessManagedBatch<{type.Name}>");
+
+            for (int i = 0, len = messages.Count; i < len; i++)
+                handler(messages[i]);
+
+            _profiler.EndSample($"ProcessManagedBatch<{type.Name}>");
         }
-        
-        /// <inheritdoc />
+
+        /// <inheritdoc/>
         public void Dispose()
         {
-            if (_isDisposed) return;
-            
-            _processors.Clear();
-            _isDisposed = true;
-            
-            _logger.Log(LogLevel.Info, "MessageBatchProcessor disposed", "MessageBatchProcessor");
+            if (_disposed) return;
+
+            _logger.LogBurst("Disposing MessageBatchProcessor");
+            _jobProcessor.Dispose();
+            _unmanagedHandlers.Clear();
+            _managedHandlers.Clear();
+            _disposed = true;
         }
-    }
-    
-    /// <summary>
-    /// Job for cleaning up native arrays after processing.
-    /// </summary>
-    /// <typeparam name="TMessage">The type of message.</typeparam>
-    [BurstCompile]
-    internal struct CleanupArraysJob<TMessage> : IJob
-        where TMessage : unmanaged
-    {
-        public NativeArray<TMessage> MessageArray;
-        public NativeArray<int> ResultsArray;
-        
-        public void Execute()
+
+        #region Serialization Helpers
+        private static unsafe NativeArray<byte> SerializeUnmanaged<T>(T msg) where T : unmanaged
         {
-            if (MessageArray.IsCreated)
-                MessageArray.Dispose();
-            if (ResultsArray.IsCreated)
-                ResultsArray.Dispose();
+            var size = UnsafeUtility.SizeOf<T>();
+            var arr = new NativeArray<byte>(size, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+            void* src = UnsafeUtility.AddressOf(ref msg);
+            void* dst = NativeArrayUnsafeUtility.GetUnsafePtr(arr);
+            UnsafeUtility.MemCpy(dst, src, size);
+            return arr;
         }
-    }
-    
-    /// <summary>
-    /// Job for cleaning up native references after processing.
-    /// </summary>
-    [BurstCompile]
-    internal struct CleanupReferenceJob : IJob
-    {
-        public NativeReference<int> Reference;
-        
-        public void Execute()
+
+        private static unsafe T DeserializeUnmanaged<T>(NativeArray<byte> data) where T : unmanaged
         {
-            if (Reference.IsCreated)
-                Reference.Dispose();
+            var size = UnsafeUtility.SizeOf<T>();
+            if (data.Length < size)
+                throw new InvalidOperationException($"Payload length {data.Length} < size of {typeof(T).Name}");
+
+            var msg = default(T);
+            void* dst = UnsafeUtility.AddressOf(ref msg);
+            void* src = NativeArrayUnsafeUtility.GetUnsafeReadOnlyPtr(data);
+            UnsafeUtility.MemCpy(dst, src, size);
+            return msg;
         }
+        #endregion
     }
 }

@@ -99,7 +99,7 @@ namespace AhBearStudios.Core.Profiling.Data
             // Basic identification
             Name = name;
             BusId = busId;
-            BusType = busType.IsEmpty ? new FixedString64Bytes("MessageBus") : busType;
+            BusType = busType.IsEmpty ? new FixedString64Bytes("MessageBusService") : busType;
             
             // Initialize capacity
             QueueCapacity = 0;
@@ -178,7 +178,7 @@ namespace AhBearStudios.Core.Profiling.Data
         /// <summary>
         /// Constructor overload that accepts Guid for busId
         /// </summary>
-        public MessageBusMetricsData(Guid busId, string name, string busType = "MessageBus")
+        public MessageBusMetricsData(Guid busId, string name, string busType = "MessageBusService")
             : this(new FixedString64Bytes(busId.ToString()), new FixedString128Bytes(name), new FixedString64Bytes(busType))
         {
         }

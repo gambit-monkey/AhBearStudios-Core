@@ -7,18 +7,18 @@ namespace AhBearStudios.Core.Profiling.Tagging
     /// </summary>
     public static class MessageBusProfilerTags
     {
-        // MessageBus category
+        // MessageBusService category
         private static readonly ProfilerCategory MessageBusCategory = ProfilerCategory.Scripts;
         
         // Common operation tags
-        public static readonly ProfilerTag MessagePublish = new ProfilerTag(MessageBusCategory, "MessageBus.Publish");
-        public static readonly ProfilerTag MessageDeliver = new ProfilerTag(MessageBusCategory, "MessageBus.Deliver");
-        public static readonly ProfilerTag MessageSubscribe = new ProfilerTag(MessageBusCategory, "MessageBus.Subscribe");
-        public static readonly ProfilerTag MessageUnsubscribe = new ProfilerTag(MessageBusCategory, "MessageBus.Unsubscribe");
-        public static readonly ProfilerTag MessageProcess = new ProfilerTag(MessageBusCategory, "MessageBus.Process");
-        public static readonly ProfilerTag MessageQueue = new ProfilerTag(MessageBusCategory, "MessageBus.Queue");
-        public static readonly ProfilerTag MessageBatch = new ProfilerTag(MessageBusCategory, "MessageBus.Batch");
-        public static readonly ProfilerTag MessageReliableDeliver = new ProfilerTag(MessageBusCategory, "MessageBus.ReliableDeliver");
+        public static readonly ProfilerTag MessagePublish = new ProfilerTag(MessageBusCategory, "MessageBusService.Publish");
+        public static readonly ProfilerTag MessageDeliver = new ProfilerTag(MessageBusCategory, "MessageBusService.Deliver");
+        public static readonly ProfilerTag MessageSubscribe = new ProfilerTag(MessageBusCategory, "MessageBusService.Subscribe");
+        public static readonly ProfilerTag MessageUnsubscribe = new ProfilerTag(MessageBusCategory, "MessageBusService.Unsubscribe");
+        public static readonly ProfilerTag MessageProcess = new ProfilerTag(MessageBusCategory, "MessageBusService.Process");
+        public static readonly ProfilerTag MessageQueue = new ProfilerTag(MessageBusCategory, "MessageBusService.Queue");
+        public static readonly ProfilerTag MessageBatch = new ProfilerTag(MessageBusCategory, "MessageBusService.Batch");
+        public static readonly ProfilerTag MessageReliableDeliver = new ProfilerTag(MessageBusCategory, "MessageBusService.ReliableDeliver");
         
         /// <summary>
         /// Creates a message bus-specific profiler tag
@@ -29,7 +29,7 @@ namespace AhBearStudios.Core.Profiling.Tagging
         public static ProfilerTag ForBus(string operationType, System.Guid busId)
         {
             string guidPrefix = busId.ToString().Substring(0, 8);
-            return new ProfilerTag(MessageBusCategory, $"MessageBus.{guidPrefix}.{operationType}");
+            return new ProfilerTag(MessageBusCategory, $"MessageBusService.{guidPrefix}.{operationType}");
         }
         
         /// <summary>
@@ -40,7 +40,7 @@ namespace AhBearStudios.Core.Profiling.Tagging
         /// <returns>A profiler tag for the specific message bus operation</returns>
         public static ProfilerTag ForBusNamed(string operationType, string busName)
         {
-            return new ProfilerTag(MessageBusCategory, $"MessageBus.{busName}.{operationType}");
+            return new ProfilerTag(MessageBusCategory, $"MessageBusService.{busName}.{operationType}");
         }
         
         /// <summary>
@@ -51,7 +51,7 @@ namespace AhBearStudios.Core.Profiling.Tagging
         /// <returns>A profiler tag for the specific message type operation</returns>
         public static ProfilerTag ForMessageType(string operationType, string messageTypeName)
         {
-            return new ProfilerTag(MessageBusCategory, $"MessageBus.{messageTypeName}.{operationType}");
+            return new ProfilerTag(MessageBusCategory, $"MessageBusService.{messageTypeName}.{operationType}");
         }
         
         /// <summary>
@@ -62,7 +62,7 @@ namespace AhBearStudios.Core.Profiling.Tagging
         /// <returns>A profiler tag for the specific delivery service operation</returns>
         public static ProfilerTag ForDeliveryService(string operationType, string serviceName)
         {
-            return new ProfilerTag(MessageBusCategory, $"MessageBus.{serviceName}.{operationType}");
+            return new ProfilerTag(MessageBusCategory, $"MessageBusService.{serviceName}.{operationType}");
         }
     }
 }

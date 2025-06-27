@@ -42,7 +42,7 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         #region Private Fields
 
         private IDependencyContainer _container;
-        private IMessageBus _messageBus;
+        private IMessageBusService _messageBusService;
         private bool _isInitialized;
         private bool _isDisposed;
         
@@ -71,7 +71,7 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         /// <summary>
         /// Gets the message bus instance used by this provider.
         /// </summary>
-        public IMessageBus MessageBus => _messageBus;
+        public IMessageBusService MessageBusService => _messageBusService;
 
         /// <summary>
         /// Gets whether the provider is initialized.
@@ -219,7 +219,7 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
                 _container = DependencyContainerFactory.CreateConfigured(
                     $"Unity_{gameObject.name}", 
                     RegisterUnityServices,
-                    _messageBus);
+                    _messageBusService);
 
                 // Subscribe to container messages if debugging is enabled
                 if (_enableDebugLogging || _logResolutions)
@@ -244,10 +244,10 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         /// Initializes the provider with a custom container and message bus.
         /// </summary>
         /// <param name="container">The container to use.</param>
-        /// <param name="messageBus">The message bus to use (optional).</param>
+        /// <param name="messageBusService">The message bus to use (optional).</param>
         /// <exception cref="ArgumentNullException">Thrown when container is null.</exception>
         /// <exception cref="InvalidOperationException">Thrown when already initialized or disposed.</exception>
-        public void Initialize(IDependencyContainer container, IMessageBus messageBus = null)
+        public void Initialize(IDependencyContainer container, IMessageBusService messageBusService = null)
         {
             if (container == null) 
                 throw new ArgumentNullException(nameof(container));
@@ -261,7 +261,7 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
             try
             {
                 _container = container;
-                _messageBus = messageBus ?? container.MessageBus ?? GetOrCreateMessageBus();
+                _messageBusService = messageBusService ?? container.MessageBusService ?? GetOrCreateMessageBus();
 
                 RegisterUnityServices(_container);
 
@@ -497,24 +497,24 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         /// </summary>
         private void InitializeMessageBus()
         {
-            _messageBus = GetOrCreateMessageBus();
+            _messageBusService = GetOrCreateMessageBus();
         }
 
         /// <summary>
         /// Gets or creates a message bus instance.
         /// </summary>
         /// <returns>A message bus instance.</returns>
-        private IMessageBus GetOrCreateMessageBus()
+        private IMessageBusService GetOrCreateMessageBus()
         {
             // Try to get from MessageBusProvider
             var messageBusProvider = MessageBusProvider.Instance;
             if (messageBusProvider != null && messageBusProvider.IsInitialized)
             {
-                return messageBusProvider.MessageBus;
+                return messageBusProvider.MessageBusService;
             }
 
             // Use factory default if available
-            return DependencyContainerFactory.DefaultMessageBus;
+            return DependencyContainerFactory.DefaultMessageBusService;
         }
 
         /// <summary>
@@ -532,9 +532,9 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
                 container.RegisterInstance<IDependencyProvider>(new UnityDependencyProviderAdapter(this));
 
                 // Register the message bus
-                if (_messageBus != null)
+                if (_messageBusService != null)
                 {
-                    container.RegisterInstance<IMessageBus>(_messageBus);
+                    container.RegisterInstance<IMessageBusService>(_messageBusService);
                 }
 
                 // Register common Unity services
@@ -556,11 +556,11 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         }
 
         /// <summary>
-        /// Subscribes to container messages through the MessageBus for debugging purposes.
+        /// Subscribes to container messages through the MessageBusService for debugging purposes.
         /// </summary>
         private void SubscribeToContainerMessages()
         {
-            if (_messageBus == null)
+            if (_messageBusService == null)
                 return;
 
             try
@@ -568,23 +568,23 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
                 // Subscribe to service resolution messages
                 if (_logResolutions)
                 {
-                    var resolutionSubscription = _messageBus.Subscribe<ServiceResolvedMessage>(OnServiceResolved);
+                    var resolutionSubscription = _messageBusService.Subscribe<ServiceResolvedMessage>(OnServiceResolved);
                     _messageSubscriptions.Add(resolutionSubscription);
                     
-                    var failedResolutionSubscription = _messageBus.Subscribe<ServiceResolutionFailedMessage>(OnServiceResolutionFailed);
+                    var failedResolutionSubscription = _messageBusService.Subscribe<ServiceResolutionFailedMessage>(OnServiceResolutionFailed);
                     _messageSubscriptions.Add(failedResolutionSubscription);
                 }
 
                 // Subscribe to service registration messages
                 if (_enableDebugLogging)
                 {
-                    var registrationSubscription = _messageBus.Subscribe<ServiceRegisteredMessage>(OnServiceRegistered);
+                    var registrationSubscription = _messageBusService.Subscribe<ServiceRegisteredMessage>(OnServiceRegistered);
                     _messageSubscriptions.Add(registrationSubscription);
                     
-                    var containerBuiltSubscription = _messageBus.Subscribe<ContainerBuiltMessage>(OnContainerBuilt);
+                    var containerBuiltSubscription = _messageBusService.Subscribe<ContainerBuiltMessage>(OnContainerBuilt);
                     _messageSubscriptions.Add(containerBuiltSubscription);
                     
-                    var childContainerSubscription = _messageBus.Subscribe<ChildContainerCreatedMessage>(OnChildContainerCreated);
+                    var childContainerSubscription = _messageBusService.Subscribe<ChildContainerCreatedMessage>(OnChildContainerCreated);
                     _messageSubscriptions.Add(childContainerSubscription);
                 }
             }

@@ -17,7 +17,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
     {
         private readonly ProfilerMarker _marker;
         private readonly ProfilerTag _tag;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly Dictionary<string, double> _customMetrics = new Dictionary<string, double>();
         private bool _isDisposed;
         private long _startTimeNs;
@@ -76,7 +76,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="queueSize">Current queue size</param>
         /// <param name="messageType">Type of message being processed</param>
         /// <param name="busMetrics">Message bus metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         public MessageBusProfilerSession(
             ProfilerTag tag,
             Guid busId,
@@ -86,7 +86,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             int queueSize,
             string messageType,
             IMessageBusMetrics busMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             _tag = tag;
             BusId = busId;
@@ -96,10 +96,10 @@ namespace AhBearStudios.Core.Profiling.Sessions
             QueueSize = queueSize;
             MessageType = messageType ?? string.Empty;
             _busMetrics = busMetrics;
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
             _isDisposed = false;
             _sessionId = Guid.NewGuid();
-            _isNullSession = busMetrics == null && messageBus == null;
+            _isNullSession = busMetrics == null && messageBusService == null;
 
             // Only create marker and start timing if this isn't a null session
             if (!_isNullSession)
@@ -111,14 +111,14 @@ namespace AhBearStudios.Core.Profiling.Sessions
                 _startTimeNs = GetHighPrecisionTimestampNs();
 
                 // Notify via message bus that session started
-                if (_messageBus != null)
+                if (_messageBusService != null)
                 {
                     var message = new MessageBusProfilerSessionStartedMessage(
                         _tag, _sessionId, BusId, BusName, OperationType, SubscriberCount, QueueSize, MessageType);
 
                     try
                     {
-                        var publisher = _messageBus.GetPublisher<MessageBusProfilerSessionStartedMessage>();
+                        var publisher = _messageBusService.GetPublisher<MessageBusProfilerSessionStartedMessage>();
                         publisher?.Publish(message);
                     }
                     catch
@@ -140,7 +140,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="queueSize">Current queue size</param>
         /// <param name="messageType">Type of message being processed</param>
         /// <param name="busMetrics">Message bus metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         /// <returns>A new message bus profiler session with appropriate tag</returns>
         public static MessageBusProfilerSession Create(
             string operationType,
@@ -150,7 +150,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             int queueSize,
             string messageType,
             IMessageBusMetrics busMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             if (string.IsNullOrEmpty(operationType))
                 operationType = "Unknown";
@@ -159,7 +159,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             ProfilerTag tag = SelectOptimalTag(operationType, busId, busName, messageType);
 
             return new MessageBusProfilerSession(
-                tag, busId, busName, operationType, subscriberCount, queueSize, messageType, busMetrics, messageBus);
+                tag, busId, busName, operationType, subscriberCount, queueSize, messageType, busMetrics, messageBusService);
         }
 
         /// <summary>
@@ -169,18 +169,18 @@ namespace AhBearStudios.Core.Profiling.Sessions
         /// <param name="busName">Message bus name</param>
         /// <param name="messageType">Type of message being processed</param>
         /// <param name="busMetrics">Message bus metrics interface for recording</param>
-        /// <param name="messageBus">Message bus for sending messages</param>
+        /// <param name="messageBusService">Message bus for sending messages</param>
         /// <returns>A new message bus profiler session</returns>
         public static MessageBusProfilerSession CreateMinimal(
             string operationType,
             string busName,
             string messageType,
             IMessageBusMetrics busMetrics,
-            IMessageBus messageBus = null)
+            IMessageBusService messageBusService = null)
         {
             Guid busId = string.IsNullOrEmpty(busName) ? Guid.Empty : CreateDeterministicGuid(busName);
             
-            return Create(operationType, busId, busName, 0, 0, messageType, busMetrics, messageBus);
+            return Create(operationType, busId, busName, 0, 0, messageType, busMetrics, messageBusService);
         }
 
         /// <summary>
@@ -343,7 +343,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
             RecordMessageBusMetrics();
 
             // Notify via message bus that session ended
-            if (_messageBus != null)
+            if (_messageBusService != null)
             {
                 var message = new MessageBusProfilerSessionCompletedMessage(
                     _tag, _sessionId, BusId, BusName, OperationType, SubscriberCount, QueueSize,
@@ -351,7 +351,7 @@ namespace AhBearStudios.Core.Profiling.Sessions
 
                 try
                 {
-                    var publisher = _messageBus.GetPublisher<MessageBusProfilerSessionCompletedMessage>();
+                    var publisher = _messageBusService.GetPublisher<MessageBusProfilerSessionCompletedMessage>();
                     publisher?.Publish(message);
                 }
                 catch

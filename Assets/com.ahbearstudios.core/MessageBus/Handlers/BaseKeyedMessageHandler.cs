@@ -1,5 +1,6 @@
 using System;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling.Interfaces;
 
@@ -19,32 +20,32 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         /// <summary>
         /// Initializes a new instance of the BaseKeyedMessageHandler class for a specific key.
         /// </summary>
-        /// <param name="messageBus">The message bus to use.</param>
+        /// <param name="messageBusService">The message bus to use.</param>
         /// <param name="logger">The logger to use for logging.</param>
         /// <param name="profiler">The profiler to use for performance monitoring.</param>
         /// <param name="key">The key to subscribe to.</param>
         protected BaseKeyedMessageHandler(
-            IMessageBus messageBus, 
-            IBurstLogger logger, 
+            IMessageBusService messageBusService, 
+            ILoggingService logger, 
             IProfiler profiler, 
             TKey key)
         {
-            _context = new MessageHandlerContext(messageBus, logger, profiler, GetType());
+            _context = new MessageHandlerContext(messageBusService, logger, profiler, GetType());
             _subscription = CreateSpecificKeySubscription(key);
         }
         
         /// <summary>
         /// Initializes a new instance of the BaseKeyedMessageHandler class for all keys.
         /// </summary>
-        /// <param name="messageBus">The message bus to use.</param>
+        /// <param name="messageBusService">The message bus to use.</param>
         /// <param name="logger">The logger to use for logging.</param>
         /// <param name="profiler">The profiler to use for performance monitoring.</param>
         protected BaseKeyedMessageHandler(
-            IMessageBus messageBus, 
-            IBurstLogger logger, 
+            IMessageBusService messageBusService, 
+            ILoggingService logger, 
             IProfiler profiler)
         {
-            _context = new MessageHandlerContext(messageBus, logger, profiler, GetType());
+            _context = new MessageHandlerContext(messageBusService, logger, profiler, GetType());
             _subscription = CreateAllKeysSubscription();
         }
 

@@ -38,7 +38,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
         #endregion
 
         #region Private Fields
-        private IMessageBus _messageBus;
+        private IMessageBusService _messageBusService;
         private IMessageBusConfig _runtimeConfig;
         
         // Injected dependencies (existing types from repository)
@@ -67,7 +67,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
         /// <summary>
         /// Gets the message bus instance.
         /// </summary>
-        public IMessageBus MessageBus => _messageBus;
+        public IMessageBusService MessageBusService => _messageBusService;
         
         /// <summary>
         /// Gets the bus metrics instance.
@@ -87,12 +87,12 @@ namespace AhBearStudios.Core.MessageBus.Unity
         /// <summary>
         /// Gets the unique identifier of the message bus.
         /// </summary>
-        public Guid Id => _messageBus?.Id ?? Guid.Empty;
+        public Guid Id => _messageBusService?.Id ?? Guid.Empty;
         
         /// <summary>
         /// Gets the name of the message bus.
         /// </summary>
-        public string Name => _messageBus?.Name ?? "MessageBus";
+        public string Name => _messageBusService?.Name ?? "MessageBusService";
         
         /// <summary>
         /// Gets the singleton instance of the message bus provider.
@@ -236,10 +236,10 @@ namespace AhBearStudios.Core.MessageBus.Unity
         /// <returns>Current metrics data for the message bus.</returns>
         public MessageBusMetricsData GetMetrics()
         {
-            if (_busMetrics == null || _messageBus == null)
+            if (_busMetrics == null || _messageBusService == null)
                 return default;
                 
-            return _busMetrics.GetMetricsData(_messageBus.Id);
+            return _busMetrics.GetMetricsData(_messageBusService.Id);
         }
 
         /// <summary>
@@ -264,7 +264,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
         public void ResetProfilingStats()
         {
             _messageBusProfiler?.ResetStats();
-            _busMetrics?.ResetBusStats(_messageBus?.Id ?? Guid.Empty);
+            _busMetrics?.ResetBusStats(_messageBusService?.Id ?? Guid.Empty);
         }
 
         /// <summary>
@@ -289,7 +289,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
                 }
                 
                 // Dispose message bus
-                if (_messageBus is IDisposable disposableBus)
+                if (_messageBusService is IDisposable disposableBus)
                 {
                     disposableBus.Dispose();
                 }
@@ -381,8 +381,8 @@ namespace AhBearStudios.Core.MessageBus.Unity
             // Use the configured MessageBusConfig or create a default one
             _runtimeConfig = _config != null ? _config : CreateDefaultConfig();
 
-            // Use MessagePipeBus - the actual implementation from the repository
-            _messageBus = new MessagePipeBus(
+            // Use MessagePipeBusService - the actual implementation from the repository
+            _messageBusService = new MessagePipeBusService(
                 null, // IDependencyProvider - can be null for basic usage
                 _logger,
                 _baseProfiler,
@@ -394,19 +394,19 @@ namespace AhBearStudios.Core.MessageBus.Unity
             if (!_enableProfiling || !_enableMessageBusProfiler)
                 return;
 
-            if (_baseProfiler != null && _busMetrics != null && _messageBus != null)
+            if (_baseProfiler != null && _busMetrics != null && _messageBusService != null)
             {
-                _messageBusProfiler = new MessageBusProfiler(_baseProfiler, _busMetrics, _messageBus);
+                _messageBusProfiler = new MessageBusProfiler(_baseProfiler, _busMetrics, _messageBusService);
                 
                 Debug.Log("[MessageBusProvider] MessageBusProfiler created and configured");
             }
 
             // Configure bus metrics with the message bus instance
-            if (_busMetrics != null && _messageBus != null)
+            if (_busMetrics != null && _messageBusService != null)
             {
-                var busId = _messageBus.Id;
-                var busName = _messageBus.Name ?? "MessageBus";
-                var busType = _messageBus.GetType().Name;
+                var busId = _messageBusService.Id;
+                var busName = _messageBusService.Name ?? "MessageBusService";
+                var busType = _messageBusService.GetType().Name;
                 
                 _busMetrics.UpdateBusConfiguration(busId, 0, 0, busName, busType);
                 
@@ -461,7 +461,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
             else
             {
                 // Use existing MessageBusMetrics from repository
-                return new MessageBusMetrics(_messageBus, _metricsCapacity);
+                return new MessageBusMetrics(_messageBusService, _metricsCapacity);
             }
         }
 
@@ -495,7 +495,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
             // Use existing MessageBusConfig from repository
             return new MessageBusConfig
             {
-                Name = "DefaultMessageBus",
+                Name = "DefaultMessageBusService",
                 InitialCapacity = _initialCapacity,
                 EnableReliableDelivery = true,
                 EnableBatching = true,
@@ -517,7 +517,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
             _deliveryConfig = null;
             _deliveryStatistics = null;
             _serializerMetrics = null;
-            _messageBus = null;
+            _messageBusService = null;
         }
         #endregion
     }

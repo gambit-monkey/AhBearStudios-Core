@@ -17,7 +17,7 @@ namespace AhBearStudios.Core.Logging.Editor
     public class LogVisualizerWindow : EditorWindow, IDisposable
     {
         // Dependencies
-        private IMessageBus _messageBus;
+        private IMessageBusService _messageBusService;
         private List<IDisposable> _subscriptions = new List<IDisposable>();
         private ILogVisualizationProfileManager _profileManager;
 
@@ -44,16 +44,16 @@ namespace AhBearStudios.Core.Logging.Editor
         private GUIStyleCollection _styles;
 
         // Static reference to the currently active message bus for this window
-        private static IMessageBus _globalMessageBus;
+        private static IMessageBusService _globalMessageBusService;
 
         /// <summary>
         /// Sets the global message bus instance that log visualizer windows will use.
         /// This should be called during application initialization.
         /// </summary>
-        /// <param name="messageBus">The message bus instance to use for log visualization.</param>
-        public static void SetGlobalMessageBus(IMessageBus messageBus)
+        /// <param name="messageBusService">The message bus instance to use for log visualization.</param>
+        public static void SetGlobalMessageBus(IMessageBusService messageBusService)
         {
-            _globalMessageBus = messageBus;
+            _globalMessageBusService = messageBusService;
         }
 
         /// <summary>
@@ -70,12 +70,12 @@ namespace AhBearStudios.Core.Logging.Editor
         /// <summary>
         /// Opens or focuses the log visualizer window with a specific message bus.
         /// </summary>
-        /// <param name="messageBus">The message bus to use for this window instance.</param>
-        public static void ShowWindow(IMessageBus messageBus)
+        /// <param name="messageBusService">The message bus to use for this window instance.</param>
+        public static void ShowWindow(IMessageBusService messageBusService)
         {
             var window = GetWindow<LogVisualizerWindow>();
             window.titleContent = new GUIContent("Log Visualizer");
-            window._messageBus = messageBus; // Set the message bus before initialization
+            window._messageBusService = messageBusService; // Set the message bus before initialization
             window.Show();
         }
 
@@ -113,17 +113,17 @@ namespace AhBearStudios.Core.Logging.Editor
                 return;
 
             // Initialize message bus if not already set
-            if (_messageBus == null)
+            if (_messageBusService == null)
             {
                 // Try to use the global message bus first
-                _messageBus = _globalMessageBus;
+                _messageBusService = _globalMessageBusService;
 
                 // If no global message bus is set, create a null implementation
-                if (_messageBus == null)
+                if (_messageBusService == null)
                 {
-                    _messageBus = CreateNullMessageBus();
+                    _messageBusService = CreateNullMessageBus();
                     Debug.LogWarning("LogVisualizerWindow: No message bus configured. " +
-                                     "Use LogVisualizerWindow.SetGlobalMessageBus() or ShowWindow(IMessageBus) to provide a message bus instance. " +
+                                     "Use LogVisualizerWindow.SetGlobalMessageBus() or ShowWindow(IMessageBusService) to provide a message bus instance. " +
                                      "Log visualization will be limited without a proper message bus.");
                 }
             }
@@ -156,9 +156,9 @@ namespace AhBearStudios.Core.Logging.Editor
         /// Creates a no-op message bus implementation when no real message bus is available.
         /// </summary>
         /// <returns>A no-op message bus instance.</returns>
-        private static IMessageBus CreateNullMessageBus()
+        private static IMessageBusService CreateNullMessageBus()
         {
-            return new NullMessageBus();
+            return new NullMessageBusService();
         }
 
         /// <summary>
@@ -172,10 +172,10 @@ namespace AhBearStudios.Core.Logging.Editor
             try
             {
                 // Subscribe to log entry written messages
-                _subscriptions.Add(_messageBus.SubscribeToMessage<LogEntryWrittenMessage>(OnLogEntryWritten));
+                _subscriptions.Add(_messageBusService.SubscribeToMessage<LogEntryWrittenMessage>(OnLogEntryWritten));
 
                 // Subscribe to log level changed messages
-                _subscriptions.Add(_messageBus.SubscribeToMessage<LogLevelChangedMessage>(OnLogLevelChanged));
+                _subscriptions.Add(_messageBusService.SubscribeToMessage<LogLevelChangedMessage>(OnLogLevelChanged));
             }
             catch (Exception ex)
             {
@@ -314,8 +314,8 @@ namespace AhBearStudios.Core.Logging.Editor
             GUILayout.FlexibleSpace();
 
             // Show message bus status
-            var messageBusStatus = _messageBus is NullMessageBus ? "No Message Bus" : "Connected";
-            var statusColor = _messageBus is NullMessageBus ? Color.yellow : Color.green;
+            var messageBusStatus = _messageBusService is NullMessageBusService ? "No Message Bus" : "Connected";
+            var statusColor = _messageBusService is NullMessageBusService ? Color.yellow : Color.green;
 
             var oldColor = GUI.color;
             GUI.color = statusColor;
@@ -802,10 +802,10 @@ namespace AhBearStudios.Core.Logging.Editor
         }
 
         /// <summary>
-        /// No-op implementation of IMessageBus for scenarios where messaging is not needed.
+        /// No-op implementation of IMessageBusService for scenarios where messaging is not needed.
         /// This prevents the log visualizer from failing when no message bus is configured.
         /// </summary>
-        private class NullMessageBus : IMessageBus
+        private class NullMessageBusService : IMessageBusService
         {
             public IMessagePublisher<TMessage> GetPublisher<TMessage>() => new NullPublisher<TMessage>();
             public IMessageSubscriber<TMessage> GetSubscriber<TMessage>() => new NullSubscriber<TMessage>();

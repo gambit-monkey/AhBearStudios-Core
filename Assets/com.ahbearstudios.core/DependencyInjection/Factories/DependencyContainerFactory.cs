@@ -24,16 +24,16 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
         /// <summary>
         /// The default message bus instance to use for containers.
         /// </summary>
-        private static IMessageBus _defaultMessageBus;
+        private static IMessageBusService _defaultMessageBusService;
 
         /// <summary>
         /// Gets or sets the default message bus used by containers.
-        /// If not set, containers will resolve MessageBus from themselves or create a fallback.
+        /// If not set, containers will resolve MessageBusService from themselves or create a fallback.
         /// </summary>
-        public static IMessageBus DefaultMessageBus
+        public static IMessageBusService DefaultMessageBusService
         {
-            get => _defaultMessageBus;
-            set => _defaultMessageBus = value;
+            get => _defaultMessageBusService;
+            set => _defaultMessageBusService = value;
         }
 
         /// <summary>
@@ -52,7 +52,7 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
 
         /// <summary>
         /// Creates a new VContainer-based dependency container.
-        /// MessageBus will be resolved from the container or use default if available.
+        /// MessageBusService will be resolved from the container or use default if available.
         /// </summary>
         /// <param name="containerName">Optional name for the container.</param>
         /// <returns>A new VContainer-based dependency container.</returns>
@@ -60,14 +60,14 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
         {
             var builder = new ContainerBuilder();
             
-            // Register default MessageBus if available
-            if (_defaultMessageBus != null)
+            // Register default MessageBusService if available
+            if (_defaultMessageBusService != null)
             {
-                VContainer.ContainerBuilderExtensions.RegisterInstance(builder, _defaultMessageBus).As<IMessageBus>();
+                VContainer.ContainerBuilderExtensions.RegisterInstance(builder, _defaultMessageBusService).As<IMessageBusService>();
             }
             else
             {
-                // Register a MessageBus that will be resolved later
+                // Register a MessageBusService that will be resolved later
                 RegisterDefaultMessageBus(builder);
             }
             
@@ -85,7 +85,7 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
         {
             if (builder == null) throw new ArgumentNullException(nameof(builder));
             
-            // Ensure MessageBus is registered
+            // Ensure MessageBusService is registered
             EnsureMessageBusRegistered(builder);
             
             return new VContainerAdapter(builder, containerName);
@@ -96,21 +96,21 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
         /// </summary>
         /// <param name="resolver">The VContainer resolver to wrap.</param>
         /// <param name="containerName">Optional name for the container.</param>
-        /// <param name="messageBus">Optional message bus instance.</param>
+        /// <param name="messageBusService">Optional message bus instance.</param>
         /// <returns>A new dependency container wrapping the resolver.</returns>
         /// <exception cref="ArgumentNullException">Thrown when resolver is null.</exception>
-        public static IDependencyContainer FromVContainerResolver(IObjectResolver resolver, string containerName = null, IMessageBus messageBus = null)
+        public static IDependencyContainer FromVContainerResolver(IObjectResolver resolver, string containerName = null, IMessageBusService messageBusService = null)
         {
             if (resolver == null) throw new ArgumentNullException(nameof(resolver));
             
-            // Use provided MessageBus or try to resolve from container
-            var effectiveMessageBus = messageBus;
+            // Use provided MessageBusService or try to resolve from container
+            var effectiveMessageBus = messageBusService;
             if (effectiveMessageBus == null)
             {
                 // Try to resolve from VContainer resolver
-                if (!resolver.TryResolve<IMessageBus>(out effectiveMessageBus))
+                if (!resolver.TryResolve<IMessageBusService>(out effectiveMessageBus))
                 {
-                    effectiveMessageBus = _defaultMessageBus;
+                    effectiveMessageBus = _defaultMessageBusService;
                 }
             }
             
@@ -144,16 +144,16 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
         /// </summary>
         /// <param name="containerName">Optional name for the container.</param>
         /// <param name="configureContainer">Optional action to configure the container.</param>
-        /// <param name="messageBus">The message bus to use for the container.</param>
+        /// <param name="messageBusService">The message bus to use for the container.</param>
         /// <returns>A configured dependency container.</returns>
         public static IDependencyContainer CreateConfigured(
             string containerName, 
             Action<IDependencyContainer> configureContainer,
-            IMessageBus messageBus)
+            IMessageBusService messageBusService)
         {
             // Temporarily set the message bus for this container creation
-            var previousMessageBus = _defaultMessageBus;
-            _defaultMessageBus = messageBus;
+            var previousMessageBus = _defaultMessageBusService;
+            _defaultMessageBusService = messageBusService;
     
             try
             {
@@ -170,7 +170,7 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
             finally
             {
                 // Restore the previous default message bus
-                _defaultMessageBus = previousMessageBus;
+                _defaultMessageBusService = previousMessageBus;
             }
         }
 
@@ -207,10 +207,10 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
         /// <summary>
         /// Sets the default message bus instance for all containers.
         /// </summary>
-        /// <param name="messageBus">The message bus instance to use as default.</param>
-        public static void SetDefaultMessageBus(IMessageBus messageBus)
+        /// <param name="messageBusService">The message bus instance to use as default.</param>
+        public static void SetDefaultMessageBus(IMessageBusService messageBusService)
         {
-            _defaultMessageBus = messageBus;
+            _defaultMessageBusService = messageBusService;
         }
 
         /// <summary>
@@ -243,7 +243,7 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
         }
 
         /// <summary>
-        /// Ensures MessageBus is registered in the builder if not already present.
+        /// Ensures MessageBusService is registered in the builder if not already present.
         /// </summary>
         /// <param name="builder">The container builder.</param>
         private static void EnsureMessageBusRegistered(IContainerBuilder builder)
@@ -252,8 +252,8 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
 
             try
             {
-                // Check if MessageBus is already registered
-                if (!VContainerInspectionExtensions.IsRegistered(builder, typeof(IMessageBus)))
+                // Check if MessageBusService is already registered
+                if (!VContainerInspectionExtensions.IsRegistered(builder, typeof(IMessageBusService)))
                 {
                     RegisterDefaultMessageBus(builder);
                 }
@@ -266,7 +266,7 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
         }
 
         /// <summary>
-        /// Registers a default MessageBus implementation in the builder.
+        /// Registers a default MessageBusService implementation in the builder.
         /// </summary>
         /// <param name="builder">The container builder.</param>
         private static void RegisterDefaultMessageBus(IContainerBuilder builder)
@@ -275,14 +275,14 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
 
             try
             {
-                if (_defaultMessageBus != null)
+                if (_defaultMessageBusService != null)
                 {
-                    VContainer.ContainerBuilderExtensions.RegisterInstance(builder, _defaultMessageBus).As<IMessageBus>();
+                    VContainer.ContainerBuilderExtensions.RegisterInstance(builder, _defaultMessageBusService).As<IMessageBusService>();
                 }
                 else
                 {
-                    // Register a factory that creates MessageBus from Unity provider
-                    VContainer.ContainerBuilderExtensions.Register<IMessageBus>(builder, resolver =>
+                    // Register a factory that creates MessageBusService from Unity provider
+                    VContainer.ContainerBuilderExtensions.Register<IMessageBusService>(builder, resolver =>
                     {
                         try
                         {
@@ -290,22 +290,22 @@ namespace AhBearStudios.Core.DependencyInjection.Factories
                             var provider = MessageBusProvider.Instance;
                             if (provider != null && provider.IsInitialized)
                             {
-                                return provider.MessageBus;
+                                return provider.MessageBusService;
                             }
                         }
                         catch (Exception ex)
                         {
-                            UnityEngine.Debug.LogWarning($"[DependencyContainerFactory] Failed to get MessageBus from provider: {ex.Message}");
+                            UnityEngine.Debug.LogWarning($"[DependencyContainerFactory] Failed to get MessageBusService from provider: {ex.Message}");
                         }
 
                         // Fallback: create a null message bus to avoid breaking the container
-                        return new NullMessageBus();
+                        return new NullMessageBusService();
                     }, Lifetime.Singleton);
                 }
             }
             catch (Exception ex)
             {
-                UnityEngine.Debug.LogError($"[DependencyContainerFactory] Failed to register MessageBus: {ex.Message}");
+                UnityEngine.Debug.LogError($"[DependencyContainerFactory] Failed to register MessageBusService: {ex.Message}");
             }
         }
 

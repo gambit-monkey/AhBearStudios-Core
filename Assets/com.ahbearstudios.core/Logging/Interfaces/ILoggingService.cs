@@ -35,27 +35,27 @@ namespace AhBearStudios.Core.Logging.Interfaces
         /// <summary>
         /// Convenience for <see cref="Log(LogLevel, string)"/> at <see cref="LogLevel.Debug"/>.
         /// </summary>
-        void Debug(string message);
+        void LogDebug(string message);
 
         /// <summary>
         /// Convenience for <see cref="Log(LogLevel, string)"/> at <see cref="LogLevel.Info"/>.
         /// </summary>
-        void Info(string message);
+        void LogInfo(string message);
 
         /// <summary>
         /// Convenience for <see cref="Log(LogLevel, string)"/> at <see cref="LogLevel.Warning"/>.
         /// </summary>
-        void Warning(string message);
+        void LogWarning(string message);
 
         /// <summary>
         /// Convenience for <see cref="Log(LogLevel, string)"/> at <see cref="LogLevel.Error"/>.
         /// </summary>
-        void Error(string message);
+        void LogError(string message);
 
         /// <summary>
         /// Convenience for <see cref="Log(LogLevel, string)"/> at <see cref="LogLevel.Critical"/>.
         /// </summary>
-        void Critical(string message);
+        void LogCritical(string message);
 
         /// <summary>
         /// Immediately flushes any buffered entries to all registered targets.

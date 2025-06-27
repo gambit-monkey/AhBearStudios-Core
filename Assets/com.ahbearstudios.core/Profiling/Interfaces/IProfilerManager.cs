@@ -22,7 +22,7 @@ namespace AhBearStudios.Core.Profiling.Interfaces
         /// <summary>
         /// Gets the message bus used by the profiler manager
         /// </summary>
-        IMessageBus MessageBus { get; }
+        IMessageBusService MessageBusService { get; }
         
         /// <summary>
         /// System metrics tracker for ProfilerRecorder metrics

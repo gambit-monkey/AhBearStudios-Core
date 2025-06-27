@@ -22,7 +22,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         
         private readonly IProfiler _baseProfiler;
         private readonly IMessageBusMetrics _busMetrics;
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         private readonly Dictionary<Guid, MessageBusMetricsData> _busMetricsCache = new Dictionary<Guid, MessageBusMetricsData>();
         private readonly Dictionary<ProfilerTag, List<double>> _history = new Dictionary<ProfilerTag, List<double>>();
         private readonly Dictionary<Guid, Dictionary<string, double>> _busMetricAlerts = new Dictionary<Guid, Dictionary<string, double>>();
@@ -42,13 +42,13 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// </summary>
         /// <param name="baseProfiler">Base profiler implementation for general profiling.</param>
         /// <param name="busMetrics">Message bus metrics service.</param>
-        /// <param name="messageBus">Message bus for publishing and subscribing to profiling messages.</param>
+        /// <param name="messageBusService">Message bus for publishing and subscribing to profiling messages.</param>
         /// <exception cref="ArgumentNullException">Thrown when any parameter is null.</exception>
-        public MessageBusProfiler(IProfiler baseProfiler, IMessageBusMetrics busMetrics, IMessageBus messageBus)
+        public MessageBusProfiler(IProfiler baseProfiler, IMessageBusMetrics busMetrics, IMessageBusService messageBusService)
         {
             _baseProfiler = baseProfiler ?? throw new ArgumentNullException(nameof(baseProfiler));
             _busMetrics = busMetrics ?? throw new ArgumentNullException(nameof(busMetrics));
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             
             SubscribeToMessages();
         }
@@ -65,7 +65,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <summary>
         /// Gets the message bus used by this profiler.
         /// </summary>
-        public IMessageBus MessageBus => _messageBus;
+        public IMessageBusService MessageBusService => _messageBusService;
 
         /// <summary>
         /// Begin a profiling sample with a name.
@@ -203,7 +203,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession(operationType, busId, busName);
 
             return MessageBusProfilerSession.Create(
-                operationType, busId, busName, subscriberCount, queueSize, messageType, _busMetrics, _messageBus);
+                operationType, busId, busName, subscriberCount, queueSize, messageType, _busMetrics, _messageBusService);
         }
         
         /// <summary>
@@ -226,7 +226,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession("Publish", busId, busName);
 
             return MessageBusProfilerSession.Create(
-                "Publish", busId, busName, subscriberCount, queueSize, messageType, _busMetrics, _messageBus);
+                "Publish", busId, busName, subscriberCount, queueSize, messageType, _busMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -249,7 +249,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession("Deliver", busId, busName);
 
             return MessageBusProfilerSession.Create(
-                "Deliver", busId, busName, subscriberCount, queueSize, messageType, _busMetrics, _messageBus);
+                "Deliver", busId, busName, subscriberCount, queueSize, messageType, _busMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -270,7 +270,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession("Subscribe", busId, busName);
 
             return MessageBusProfilerSession.Create(
-                "Subscribe", busId, busName, subscriberCount, 0, messageType, _busMetrics, _messageBus);
+                "Subscribe", busId, busName, subscriberCount, 0, messageType, _busMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -291,7 +291,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession("Unsubscribe", busId, busName);
 
             return MessageBusProfilerSession.Create(
-                "Unsubscribe", busId, busName, subscriberCount, 0, messageType, _busMetrics, _messageBus);
+                "Unsubscribe", busId, busName, subscriberCount, 0, messageType, _busMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -314,7 +314,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession("Process", busId, busName);
 
             return MessageBusProfilerSession.Create(
-                "Process", busId, busName, batchSize, queueSize, messageType, _busMetrics, _messageBus);
+                "Process", busId, busName, batchSize, queueSize, messageType, _busMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -337,7 +337,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession("Queue", busId, busName);
 
             return MessageBusProfilerSession.Create(
-                $"Queue.{operationType}", busId, busName, messageCount, queueSize, "Queue", _busMetrics, _messageBus);
+                $"Queue.{operationType}", busId, busName, messageCount, queueSize, "Queue", _busMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -360,7 +360,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession("Batch", busId, busName);
 
             return MessageBusProfilerSession.Create(
-                "Batch", busId, busName, batchSize, queueSize, messageType, _busMetrics, _messageBus);
+                "Batch", busId, busName, batchSize, queueSize, messageType, _busMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -383,7 +383,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession("ReliableDeliver", busId, busName);
 
             var session = MessageBusProfilerSession.Create(
-                "ReliableDeliver", busId, busName, subscriberCount, 0, messageType, _busMetrics, _messageBus);
+                "ReliableDeliver", busId, busName, subscriberCount, 0, messageType, _busMetrics, _messageBusService);
             
             // Record initial retry count
             session.RecordMetric("RetryCount", retryCount);
@@ -407,7 +407,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 return CreateNullSession(operationType, Guid.Empty, busName);
 
             return MessageBusProfilerSession.CreateMinimal(
-                operationType, busName, messageType, _busMetrics, _messageBus);
+                operationType, busName, messageType, _busMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -454,7 +454,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
             }
 
             return new MessageBusProfilerSession(
-                tag, Guid.Empty, "Generic", operationType, 0, 0, "Generic", _busMetrics, _messageBus);
+                tag, Guid.Empty, "Generic", operationType, 0, 0, "Generic", _busMetrics, _messageBusService);
         }
 
         /// <summary>
@@ -707,21 +707,21 @@ namespace AhBearStudios.Core.Profiling.Profilers
             try
             {
                 // Subscribe to message bus profiler session completed messages
-                var sessionCompletedSub = _messageBus.GetSubscriber<MessageBusProfilerSessionCompletedMessage>();
+                var sessionCompletedSub = _messageBusService.GetSubscriber<MessageBusProfilerSessionCompletedMessage>();
                 if (sessionCompletedSub != null)
                 {
                     sessionCompletedSub.Subscribe(OnMessageBusSessionCompleted);
                 }
                 
                 // Subscribe to message bus alert messages
-                var alertSub = _messageBus.GetSubscriber<MessageBusAlertMessage>();
+                var alertSub = _messageBusService.GetSubscriber<MessageBusAlertMessage>();
                 if (alertSub != null)
                 {
                     alertSub.Subscribe(OnMessageBusAlert);
                 }
                 
                 // Subscribe to message bus performance messages
-                var performanceSub = _messageBus.GetSubscriber<MessageBusPerformanceMessage>();
+                var performanceSub = _messageBusService.GetSubscriber<MessageBusPerformanceMessage>();
                 if (performanceSub != null)
                 {
                     performanceSub.Subscribe(OnMessageBusPerformance);
@@ -770,7 +770,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 message.DurationMs > opThreshold)
             {
                 // Log or handle operation threshold exceeded
-                UnityEngine.Debug.LogWarning($"MessageBus operation '{message.OperationType}' exceeded threshold: {message.DurationMs}ms > {opThreshold}ms");
+                UnityEngine.Debug.LogWarning($"MessageBusService operation '{message.OperationType}' exceeded threshold: {message.DurationMs}ms > {opThreshold}ms");
             }
 
             // Check message type-specific alerts
@@ -778,7 +778,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
                 message.DurationMs > msgThreshold)
             {
                 // Log or handle message type threshold exceeded
-                UnityEngine.Debug.LogWarning($"MessageBus message type '{message.MessageType}' exceeded threshold: {message.DurationMs}ms > {msgThreshold}ms");
+                UnityEngine.Debug.LogWarning($"MessageBusService message type '{message.MessageType}' exceeded threshold: {message.DurationMs}ms > {msgThreshold}ms");
             }
         }
         

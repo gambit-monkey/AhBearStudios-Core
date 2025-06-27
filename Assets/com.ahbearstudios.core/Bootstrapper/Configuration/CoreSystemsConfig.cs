@@ -116,7 +116,7 @@ namespace AhBearStudios.Core.Bootstrap.Configuration
             // Validate system dependencies
             if (enableMessageBus && !enableLogging)
             {
-                Debug.LogWarning("MessageBus requires Logging system. Auto-enabling Logging.");
+                Debug.LogWarning("MessageBusService requires Logging system. Auto-enabling Logging.");
                 enableLogging = true;
             }
             
@@ -157,7 +157,7 @@ namespace AhBearStudios.Core.Bootstrap.Configuration
             
             if (enableMessageBus && messageBusConfig == null)
             {
-                Debug.LogError("MessageBusConfig is required when MessageBus is enabled.");
+                Debug.LogError("MessageBusConfig is required when MessageBusService is enabled.");
             }
             
             if (enableProfiling && profilingConfig == null)
@@ -234,7 +234,7 @@ namespace AhBearStudios.Core.Bootstrap.Configuration
             // Check critical dependencies
             if (enableMessageBus && !enableLogging)
             {
-                errorList.Add("MessageBus requires Logging system to be enabled");
+                errorList.Add("MessageBusService requires Logging system to be enabled");
             }
             
             if (enableProfiling && !enableLogging)
@@ -255,7 +255,7 @@ namespace AhBearStudios.Core.Bootstrap.Configuration
             
             if (enableMessageBus && messageBusConfig == null)
             {
-                errorList.Add("MessageBusConfig is missing but MessageBus system is enabled");
+                errorList.Add("MessageBusConfig is missing but MessageBusService system is enabled");
             }
             
             if (enableProfiling && profilingConfig == null)

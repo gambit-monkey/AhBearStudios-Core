@@ -5,10 +5,10 @@ using AhBearStudios.Core.MessageBus.Interfaces;
 namespace AhBearStudios.Core.MessageBus.MessageBuses
 {
     /// <summary>
-    /// Null implementation of IMessageBus for scenarios where messaging is not needed.
+    /// Null implementation of IMessageBusService for scenarios where messaging is not needed.
     /// This prevents the systems from failing when no message bus is configured.
     /// </summary>
-    public class NullMessageBus : IMessageBus
+    public class NullMessageBusService : IMessageBusService
     {
         public IMessagePublisher<TMessage> GetPublisher<TMessage>() => new NullPublisher<TMessage>();
         public IMessageSubscriber<TMessage> GetSubscriber<TMessage>() => new NullSubscriber<TMessage>();

@@ -137,7 +137,7 @@ namespace AhBearStudios.Core.Bootstrap.Installers
     {
         public bool IsEnabled { get; private set; }
         public bool LogToConsole { get; set; }
-        public MessageBus.Interfaces.IMessageBus MessageBus { get; private set; }
+        public MessageBus.Interfaces.IMessageBusService MessageBusService { get; private set; }
         public SystemMetricsTracker SystemMetrics { get; private set; }
         
         public void StartProfiling() { IsEnabled = true; }
@@ -164,7 +164,7 @@ namespace AhBearStudios.Core.Bootstrap.Installers
         }
         
         public bool IsEnabled => manager.IsEnabled;
-        public MessageBus.Interfaces.IMessageBus MessageBus => manager.MessageBus;
+        public MessageBus.Interfaces.IMessageBusService MessageBusService => manager.MessageBusService;
         
         public IDisposable BeginSample(string name) { return manager.BeginScope(Unity.Profiling.ProfilerCategory.Scripts, name); }
         public ProfilerSession BeginScope(ProfilerTag tag) { return (ProfilerSession)manager.BeginScope(tag); }

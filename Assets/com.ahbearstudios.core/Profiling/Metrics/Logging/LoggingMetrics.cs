@@ -36,7 +36,7 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
         private readonly Dictionary<string, AlertConfig> _globalAlerts;
         
         // Message bus for alerts
-        private readonly IMessageBus _messageBus;
+        private readonly IMessageBusService _messageBusService;
         
         // State
         private bool _isCreated;
@@ -72,16 +72,16 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
         /// <summary>
         /// Creates a new logging metrics tracker
         /// </summary>
-        /// <param name="messageBus">Message bus for sending alerts</param>
+        /// <param name="messageBusService">Message bus for sending alerts</param>
         /// <param name="initialCapacity">Initial capacity for dictionary storage</param>
-        public LoggingMetrics(IMessageBus messageBus = null, int initialCapacity = 16)
+        public LoggingMetrics(IMessageBusService messageBusService = null, int initialCapacity = 16)
         {
             // Create storage
             _loggingSystemMetrics = new Dictionary<Guid, LoggingMetricsData>(initialCapacity);
             _systemAlerts = new Dictionary<Guid, Dictionary<string, AlertConfig>>();
             _globalAlerts = new Dictionary<string, AlertConfig>();
             _metricsLock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
-            _messageBus = messageBus;
+            _messageBusService = messageBusService;
     
             // Create tracking dictionaries
             _levelCounts = new Dictionary<LogLevel, long>();
@@ -104,12 +104,12 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
         /// </summary>
         /// <param name="systemId">Logging system identifier</param>
         /// <param name="systemName">Logging system name</param>
-        /// <param name="messageBus">Message bus for sending alerts</param>
+        /// <param name="messageBusService">Message bus for sending alerts</param>
         public LoggingMetrics(
             Guid systemId,
             string systemName,
-            IMessageBus messageBus = null)
-            : this(messageBus)
+            IMessageBusService messageBusService = null)
+            : this(messageBusService)
         {
             // Configure the initial logging system
             RegisterLoggingSystem(systemId, systemName);
@@ -797,7 +797,7 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
                     ["IsCreated"] = IsCreated,
                     ["SystemCount"] = _loggingSystemMetrics.Count,
                     ["AlertCount"] = _globalAlerts.Count,
-                    ["HasMessageBus"] = _messageBus != null,
+                    ["HasMessageBus"] = _messageBusService != null,
                     ["UptimeSeconds"] = _globalMetrics.UptimeSeconds
                 };
             }
@@ -939,7 +939,7 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
         /// </summary>
         private void CheckGlobalAlerts()
         {
-            if (_messageBus == null || _globalAlerts.Count == 0)
+            if (_messageBusService == null || _globalAlerts.Count == 0)
                 return;
                 
             float currentTime = GetCurrentTime();
@@ -986,10 +986,10 @@ namespace AhBearStudios.Core.Profiling.Metrics.Logging
                     try
                     {
                         // Publish both messages to ensure compatibility
-                        var loggingPublisher = _messageBus.GetPublisher<LoggingAlertMessage>();
+                        var loggingPublisher = _messageBusService.GetPublisher<LoggingAlertMessage>();
                         loggingPublisher?.Publish(loggingAlert);
                         
-                        var metricPublisher = _messageBus.GetPublisher<MetricAlertMessage>();
+                        var metricPublisher = _messageBusService.GetPublisher<MetricAlertMessage>();
                         metricPublisher?.Publish(metricAlert);
                     }
                     catch
