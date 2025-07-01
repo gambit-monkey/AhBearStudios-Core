@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Interfaces;
 
 namespace AhBearStudios.Core.MessageBus.Registration
@@ -12,7 +13,7 @@ namespace AhBearStudios.Core.MessageBus.Registration
     /// </summary>
     public sealed class CachedMessageRegistry : IMessageRegistry
     {
-        private readonly IBurstLogger _logger;
+        private readonly ILoggingService _logger;
         private readonly DefaultMessageRegistry _baseRegistry;
         private readonly ConcurrentDictionary<Type, IMessageInfo> _messageInfoCache = new ConcurrentDictionary<Type, IMessageInfo>();
         private readonly ConcurrentDictionary<Type, ushort> _typeCodeCache = new ConcurrentDictionary<Type, ushort>();
@@ -22,7 +23,7 @@ namespace AhBearStudios.Core.MessageBus.Registration
         /// Initializes a new instance of the CachedMessageRegistry class.
         /// </summary>
         /// <param name="logger">The logger to use for logging.</param>
-        public CachedMessageRegistry(IBurstLogger logger)
+        public CachedMessageRegistry(ILoggingService logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _baseRegistry = new DefaultMessageRegistry(logger);

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Attributes;
 using AhBearStudios.Core.MessageBus.Data;
 using AhBearStudios.Core.MessageBus.Interfaces;
@@ -15,7 +16,7 @@ namespace AhBearStudios.Core.MessageBus.Registration
     /// </summary>
     public sealed class DefaultMessageRegistry : IMessageRegistry
     {
-        private readonly IBurstLogger _logger;
+        private readonly ILoggingService _logger;
         private readonly Dictionary<Type, IMessageInfo> _messageTypes = new Dictionary<Type, IMessageInfo>();
         private readonly Dictionary<string, List<Type>> _messagesByCategory = new Dictionary<string, List<Type>>();
         private readonly Dictionary<Type, ushort> _typeToCode = new Dictionary<Type, ushort>();
@@ -28,7 +29,7 @@ namespace AhBearStudios.Core.MessageBus.Registration
         /// Initializes a new instance of the DefaultMessageRegistry class.
         /// </summary>
         /// <param name="logger">The logger to use for logging.</param>
-        public DefaultMessageRegistry(IBurstLogger logger)
+        public DefaultMessageRegistry(ILoggingService logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         }

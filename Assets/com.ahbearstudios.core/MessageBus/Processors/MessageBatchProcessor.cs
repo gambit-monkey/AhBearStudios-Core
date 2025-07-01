@@ -4,9 +4,11 @@ using Unity.Jobs;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.MessageBus.Processors;
 using AhBearStudios.Core.Profiling.Interfaces;
+using Unity.Profiling;
 
 namespace AhBearStudios.Core.MessageBus.Processors
 {
@@ -17,7 +19,7 @@ namespace AhBearStudios.Core.MessageBus.Processors
     public sealed class MessageBatchProcessor : IDisposable
     {
         private readonly IMessageBusJobProcessor _jobProcessor;
-        private readonly IBurstLogger _logger;
+        private readonly ILoggingService _logger;
         private readonly IProfiler _profiler;
 
         private readonly Dictionary<Type, Delegate> _unmanagedHandlers;
@@ -32,7 +34,7 @@ namespace AhBearStudios.Core.MessageBus.Processors
         /// <param name="profiler">Injected profiler for timing samples.</param>
         public MessageBatchProcessor(
             IMessageBusJobProcessor jobProcessor,
-            IBurstLogger logger,
+            ILoggingService logger,
             IProfiler profiler)
         {
             _jobProcessor = jobProcessor ?? throw new ArgumentNullException(nameof(jobProcessor));
@@ -71,20 +73,18 @@ namespace AhBearStudios.Core.MessageBus.Processors
             if (!_unmanagedHandlers.ContainsKey(type))
                 throw new InvalidOperationException($"No handler registered for {type.Name}");
 
-            _logger.LogBurst($"Enqueueing {messages.Length} messages of type {type.Name}");
-            _profiler.BeginSample($"ProcessUnmanagedBatch<{type.Name}>");
-
-            // Serialize and enqueue each message
-            for (int i = 0; i < messages.Length; i++)
+            using (var scope = _profiler.BeginScope(ProfilerCategory.Scripts, $"ProcessUnmanagedBatch<{type.Name}>"))
             {
-                var payload = SerializeUnmanaged(messages[i]);
-                _jobProcessor.Enqueue(payload);
-            }
+                _logger.LogInfo($"Enqueueing {messages.Length} messages of type {type.Name}");
 
-            // Schedule the batching job
-            var handle = _jobProcessor.ScheduleProcessing(dependency, messages.Length);
-            _profiler.EndSample($"ProcessUnmanagedBatch<{type.Name}>");
-            return handle;
+                for (int i = 0; i < messages.Length; i++)
+                {
+                    var payload = SerializeUnmanaged(messages[i]);
+                    _jobProcessor.Enqueue(payload);
+                }
+
+                return _jobProcessor.ScheduleProcessing(dependency, messages.Length);
+            }
         }
 
         /// <summary>
@@ -100,15 +100,15 @@ namespace AhBearStudios.Core.MessageBus.Processors
                 throw new InvalidOperationException($"No handler registered for {type.Name}");
 
             var handler = (Action<T>)del;
-            _profiler.BeginSample($"CompleteAndDispatchUnmanaged<{type.Name}>");
 
-            _jobProcessor.CompleteAndDispatch(payload =>
+            using (var scope = _profiler.BeginScope(ProfilerCategory.Scripts, $"CompleteAndDispatchUnmanaged<{type.Name}>") )
             {
-                var msg = DeserializeUnmanaged<T>(payload);
-                handler(msg);
-            });
-
-            _profiler.EndSample($"CompleteAndDispatchUnmanaged<{type.Name}>");
+                _jobProcessor.CompleteAndDispatch(payload =>
+                {
+                    var msg = DeserializeUnmanaged<T>(payload);
+                    handler(msg);
+                });
+            }
         }
 
         /// <summary>
@@ -133,13 +133,14 @@ namespace AhBearStudios.Core.MessageBus.Processors
                 throw new InvalidOperationException($"No handler registered for {type.Name}");
 
             var handler = (Action<T>)del;
-            _logger.LogBurst($"Processing {messages.Count} managed messages of type {type.Name}");
-            _profiler.BeginSample($"ProcessManagedBatch<{type.Name}>");
 
-            for (int i = 0, len = messages.Count; i < len; i++)
-                handler(messages[i]);
+            using (var scope = _profiler.BeginScope(ProfilerCategory.Scripts, $"ProcessManagedBatch<{type.Name}>") )
+            {
+                _logger.LogInfo($"Processing {messages.Count} managed messages of type {type.Name}");
 
-            _profiler.EndSample($"ProcessManagedBatch<{type.Name}>");
+                for (int i = 0, len = messages.Count; i < len; i++)
+                    handler(messages[i]);
+            }
         }
 
         /// <inheritdoc/>
@@ -147,7 +148,7 @@ namespace AhBearStudios.Core.MessageBus.Processors
         {
             if (_disposed) return;
 
-            _logger.LogBurst("Disposing MessageBatchProcessor");
+            _logger.LogInfo("Disposing MessageBatchProcessor");
             _jobProcessor.Dispose();
             _unmanagedHandlers.Clear();
             _managedHandlers.Clear();

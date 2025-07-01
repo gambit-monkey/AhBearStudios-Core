@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Interfaces;
 
 namespace AhBearStudios.Core.MessageBus.Registration
@@ -20,7 +21,7 @@ namespace AhBearStudios.Core.MessageBus.Registration
         /// </summary>
         /// <param name="registry">The message registry implementation to use.</param>
         /// <param name="logger">The logger to use for logging.</param>
-        public static void Initialize(IMessageRegistry registry, IBurstLogger logger)
+        public static void Initialize(IMessageRegistry registry, ILoggingService logger)
         {
             if (registry == null) throw new ArgumentNullException(nameof(registry));
             if (logger == null) throw new ArgumentNullException(nameof(logger));
@@ -43,7 +44,7 @@ namespace AhBearStudios.Core.MessageBus.Registration
         /// Initializes the message type registry with the default implementation.
         /// </summary>
         /// <param name="logger">The logger to use for logging.</param>
-        public static void Initialize(IBurstLogger logger)
+        public static void Initialize(ILoggingService logger)
         {
             Initialize(new DefaultMessageRegistry(logger), logger);
         }
