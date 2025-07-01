@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Data;
 
 namespace AhBearStudios.Core.MessageBus.Services
@@ -11,7 +12,7 @@ namespace AhBearStudios.Core.MessageBus.Services
     /// </summary>
     internal sealed class AdaptiveBatchManager
     {
-        private readonly IBurstLogger _logger;
+        private readonly ILoggingService _logger;
         private readonly int _targetThroughput;
         private readonly Queue<ThroughputSample> _samples = new Queue<ThroughputSample>();
         private readonly object _samplesLock = new object();
@@ -31,7 +32,7 @@ namespace AhBearStudios.Core.MessageBus.Services
         /// <param name="initialBatchSize">The initial batch size.</param>
         /// <param name="targetThroughput">The target throughput in messages per second.</param>
         /// <param name="logger">The logger to use for logging.</param>
-        public AdaptiveBatchManager(int initialBatchSize, int targetThroughput, IBurstLogger logger)
+        public AdaptiveBatchManager(int initialBatchSize, int targetThroughput, ILoggingService logger)
         {
             _currentBatchSize = initialBatchSize;
             _targetThroughput = targetThroughput;

@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -9,7 +8,6 @@ using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Configuration;
 using AhBearStudios.Core.MessageBus.Data;
-using AhBearStudios.Core.MessageBus.Extensions;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.MessageBus.Messages;
 using AhBearStudios.Core.Profiling;
@@ -20,7 +18,7 @@ namespace AhBearStudios.Core.MessageBus.Services
 {
     /// <summary>
     /// Batch-optimized message delivery service that accumulates messages and processes them in batches
-    /// for improved throughput and reduced overhead.
+    /// for improved throughput and reduced overhead. Uses message bus for all communication instead of events.
     /// </summary>
     public sealed class BatchOptimizedDeliveryService : IMessageDeliveryService
     {
@@ -72,25 +70,14 @@ namespace AhBearStudios.Core.MessageBus.Services
             }
         }
 
-        /// <inheritdoc />
-        public event EventHandler<MessageDeliveredEventArgs> MessageDelivered;
-
-        /// <inheritdoc />
-        public event EventHandler<MessageDeliveryFailedEventArgs> MessageDeliveryFailed;
-
-        /// <inheritdoc />
-        public event EventHandler<MessageAcknowledgedEventArgs> MessageAcknowledged;
-
-        /// <inheritdoc />
-        public event EventHandler<DeliveryServiceStatusChangedEventArgs> StatusChanged;
-
         /// <summary>
         /// Initializes a new instance of the BatchOptimizedDeliveryService class.
         /// </summary>
-        /// <param name="messageBusService">The message bus to use for sending messages.</param>
-        /// <param name="logger">The logger to use for logging.</param>
+        /// <param name="messageBusService">The message bus to use for sending messages and communication.</param>
+        /// <param name="logger">The logger to use for logging operations.</param>
         /// <param name="profiler">The profiler to use for performance monitoring.</param>
-        /// <param name="configuration">Configuration for batch optimization.</param>
+        /// <param name="configuration">Configuration for batch optimization settings.</param>
+        /// <exception cref="ArgumentNullException">Thrown when any required parameter is null.</exception>
         public BatchOptimizedDeliveryService(
             IMessageBusService messageBusService,
             ILoggingService logger,
@@ -118,8 +105,7 @@ namespace AhBearStudios.Core.MessageBus.Services
             }
 
             _logger.Log(LogLevel.Info,
-                $"BatchOptimizedDeliveryService initialized with batch size {_configuration.MaxBatchSize} and interval {_configuration.BatchInterval.TotalMilliseconds}ms",
-                "BatchDeliveryService");
+                $"BatchOptimizedDeliveryService initialized with batch size {_configuration.MaxBatchSize} and interval {_configuration.BatchInterval.TotalMilliseconds}ms");
         }
 
         /// <inheritdoc />
@@ -134,22 +120,23 @@ namespace AhBearStudios.Core.MessageBus.Services
                 if (currentStatus != DeliveryServiceStatus.Stopped)
                 {
                     _logger.Log(LogLevel.Warning,
-                        $"Cannot start service - current status: {currentStatus}",
-                        "BatchDeliveryService");
+                        $"Cannot start service - current status: {currentStatus}");
                     return;
                 }
 
                 _status = DeliveryServiceStatus.Starting;
             }
 
-            ChangeStatus(DeliveryServiceStatus.Starting, "Service startup initiated");
+            PublishStatusChangedMessage(DeliveryServiceStatus.Stopped, DeliveryServiceStatus.Starting,
+                "Service startup initiated");
 
             try
             {
                 _cancellationTokenSource = new CancellationTokenSource();
 
                 // Subscribe to acknowledgment messages
-                _acknowledgmentSubscription = _messageBusService.Subscribe<MessageAcknowledged>(OnMessageAcknowledgedReceived);
+                _acknowledgmentSubscription =
+                    _messageBusService.SubscribeToMessage<MessageAcknowledgedMessage>(OnMessageAcknowledgedReceived);
 
                 // Start the batch processing timer
                 _batchTimer = new Timer(
@@ -166,14 +153,13 @@ namespace AhBearStudios.Core.MessageBus.Services
                     _configuration.FlushInterval);
 
                 ChangeStatus(DeliveryServiceStatus.Running, "Service started successfully");
-                _logger.Log(LogLevel.Info, "BatchOptimizedDeliveryService started", "BatchDeliveryService");
+                _logger.Log(LogLevel.Info, "BatchOptimizedDeliveryService started");
             }
             catch (Exception ex)
             {
                 ChangeStatus(DeliveryServiceStatus.Error, $"Failed to start service: {ex.Message}");
                 _logger.Log(LogLevel.Error,
-                    $"Failed to start BatchOptimizedDeliveryService: {ex.Message}",
-                    "BatchDeliveryService");
+                    $"Failed to start BatchOptimizedDeliveryService: {ex.Message}");
                 throw;
             }
         }
@@ -212,14 +198,13 @@ namespace AhBearStudios.Core.MessageBus.Services
                 await WaitForPendingDeliveries(cancellationToken);
 
                 ChangeStatus(DeliveryServiceStatus.Stopped, "Service stopped successfully");
-                _logger.Log(LogLevel.Info, "BatchOptimizedDeliveryService stopped", "BatchDeliveryService");
+                _logger.Log(LogLevel.Info, "BatchOptimizedDeliveryService stopped");
             }
             catch (Exception ex)
             {
                 ChangeStatus(DeliveryServiceStatus.Error, $"Error during service shutdown: {ex.Message}");
                 _logger.Log(LogLevel.Error,
-                    $"Error stopping BatchOptimizedDeliveryService: {ex.Message}",
-                    "BatchDeliveryService");
+                    $"Error stopping BatchOptimizedDeliveryService: {ex.Message}");
                 throw;
             }
         }
@@ -239,8 +224,7 @@ namespace AhBearStudios.Core.MessageBus.Services
             _statistics.RecordMessageSent();
 
             _logger.Log(LogLevel.Debug,
-                $"Queued fire-and-forget message of type {typeof(TMessage).Name} with ID {message.Id} for batch processing",
-                "BatchDeliveryService");
+                $"Queued fire-and-forget message of type {typeof(TMessage).Name} with ID {message.Id} for batch processing");
 
             // Check if we should trigger immediate batch processing
             CheckImmediateBatchProcessing(cancellationToken);
@@ -269,8 +253,7 @@ namespace AhBearStudios.Core.MessageBus.Services
             _statistics.RecordMessageSent();
 
             _logger.Log(LogLevel.Debug,
-                $"Queued confirmation message of type {typeof(TMessage).Name} with ID {message.Id} and delivery ID {deliveryId} for batch processing",
-                "BatchDeliveryService");
+                $"Queued confirmation message of type {typeof(TMessage).Name} with ID {message.Id} and delivery ID {deliveryId} for batch processing");
 
             // Check if we should trigger immediate batch processing
             CheckImmediateBatchProcessing(cancellationToken);
@@ -337,8 +320,7 @@ namespace AhBearStudios.Core.MessageBus.Services
             _statistics.RecordMessageSent();
 
             _logger.Log(LogLevel.Debug,
-                $"Queued reliable message of type {typeof(TMessage).Name} with ID {message.Id} and delivery ID {message.DeliveryId} for batch processing",
-                "BatchDeliveryService");
+                $"Queued reliable message of type {typeof(TMessage).Name} with ID {message.Id} and delivery ID {message.DeliveryId} for batch processing");
 
             // Check if we should trigger immediate batch processing for reliable messages
             if (_configuration.ImmediateProcessingForReliable)
@@ -378,8 +360,7 @@ namespace AhBearStudios.Core.MessageBus.Services
             }
 
             _logger.Log(LogLevel.Info,
-                $"Processing external batch of {messageList.Count} messages",
-                "BatchDeliveryService");
+                $"Processing external batch of {messageList.Count} messages");
 
             // Use semaphore to limit concurrency
             using var semaphore = new SemaphoreSlim(options.MaxConcurrency);
@@ -444,8 +425,7 @@ namespace AhBearStudios.Core.MessageBus.Services
             var failureCount = results.Count - successCount;
 
             _logger.Log(LogLevel.Info,
-                $"External batch completed: {successCount} successful, {failureCount} failed in {duration.TotalSeconds:F2} seconds",
-                "BatchDeliveryService");
+                $"External batch completed: {successCount} successful, {failureCount} failed in {duration.TotalSeconds:F2} seconds");
 
             return new BatchDeliveryResult(results, completionTime, duration);
         }
@@ -456,16 +436,21 @@ namespace AhBearStudios.Core.MessageBus.Services
         {
             using var scope = _profiler.BeginScope(_profileTag);
 
-            _messageBusService.Publish(new MessageAcknowledged
+            var acknowledgmentMessage = new MessageAcknowledgedMessage
             {
+                Id = Guid.NewGuid(),
+                TimestampTicks = DateTime.UtcNow.Ticks,
+                TypeCode = GetMessageTypeCode<MessageAcknowledgedMessage>(),
                 AcknowledgedMessageId = messageId,
                 AcknowledgedDeliveryId = deliveryId,
-                AcknowledgmentTime = DateTime.UtcNow
-            });
+                AcknowledgmentTime = DateTime.UtcNow,
+                ServiceName = Name
+            };
+
+            _messageBusService.PublishMessage(acknowledgmentMessage);
 
             _logger.Log(LogLevel.Debug,
-                $"Sent acknowledgment for message {messageId} with delivery ID {deliveryId}",
-                "BatchDeliveryService");
+                $"Sent acknowledgment for message {messageId} with delivery ID {deliveryId}");
         }
 
         /// <inheritdoc />
@@ -502,8 +487,7 @@ namespace AhBearStudios.Core.MessageBus.Services
             {
                 delivery.Cancel();
                 _logger.Log(LogLevel.Debug,
-                    $"Cancelled delivery for message {messageId} with delivery ID {deliveryId}",
-                    "BatchDeliveryService");
+                    $"Cancelled delivery for message {messageId} with delivery ID {deliveryId}");
                 return true;
             }
 
@@ -522,8 +506,7 @@ namespace AhBearStudios.Core.MessageBus.Services
             catch (Exception ex)
             {
                 _logger.Log(LogLevel.Error,
-                    $"Error during BatchOptimizedDeliveryService disposal: {ex.Message}",
-                    "BatchDeliveryService");
+                    $"Error during BatchOptimizedDeliveryService disposal: {ex.Message}");
             }
 
             _batchTimer?.Dispose();
@@ -547,7 +530,7 @@ namespace AhBearStudios.Core.MessageBus.Services
 
             _isDisposed = true;
 
-            _logger.Log(LogLevel.Info, "BatchOptimizedDeliveryService disposed", "BatchDeliveryService");
+            _logger.Log(LogLevel.Info, "BatchOptimizedDeliveryService disposed");
         }
 
         private async Task ProcessPendingBatches(bool force)
@@ -576,8 +559,7 @@ namespace AhBearStudios.Core.MessageBus.Services
                 }
 
                 _logger.Log(LogLevel.Debug,
-                    $"Processing batch of {messagesToProcess.Count} messages (force: {force})",
-                    "BatchDeliveryService");
+                    $"Processing batch of {messagesToProcess.Count} messages (force: {force})");
 
                 var stopwatch = Stopwatch.StartNew();
 
@@ -601,8 +583,7 @@ namespace AhBearStudios.Core.MessageBus.Services
                 }
 
                 _logger.Log(LogLevel.Debug,
-                    $"Completed batch processing in {stopwatch.ElapsedMilliseconds}ms",
-                    "BatchDeliveryService");
+                    $"Completed batch processing in {stopwatch.ElapsedMilliseconds}ms");
             }
             finally
             {
@@ -623,8 +604,7 @@ namespace AhBearStudios.Core.MessageBus.Services
                 catch (Exception ex)
                 {
                     _logger.Log(LogLevel.Error,
-                        $"Error processing batch for message type {typeGroup.Key.Name}: {ex.Message}",
-                        "BatchDeliveryService");
+                        $"Error processing batch for message type {typeGroup.Key.Name}: {ex.Message}");
 
                     // Mark individual messages as failed
                     foreach (var failedMessage in typeGroup)
@@ -646,8 +626,7 @@ namespace AhBearStudios.Core.MessageBus.Services
                 catch (Exception ex)
                 {
                     _logger.Log(LogLevel.Error,
-                        $"Error processing message: {ex.Message}",
-                        "BatchDeliveryService");
+                        $"Error processing message: {ex.Message}");
 
                     HandleMessageFailure(message, ex);
                 }
@@ -672,11 +651,11 @@ namespace AhBearStudios.Core.MessageBus.Services
                 // Fire-and-forget messages are considered delivered immediately
                 _statistics.RecordMessageDelivered();
 
-                MessageDelivered?.Invoke(this, new MessageDeliveredEventArgs(
+                PublishMessageDeliveredMessage(
                     batchedMessage.Message,
                     batchedMessage.DeliveryId,
                     DateTime.UtcNow,
-                    1));
+                    1);
             }
             else
             {
@@ -719,13 +698,13 @@ namespace AhBearStudios.Core.MessageBus.Services
 
             if (batchedMessage.DeliveryType == DeliveryType.FireAndForget)
             {
-                MessageDeliveryFailed?.Invoke(this, new MessageDeliveryFailedEventArgs(
+                PublishMessageDeliveryFailedMessage(
                     batchedMessage.Message,
                     batchedMessage.DeliveryId,
                     exception.Message,
                     exception,
                     1,
-                    false));
+                    false);
             }
             else if (_pendingDeliveries.TryGetValue(key, out var pendingDelivery))
             {
@@ -746,17 +725,17 @@ namespace AhBearStudios.Core.MessageBus.Services
                 pendingDelivery.Fail(result);
                 _pendingDeliveries.TryRemove(key, out _);
 
-                MessageDeliveryFailed?.Invoke(this, new MessageDeliveryFailedEventArgs(
+                PublishMessageDeliveryFailedMessage(
                     batchedMessage.Message,
                     batchedMessage.DeliveryId,
                     exception.Message,
                     exception,
                     1,
-                    false));
+                    false);
             }
         }
 
-        private void OnMessageAcknowledgedReceived(MessageAcknowledged ack)
+        private void OnMessageAcknowledgedReceived(MessageAcknowledgedMessage ack)
         {
             using var scope = _profiler.BeginScope(_profileTag);
 
@@ -778,20 +757,19 @@ namespace AhBearStudios.Core.MessageBus.Services
                 _statistics.RecordMessageDelivered();
                 _statistics.RecordMessageAcknowledged();
 
-                MessageAcknowledged?.Invoke(this, new MessageAcknowledgedEventArgs(
+                PublishMessageAcknowledgedMessage(
                     ack.AcknowledgedMessageId,
                     ack.AcknowledgedDeliveryId,
-                    ack.AcknowledgmentTime));
+                    ack.AcknowledgmentTime);
 
-                MessageDelivered?.Invoke(this, new MessageDeliveredEventArgs(
+                PublishMessageDeliveredMessage(
                     delivery.Message,
                     delivery.DeliveryId,
                     ack.AcknowledgmentTime,
-                    1));
+                    1);
 
                 _logger.Log(LogLevel.Debug,
-                    $"Message {ack.AcknowledgedMessageId} with delivery ID {ack.AcknowledgedDeliveryId} acknowledged in batch service",
-                    "BatchDeliveryService");
+                    $"Message {ack.AcknowledgedMessageId} with delivery ID {ack.AcknowledgedDeliveryId} acknowledged in batch service");
             }
         }
 
@@ -808,8 +786,7 @@ namespace AhBearStudios.Core.MessageBus.Services
                 catch (Exception ex)
                 {
                     _logger.Log(LogLevel.Error,
-                        $"Error in batch timer processing: {ex.Message}",
-                        "BatchDeliveryService");
+                        $"Error in batch timer processing: {ex.Message}");
                 }
             });
         }
@@ -827,8 +804,7 @@ namespace AhBearStudios.Core.MessageBus.Services
                 catch (Exception ex)
                 {
                     _logger.Log(LogLevel.Error,
-                        $"Error in flush timer processing: {ex.Message}",
-                        "BatchDeliveryService");
+                        $"Error in flush timer processing: {ex.Message}");
                 }
             });
         }
@@ -877,11 +853,7 @@ namespace AhBearStudios.Core.MessageBus.Services
                 _status = newStatus;
             }
 
-            StatusChanged?.Invoke(this, new DeliveryServiceStatusChangedEventArgs(
-                previousStatus,
-                newStatus,
-                DateTime.UtcNow,
-                reason));
+            PublishStatusChangedMessage(previousStatus, newStatus, reason);
         }
 
         private async Task DisposeTimersAsync()
@@ -915,8 +887,162 @@ namespace AhBearStudios.Core.MessageBus.Services
             if (_pendingDeliveries.Count > 0)
             {
                 _logger.Log(LogLevel.Warning,
-                    $"Service stopped with {_pendingDeliveries.Count} pending deliveries",
-                    "BatchDeliveryService");
+                    $"Service stopped with {_pendingDeliveries.Count} pending deliveries");
+            }
+        }
+
+        /// <summary>
+        /// Publishes a message delivery status change message to the message bus.
+        /// </summary>
+        /// <param name="previousStatus">The previous status of the service.</param>
+        /// <param name="newStatus">The new status of the service.</param>
+        /// <param name="reason">The reason for the status change.</param>
+        private void PublishStatusChangedMessage(DeliveryServiceStatus previousStatus, DeliveryServiceStatus newStatus,
+            string reason = null)
+        {
+            try
+            {
+                var statusMessage = new DeliveryServiceStatusChangedMessage
+                {
+                    Id = Guid.NewGuid(),
+                    TimestampTicks = DateTime.UtcNow.Ticks,
+                    TypeCode = GetMessageTypeCode<DeliveryServiceStatusChangedMessage>(),
+                    ServiceName = Name,
+                    PreviousStatus = previousStatus,
+                    NewStatus = newStatus,
+                    ChangeTime = DateTime.UtcNow,
+                    Reason = reason
+                };
+
+                _messageBusService.PublishMessage(statusMessage);
+            }
+            catch (Exception ex)
+            {
+                _logger.Log(LogLevel.Warning,
+                    $"Failed to publish status change message: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Publishes a message delivered notification to the message bus.
+        /// </summary>
+        /// <param name="message">The delivered message.</param>
+        /// <param name="deliveryId">The delivery ID.</param>
+        /// <param name="deliveryTime">When the message was delivered.</param>
+        /// <param name="attemptCount">The number of delivery attempts.</param>
+        private void PublishMessageDeliveredMessage(IMessage message, Guid deliveryId, DateTime deliveryTime,
+            int attemptCount)
+        {
+            try
+            {
+                var deliveredMessage = new MessageDeliveredMessage
+                {
+                    Id = Guid.NewGuid(),
+                    TimestampTicks = DateTime.UtcNow.Ticks,
+                    TypeCode = GetMessageTypeCode<MessageDeliveredMessage>(),
+                    DeliveredMessageId = message.Id,
+                    DeliveryId = deliveryId,
+                    MessageType = message.GetType().Name,
+                    DeliveryTime = deliveryTime,
+                    AttemptCount = attemptCount,
+                    ServiceName = Name
+                };
+
+                _messageBusService.PublishMessage(deliveredMessage);
+            }
+            catch (Exception ex)
+            {
+                _logger.Log(LogLevel.Warning,
+                    $"Failed to publish message delivered notification: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Publishes a message delivery failure notification to the message bus.
+        /// </summary>
+        /// <param name="message">The message that failed to deliver.</param>
+        /// <param name="deliveryId">The delivery ID.</param>
+        /// <param name="errorMessage">The error message.</param>
+        /// <param name="exception">The exception that caused the failure.</param>
+        /// <param name="attemptCount">The number of delivery attempts.</param>
+        /// <param name="willRetry">Whether delivery will be retried.</param>
+        private void PublishMessageDeliveryFailedMessage(IMessage message, Guid deliveryId, string errorMessage,
+            Exception exception, int attemptCount, bool willRetry)
+        {
+            try
+            {
+                var failedMessage = new MessageDeliveryFailedMessage
+                {
+                    Id = Guid.NewGuid(),
+                    TimestampTicks = DateTime.UtcNow.Ticks,
+                    TypeCode = GetMessageTypeCode<MessageDeliveryFailedMessage>(),
+                    FailedMessageId = message.Id,
+                    DeliveryId = deliveryId,
+                    MessageType = message.GetType().Name,
+                    ErrorMessage = errorMessage,
+                    ExceptionType = exception?.GetType().Name,
+                    FailureTime = DateTime.UtcNow,
+                    AttemptCount = attemptCount,
+                    WillRetry = willRetry,
+                    ServiceName = Name
+                };
+
+                _messageBusService.PublishMessage(failedMessage);
+            }
+            catch (Exception ex)
+            {
+                _logger.Log(LogLevel.Warning,
+                    $"Failed to publish message delivery failure notification: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Publishes a message acknowledgment notification to the message bus.
+        /// </summary>
+        /// <param name="messageId">The ID of the acknowledged message.</param>
+        /// <param name="deliveryId">The delivery ID.</param>
+        /// <param name="acknowledgmentTime">When the message was acknowledged.</param>
+        private void PublishMessageAcknowledgedMessage(Guid messageId, Guid deliveryId, DateTime acknowledgmentTime)
+        {
+            try
+            {
+                var acknowledgedMessage = new MessageAcknowledgedNotificationMessage
+                {
+                    Id = Guid.NewGuid(),
+                    TimestampTicks = DateTime.UtcNow.Ticks,
+                    TypeCode = GetMessageTypeCode<MessageAcknowledgedNotificationMessage>(),
+                    AcknowledgedMessageId = messageId,
+                    DeliveryId = deliveryId,
+                    AcknowledgmentTime = acknowledgmentTime,
+                    ServiceName = Name
+                };
+
+                _messageBusService.PublishMessage(acknowledgedMessage);
+            }
+            catch (Exception ex)
+            {
+                _logger.Log(LogLevel.Warning,
+                    $"Failed to publish message acknowledgment notification: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Gets the type code for a message type from the message registry.
+        /// </summary>
+        /// <typeparam name="TMessage">The message type to get the code for.</typeparam>
+        /// <returns>The type code for the message type.</returns>
+        private ushort GetMessageTypeCode<TMessage>() where TMessage : IMessage
+        {
+            try
+            {
+                var registry = _messageBusService.GetMessageRegistry();
+                return registry.GetTypeCode<TMessage>();
+            }
+            catch (Exception ex)
+            {
+                _logger.Log(LogLevel.Warning,
+                    $"Failed to get type code for {typeof(TMessage).Name}: {ex.Message}");
+                return 0; // Default type code if registry lookup fails
             }
         }
     }
