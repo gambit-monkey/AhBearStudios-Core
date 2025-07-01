@@ -1,5 +1,4 @@
-using System;
-using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.MessageBus.Serialization;
 using AhBearStudios.Core.Profiling.Interfaces;
@@ -11,7 +10,7 @@ namespace AhBearStudios.Core.MessageBus.Factories
     /// </summary>
     public sealed class MessageSerializerFactory : IMessageSerializerFactory
     {
-        private readonly IBurstLogger _logger;
+        private readonly ILoggingService _logger;
         private readonly IMessageRegistry _messageRegistry;
         private readonly ISerializerMetrics _metrics;
         
@@ -20,7 +19,7 @@ namespace AhBearStudios.Core.MessageBus.Factories
         /// </summary>
         /// <param name="logger">The logger to use for logging.</param>
         /// <param name="messageRegistry">The message registry to use for type resolution.</param>
-        public MessageSerializerFactory(IBurstLogger logger, IMessageRegistry messageRegistry, ISerializerMetrics metrics)
+        public MessageSerializerFactory(ILoggingService logger, IMessageRegistry messageRegistry, ISerializerMetrics metrics)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _messageRegistry = messageRegistry ?? throw new ArgumentNullException(nameof(messageRegistry));

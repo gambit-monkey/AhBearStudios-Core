@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Data;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.MessageBus.Messages;
@@ -17,7 +18,7 @@ namespace AhBearStudios.Core.MessageBus.Serialization
     [UnityEngine.Scripting.Preserve]
     public sealed class MemoryPackMessageSerializer : IMessageSerializer, IDisposable
     {
-        private readonly IBurstLogger _logger;
+        private readonly ILoggingService _logger;
         private readonly IMessageRegistry _messageRegistry;
         private readonly ISerializerMetrics _metrics;
 
@@ -37,7 +38,7 @@ namespace AhBearStudios.Core.MessageBus.Serialization
         /// <param name="messageRegistry">The message registry for type resolution.</param>
         /// <param name="metrics">The metrics collector for performance tracking.</param>
         /// <exception cref="ArgumentNullException">Thrown when any parameter is null.</exception>
-        public MemoryPackMessageSerializer(IBurstLogger logger, IMessageRegistry messageRegistry, ISerializerMetrics metrics)
+        public MemoryPackMessageSerializer(ILoggingService logger, IMessageRegistry messageRegistry, ISerializerMetrics metrics)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _messageRegistry = messageRegistry ?? throw new ArgumentNullException(nameof(messageRegistry));

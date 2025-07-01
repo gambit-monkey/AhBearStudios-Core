@@ -4,9 +4,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Configuration;
 using AhBearStudios.Core.MessageBus.Data;
-using AhBearStudios.Core.MessageBus.Events;
 using AhBearStudios.Core.MessageBus.Extensions;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.Profiling;
@@ -21,7 +21,7 @@ namespace AhBearStudios.Core.MessageBus.Services
     public sealed class FireAndForgetDeliveryService : IMessageDeliveryService
     {
         private readonly IMessageBusService _messageBusService;
-        private readonly IBurstLogger _logger;
+        private readonly ILoggingService _logger;
         private readonly IProfiler _profiler;
         private readonly DeliveryStatistics _statistics;
         
@@ -55,7 +55,7 @@ namespace AhBearStudios.Core.MessageBus.Services
         /// <param name="messageBusService">The message bus to use for sending messages.</param>
         /// <param name="logger">The logger to use for logging.</param>
         /// <param name="profiler">The profiler to use for performance monitoring.</param>
-        public FireAndForgetDeliveryService(IMessageBusService messageBusService, IBurstLogger logger, IProfiler profiler)
+        public FireAndForgetDeliveryService(IMessageBusService messageBusService, ILoggingService logger, IProfiler profiler)
         {
             _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));

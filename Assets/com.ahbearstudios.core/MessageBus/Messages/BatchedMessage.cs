@@ -1,40 +1,42 @@
 using System;
+using AhBearStudios.Core.MessageBus.Configuration;
 using AhBearStudios.Core.MessageBus.Interfaces;
 
 namespace AhBearStudios.Core.MessageBus.Messages
 {
-    /// <summary>
-    /// Represents a message in the batch processing queue.
+  /// <summary>
+    /// Internal record struct for batched message processing.
+    /// Provides immutable batch processing semantics.
     /// </summary>
-    internal sealed class BatchedMessage
+    internal readonly record struct BatchedMessage
     {
         /// <summary>
         /// Gets the message to be delivered.
         /// </summary>
-        public IMessage Message { get; }
+        public IMessage Message { get; init; }
 
         /// <summary>
         /// Gets the delivery type for this message.
         /// </summary>
-        public DeliveryType DeliveryType { get; }
+        public DeliveryType DeliveryType { get; init; }
 
         /// <summary>
         /// Gets the delivery ID for tracking this message.
         /// </summary>
-        public Guid DeliveryId { get; }
+        public Guid DeliveryId { get; init; }
 
         /// <summary>
         /// Gets the time when this message was queued for batch processing.
         /// </summary>
-        public DateTime QueuedTime { get; }
+        public DateTime QueuedTime { get; init; }
 
         /// <summary>
         /// Gets the priority of this message (lower values are higher priority).
         /// </summary>
-        public int Priority { get; }
+        public int Priority { get; init; }
 
         /// <summary>
-        /// Initializes a new instance of the BatchedMessage class.
+        /// Initializes a new instance of the BatchedMessage record struct.
         /// </summary>
         /// <param name="message">The message to be delivered.</param>
         /// <param name="deliveryType">The delivery type for this message.</param>
@@ -48,26 +50,5 @@ namespace AhBearStudios.Core.MessageBus.Messages
             Priority = priority;
             QueuedTime = DateTime.UtcNow;
         }
-    }
-
-    /// <summary>
-    /// Enumeration of delivery types for batched messages.
-    /// </summary>
-    internal enum DeliveryType
-    {
-        /// <summary>
-        /// Fire-and-forget delivery with no confirmation required.
-        /// </summary>
-        FireAndForget,
-
-        /// <summary>
-        /// Delivery with confirmation required.
-        /// </summary>
-        WithConfirmation,
-
-        /// <summary>
-        /// Reliable delivery with retry logic.
-        /// </summary>
-        Reliable
     }
 }

@@ -6,9 +6,9 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Logging.Interfaces;
 using AhBearStudios.Core.MessageBus.Configuration;
 using AhBearStudios.Core.MessageBus.Data;
-using AhBearStudios.Core.MessageBus.Events;
 using AhBearStudios.Core.MessageBus.Extensions;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using AhBearStudios.Core.MessageBus.Messages;
@@ -25,7 +25,7 @@ namespace AhBearStudios.Core.MessageBus.Services
     public sealed class BatchOptimizedDeliveryService : IMessageDeliveryService
     {
         private readonly IMessageBusService _messageBusService;
-        private readonly IBurstLogger _logger;
+        private readonly ILoggingService _logger;
         private readonly IProfiler _profiler;
         private readonly BatchOptimizedConfiguration _configuration;
 
@@ -93,7 +93,7 @@ namespace AhBearStudios.Core.MessageBus.Services
         /// <param name="configuration">Configuration for batch optimization.</param>
         public BatchOptimizedDeliveryService(
             IMessageBusService messageBusService,
-            IBurstLogger logger,
+            ILoggingService logger,
             IProfiler profiler,
             BatchOptimizedConfiguration configuration = null)
         {

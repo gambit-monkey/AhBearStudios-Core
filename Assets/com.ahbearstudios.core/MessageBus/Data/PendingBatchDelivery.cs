@@ -1,7 +1,6 @@
-using System;
 using System.Threading.Tasks;
+using AhBearStudios.Core.MessageBus.Configuration;
 using AhBearStudios.Core.MessageBus.Interfaces;
-using AhBearStudios.Core.MessageBus.Messages;
 using AhBearStudios.Core.MessageBus.Services;
 
 namespace AhBearStudios.Core.MessageBus.Data

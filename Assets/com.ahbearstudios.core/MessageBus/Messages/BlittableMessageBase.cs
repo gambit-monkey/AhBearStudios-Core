@@ -1,15 +1,16 @@
-using System;
 using AhBearStudios.Core.MessageBus.Interfaces;
+using MemoryPack;
 using Unity.Mathematics;
 using Random = Unity.Mathematics.Random;
 
 namespace AhBearStudios.Core.MessageBus.Messages
 {
     /// <summary>
-    /// Base struct for messages that need to be Burst-compatible.
-    /// Uses blittable types only for full Burst compatibility.
+    /// Base record struct for unmanaged messages that need to be Burst-compatible.
+    /// Uses blittable types only for full Burst compatibility and provides immutable value semantics.
     /// </summary>
-    public struct BlittableMessageBase : IUnmanagedMessage
+    [MemoryPackable]
+    public readonly partial record struct BlittableMessageBase : IUnmanagedMessage
     {
         /// <summary>
         /// Internal storage for the message ID using math types for unmanaged compatibility.
@@ -19,15 +20,17 @@ namespace AhBearStudios.Core.MessageBus.Messages
         /// <summary>
         /// UTC timestamp ticks when the message was created.
         /// </summary>
-        private readonly long _timestamp;
+        [MemoryPackInclude]
+        public long TimestampTicks { get; init; }
         
         /// <summary>
         /// Type code for the message.
         /// </summary>
-        private readonly ushort _typeCode;
+        [MemoryPackInclude]
+        public ushort TypeCode { get; init; }
         
         /// <inheritdoc />
-        public Guid Id => new Guid(
+        public Guid Id => new(
             _idStorage.x,
             (ushort)(_idStorage.y & 0xFFFF),
             (ushort)((_idStorage.y >> 16) & 0xFFFF),
@@ -41,14 +44,8 @@ namespace AhBearStudios.Core.MessageBus.Messages
             (byte)((_idStorage.w >> 24) & 0xFF)
         );
         
-        /// <inheritdoc />
-        public long TimestampTicks => _timestamp;
-        
-        /// <inheritdoc />
-        public ushort TypeCode => _typeCode;
-        
         /// <summary>
-        /// Initializes a new instance of the UnmanagedMessageBase struct.
+        /// Initializes a new instance of the BlittableMessageBase record struct.
         /// </summary>
         /// <param name="typeCode">The type code that identifies this message type.</param>
         public BlittableMessageBase(ushort typeCode)
@@ -64,8 +61,19 @@ namespace AhBearStudios.Core.MessageBus.Messages
                 random.NextUInt()
             );
             
-            _timestamp = now;
-            _typeCode = typeCode;
+            TimestampTicks = now;
+            TypeCode = typeCode;
+        }
+        
+        /// <summary>
+        /// Constructor for MemoryPack serialization.
+        /// </summary>
+        [MemoryPackConstructor]
+        public BlittableMessageBase(uint4 idStorage, long timestampTicks, ushort typeCode)
+        {
+            _idStorage = idStorage;
+            TimestampTicks = timestampTicks;
+            TypeCode = typeCode;
         }
     }
 }

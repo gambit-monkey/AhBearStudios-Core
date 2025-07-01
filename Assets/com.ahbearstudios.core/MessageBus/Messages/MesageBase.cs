@@ -6,48 +6,49 @@ using MemoryPack;
 namespace AhBearStudios.Core.MessageBus.Messages
 {
     /// <summary>
-    /// Base class for messages that don't need to be Burst-compatible.
-    /// Used for regular managed messages that support full serialization.
+    /// Base record struct for managed messages that don't need to be Burst-compatible.
+    /// Provides immutable value semantics while supporting full serialization capabilities.
     /// </summary>
     [MemoryPackable]
-    public partial class MessageBase : IMessage
+    public readonly partial record struct MessageBase : IMessage
     {
         /// <inheritdoc />
         [MemoryPackInclude]
-        public Guid Id { get; protected set; }
+        public Guid Id { get; init; }
         
         /// <inheritdoc />
         [MemoryPackInclude]
-        public long TimestampTicks { get; protected set; }
+        public long TimestampTicks { get; init; }
         
         /// <inheritdoc />
         [MemoryPackInclude]
-        public ushort TypeCode { get; protected set; }
+        public ushort TypeCode { get; init; }
         
         /// <summary>
-        /// Initializes a new instance of the MessageBase class.
+        /// Gets the timestamp of this message as a DateTime.
         /// </summary>
-        public MessageBase()
+        public DateTime Timestamp => new(TimestampTicks, DateTimeKind.Utc);
+        
+        /// <summary>
+        /// Initializes a new instance of the MessageBase record struct.
+        /// </summary>
+        /// <param name="typeCode">The type code that identifies this message type.</param>
+        public MessageBase(ushort typeCode)
         {
             Id = Guid.NewGuid();
             TimestampTicks = DateTime.UtcNow.Ticks;
-            TypeCode = MessageTypeRegistry.GetTypeCode(GetType());
+            TypeCode = typeCode;
         }
         
         /// <summary>
         /// Constructor for MemoryPack serialization.
         /// </summary>
         [MemoryPackConstructor]
-        protected MessageBase(Guid id, long timestampTicks, ushort typeCode)
+        public MessageBase(Guid id, long timestampTicks, ushort typeCode)
         {
             Id = id;
             TimestampTicks = timestampTicks;
             TypeCode = typeCode;
         }
-        
-        /// <summary>
-        /// Gets the timestamp of this message as a DateTime.
-        /// </summary>
-        public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
     }
 }
