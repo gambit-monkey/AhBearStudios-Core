@@ -22,7 +22,7 @@ namespace AhBearStudios.Core.MessageBus.Interfaces
         /// <summary>
         /// Gets the profiler instance.
         /// </summary>
-        IProfiler Profiler { get; }
+        IProfilerService ProfilerService { get; }
         
         /// <summary>
         /// Executes an action with profiling enabled.

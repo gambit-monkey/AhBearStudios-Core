@@ -190,7 +190,7 @@ namespace AhBearStudios.Core.Pooling.Factories
         /// <summary>
         /// Gets or sets a service locator for accessing runtime services
         /// </summary>
-        IPoolingServiceLocator ServiceLocator { get; set; }
+        IPoolingService Service { get; set; }
 
         /// <summary>
         /// Checks if this factory supports the specified feature

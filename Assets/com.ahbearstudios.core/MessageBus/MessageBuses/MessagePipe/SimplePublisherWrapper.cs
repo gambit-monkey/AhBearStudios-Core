@@ -12,19 +12,19 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
     internal sealed class SimplePublisherWrapper : ISimplePublisherWrapper
     {
         private readonly IBurstLogger _logger;
-        private readonly IProfiler _profiler;
+        private readonly IProfilerService _profilerService;
         private readonly string _publisherName;
 
         /// <summary>
         /// Initializes a new instance of the SimplePublisherWrapper class.
         /// </summary>
         /// <param name="logger">The logger for diagnostic output.</param>
-        /// <param name="profiler">The profiler for performance monitoring.</param>
+        /// <param name="profilerService">The profiler for performance monitoring.</param>
         /// <param name="publisherName">The name of the publisher for logging purposes.</param>
-        public SimplePublisherWrapper(IBurstLogger logger, IProfiler profiler, string publisherName)
+        public SimplePublisherWrapper(IBurstLogger logger, IProfilerService profilerService, string publisherName)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             _publisherName = publisherName ?? throw new ArgumentNullException(nameof(publisherName));
         }
 
@@ -34,7 +34,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             Action<TMessage> publish,
             IPublishingStatistics statistics)
         {
-            using (_profiler.BeginSample($"{_publisherName}.Publish"))
+            using (_profilerService.BeginSample($"{_publisherName}.Publish"))
             {
                 try
                 {
@@ -65,7 +65,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             Func<TMessage, UniTask> publishAsync,
             IPublishingStatistics statistics)
         {
-            using (_profiler.BeginSample($"{_publisherName}.PublishAsync"))
+            using (_profilerService.BeginSample($"{_publisherName}.PublishAsync"))
             {
                 try
                 {

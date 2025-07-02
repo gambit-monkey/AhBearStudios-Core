@@ -215,7 +215,7 @@ namespace AhBearStudios.Core.Pooling.Configurations
         #region Private Fields
 
         private readonly IPoolLogger _logger;
-        private readonly IPoolingServiceLocator _serviceLocator;
+        private readonly IPoolingService _service;
         private bool _isDisposed;
 
         #endregion
@@ -228,18 +228,18 @@ namespace AhBearStudios.Core.Pooling.Configurations
         public ComplexObjectPoolConfig()
         {
             _logger = null;
-            _serviceLocator = null;
+            _service = null;
         }
 
         /// <summary>
         /// Creates a new instance of the complex object pool configuration with dependency injection.
         /// </summary>
         /// <param name="logger">Logger service for pool logging</param>
-        /// <param name="serviceLocator">Service locator for additional pool services</param>
-        public ComplexObjectPoolConfig(IPoolLogger logger, IPoolingServiceLocator serviceLocator = null)
+        /// <param name="service">Service locator for additional pool services</param>
+        public ComplexObjectPoolConfig(IPoolLogger logger, IPoolingService service = null)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _serviceLocator = serviceLocator;
+            _service = service;
         }
 
         /// <summary>
@@ -285,7 +285,7 @@ namespace AhBearStudios.Core.Pooling.Configurations
         /// <returns>A new IPoolConfig instance with the same settings</returns>
         public IPoolConfig Clone()
         {
-            var clone = new ComplexObjectPoolConfig(_logger, _serviceLocator)
+            var clone = new ComplexObjectPoolConfig(_logger, _service)
             {
                 // Copy standard properties
                 ConfigId = Guid.NewGuid().ToString(), // Generate a new ID for the clone

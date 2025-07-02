@@ -6,7 +6,7 @@ namespace AhBearStudios.Core.Pooling.Services
     /// <summary>
     /// Service locator for accessing pooling system components and services.
     /// </summary>
-    public interface IPoolingServiceLocator
+    public interface IPoolingService
     {
         /// <summary>
         /// Gets a service of the specified type.

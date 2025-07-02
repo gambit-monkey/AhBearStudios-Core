@@ -21,7 +21,7 @@ namespace AhBearStudios.Core.Pooling.Builders
         ///<summary>
         /// Service locator for accessing pooling-related services.
         /// </summary>
-        private readonly IPoolingServiceLocator _serviceLocator;
+        private readonly IPoolingService _service;
         
         ///<summary>
         /// Logger instance for recording diagnostic information and warnings during pool configuration.
@@ -43,11 +43,11 @@ namespace AhBearStudios.Core.Pooling.Builders
         public AsyncObjectPoolConfigBuilder()
         {
             _config = new AsyncObjectPoolConfig();
-            _serviceLocator = DefaultPoolingServices.Instance;
+            _service = DefaultPoolingServices.Instance;
             // Get services from service locator
-            if (_serviceLocator.HasService<IPoolLogger>())
+            if (_service.HasService<IPoolLogger>())
             {
-                _logger = _serviceLocator.GetService<IPoolLogger>();
+                _logger = _service.GetService<IPoolLogger>();
             }
         }
 

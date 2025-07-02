@@ -41,11 +41,11 @@ namespace AhBearStudios.Core.Pooling.Diagnostics
         /// <summary>
         /// Initializes a new instance of the PoolDiagnostics class with optional service dependencies.
         /// </summary>
-        /// <param name="serviceLocator">Optional service locator for dependency injection</param>
-        public PoolDiagnostics(IPoolingServiceLocator serviceLocator = null)
+        /// <param name="service">Optional service locator for dependency injection</param>
+        public PoolDiagnostics(IPoolingService service = null)
         {
             // Get dependencies from service locator or use default services
-            var services = serviceLocator ?? DefaultPoolingServices.Instance;
+            var services = service ?? DefaultPoolingServices.Instance;
 
             _logger = services.GetService<IPoolLogger>();
             _metrics = services.GetService<IPoolMetrics>();

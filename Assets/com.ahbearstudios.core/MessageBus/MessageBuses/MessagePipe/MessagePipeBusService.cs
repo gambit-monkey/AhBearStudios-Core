@@ -17,7 +17,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
     {
         private readonly IDependencyProvider _dependencyProvider;
         private readonly IBurstLogger _logger;
-        private readonly IProfiler _profiler;
+        private readonly IProfilerService _profilerService;
         private readonly IMessageRegistry _messageRegistry;
 
         private readonly Dictionary<Type, object> _publishers = new Dictionary<Type, object>();
@@ -34,17 +34,17 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         /// </summary>
         /// <param name="dependencyProvider">The dependency provider to use for resolving MessagePipe services.</param>
         /// <param name="logger">The logger to use for logging.</param>
-        /// <param name="profiler">The profiler to use for performance monitoring.</param>
+        /// <param name="profilerService">The profiler to use for performance monitoring.</param>
         /// <param name="messageRegistry">The message registry to use for message discovery.</param>
         public MessagePipeBusService(
             IDependencyProvider dependencyProvider, 
             IBurstLogger logger, 
-            IProfiler profiler,
+            IProfilerService profilerService,
             IMessageRegistry messageRegistry)
         {
             _dependencyProvider = dependencyProvider ?? throw new ArgumentNullException(nameof(dependencyProvider));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             _messageRegistry = messageRegistry ?? throw new ArgumentNullException(nameof(messageRegistry));
 
             _logger.Log(LogLevel.Info, "MessagePipeBusService initialized", "MessageBusService");
@@ -61,7 +61,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             {
                 if (!_publishers.TryGetValue(messageType, out var publisher))
                 {
-                    using (_profiler.BeginSample("MessagePipeBusService.GetPublisher"))
+                    using (_profilerService.BeginSample("MessagePipeBusService.GetPublisher"))
                     {
                         var messagePipePublisher = _dependencyProvider.Resolve<IAsyncPublisher<TMessage>>();
                         if (messagePipePublisher == null)
@@ -71,7 +71,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                                 "Ensure MessagePipe is properly configured in your DI container.");
                         }
 
-                        publisher = new MessagePipePublisher<TMessage>(messagePipePublisher, _logger, _profiler);
+                        publisher = new MessagePipePublisher<TMessage>(messagePipePublisher, _logger, _profilerService);
                         _publishers[messageType] = publisher;
 
                         _logger.Log(LogLevel.Debug, 
@@ -101,7 +101,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             {
                 if (!_subscribers.TryGetValue(messageType, out var subscriber))
                 {
-                    using (_profiler.BeginSample("MessagePipeBusService.GetSubscriber"))
+                    using (_profilerService.BeginSample("MessagePipeBusService.GetSubscriber"))
                     {
                         var messagePipeSubscriber = _dependencyProvider.Resolve<ISubscriber<TMessage>>();
                         if (messagePipeSubscriber == null)
@@ -111,7 +111,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                                 "Ensure MessagePipe is properly configured in your DI container.");
                         }
 
-                        subscriber = new MessagePipeSubscriber<TMessage>(messagePipeSubscriber, _logger, _profiler);
+                        subscriber = new MessagePipeSubscriber<TMessage>(messagePipeSubscriber, _logger, _profilerService);
                         _subscribers[messageType] = subscriber;
 
                         _logger.Log(LogLevel.Debug, 
@@ -141,7 +141,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             {
                 if (!_keyedPublishers.TryGetValue(key, out var publisher))
                 {
-                    using (_profiler.BeginSample("MessagePipeBusService.GetKeyedPublisher"))
+                    using (_profilerService.BeginSample("MessagePipeBusService.GetKeyedPublisher"))
                     {
                         var messagePipePublisher = _dependencyProvider.Resolve<IAsyncPublisher<TKey, TMessage>>();
                         if (messagePipePublisher == null)
@@ -151,7 +151,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                                 "Ensure MessagePipe is properly configured in your DI container.");
                         }
 
-                        publisher = new MessagePipeKeyedPublisher<TKey, TMessage>(messagePipePublisher, _logger, _profiler);
+                        publisher = new MessagePipeKeyedPublisher<TKey, TMessage>(messagePipePublisher, _logger, _profilerService);
                         _keyedPublishers[key] = publisher;
 
                         _logger.Log(LogLevel.Debug,
@@ -182,7 +182,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             {
                 if (!_keyedSubscribers.TryGetValue(key, out var subscriber))
                 {
-                    using (_profiler.BeginSample("MessagePipeBusService.GetKeyedSubscriber"))
+                    using (_profilerService.BeginSample("MessagePipeBusService.GetKeyedSubscriber"))
                     {
                         // Resolve both keyed and global subscribers
                         var keyedSubscriber = _dependencyProvider.Resolve<ISubscriber<TKey, TMessage>>();
@@ -206,7 +206,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
                             keyedSubscriber, 
                             globalSubscriber, 
                             _logger, 
-                            _profiler);
+                            _profilerService);
                             
                         _keyedSubscribers[key] = subscriber;
 
@@ -257,7 +257,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
 
-            using (_profiler.BeginSample("MessagePipeBusService.PublishMessage"))
+            using (_profilerService.BeginSample("MessagePipeBusService.PublishMessage"))
             {
                 try
                 {
@@ -287,7 +287,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             if (handler == null)
                 throw new ArgumentNullException(nameof(handler));
 
-            using (_profiler.BeginSample("MessagePipeBusService.SubscribeToMessage"))
+            using (_profilerService.BeginSample("MessagePipeBusService.SubscribeToMessage"))
             {
                 try
                 {
@@ -333,7 +333,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             if (handler == null)
                 throw new ArgumentNullException(nameof(handler));
 
-            using (_profiler.BeginSample("MessagePipeBusService.SubscribeToAllMessages"))
+            using (_profilerService.BeginSample("MessagePipeBusService.SubscribeToAllMessages"))
             {
                 try
                 {

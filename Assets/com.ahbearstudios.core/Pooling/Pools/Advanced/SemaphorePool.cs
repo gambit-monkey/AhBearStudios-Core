@@ -185,9 +185,9 @@ namespace AhBearStudios.Core.Pooling.Pools.Advanced
         /// </summary>
         /// <param name="innerPool">The underlying pool to wrap with a semaphore</param>
         /// <param name="maxConcurrency">The maximum number of items that can be acquired concurrently</param>
-        /// <param name="serviceLocator">Optional service locator for dependency injection</param>
-        public SemaphorePool(IPool<T> innerPool, int maxConcurrency, IPoolingServiceLocator serviceLocator = null)
-            : this(innerPool, new SemaphorePoolConfig { InitialCount = maxConcurrency }, serviceLocator)
+        /// <param name="service">Optional service locator for dependency injection</param>
+        public SemaphorePool(IPool<T> innerPool, int maxConcurrency, IPoolingService service = null)
+            : this(innerPool, new SemaphorePoolConfig { InitialCount = maxConcurrency }, service)
         {
         }
 
@@ -196,9 +196,9 @@ namespace AhBearStudios.Core.Pooling.Pools.Advanced
         /// </summary>
         /// <param name="innerPool">The underlying pool to wrap with a semaphore</param>
         /// <param name="config">Configuration for the semaphore pool</param>
-        /// <param name="serviceLocator">Optional service locator for dependency injection</param>
+        /// <param name="service">Optional service locator for dependency injection</param>
         public SemaphorePool(IPool<T> innerPool, SemaphorePoolConfig config,
-            IPoolingServiceLocator serviceLocator = null)
+            IPoolingService service = null)
         {
             _innerPool = innerPool ?? throw new ArgumentNullException(nameof(innerPool));
             _config = config ?? throw new ArgumentNullException(nameof(config));
@@ -207,7 +207,7 @@ namespace AhBearStudios.Core.Pooling.Pools.Advanced
                 throw new ArgumentOutOfRangeException(nameof(config), "Initial count must be positive");
 
             // Initialize service locator
-            IPoolingServiceLocator locator = serviceLocator ?? DefaultPoolingServices.Instance;
+            IPoolingService locator = service ?? DefaultPoolingServices.Instance;
 
             // Get services via dependency injection
             _logger = locator.GetService<IPoolLogger>();

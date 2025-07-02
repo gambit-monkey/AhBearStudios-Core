@@ -427,7 +427,7 @@ namespace AhBearStudios.Core.Bootstrap
                 
                 if (coreConfig.EnableProfiling)
                 {
-                    var profiler = Container.Resolve<Profiling.Interfaces.IProfiler>();
+                    var profiler = Container.Resolve<Profiling.Interfaces.IProfilerService>();
                     if (profiler == null)
                         throw new InvalidOperationException("Failed to resolve profiling system");
                 }

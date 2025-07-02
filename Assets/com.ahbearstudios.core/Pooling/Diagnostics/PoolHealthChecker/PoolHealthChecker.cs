@@ -128,25 +128,25 @@ namespace AhBearStudios.Core.Pooling.Diagnostics
         /// <summary>
         /// Initializes a new instance of the PoolHealthChecker class using a service locator
         /// </summary>
-        /// <param name="serviceLocator">Service locator for dependency injection</param>
+        /// <param name="service">Service locator for dependency injection</param>
         /// <exception cref="ArgumentNullException">Thrown if serviceLocator is null</exception>
         /// <exception cref="InvalidOperationException">Thrown if required services cannot be resolved</exception>
-        public PoolHealthChecker(IPoolingServiceLocator serviceLocator)
+        public PoolHealthChecker(IPoolingService service)
         {
-            if (serviceLocator == null)
-                throw new ArgumentNullException(nameof(serviceLocator));
+            if (service == null)
+                throw new ArgumentNullException(nameof(service));
 
             // Get required dependencies from service locator
-            _logger = serviceLocator.GetService<IPoolLogger>() ?? 
+            _logger = service.GetService<IPoolLogger>() ?? 
                 throw new InvalidOperationException("Failed to resolve IPoolLogger from service locator");
             
-            _metrics = serviceLocator.GetService<IPoolMetrics>() ?? 
+            _metrics = service.GetService<IPoolMetrics>() ?? 
                 throw new InvalidOperationException("Failed to resolve IPoolMetrics from service locator");
             
-            _profiler = serviceLocator.GetService<IPoolProfiler>() ?? 
+            _profiler = service.GetService<IPoolProfiler>() ?? 
                 throw new InvalidOperationException("Failed to resolve IPoolProfiler from service locator");
             
-            _diagnostics = serviceLocator.GetService<IPoolDiagnostics>() ?? 
+            _diagnostics = service.GetService<IPoolDiagnostics>() ?? 
                 throw new InvalidOperationException("Failed to resolve IPoolDiagnostics from service locator");
 
             // Initialize native collections using Collections v2

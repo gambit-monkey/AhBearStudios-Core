@@ -22,7 +22,7 @@ namespace AhBearStudios.Core.MessageBus.Services
     {
         private readonly IMessageBusService _messageBusService;
         private readonly ILoggingService _logger;
-        private readonly IProfiler _profiler;
+        private readonly IProfilerService _profilerService;
         private readonly DeliveryStatistics _statistics;
         
         private DeliveryServiceStatus _status = DeliveryServiceStatus.Stopped;
@@ -54,12 +54,12 @@ namespace AhBearStudios.Core.MessageBus.Services
         /// </summary>
         /// <param name="messageBusService">The message bus to use for sending messages.</param>
         /// <param name="logger">The logger to use for logging.</param>
-        /// <param name="profiler">The profiler to use for performance monitoring.</param>
-        public FireAndForgetDeliveryService(IMessageBusService messageBusService, ILoggingService logger, IProfiler profiler)
+        /// <param name="profilerService">The profiler to use for performance monitoring.</param>
+        public FireAndForgetDeliveryService(IMessageBusService messageBusService, ILoggingService logger, IProfilerService profilerService)
         {
             _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             _statistics = new DeliveryStatistics();
             
             _logger.Log(LogLevel.Info, "FireAndForgetDeliveryService initialized", "DeliveryService");
@@ -82,7 +82,7 @@ namespace AhBearStudios.Core.MessageBus.Services
         /// <inheritdoc />
         public async Task SendAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default) where TMessage : IMessage
         {
-            using var scope = _profiler.BeginScope(new ProfilerTag(new ProfilerCategory("DeliveryService"), "SendAsync"));
+            using var scope = _profilerService.BeginScope(new ProfilerTag(new ProfilerCategory("DeliveryService"), "SendAsync"));
             
             if (message == null) throw new ArgumentNullException(nameof(message));
             
@@ -140,7 +140,7 @@ namespace AhBearStudios.Core.MessageBus.Services
         /// <inheritdoc />
         public async Task<BatchDeliveryResult> SendBatchAsync(IEnumerable<IMessage> messages, BatchDeliveryOptions options, CancellationToken cancellationToken = default)
         {
-            using var scope = _profiler.BeginScope(new ProfilerTag(new ProfilerCategory("DeliveryService"), "SendBatch"));
+            using var scope = _profilerService.BeginScope(new ProfilerTag(new ProfilerCategory("DeliveryService"), "SendBatch"));
             
             if (messages == null) throw new ArgumentNullException(nameof(messages));
             if (options == null) throw new ArgumentNullException(nameof(options));

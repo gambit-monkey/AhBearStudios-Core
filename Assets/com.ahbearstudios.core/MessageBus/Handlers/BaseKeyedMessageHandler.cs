@@ -22,15 +22,15 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         /// </summary>
         /// <param name="messageBusService">The message bus to use.</param>
         /// <param name="logger">The logger to use for logging.</param>
-        /// <param name="profiler">The profiler to use for performance monitoring.</param>
+        /// <param name="profilerService">The profiler to use for performance monitoring.</param>
         /// <param name="key">The key to subscribe to.</param>
         protected BaseKeyedMessageHandler(
             IMessageBusService messageBusService, 
             ILoggingService logger, 
-            IProfiler profiler, 
+            IProfilerService profilerService, 
             TKey key)
         {
-            _context = new MessageHandlerContext(messageBusService, logger, profiler, GetType());
+            _context = new MessageHandlerContext(messageBusService, logger, profilerService, GetType());
             _subscription = CreateSpecificKeySubscription(key);
         }
         
@@ -39,13 +39,13 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         /// </summary>
         /// <param name="messageBusService">The message bus to use.</param>
         /// <param name="logger">The logger to use for logging.</param>
-        /// <param name="profiler">The profiler to use for performance monitoring.</param>
+        /// <param name="profilerService">The profiler to use for performance monitoring.</param>
         protected BaseKeyedMessageHandler(
             IMessageBusService messageBusService, 
             ILoggingService logger, 
-            IProfiler profiler)
+            IProfilerService profilerService)
         {
-            _context = new MessageHandlerContext(messageBusService, logger, profiler, GetType());
+            _context = new MessageHandlerContext(messageBusService, logger, profilerService, GetType());
             _subscription = CreateAllKeysSubscription();
         }
 

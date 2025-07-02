@@ -18,9 +18,9 @@ namespace AhBearStudios.Core.Profiling.Profilers
     /// Specialized profiler for pool operations that captures pool-specific metrics.
     /// Implements intelligent tag selection and provides comprehensive pool profiling capabilities.
     /// </summary>
-    public class PoolProfiler : IProfiler
+    public class PoolProfilerService : IProfilerService
     {
-        private readonly IProfiler _baseProfiler;
+        private readonly IProfilerService _baseProfilerService;
         private readonly IPoolMetrics _poolMetrics;
         private readonly IMessageBusService _messageBusService;
         private readonly Dictionary<Guid, PoolMetricsData> _poolMetricsCache = new Dictionary<Guid, PoolMetricsData>();
@@ -33,7 +33,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <summary>
         /// Gets whether profiling is enabled
         /// </summary>
-        public bool IsEnabled => _baseProfiler.IsEnabled;
+        public bool IsEnabled => _baseProfilerService.IsEnabled;
 
         /// <summary>
         /// Gets the message bus used by this profiler
@@ -43,12 +43,12 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <summary>
         /// Creates a new pool profiler
         /// </summary>
-        /// <param name="baseProfiler">Base profiler implementation for general profiling</param>
+        /// <param name="baseProfilerService">Base profiler implementation for general profiling</param>
         /// <param name="poolMetrics">Pool metrics service</param>
         /// <param name="messageBusService">Message bus for publishing profiling messages</param>
-        public PoolProfiler(IProfiler baseProfiler, IPoolMetrics poolMetrics, IMessageBusService messageBusService)
+        public PoolProfilerService(IProfilerService baseProfilerService, IPoolMetrics poolMetrics, IMessageBusService messageBusService)
         {
-            _baseProfiler = baseProfiler ?? throw new ArgumentNullException(nameof(baseProfiler));
+            _baseProfilerService = baseProfilerService ?? throw new ArgumentNullException(nameof(baseProfilerService));
             _poolMetrics = poolMetrics ?? throw new ArgumentNullException(nameof(poolMetrics));
             _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             
@@ -62,7 +62,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Profiler session that should be disposed when sample ends</returns>
         public IDisposable BeginSample(string name)
         {
-            return _baseProfiler.BeginSample(name);
+            return _baseProfilerService.BeginSample(name);
         }
 
         /// <summary>
@@ -72,7 +72,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Profiler session that should be disposed when scope ends</returns>
         public ProfilerSession BeginScope(ProfilerTag tag)
         {
-            return _baseProfiler.BeginScope(tag);
+            return _baseProfilerService.BeginScope(tag);
         }
 
         /// <summary>
@@ -83,7 +83,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Profiler session that should be disposed when scope ends</returns>
         public ProfilerSession BeginScope(ProfilerCategory category, string name)
         {
-            return _baseProfiler.BeginScope(category, name);
+            return _baseProfilerService.BeginScope(category, name);
         }
 
         #region Pool-Specific Profiling Methods
@@ -351,7 +351,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Profile metrics for the tag</returns>
         public DefaultMetricsData GetMetrics(ProfilerTag tag)
         {
-            return _baseProfiler.GetMetrics(tag);
+            return _baseProfilerService.GetMetrics(tag);
         }
 
         /// <summary>
@@ -360,7 +360,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Dictionary of all profiling metrics by tag</returns>
         public IReadOnlyDictionary<ProfilerTag, DefaultMetricsData> GetAllMetrics()
         {
-            return _baseProfiler.GetAllMetrics();
+            return _baseProfilerService.GetAllMetrics();
         }
 
         /// <summary>
@@ -383,7 +383,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <param name="threshold">Threshold value to trigger alert</param>
         public void RegisterMetricAlert(ProfilerTag metricTag, double threshold)
         {
-            _baseProfiler.RegisterMetricAlert(metricTag, threshold);
+            _baseProfilerService.RegisterMetricAlert(metricTag, threshold);
         }
 
         /// <summary>
@@ -393,7 +393,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <param name="thresholdMs">Threshold in milliseconds to trigger alert</param>
         public void RegisterSessionAlert(ProfilerTag sessionTag, double thresholdMs)
         {
-            _baseProfiler.RegisterSessionAlert(sessionTag, thresholdMs);
+            _baseProfilerService.RegisterSessionAlert(sessionTag, thresholdMs);
         }
 
         /// <summary>
@@ -401,7 +401,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// </summary>
         public void ResetStats()
         {
-            _baseProfiler.ResetStats();
+            _baseProfilerService.ResetStats();
             _history.Clear();
             _poolMetricsCache.Clear();
             _poolMetrics.ResetStats();
@@ -412,7 +412,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// </summary>
         public void StartProfiling()
         {
-            _baseProfiler.StartProfiling();
+            _baseProfilerService.StartProfiling();
         }
 
         /// <summary>
@@ -420,7 +420,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// </summary>
         public void StopProfiling()
         {
-            _baseProfiler.StopProfiling();
+            _baseProfilerService.StopProfiling();
         }
 
         #endregion

@@ -20,7 +20,7 @@ namespace AhBearStudios.Core.Bootstrap
         private readonly InstallerConfig installerConfig;
         private readonly IBurstLogger logger;
         private readonly IMessageBusService _messageBusService;
-        private readonly IProfiler profiler;
+        private readonly IProfilerService _profilerService;
         private readonly IPoolRegistry poolRegistry;
         
         private bool isInitialized = false;
@@ -31,14 +31,14 @@ namespace AhBearStudios.Core.Bootstrap
             InstallerConfig installerConfig,
             IBurstLogger logger,
             IMessageBusService messageBusService = null,
-            IProfiler profiler = null,
+            IProfilerService profilerService = null,
             IPoolRegistry poolRegistry = null)
         {
             this.coreConfig = coreConfig ?? throw new ArgumentNullException(nameof(coreConfig));
             this.installerConfig = installerConfig ?? throw new ArgumentNullException(nameof(installerConfig));
             this.logger = logger ?? throw new ArgumentNullException(nameof(logger));
             this._messageBusService = messageBusService;
-            this.profiler = profiler;
+            this._profilerService = profilerService;
             this.poolRegistry = poolRegistry;
         }
         
@@ -46,7 +46,7 @@ namespace AhBearStudios.Core.Bootstrap
         {
             try
             {
-                using (profiler?.BeginSample("ApplicationInitialization"))
+                using (_profilerService?.BeginSample("ApplicationInitialization"))
                 {
                     logger.Log(Logging.LogLevel.Info, "Starting application initialization", "Bootstrap");
                     
@@ -81,7 +81,7 @@ namespace AhBearStudios.Core.Bootstrap
             }
             
             // Initialize profiling system
-            if (coreConfig.EnableProfiling && profiler != null)
+            if (coreConfig.EnableProfiling && _profilerService != null)
             {
                 InitializeProfilingSystem();
             }
@@ -109,11 +109,11 @@ namespace AhBearStudios.Core.Bootstrap
                 }
                 
                 // Setup pool metrics if enabled
-                if (coreConfig.PoolingConfig?.CollectMetrics == true && profiler != null)
+                if (coreConfig.PoolingConfig?.CollectMetrics == true && _profilerService != null)
                 {
                     // Register pool performance alerts
-                    profiler.RegisterMetricAlert(new ProfilerTag("Pool", "HitRatio"), 0.8);
-                    profiler.RegisterMetricAlert(new ProfilerTag("Pool", "Efficiency"), 0.7);
+                    _profilerService.RegisterMetricAlert(new ProfilerTag("Pool", "HitRatio"), 0.8);
+                    _profilerService.RegisterMetricAlert(new ProfilerTag("Pool", "Efficiency"), 0.7);
                 }
                 
                 logger.Log(Logging.LogLevel.Info, "Pooling system initialized successfully", "Bootstrap");
@@ -134,7 +134,7 @@ namespace AhBearStudios.Core.Bootstrap
                 // Start profiling if enabled
                 if (coreConfig.ProfilingConfig?.EnableOnStartup == true)
                 {
-                    profiler.StartProfiling();
+                    _profilerService.StartProfiling();
                     logger.Log(Logging.LogLevel.Info, "Profiling started automatically", "Bootstrap");
                 }
                 
@@ -167,10 +167,10 @@ namespace AhBearStudios.Core.Bootstrap
                 registry.DiscoverMessages();
                 
                 // Setup message processing monitoring
-                if (profiler != null)
+                if (_profilerService != null)
                 {
-                    profiler.RegisterMetricAlert(new ProfilerTag("MessageBusService", "QueueSize"), 1000);
-                    profiler.RegisterMetricAlert(new ProfilerTag("MessageBusService", "ProcessingTime"), 0.016); // 16ms
+                    _profilerService.RegisterMetricAlert(new ProfilerTag("MessageBusService", "QueueSize"), 1000);
+                    _profilerService.RegisterMetricAlert(new ProfilerTag("MessageBusService", "ProcessingTime"), 0.016); // 16ms
                 }
                 
                 // Subscribe to system-level events
@@ -221,20 +221,20 @@ namespace AhBearStudios.Core.Bootstrap
         
         private void SetupMemoryProfilingAlerts()
         {
-            if (profiler == null) return;
+            if (_profilerService == null) return;
             
             // Setup memory-related performance alerts
-            profiler.RegisterMetricAlert(new ProfilerTag("Memory", "GCAlloc"), 1048576); // 1MB per frame
-            profiler.RegisterMetricAlert(new ProfilerTag("Memory", "UsedHeap"), 536870912); // 512MB
+            _profilerService.RegisterMetricAlert(new ProfilerTag("Memory", "GCAlloc"), 1048576); // 1MB per frame
+            _profilerService.RegisterMetricAlert(new ProfilerTag("Memory", "UsedHeap"), 536870912); // 512MB
         }
         
         private void SetupSystemPerformanceAlerts()
         {
-            if (profiler == null) return;
+            if (_profilerService == null) return;
             
             // Setup system performance alerts
-            profiler.RegisterSessionAlert(new ProfilerTag("System", "FrameTime"), 33.33); // 30fps threshold
-            profiler.RegisterSessionAlert(new ProfilerTag("System", "UpdateTime"), 16.67); // 60fps threshold
+            _profilerService.RegisterSessionAlert(new ProfilerTag("System", "FrameTime"), 33.33); // 30fps threshold
+            _profilerService.RegisterSessionAlert(new ProfilerTag("System", "UpdateTime"), 16.67); // 60fps threshold
         }
         
         private void SubscribeToSystemEvents()
@@ -374,9 +374,9 @@ namespace AhBearStudios.Core.Bootstrap
             logger?.Log(Logging.LogLevel.Info, "Application quitting", "Bootstrap");
             
             // Graceful shutdown of systems
-            if (profiler != null && profiler.IsEnabled)
+            if (_profilerService != null && _profilerService.IsEnabled)
             {
-                profiler.StopProfiling();
+                _profilerService.StopProfiling();
             }
             
             // Flush any pending operations
@@ -420,17 +420,17 @@ namespace AhBearStudios.Core.Bootstrap
             if (message.IsPaused)
             {
                 // Pause non-essential systems
-                if (profiler != null && profiler.IsEnabled)
+                if (_profilerService != null && _profilerService.IsEnabled)
                 {
-                    profiler.StopProfiling();
+                    _profilerService.StopProfiling();
                 }
             }
             else
             {
                 // Resume systems
-                if (profiler != null && coreConfig.ProfilingConfig?.EnableOnStartup == true)
+                if (_profilerService != null && coreConfig.ProfilingConfig?.EnableOnStartup == true)
                 {
-                    profiler.StartProfiling();
+                    _profilerService.StartProfiling();
                 }
             }
         }

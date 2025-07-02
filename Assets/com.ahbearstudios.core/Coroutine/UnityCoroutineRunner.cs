@@ -35,7 +35,7 @@ namespace AhBearStudios.Core.Coroutine
         private Guid _runnerId;
         
         // Dependency injection fields
-        private CoroutineProfiler _profiler;
+        private CoroutineProfilerService _profilerService;
         private ICoroutineMetrics _coroutineMetrics;
         private IMessageBusService _messageBusService;
         private bool _profilingEnabled;
@@ -86,12 +86,12 @@ namespace AhBearStudios.Core.Coroutine
         /// Initializes the coroutine runner with dependency injection.
         /// </summary>
         /// <param name="runnerName">Optional name for this runner instance.</param>
-        /// <param name="profiler">Profiler for performance tracking.</param>
+        /// <param name="profilerService">Profiler for performance tracking.</param>
         /// <param name="coroutineMetrics">Metrics system for coroutine tracking.</param>
         /// <param name="messageBusService">Message bus for event publishing.</param>
         public void Initialize(
             string runnerName = null, 
-            CoroutineProfiler profiler = null,
+            CoroutineProfilerService profilerService = null,
             ICoroutineMetrics coroutineMetrics = null,
             IMessageBusService messageBusService = null)
         {
@@ -107,10 +107,10 @@ namespace AhBearStudios.Core.Coroutine
             _isPaused = false;
             
             // Set up dependencies
-            _profiler = profiler;
+            _profilerService = profilerService;
             _coroutineMetrics = coroutineMetrics;
             _messageBusService = messageBusService;
-            _profilingEnabled = _profiler?.IsEnabled == true;
+            _profilingEnabled = _profilerService?.IsEnabled == true;
             
             // Update runner configuration in metrics
             _coroutineMetrics?.UpdateRunnerConfiguration(_runnerId, _runnerName, GetType().Name);
@@ -197,7 +197,7 @@ namespace AhBearStudios.Core.Coroutine
             if (_profilingEnabled)
             {
                 var operationType = routine.GetType().Name;
-                profilingSession = _profiler.BeginCoroutineScope(this, operationType, coroutineId, tag);
+                profilingSession = _profilerService.BeginCoroutineScope(this, operationType, coroutineId, tag);
             }
 
             // Wrap the routine with error handling and profiling

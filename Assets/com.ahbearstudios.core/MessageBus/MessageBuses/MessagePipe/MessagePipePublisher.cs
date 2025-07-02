@@ -25,16 +25,16 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         /// </summary>
         /// <param name="publisher">The underlying MessagePipe publisher.</param>
         /// <param name="logger">The logger for diagnostic output.</param>
-        /// <param name="profiler">The profiler for performance monitoring.</param>
+        /// <param name="profilerService">The profiler for performance monitoring.</param>
         public MessagePipePublisher(
             IAsyncPublisher<TMessage> publisher,
             IBurstLogger logger,
-            IProfiler profiler)
+            IProfilerService profilerService)
         {
             _publisher = publisher ?? throw new ArgumentNullException(nameof(publisher));
             
             var handlerLogger = logger ?? throw new ArgumentNullException(nameof(logger));
-            var handlerProfiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            var handlerProfiler = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             
             _publisherName = $"Publisher<{typeof(TMessage).Name}>";
 

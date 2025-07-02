@@ -200,7 +200,7 @@ namespace AhBearStudios.Core.Pooling.Configurations
         #region Private Fields
         
         private readonly IPoolLogger _logger;
-        private readonly IPoolingServiceLocator _serviceLocator;
+        private readonly IPoolingService _service;
         private bool _isDisposed;
         
         #endregion
@@ -213,18 +213,18 @@ namespace AhBearStudios.Core.Pooling.Configurations
         public ComponentPoolConfig()
         {
             _logger = null;
-            _serviceLocator = null;
+            _service = null;
         }
         
         /// <summary>
         /// Creates a new instance of the component pool configuration with dependency injection.
         /// </summary>
         /// <param name="logger">Logger service for pool logging</param>
-        /// <param name="serviceLocator">Service locator for additional pool services</param>
-        public ComponentPoolConfig(IPoolLogger logger, IPoolingServiceLocator serviceLocator = null)
+        /// <param name="service">Service locator for additional pool services</param>
+        public ComponentPoolConfig(IPoolLogger logger, IPoolingService service = null)
         {
-            _serviceLocator = serviceLocator ?? DefaultPoolingServices.Instance;
-            _logger = logger ?? _serviceLocator.GetService<IPoolLogger>();
+            _service = service ?? DefaultPoolingServices.Instance;
+            _logger = logger ?? _service.GetService<IPoolLogger>();
         }
         
         /// <summary>
@@ -287,7 +287,7 @@ namespace AhBearStudios.Core.Pooling.Configurations
         /// <returns>A new IPoolConfig instance with the same settings</returns>
         public IPoolConfig Clone()
         {
-            var clone = new ComponentPoolConfig(_logger, _serviceLocator)
+            var clone = new ComponentPoolConfig(_logger, _service)
             {
                 // Copy IPoolConfig properties
                 ConfigId = Guid.NewGuid().ToString(), // Generate a new ID for the clone

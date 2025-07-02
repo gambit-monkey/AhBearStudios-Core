@@ -46,14 +46,14 @@ namespace AhBearStudios.Core.MessageBus.Unity
         private IMessageSerializerFactory _serializerFactory;
         private IBurstLogger _logger;
         private IMessageRegistry _messageRegistry;
-        private IProfiler _baseProfiler;
+        private IProfilerService _baseProfilerService;
         private IMessageBusMetrics _busMetrics;
         private DeliveryServiceConfiguration _deliveryConfig;
         private IDeliveryStatistics _deliveryStatistics;
         private ISerializerMetrics _serializerMetrics;
         
         // Profiling components
-        private MessageBusProfiler _messageBusProfiler;
+        private MessageBusProfilerService _messageBusProfilerService;
         
         private bool _isInitialized;
         private bool _isDisposed;
@@ -77,7 +77,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
         /// <summary>
         /// Gets the message bus profiler instance.
         /// </summary>
-        public MessageBusProfiler Profiler => _messageBusProfiler;
+        public MessageBusProfilerService ProfilerService => _messageBusProfilerService;
         
         /// <summary>
         /// Gets whether the provider is initialized and ready for use.
@@ -148,7 +148,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
             IMessageSerializerFactory serializerFactory = null,
             IBurstLogger logger = null,
             IMessageRegistry messageRegistry = null,
-            IProfiler baseProfiler = null,
+            IProfilerService baseProfilerService = null,
             IMessageBusMetrics busMetrics = null,
             DeliveryServiceConfiguration deliveryConfig = null,
             IDeliveryStatistics deliveryStatistics = null,
@@ -158,7 +158,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
             _serializerFactory = serializerFactory;
             _logger = logger;
             _messageRegistry = messageRegistry;
-            _baseProfiler = baseProfiler;
+            _baseProfilerService = baseProfilerService;
             _busMetrics = busMetrics;
             _deliveryConfig = deliveryConfig;
             _deliveryStatistics = deliveryStatistics;
@@ -247,7 +247,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
         /// </summary>
         public void StartProfiling()
         {
-            _messageBusProfiler?.StartProfiling();
+            _messageBusProfilerService?.StartProfiling();
         }
 
         /// <summary>
@@ -255,7 +255,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
         /// </summary>
         public void StopProfiling()
         {
-            _messageBusProfiler?.StopProfiling();
+            _messageBusProfilerService?.StopProfiling();
         }
 
         /// <summary>
@@ -263,7 +263,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
         /// </summary>
         public void ResetProfilingStats()
         {
-            _messageBusProfiler?.ResetStats();
+            _messageBusProfilerService?.ResetStats();
             _busMetrics?.ResetBusStats(_messageBusService?.Id ?? Guid.Empty);
         }
 
@@ -278,7 +278,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
             try
             {
                 // Dispose profiling components first
-                if (_messageBusProfiler is IDisposable disposableProfiler)
+                if (_messageBusProfilerService is IDisposable disposableProfiler)
                 {
                     disposableProfiler.Dispose();
                 }
@@ -341,7 +341,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
             _messageRegistry ??= CreateDefaultMessageRegistry();
 
             // Create profiler if not injected (existing type from repository)
-            _baseProfiler ??= CreateProfiler();
+            _baseProfilerService ??= CreateProfiler();
 
             // Create delivery configuration if not injected (existing type from repository)
             _deliveryConfig ??= CreateDefaultDeliveryServiceConfiguration();
@@ -365,7 +365,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
             _deliveryServiceFactory ??= new MessageDeliveryServiceFactory(
                 _logger,
                 _messageRegistry,
-                _baseProfiler,
+                _baseProfilerService,
                 _deliveryConfig,
                 _deliveryStatistics);
 
@@ -385,7 +385,7 @@ namespace AhBearStudios.Core.MessageBus.Unity
             _messageBusService = new MessagePipeBusService(
                 null, // IDependencyProvider - can be null for basic usage
                 _logger,
-                _baseProfiler,
+                _baseProfilerService,
                 _messageRegistry);
         }
 
@@ -394,9 +394,9 @@ namespace AhBearStudios.Core.MessageBus.Unity
             if (!_enableProfiling || !_enableMessageBusProfiler)
                 return;
 
-            if (_baseProfiler != null && _busMetrics != null && _messageBusService != null)
+            if (_baseProfilerService != null && _busMetrics != null && _messageBusService != null)
             {
-                _messageBusProfiler = new MessageBusProfiler(_baseProfiler, _busMetrics, _messageBusService);
+                _messageBusProfilerService = new MessageBusProfilerService(_baseProfilerService, _busMetrics, _messageBusService);
                 
                 Debug.Log("[MessageBusProvider] MessageBusProfiler created and configured");
             }
@@ -416,15 +416,15 @@ namespace AhBearStudios.Core.MessageBus.Unity
 
         private void ConfigureProfilingAlerts()
         {
-            if (_messageBusProfiler == null) 
+            if (_messageBusProfilerService == null) 
                 return;
             
             // Configure typical performance thresholds
-            _messageBusProfiler.RegisterBusMetricAlert(Guid.Empty, "DeliveryTime", 50.0); // 50ms delivery threshold
-            _messageBusProfiler.RegisterBusMetricAlert(Guid.Empty, "QueueSize", 1000.0); // 1000 message queue threshold
-            _messageBusProfiler.RegisterMessageTypeAlert("IMessage", 100.0); // 100ms per message type
-            _messageBusProfiler.RegisterOperationAlert("Publish", 25.0); // 25ms publish threshold
-            _messageBusProfiler.RegisterOperationAlert("Subscribe", 10.0); // 10ms subscribe threshold
+            _messageBusProfilerService.RegisterBusMetricAlert(Guid.Empty, "DeliveryTime", 50.0); // 50ms delivery threshold
+            _messageBusProfilerService.RegisterBusMetricAlert(Guid.Empty, "QueueSize", 1000.0); // 1000 message queue threshold
+            _messageBusProfilerService.RegisterMessageTypeAlert("IMessage", 100.0); // 100ms per message type
+            _messageBusProfilerService.RegisterOperationAlert("Publish", 25.0); // 25ms publish threshold
+            _messageBusProfilerService.RegisterOperationAlert("Subscribe", 10.0); // 10ms subscribe threshold
         }
 
         private IBurstLogger CreateDefaultLogger()
@@ -439,10 +439,10 @@ namespace AhBearStudios.Core.MessageBus.Unity
             return new DefaultMessageRegistry(_logger);
         }
 
-        private IProfiler CreateProfiler()
+        private IProfilerService CreateProfiler()
         {
             if (!_enableProfiling)
-                return new NullProfiler();
+                return new NullProfilerService();
                 
             // Use existing UnityProfiler from repository
             return new UnityProfiler();
@@ -511,9 +511,9 @@ namespace AhBearStudios.Core.MessageBus.Unity
             _runtimeConfig = null;
             _logger = null;
             _messageRegistry = null;
-            _baseProfiler = null;
+            _baseProfilerService = null;
             _busMetrics = null;
-            _messageBusProfiler = null;
+            _messageBusProfilerService = null;
             _deliveryConfig = null;
             _deliveryStatistics = null;
             _serializerMetrics = null;

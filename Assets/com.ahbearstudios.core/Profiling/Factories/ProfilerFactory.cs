@@ -11,7 +11,7 @@ namespace AhBearStudios.Core.Profiling.Factories
     public class ProfilerFactory
     {
         private readonly IDependencyProvider _dependencyProvider;
-        private static IProfiler _nullInstance;
+        private static IProfilerService _nullInstance;
 
         /// <summary>
         /// Creates a new ProfilerFactory instance
@@ -26,21 +26,21 @@ namespace AhBearStudios.Core.Profiling.Factories
         /// Create a new profiler instance
         /// </summary>
         /// <returns>Configured profiler instance</returns>
-        public IProfiler CreateProfiler()
+        public IProfilerService CreateProfiler()
         {
             var messageBus = _dependencyProvider.Resolve<IMessageBusService>();
-            return new DefaultProfiler(messageBus);
+            return new DefaultProfilerService(messageBus);
         }
 
         /// <summary>
         /// Get a null profiler (no-op implementation for when profiling is disabled)
         /// </summary>
-        public IProfiler GetNullProfiler()
+        public IProfilerService GetNullProfiler()
         {
             if (_nullInstance == null)
             {
                 // Create a NullProfiler that implements IProfiler but does nothing
-                _nullInstance = new NullProfiler();
+                _nullInstance = new NullProfilerService();
             }
             return _nullInstance;
         }
@@ -50,7 +50,7 @@ namespace AhBearStudios.Core.Profiling.Factories
         /// </summary>
         /// <param name="enabled">Whether profiling is enabled</param>
         /// <returns>Real profiler if enabled, null profiler if disabled</returns>
-        public IProfiler Create(bool enabled)
+        public IProfilerService Create(bool enabled)
         {
             return enabled ? CreateProfiler() : GetNullProfiler();
         }

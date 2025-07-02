@@ -35,7 +35,7 @@ namespace AhBearStudios.Core.Profiling.Unity
         [SerializeField] private bool _enablePoolMetrics = true;
         [SerializeField] private bool _enableSerializationMetrics = true;
         
-        private IProfiler _profiler;
+        private IProfilerService _profilerService;
         private IPoolMetrics _poolMetrics;
         private ISerializerMetrics _serializerMetrics;
         private SystemMetricsTracker _systemMetrics;
@@ -48,7 +48,7 @@ namespace AhBearStudios.Core.Profiling.Unity
         /// <summary>
         /// Gets the current profiler instance
         /// </summary>
-        public IProfiler Profiler => _profiler;
+        public IProfilerService ProfilerService => _profilerService;
         
         /// <summary>
         /// Gets the pool metrics instance
@@ -68,7 +68,7 @@ namespace AhBearStudios.Core.Profiling.Unity
         /// <summary>
         /// Gets whether profiling is currently enabled
         /// </summary>
-        public bool IsEnabled => _profiler?.IsEnabled ?? false;
+        public bool IsEnabled => _profilerService?.IsEnabled ?? false;
         
         /// <summary>
         /// Gets the profiler configuration
@@ -194,17 +194,17 @@ namespace AhBearStudios.Core.Profiling.Unity
             if (dependencyProvider != null)
             {
                 var profilerFactory = new ProfilerFactory(dependencyProvider);
-                _profiler = profilerFactory.CreateProfiler();
+                _profilerService = profilerFactory.CreateProfiler();
             }
             else if (messageBus != null)
             {
-                _profiler = new DefaultProfiler(messageBus);
+                _profilerService = new DefaultProfilerService(messageBus);
             }
             else
             {
                 Debug.LogWarning("[ProfileManager] No message bus available, using null profiler");
                 var profilerFactory = new ProfilerFactory(null);
-                _profiler = profilerFactory.GetNullProfiler();
+                _profilerService = profilerFactory.GetNullProfiler();
             }
             
             // Initialize alert system
@@ -295,7 +295,7 @@ namespace AhBearStudios.Core.Profiling.Unity
                 return;
             }
             
-            _profiler?.StartProfiling();
+            _profilerService?.StartProfiling();
             _systemMetrics?.Start();
             _alertSystem?.Start();
             
@@ -312,7 +312,7 @@ namespace AhBearStudios.Core.Profiling.Unity
         /// </summary>
         public void StopProfiling()
         {
-            _profiler?.StopProfiling();
+            _profilerService?.StopProfiling();
             _systemMetrics?.Stop();
             _alertSystem?.Stop();
             
@@ -329,7 +329,7 @@ namespace AhBearStudios.Core.Profiling.Unity
         /// </summary>
         public void ResetStats()
         {
-            _profiler?.ResetStats();
+            _profilerService?.ResetStats();
             _poolMetrics?.ResetStats();
             _serializerMetrics?.Reset();
             _statsCollection?.Reset();
@@ -347,7 +347,7 @@ namespace AhBearStudios.Core.Profiling.Unity
         /// <returns>Metrics data for the tag</returns>
         public DefaultMetricsData GetMetrics(ProfilerTag tag)
         {
-            return _profiler?.GetMetrics(tag) ?? new DefaultMetricsData();
+            return _profilerService?.GetMetrics(tag) ?? new DefaultMetricsData();
         }
         
         /// <summary>
@@ -356,7 +356,7 @@ namespace AhBearStudios.Core.Profiling.Unity
         /// <returns>Dictionary of all metrics</returns>
         public IReadOnlyDictionary<ProfilerTag, DefaultMetricsData> GetAllMetrics()
         {
-            return _profiler?.GetAllMetrics() ?? new Dictionary<ProfilerTag, DefaultMetricsData>();
+            return _profilerService?.GetAllMetrics() ?? new Dictionary<ProfilerTag, DefaultMetricsData>();
         }
         
         /// <summary>
@@ -366,7 +366,7 @@ namespace AhBearStudios.Core.Profiling.Unity
         /// <returns>Profiler session</returns>
         public ProfilerSession BeginScope(ProfilerTag tag)
         {
-            return _profiler?.BeginScope(tag);
+            return _profilerService?.BeginScope(tag);
         }
         
         /// <summary>
@@ -377,7 +377,7 @@ namespace AhBearStudios.Core.Profiling.Unity
         /// <returns>Profiler session</returns>
         public ProfilerSession BeginScope(ProfilerCategory category, string name)
         {
-            return _profiler?.BeginScope(category, name);
+            return _profilerService?.BeginScope(category, name);
         }
         
         /// <summary>
@@ -414,7 +414,7 @@ namespace AhBearStudios.Core.Profiling.Unity
                 
                 _systemMetrics = null;
                 _alertSystem = null;
-                _profiler = null;
+                _profilerService = null;
                 _poolMetrics = null;
                 _serializerMetrics = null;
                 _statsCollection = null;

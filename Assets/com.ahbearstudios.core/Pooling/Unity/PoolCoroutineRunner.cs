@@ -19,7 +19,7 @@ namespace AhBearStudios.Core.Pooling.Unity
         
         // Dependencies
         private IPoolLogger _logger;
-        private IPoolingServiceLocator _serviceLocator;
+        private IPoolingService _service;
         
         // We need to use a standard Dictionary for Coroutines since they're managed references
         private Dictionary<int, Coroutine> _activeCoroutines;
@@ -52,12 +52,12 @@ namespace AhBearStudios.Core.Pooling.Unity
         /// This can be called manually when adding the component programmatically.
         /// </summary>
         /// <param name="logger">Logger for pool operations</param>
-        /// <param name="serviceLocator">Service locator for registration</param>
+        /// <param name="service">Service locator for registration</param>
         /// <param name="instanceName">Optional name for this instance</param>
         /// <returns>The initialized runner instance (this)</returns>
         public PoolCoroutineRunner Initialize(
             IPoolLogger logger = null,
-            IPoolingServiceLocator serviceLocator = null,
+            IPoolingService service = null,
             string instanceName = null)
         {
             if (_isInitialized)
@@ -77,17 +77,17 @@ namespace AhBearStudios.Core.Pooling.Unity
             _nextCoroutineId = 0;
             
             // Set dependencies or try to resolve from service locator
-            _serviceLocator = serviceLocator ?? DefaultPoolingServices.Instance;
+            _service = service ?? DefaultPoolingServices.Instance;
 
             _logger = logger;
-            if (_logger == null && _serviceLocator != null)
+            if (_logger == null && _service != null)
             {
-                _logger = _serviceLocator.GetService<IPoolLogger>();
+                _logger = _service.GetService<IPoolLogger>();
             }
             
             // Register this instance with the service locator
-            _serviceLocator?.RegisterService<ICoroutineRunner>(this);
-            _serviceLocator?.RegisterService(this);
+            _service?.RegisterService<ICoroutineRunner>(this);
+            _service?.RegisterService(this);
             
             _isInitialized = true;
             _isDisposed = false;
@@ -107,13 +107,13 @@ namespace AhBearStudios.Core.Pooling.Unity
         /// <param name="instanceName">Optional name for the created GameObject</param>
         /// <param name="dontDestroyOnLoad">Whether to mark the object as DontDestroyOnLoad</param>
         /// <param name="logger">Optional logger to inject</param>
-        /// <param name="serviceLocator">Optional service locator to inject</param>
+        /// <param name="service">Optional service locator to inject</param>
         /// <returns>The created and initialized PoolCoroutineRunner component</returns>
         public static PoolCoroutineRunner Create(
             string instanceName = null, 
             bool dontDestroyOnLoad = true, 
             IPoolLogger logger = null, 
-            IPoolingServiceLocator serviceLocator = null)
+            IPoolingService service = null)
         {
             string name = string.IsNullOrEmpty(instanceName) ? "PoolCoroutineRunner" : instanceName;
             GameObject go = new GameObject(name);
@@ -124,7 +124,7 @@ namespace AhBearStudios.Core.Pooling.Unity
             }
             
             var runner = go.AddComponent<PoolCoroutineRunner>();
-            return runner.Initialize(logger, serviceLocator, instanceName);
+            return runner.Initialize(logger, service, instanceName);
         }
         
         #endregion
@@ -143,8 +143,8 @@ namespace AhBearStudios.Core.Pooling.Unity
                 return;
                 
             // Unregister from service locator
-            _serviceLocator?.UnregisterService<ICoroutineRunner>();
-            _serviceLocator?.UnregisterService<PoolCoroutineRunner>();
+            _service?.UnregisterService<ICoroutineRunner>();
+            _service?.UnregisterService<PoolCoroutineRunner>();
             
             // Stop all active coroutines
             if (_activeCoroutines != null)
