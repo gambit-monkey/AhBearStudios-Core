@@ -47,8 +47,8 @@ namespace AhBearStudios.Core.Pooling.Processing
         /// </summary>
         /// <param name="poolHandle">Handle to the pool containing data to process</param>
         /// <param name="batchSize">Batch size for parallel processing jobs. Default is 64.</param>
-        /// <param name="serviceLocator">Optional service locator for dependency injection</param>
-        public PooledDataProcessor(NativePoolHandle poolHandle, int batchSize = 64, IPoolingServiceLocator serviceLocator = null)
+        /// <param name="service">Optional service locator for dependency injection</param>
+        public PooledDataProcessor(NativePoolHandle poolHandle, int batchSize = 64, IPoolingService service = null)
         {
             if (!poolHandle.IsValid)
                 throw new ArgumentException("Pool handle is not valid", nameof(poolHandle));
@@ -57,7 +57,7 @@ namespace AhBearStudios.Core.Pooling.Processing
                 throw new ArgumentOutOfRangeException(nameof(batchSize), "Batch size must be greater than zero");
 
             // Get dependencies from service locator or use singletons
-            var services = serviceLocator ?? DefaultPoolingServices.Instance;
+            var services = service ?? DefaultPoolingServices.Instance;
             _poolRegistry = services.GetService<INativePoolRegistry>() ?? NativePoolRegistry.Instance;
             _profiler = services.GetService<IPoolProfiler>();
             _logger = services.GetService<IPoolLogger>();

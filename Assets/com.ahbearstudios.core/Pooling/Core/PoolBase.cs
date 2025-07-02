@@ -23,7 +23,7 @@ namespace AhBearStudios.Core.Pooling
 
         private readonly IPoolConfig _config;
         private readonly IBurstLogger _logger;
-        private readonly IProfiler _profiler;
+        private readonly IProfilerService _profilerService;
         private readonly Type _itemType;
         
         private UnsafeHashMap<int, bool> _activeItems;
@@ -113,7 +113,7 @@ namespace AhBearStudios.Core.Pooling
             
             // Resolve dependencies
             _logger = injector.Resolve<IBurstLogger>();
-            _profiler = injector.Resolve<IProfiler>();
+            _profilerService = injector.Resolve<IProfilerService>();
             
             // Initialize core properties
             Id = Guid.NewGuid();
@@ -165,7 +165,7 @@ namespace AhBearStudios.Core.Pooling
             if (_isDisposed)
                 return;
 
-            using (_profiler?.BeginScope(_disposeTag))
+            using (_profilerService?.BeginScope(_disposeTag))
             {
                 if (disposing)
                 {
@@ -234,7 +234,7 @@ namespace AhBearStudios.Core.Pooling
             if (TotalCount <= targetCapacity)
                 return false;
             
-            using (_profiler.BeginScope(_shrinkTag))
+            using (_profilerService.BeginScope(_shrinkTag))
             {
                 int itemsToRemove = TotalCount - targetCapacity;
                 int itemsRemoved = ShrinkInternal(itemsToRemove);
@@ -330,7 +330,7 @@ namespace AhBearStudios.Core.Pooling
             if (!IsCreated)
                 return;
             
-            using (_profiler.BeginScope(_clearTag))
+            using (_profilerService.BeginScope(_clearTag))
             {
                 InternalClear();
                 
@@ -353,7 +353,7 @@ namespace AhBearStudios.Core.Pooling
             if (TotalCount >= capacity)
                 return;
             
-            using (_profiler.BeginScope(_expandTag))
+            using (_profilerService.BeginScope(_expandTag))
             {
                 int additionalCapacity = capacity - TotalCount;
                 InternalExpand(additionalCapacity);

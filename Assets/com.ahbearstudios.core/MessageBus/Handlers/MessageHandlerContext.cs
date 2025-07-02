@@ -22,13 +22,13 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         /// </summary>
         /// <param name="messageBusService">The message bus instance.</param>
         /// <param name="logger">The logger instance.</param>
-        /// <param name="profiler">The profiler instance.</param>
+        /// <param name="profilerService">The profiler instance.</param>
         /// <param name="handlerType">The type of the handler for profiling purposes.</param>
-        public MessageHandlerContext(IMessageBusService messageBusService, ILoggingService logger, IProfiler profiler, Type handlerType)
+        public MessageHandlerContext(IMessageBusService messageBusService, ILoggingService logger, IProfilerService profilerService, Type handlerType)
         {
             MessageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             Logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            Profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            ProfilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             
             _handlerTag = new ProfilerTag(new ProfilerCategory("MessageHandler"), handlerType.Name);
             
@@ -44,12 +44,12 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         public ILoggingService Logger { get; }
         
         /// <inheritdoc />
-        public IProfiler Profiler { get; }
+        public IProfilerService ProfilerService { get; }
 
         /// <inheritdoc />
         public void ExecuteWithProfiling(string sampleName, Action action)
         {
-            using var scope = Profiler.BeginScope(_handlerTag);
+            using var scope = ProfilerService.BeginScope(_handlerTag);
             action();
         }
 

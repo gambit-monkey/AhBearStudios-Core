@@ -119,12 +119,12 @@ namespace AhBearStudios.Core.Bootstrap
         /// <summary>
         /// Gets the profiler for performance monitoring.
         /// </summary>
-        public static IProfiler Profiler
+        public static IProfilerService ProfilerService
         {
             get
             {
                 ThrowIfNotInitialized();
-                return resolver.Resolve<IProfiler>();
+                return resolver.Resolve<IProfilerService>();
             }
         }
         
@@ -210,7 +210,7 @@ namespace AhBearStudios.Core.Bootstrap
             
             try
             {
-                return Profiler.BeginSample(sampleName);
+                return ProfilerService.BeginSample(sampleName);
             }
             catch
             {

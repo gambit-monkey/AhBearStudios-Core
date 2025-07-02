@@ -37,10 +37,10 @@ namespace AhBearStudios.Core.Bootstrap.Installers
             RegisterSingleton<IProfilerManager, ProfilerManager>(builder);
             
             // Register main profiler interface
-            RegisterFactory<IProfiler>(builder, resolver =>
+            RegisterFactory<IProfilerService>(builder, resolver =>
             {
                 var manager = resolver.Resolve<IProfilerManager>();
-                return new ProfilerAdapter(manager);
+                return new ProfilerServiceAdapter(manager);
             });
             
             // Register metrics tracking systems
@@ -154,11 +154,11 @@ namespace AhBearStudios.Core.Bootstrap.Installers
         public void Update(float deltaTime) { }
     }
     
-    internal class ProfilerAdapter : IProfiler
+    internal class ProfilerServiceAdapter : IProfilerService
     {
         private readonly IProfilerManager manager;
         
-        public ProfilerAdapter(IProfilerManager manager)
+        public ProfilerServiceAdapter(IProfilerManager manager)
         {
             this.manager = manager;
         }

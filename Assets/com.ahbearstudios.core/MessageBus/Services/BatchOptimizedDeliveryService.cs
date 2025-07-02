@@ -24,7 +24,7 @@ namespace AhBearStudios.Core.MessageBus.Services
     {
         private readonly IMessageBusService _messageBusService;
         private readonly ILoggingService _logger;
-        private readonly IProfiler _profiler;
+        private readonly IProfilerService _profilerService;
         private readonly BatchOptimizedConfiguration _configuration;
 
         private readonly ConcurrentQueue<BatchedMessage> _messageQueue;
@@ -75,18 +75,18 @@ namespace AhBearStudios.Core.MessageBus.Services
         /// </summary>
         /// <param name="messageBusService">The message bus to use for sending messages and communication.</param>
         /// <param name="logger">The logger to use for logging operations.</param>
-        /// <param name="profiler">The profiler to use for performance monitoring.</param>
+        /// <param name="profilerService">The profiler to use for performance monitoring.</param>
         /// <param name="configuration">Configuration for batch optimization settings.</param>
         /// <exception cref="ArgumentNullException">Thrown when any required parameter is null.</exception>
         public BatchOptimizedDeliveryService(
             IMessageBusService messageBusService,
             ILoggingService logger,
-            IProfiler profiler,
+            IProfilerService profilerService,
             BatchOptimizedConfiguration configuration = null)
         {
             _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             _configuration = configuration ?? new BatchOptimizedConfiguration();
 
             _messageQueue = new ConcurrentQueue<BatchedMessage>();
@@ -111,7 +111,7 @@ namespace AhBearStudios.Core.MessageBus.Services
         /// <inheritdoc />
         public async Task StartAsync(CancellationToken cancellationToken = default)
         {
-            using var scope = _profiler.BeginScope(_profileTag);
+            using var scope = _profilerService.BeginScope(_profileTag);
 
             DeliveryServiceStatus currentStatus;
             lock (_statusLock)
@@ -167,7 +167,7 @@ namespace AhBearStudios.Core.MessageBus.Services
         /// <inheritdoc />
         public async Task StopAsync(CancellationToken cancellationToken = default)
         {
-            using var scope = _profiler.BeginScope(_profileTag);
+            using var scope = _profilerService.BeginScope(_profileTag);
 
             lock (_statusLock)
             {
@@ -213,7 +213,7 @@ namespace AhBearStudios.Core.MessageBus.Services
         public async Task SendAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default)
             where TMessage : IMessage
         {
-            using var scope = _profiler.BeginScope(_profileTag);
+            using var scope = _profilerService.BeginScope(_profileTag);
 
             if (message == null) throw new ArgumentNullException(nameof(message));
 
@@ -235,7 +235,7 @@ namespace AhBearStudios.Core.MessageBus.Services
             CancellationToken cancellationToken = default)
             where TMessage : IMessage
         {
-            using var scope = _profiler.BeginScope(_profileTag);
+            using var scope = _profilerService.BeginScope(_profileTag);
 
             if (message == null) throw new ArgumentNullException(nameof(message));
 
@@ -303,7 +303,7 @@ namespace AhBearStudios.Core.MessageBus.Services
             CancellationToken cancellationToken = default)
             where TMessage : IReliableMessage
         {
-            using var scope = _profiler.BeginScope(_profileTag);
+            using var scope = _profilerService.BeginScope(_profileTag);
 
             if (message == null) throw new ArgumentNullException(nameof(message));
 
@@ -343,7 +343,7 @@ namespace AhBearStudios.Core.MessageBus.Services
             BatchDeliveryOptions options,
             CancellationToken cancellationToken = default)
         {
-            using var scope = _profiler.BeginScope(_profileTag);
+            using var scope = _profilerService.BeginScope(_profileTag);
 
             if (messages == null) throw new ArgumentNullException(nameof(messages));
             if (options == null) throw new ArgumentNullException(nameof(options));
@@ -434,7 +434,7 @@ namespace AhBearStudios.Core.MessageBus.Services
         public async Task AcknowledgeMessageAsync(Guid messageId, Guid deliveryId,
             CancellationToken cancellationToken = default)
         {
-            using var scope = _profiler.BeginScope(_profileTag);
+            using var scope = _profilerService.BeginScope(_profileTag);
 
             var acknowledgmentMessage = new MessageAcknowledgedMessage
             {
@@ -542,7 +542,7 @@ namespace AhBearStudios.Core.MessageBus.Services
 
             try
             {
-                using var scope = _profiler.BeginScope(_profileTag);
+                using var scope = _profilerService.BeginScope(_profileTag);
 
                 var messagesToProcess = new List<BatchedMessage>();
                 var batchSize = GetEffectiveBatchSize(force);
@@ -737,7 +737,7 @@ namespace AhBearStudios.Core.MessageBus.Services
 
         private void OnMessageAcknowledgedReceived(MessageAcknowledgedMessage ack)
         {
-            using var scope = _profiler.BeginScope(_profileTag);
+            using var scope = _profilerService.BeginScope(_profileTag);
 
             var key = (ack.AcknowledgedMessageId, ack.AcknowledgedDeliveryId);
             if (_pendingDeliveries.TryRemove(key, out var delivery))

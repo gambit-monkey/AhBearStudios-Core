@@ -9,7 +9,7 @@ namespace AhBearStudios.Core.Profiling.Interfaces
     /// <summary>
     /// Interface for profiling operations using the message bus system
     /// </summary>
-    public interface IProfiler
+    public interface IProfilerService
     {
         /// <summary>
         /// Whether profiling is currently enabled

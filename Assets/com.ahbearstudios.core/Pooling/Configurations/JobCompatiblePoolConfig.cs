@@ -223,7 +223,7 @@ namespace AhBearStudios.Core.Pooling.Configurations
         #region Private Fields
 
         private readonly IPoolLogger _logger;
-        private readonly IPoolingServiceLocator _serviceLocator;
+        private readonly IPoolingService _service;
         private bool _isDisposed;
 
         #endregion
@@ -236,7 +236,7 @@ namespace AhBearStudios.Core.Pooling.Configurations
         public JobCompatiblePoolConfig()
         {
             _logger = null;
-            _serviceLocator = null;
+            _service = null;
 
             // Default optimal settings for Jobs
             UseSafetyChecks = true;
@@ -252,11 +252,11 @@ namespace AhBearStudios.Core.Pooling.Configurations
         /// Creates a Job-compatible pool configuration with dependency injection.
         /// </summary>
         /// <param name="logger">Logger service for pool operations</param>
-        /// <param name="serviceLocator">Optional service locator for additional services</param>
-        public JobCompatiblePoolConfig(IPoolLogger logger, IPoolingServiceLocator serviceLocator = null)
+        /// <param name="service">Optional service locator for additional services</param>
+        public JobCompatiblePoolConfig(IPoolLogger logger, IPoolingService service = null)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _serviceLocator = serviceLocator;
+            _service = service;
 
             // Default optimal settings for Jobs
             UseSafetyChecks = true;

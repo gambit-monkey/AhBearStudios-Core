@@ -77,7 +77,7 @@ namespace AhBearStudios.Core.Logging.Unity
         private ICoroutineRunner _coroutineRunner;
         private ICoroutineHandle _autoFlushHandle;
         private IMessageBusService _messageBusService;
-        private IProfiler _profiler;
+        private IProfilerService _profilerService;
         private IDependencyProvider _dependencyProvider;
 
         // Native collections for performance
@@ -630,7 +630,7 @@ namespace AhBearStudios.Core.Logging.Unity
             var flushedCount = 0;
             var startTime = Time.realtimeSinceStartup;
 
-            using var profilerScope = _profiler?.BeginSample("LogManager.Flush");
+            using var profilerScope = _profilerService?.BeginSample("LogManager.Flush");
 
             try
             {
@@ -917,7 +917,7 @@ namespace AhBearStudios.Core.Logging.Unity
         {
             if (!_messageQueue.IsCreated || _messageQueue.Length == 0) return;
 
-            using var profilerScope = _profiler?.BeginSample("LogManager.ProcessMessages");
+            using var profilerScope = _profilerService?.BeginSample("LogManager.ProcessMessages");
 
             var processedCount = 0;
             var maxProcessPerFrame = Mathf.Min(_targetCount, _messageQueue.Length);
@@ -939,7 +939,7 @@ namespace AhBearStudios.Core.Logging.Unity
         /// <param name="message">The message to process.</param>
         private void ProcessMessage(LogMessage message)
         {
-            using var profilerScope = _profiler?.BeginSample("LogManager.ProcessMessage");
+            using var profilerScope = _profilerService?.BeginSample("LogManager.ProcessMessage");
 
             var targetCount = 0;
             string primaryTargetName = "Unknown";

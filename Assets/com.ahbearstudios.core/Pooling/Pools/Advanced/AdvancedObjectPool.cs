@@ -28,7 +28,7 @@ namespace AhBearStudios.Core.Pooling.Pools.Advanced
         private readonly IPoolLogger _logger;
         private readonly IPoolDiagnostics _diagnostics;
         private readonly IPoolHealthChecker _healthChecker;
-        private readonly IPoolingServiceLocator _serviceLocator;
+        private readonly IPoolingService _service;
         
         // Pool configuration
         private AdvancedPoolConfig _config;
@@ -166,7 +166,7 @@ namespace AhBearStudios.Core.Pooling.Pools.Advanced
         /// <param name="logger">Optional pool logger for logging events</param>
         /// <param name="diagnostics">Optional pool diagnostics for tracking metrics</param>
         /// <param name="healthChecker">Optional health checker for validating pool health</param>
-        /// <param name="serviceLocator">Optional service locator for resolving dependencies</param>
+        /// <param name="service">Optional service locator for resolving dependencies</param>
         /// <param name="resetAction">Optional action to reset items when returned to pool</param>
         /// <param name="validator">Optional validator function to ensure items are valid</param>
         /// <param name="name">Optional name for the pool</param>
@@ -177,7 +177,7 @@ namespace AhBearStudios.Core.Pooling.Pools.Advanced
             IPoolLogger logger = null,
             IPoolDiagnostics diagnostics = null,
             IPoolHealthChecker healthChecker = null,
-            IPoolingServiceLocator serviceLocator = null,
+            IPoolingService service = null,
             Action<T> resetAction = null,
             Func<T, bool> validator = null,
             string name = null)
@@ -190,18 +190,18 @@ namespace AhBearStudios.Core.Pooling.Pools.Advanced
             _poolId = Guid.NewGuid();
             
             // Resolve services
-            _serviceLocator = serviceLocator ?? DefaultPoolingServices.Instance;
-            _profiler = profiler ?? _serviceLocator.GetService<IPoolProfiler>();
-            _logger = logger ?? _serviceLocator.GetService<IPoolLogger>();
-            _diagnostics = diagnostics ?? _serviceLocator.GetService<IPoolDiagnostics>();
-            _healthChecker = healthChecker ?? _serviceLocator.GetService<IPoolHealthChecker>();
+            _service = service ?? DefaultPoolingServices.Instance;
+            _profiler = profiler ?? _service.GetService<IPoolProfiler>();
+            _logger = logger ?? _service.GetService<IPoolLogger>();
+            _diagnostics = diagnostics ?? _service.GetService<IPoolDiagnostics>();
+            _healthChecker = healthChecker ?? _service.GetService<IPoolHealthChecker>();
             
             // Initialize collections
             _inactiveItems = new Stack<T>(_config.InitialCapacity);
             _activeItems = new HashSet<T>();
             
             // Initialize metrics
-            _metrics = new PoolMetrics(_poolId, _poolName, GetType(), typeof(T), _serviceLocator);
+            _metrics = new PoolMetrics(_poolId, _poolName, GetType(), typeof(T), _service);
             
             // Register with diagnostics
             _diagnostics?.RegisterPool(this, _poolName);

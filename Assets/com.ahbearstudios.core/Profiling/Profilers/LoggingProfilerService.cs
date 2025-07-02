@@ -17,9 +17,9 @@ namespace AhBearStudios.Core.Profiling.Profilers
     /// Profiler specifically designed for logging operations.
     /// Provides detailed metrics about log message processing, target writes, and queue operations.
     /// </summary>
-    public sealed class LoggingProfiler : IProfiler, IDisposable
+    public sealed class LoggingProfilerService : IProfilerService, IDisposable
     {
-        private readonly IProfiler _baseProfiler;
+        private readonly IProfilerService _baseProfilerService;
         private readonly IMessageBusService _messageBusService;
         private readonly Dictionary<string, LoggingMetricsData> _loggingMetrics;
         private readonly Dictionary<LogLevel, double> _logLevelAlerts;
@@ -29,11 +29,11 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <summary>
         /// Creates a new logging profiler.
         /// </summary>
-        /// <param name="baseProfiler">Base profiler to delegate general operations to.</param>
+        /// <param name="baseProfilerService">Base profiler to delegate general operations to.</param>
         /// <param name="messageBusService">Message bus for publishing profiling events.</param>
-        public LoggingProfiler(IProfiler baseProfiler, IMessageBusService messageBusService)
+        public LoggingProfilerService(IProfilerService baseProfilerService, IMessageBusService messageBusService)
         {
-            _baseProfiler = baseProfiler ?? throw new ArgumentNullException(nameof(baseProfiler));
+            _baseProfilerService = baseProfilerService ?? throw new ArgumentNullException(nameof(baseProfilerService));
             _messageBusService = messageBusService;
             _loggingMetrics = new Dictionary<string, LoggingMetricsData>();
             _logLevelAlerts = new Dictionary<LogLevel, double>();
@@ -45,7 +45,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <summary>
         /// Gets whether profiling is currently enabled.
         /// </summary>
-        public bool IsEnabled => _baseProfiler.IsEnabled;
+        public bool IsEnabled => _baseProfilerService.IsEnabled;
 
         /// <summary>
         /// Gets the message bus used for profiling events.
@@ -59,7 +59,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Disposable sample handle.</returns>
         public IDisposable BeginSample(string name)
         {
-            return _baseProfiler.BeginSample(name);
+            return _baseProfilerService.BeginSample(name);
         }
 
         /// <summary>
@@ -69,7 +69,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Profiler session for the scope.</returns>
         public ProfilerSession BeginScope(ProfilerTag tag)
         {
-            return _baseProfiler.BeginScope(tag);
+            return _baseProfilerService.BeginScope(tag);
         }
 
         /// <summary>
@@ -80,7 +80,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Profiler session for the scope.</returns>
         public ProfilerSession BeginScope(ProfilerCategory category, string name)
         {
-            return _baseProfiler.BeginScope(category, name);
+            return _baseProfilerService.BeginScope(category, name);
         }
 
         /// <summary>
@@ -90,7 +90,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Metrics data for the tag.</returns>
         public DefaultMetricsData GetMetrics(ProfilerTag tag)
         {
-            return _baseProfiler.GetMetrics(tag);
+            return _baseProfilerService.GetMetrics(tag);
         }
 
         /// <summary>
@@ -99,7 +99,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Dictionary of all metrics by tag.</returns>
         public IReadOnlyDictionary<ProfilerTag, DefaultMetricsData> GetAllMetrics()
         {
-            return _baseProfiler.GetAllMetrics();
+            return _baseProfilerService.GetAllMetrics();
         }
 
         /// <summary>
@@ -109,7 +109,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>List of historical values.</returns>
         public IReadOnlyList<double> GetHistory(ProfilerTag tag)
         {
-            return _baseProfiler.GetHistory(tag);
+            return _baseProfilerService.GetHistory(tag);
         }
 
         /// <summary>
@@ -119,7 +119,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <param name="threshold">Threshold value.</param>
         public void RegisterMetricAlert(ProfilerTag metricTag, double threshold)
         {
-            _baseProfiler.RegisterMetricAlert(metricTag, threshold);
+            _baseProfilerService.RegisterMetricAlert(metricTag, threshold);
         }
 
         /// <summary>
@@ -129,7 +129,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <param name="thresholdMs">Threshold in milliseconds.</param>
         public void RegisterSessionAlert(ProfilerTag sessionTag, double thresholdMs)
         {
-            _baseProfiler.RegisterSessionAlert(sessionTag, thresholdMs);
+            _baseProfilerService.RegisterSessionAlert(sessionTag, thresholdMs);
         }
 
         /// <summary>
@@ -137,7 +137,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// </summary>
         public void ResetStats()
         {
-            _baseProfiler.ResetStats();
+            _baseProfilerService.ResetStats();
             _loggingMetrics.Clear();
         }
 
@@ -146,7 +146,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// </summary>
         public void StartProfiling()
         {
-            _baseProfiler.StartProfiling();
+            _baseProfilerService.StartProfiling();
         }
 
         /// <summary>
@@ -154,7 +154,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// </summary>
         public void StopProfiling()
         {
-            _baseProfiler.StopProfiling();
+            _baseProfilerService.StopProfiling();
         }
 
         // Logging-specific profiling methods

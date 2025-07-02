@@ -28,18 +28,18 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         /// <param name="keyedSubscriber">The underlying MessagePipe keyed subscriber.</param>
         /// <param name="globalSubscriber">The underlying MessagePipe global subscriber for all-key subscriptions.</param>
         /// <param name="logger">The logger for diagnostic output.</param>
-        /// <param name="profiler">The profiler for performance monitoring.</param>
+        /// <param name="profilerService">The profiler for performance monitoring.</param>
         public MessagePipeKeyedSubscriber(
             ISubscriber<TKey, TMessage> keyedSubscriber,
             ISubscriber<TMessage> globalSubscriber,
             IBurstLogger logger,
-            IProfiler profiler)
+            IProfilerService profilerService)
         {
             _keyedSubscriber = keyedSubscriber ?? throw new ArgumentNullException(nameof(keyedSubscriber));
             _globalSubscriber = globalSubscriber ?? throw new ArgumentNullException(nameof(globalSubscriber));
             
             var handlerLogger = logger ?? throw new ArgumentNullException(nameof(logger));
-            var handlerProfiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            var handlerProfiler = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             
             _subscriberName = $"KeyedSubscriber<{typeof(TKey).Name}, {typeof(TMessage).Name}>";
             

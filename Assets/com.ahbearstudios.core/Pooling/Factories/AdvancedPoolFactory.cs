@@ -17,7 +17,7 @@ namespace AhBearStudios.Core.Pooling.Factories
     /// </summary>
     public class AdvancedPoolFactory : IAdvancedPoolFactory
     {
-        private readonly IPoolingServiceLocator _serviceLocator;
+        private readonly IPoolingService _service;
         private readonly Dictionary<string, IPool> _managedPools;
         private readonly string _factoryId;
         private FactoryError _lastError;
@@ -47,24 +47,24 @@ namespace AhBearStudios.Core.Pooling.Factories
         public IPoolConfigRegistry ConfigRegistry { get; set; }
 
         /// <inheritdoc/>
-        public IPoolingServiceLocator ServiceLocator
+        public IPoolingService Service
         {
-            get => _serviceLocator;
+            get => _service;
             set => throw new NotSupportedException("ServiceLocator is read-only after construction");
         }
 
         /// <summary>
         /// Creates a new instance of AdvancedPoolFactory
         /// </summary>
-        /// <param name="serviceLocator">Service locator for accessing services</param>
-        public AdvancedPoolFactory(IPoolingServiceLocator serviceLocator)
+        /// <param name="service">Service locator for accessing services</param>
+        public AdvancedPoolFactory(IPoolingService service)
         {
-            _serviceLocator = serviceLocator ?? throw new ArgumentNullException(nameof(serviceLocator));
+            _service = service ?? throw new ArgumentNullException(nameof(service));
             _managedPools = new Dictionary<string, IPool>();
             _factoryId = $"AdvancedPoolFactory_{Guid.NewGuid():N}";
             _state = FactoryState.Created;
 
-            ConfigRegistry = _serviceLocator.ConfigRegistry;
+            ConfigRegistry = _service.ConfigRegistry;
         }
 
         /// <inheritdoc/>
@@ -90,7 +90,7 @@ namespace AhBearStudios.Core.Pooling.Factories
                 if (metrics != null)
                 {
                     // Register metrics if provided
-                    _serviceLocator.GetService<IPoolDiagnostics>()?.RegisterPoolMetrics(pool, metrics);
+                    _service.GetService<IPoolDiagnostics>()?.RegisterPoolMetrics(pool, metrics);
                 }
 
                 TrackPool(pool);

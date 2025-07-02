@@ -14,7 +14,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
     /// Implementation of the profiler interface using message bus for communication.
     /// Properly utilizes ProfilerTag predefined tags and provides comprehensive profiling capabilities.
     /// </summary>
-    public class DefaultProfiler : IProfiler
+    public class DefaultProfilerService : IProfilerService
     {
         private readonly IMessageBusService _messageBusService;
         private readonly ProfilerStatsCollection _statsCollection = new ProfilerStatsCollection();
@@ -39,7 +39,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// Creates a new DefaultProfiler instance
         /// </summary>
         /// <param name="messageBusService">Message bus for publishing profiling messages</param>
-        public DefaultProfiler(IMessageBusService messageBusService)
+        public DefaultProfilerService(IMessageBusService messageBusService)
         {
             _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             

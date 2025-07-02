@@ -26,7 +26,7 @@ namespace AhBearStudios.Core.Pooling.Pools.Advanced
         private readonly Func<T, bool> _validateFunc;
         private readonly string _poolName;
         private readonly Guid _id;
-        private readonly IPoolingServiceLocator _serviceLocator;
+        private readonly IPoolingService _service;
         private readonly IPoolLogger _logger;
         private readonly IPoolProfiler _profiler;
         private readonly IPoolDiagnostics _diagnostics;
@@ -59,7 +59,7 @@ namespace AhBearStudios.Core.Pooling.Pools.Advanced
         /// </summary>
         /// <param name="objectFactory">Factory function to create new objects</param>
         /// <param name="config">Optional pool configuration</param>
-        /// <param name="serviceLocator">Service locator for pool services</param>
+        /// <param name="service">Service locator for pool services</param>
         /// <param name="initializeFunc">Optional function to initialize objects when first created</param>
         /// <param name="resetFunc">Optional function to reset objects when they are returned to the pool</param>
         /// <param name="validateFunc">Optional function to validate objects before they are returned from the pool</param>
@@ -68,7 +68,7 @@ namespace AhBearStudios.Core.Pooling.Pools.Advanced
         public ComplexObjectPool(
             Func<T> objectFactory,
             ComplexObjectPoolConfig config = null,
-            IPoolingServiceLocator serviceLocator = null,
+            IPoolingService service = null,
             Action<T> initializeFunc = null,
             Action<T> resetFunc = null,
             Func<T, bool> validateFunc = null,
@@ -85,12 +85,12 @@ namespace AhBearStudios.Core.Pooling.Pools.Advanced
             _id = Guid.NewGuid();
             
             // Use dependency injection instead of static service locator
-            _serviceLocator = serviceLocator ?? DefaultPoolingServices.Instance;
-            _logger = _serviceLocator.GetService<IPoolLogger>();
-            _profiler = _serviceLocator.GetService<IPoolProfiler>();
-            _diagnostics = _serviceLocator.GetService<IPoolDiagnostics>();
-            _metrics = _serviceLocator.GetService<IPoolMetrics>();
-            _registry = _serviceLocator.GetService<IPoolRegistry>();
+            _service = service ?? DefaultPoolingServices.Instance;
+            _logger = _service.GetService<IPoolLogger>();
+            _profiler = _service.GetService<IPoolProfiler>();
+            _diagnostics = _service.GetService<IPoolDiagnostics>();
+            _metrics = _service.GetService<IPoolMetrics>();
+            _registry = _service.GetService<IPoolRegistry>();
 
             // Initialize collections with Unity Collections v2
             var allocator = config?.NativeAllocator ?? Allocator.Persistent;

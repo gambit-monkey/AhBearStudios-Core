@@ -12,7 +12,7 @@ namespace AhBearStudios.Core.Pooling.Services
     /// Default implementation of the pooling service locator following the singleton pattern.
     /// Provides centralized access to all pooling system services.
     /// </summary>
-    public class DefaultPoolingServices : IPoolingServiceLocator
+    public class DefaultPoolingServices : IPoolingService
     {
         // Singleton instance with thread safety using double-check locking
         private static DefaultPoolingServices s_instance;

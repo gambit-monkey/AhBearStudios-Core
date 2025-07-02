@@ -13,7 +13,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
     /// Used when profiling is disabled to avoid null checks and performance overhead.
     /// Properly handles all ProfilerTag operations without any actual profiling.
     /// </summary>
-    public class NullProfiler : IProfiler
+    public class NullProfilerService : IProfilerService
     {
         private static readonly NoOpDisposable SharedDisposable = new NoOpDisposable();
         private static readonly ProfilerSession SharedNullSession = new ProfilerSession(ProfilerTag.Uncategorized, null);

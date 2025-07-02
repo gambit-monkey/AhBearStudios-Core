@@ -11,15 +11,15 @@ namespace AhBearStudios.Core.MessageBus.Handlers
     /// </summary>
     internal sealed class PerformanceHandler : MessageHandlerFilter<object>
     {
-        private readonly IProfiler _profiler;
+        private readonly IProfilerService _profilerService;
         
         /// <summary>
         /// Initializes a new instance of the PerformanceHandler class.
         /// </summary>
-        /// <param name="profiler">The profiler to use for performance monitoring.</param>
-        public PerformanceHandler(IProfiler profiler)
+        /// <param name="profilerService">The profiler to use for performance monitoring.</param>
+        public PerformanceHandler(IProfilerService profilerService)
         {
-            _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
         }
         
         /// <inheritdoc />
@@ -28,7 +28,7 @@ namespace AhBearStudios.Core.MessageBus.Handlers
             var messageType = message.GetType();
             var tag = new ProfilerTag(new ProfilerCategory("MessageBusService"), $"HandleMessage_{messageType.Name}");
             
-            using var scope = _profiler.BeginScope(tag);
+            using var scope = _profilerService.BeginScope(tag);
             next(message);
         }
     }

@@ -67,10 +67,10 @@ namespace AhBearStudios.Core.Pooling.Configurations
         private readonly object _syncLock;
 
         // Service locator reference for accessing services
-        private IPoolingServiceLocator ServiceLocator => DefaultPoolingServices.Instance;
+        private IPoolingService Service => DefaultPoolingServices.Instance;
         
         // Logger reference for logging operations
-        private IPoolLogger Logger => ServiceLocator.GetService<IPoolLogger>() ?? PoolLogger.GetLogger("ConfigRegistry");
+        private IPoolLogger Logger => Service.GetService<IPoolLogger>() ?? PoolLogger.GetLogger("ConfigRegistry");
 
         #endregion
 

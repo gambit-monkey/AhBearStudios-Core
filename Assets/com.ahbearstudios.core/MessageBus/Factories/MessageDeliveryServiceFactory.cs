@@ -15,7 +15,7 @@ namespace AhBearStudios.Core.MessageBus.Factories
     {
         private readonly IMessageBusService _messageBusService;
         private readonly ILoggingService _logger;
-        private readonly IProfiler _profiler;
+        private readonly IProfilerService _profilerService;
         private readonly DeliveryServiceConfiguration _configuration;
         
         /// <summary>
@@ -23,32 +23,32 @@ namespace AhBearStudios.Core.MessageBus.Factories
         /// </summary>
         /// <param name="messageBusService">The message bus service to use for message delivery and communication.</param>
         /// <param name="logger">The logging service to use for operational logging.</param>
-        /// <param name="profiler">The profiler to use for performance monitoring and metrics.</param>
+        /// <param name="profilerService">The profiler to use for performance monitoring and metrics.</param>
         /// <param name="configuration">Configuration for delivery services. If null, default configuration is used.</param>
         /// <exception cref="ArgumentNullException">Thrown when any required parameter is null.</exception>
         public MessageDeliveryServiceFactory(
             IMessageBusService messageBusService, 
             ILoggingService logger, 
-            IProfiler profiler,
+            IProfilerService profilerService,
             DeliveryServiceConfiguration configuration = null)
         {
             _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             _configuration = configuration ?? CreateDefaultConfiguration();
         }
         
         /// <inheritdoc />
         public IMessageDeliveryService CreateReliableDeliveryService()
         {
-            using var scope = _profiler.BeginSample("CreateReliableDeliveryService");
+            using var scope = _profilerService.BeginSample("CreateReliableDeliveryService");
             
             _logger.LogInfo("Creating reliable message delivery service");
             
             var service = new ReliableMessageDeliveryService(
                 _messageBusService, 
                 _logger, 
-                _profiler, 
+                _profilerService, 
                 _configuration);
                 
             // Publish service creation message
@@ -60,14 +60,14 @@ namespace AhBearStudios.Core.MessageBus.Factories
         /// <inheritdoc />
         public IMessageDeliveryService CreateFireAndForgetService()
         {
-            using var scope = _profiler.BeginSample("CreateFireAndForgetService");
+            using var scope = _profilerService.BeginSample("CreateFireAndForgetService");
             
             _logger.LogInfo("Creating fire-and-forget message delivery service");
             
             var service = new FireAndForgetDeliveryService(
                 _messageBusService, 
                 _logger, 
-                _profiler, 
+                _profilerService, 
                 _configuration);
                 
             // Publish service creation message
@@ -79,7 +79,7 @@ namespace AhBearStudios.Core.MessageBus.Factories
         /// <inheritdoc />
         public IMessageDeliveryService CreateBatchOptimizedService()
         {
-            using var scope = _profiler.BeginSample("CreateBatchOptimizedService");
+            using var scope = _profilerService.BeginSample("CreateBatchOptimizedService");
             
             _logger.LogInfo("Creating batch-optimized message delivery service");
             
@@ -88,7 +88,7 @@ namespace AhBearStudios.Core.MessageBus.Factories
             var service = new BatchOptimizedDeliveryService(
                 _messageBusService, 
                 _logger, 
-                _profiler, 
+                _profilerService, 
                 batchConfig);
                 
             // Publish service creation message

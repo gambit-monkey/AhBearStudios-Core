@@ -11,7 +11,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
     internal sealed class KeyedSubscriptionWrapper : IKeyedSubscriptionWrapper
     {
         private readonly IBurstLogger _logger;
-        private readonly IProfiler _profiler;
+        private readonly IProfilerService _profilerService;
         private readonly string _subscriberName;
         private readonly object _syncLock = new object();
         
@@ -21,12 +21,12 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         /// Initializes a new instance of the KeyedSubscriptionWrapper class.
         /// </summary>
         /// <param name="logger">The logger for diagnostic output.</param>
-        /// <param name="profiler">The profiler for performance monitoring.</param>
+        /// <param name="profilerService">The profiler for performance monitoring.</param>
         /// <param name="subscriberName">The name of the subscriber for logging purposes.</param>
-        public KeyedSubscriptionWrapper(IBurstLogger logger, IProfiler profiler, string subscriberName)
+        public KeyedSubscriptionWrapper(IBurstLogger logger, IProfilerService profilerService, string subscriberName)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             _subscriberName = subscriberName ?? throw new ArgumentNullException(nameof(subscriberName));
         }
 
@@ -49,7 +49,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             Func<Action<TMessage>, IDisposable> subscribe,
             IKeyedSubscriptionTracker tracker)
         {
-            using (_profiler.BeginSample($"{_subscriberName}.Subscribe"))
+            using (_profilerService.BeginSample($"{_subscriberName}.Subscribe"))
             {
                 try
                 {
@@ -78,7 +78,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             Func<Action<TMessage>, IDisposable> subscribe,
             IKeyedSubscriptionTracker tracker)
         {
-            using (_profiler.BeginSample($"{_subscriberName}.SubscribeAll"))
+            using (_profilerService.BeginSample($"{_subscriberName}.SubscribeAll"))
             {
                 try
                 {
@@ -111,7 +111,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
             Func<Action<TMessage>, IDisposable> subscribe,
             IKeyedSubscriptionTracker tracker)
         {
-            using (_profiler.BeginSample($"{_subscriberName}.SubscribeWithFilter"))
+            using (_profilerService.BeginSample($"{_subscriberName}.SubscribeWithFilter"))
             {
                 try
                 {
@@ -138,7 +138,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         {
             return message =>
             {
-                using (_profiler.BeginSample($"{_subscriberName}.HandleMessage"))
+                using (_profilerService.BeginSample($"{_subscriberName}.HandleMessage"))
                 {
                     try
                     {
@@ -167,7 +167,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         {
             return message =>
             {
-                using (_profiler.BeginSample($"{_subscriberName}.HandleMessage"))
+                using (_profilerService.BeginSample($"{_subscriberName}.HandleMessage"))
                 {
                     try
                     {
@@ -201,7 +201,7 @@ namespace AhBearStudios.Core.MessageBus.MessageBuses.MessagePipe
         {
             return message =>
             {
-                using (_profiler.BeginSample($"{_subscriberName}.HandleMessage"))
+                using (_profilerService.BeginSample($"{_subscriberName}.HandleMessage"))
                 {
                     try
                     {

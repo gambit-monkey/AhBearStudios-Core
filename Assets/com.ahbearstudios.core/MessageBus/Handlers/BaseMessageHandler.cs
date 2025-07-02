@@ -17,7 +17,7 @@ namespace AhBearStudios.Core.MessageBus.Handlers
     {
         private readonly IMessageBusService _messageBusService;
         private readonly ILoggingService _logger;
-        private readonly IProfiler _profiler;
+        private readonly IProfilerService _profilerService;
         private readonly IDisposable _subscription;
         private readonly ProfilerTag _handlerTag;
         
@@ -26,12 +26,12 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         /// </summary>
         /// <param name="messageBusService">The message bus to use.</param>
         /// <param name="logger">The logger to use for logging.</param>
-        /// <param name="profiler">The profiler to use for performance monitoring.</param>
-        protected BaseMessageHandler(IMessageBusService messageBusService, ILoggingService logger, IProfiler profiler)
+        /// <param name="profilerService">The profiler to use for performance monitoring.</param>
+        protected BaseMessageHandler(IMessageBusService messageBusService, ILoggingService logger, IProfilerService profilerService)
         {
             _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             
             var messageType = typeof(TMessage);
             var handlerType = GetType();
@@ -45,7 +45,7 @@ namespace AhBearStudios.Core.MessageBus.Handlers
         
         private void HandleMessageInternal(TMessage message)
         {
-            using var scope = _profiler.BeginScope(_handlerTag);
+            using var scope = _profilerService.BeginScope(_handlerTag);
             
             _logger.Log(LogLevel.Trace, $"Handling message of type {typeof(TMessage).Name}", "MessageHandler");
             

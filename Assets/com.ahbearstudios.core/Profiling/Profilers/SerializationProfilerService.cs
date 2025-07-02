@@ -14,9 +14,9 @@ namespace AhBearStudios.Core.Profiling.Profilers
     /// Specialized profiler for serialization operations that captures serialization-specific metrics.
     /// Implements intelligent tag selection and provides comprehensive serialization profiling capabilities.
     /// </summary>
-    public class SerializationProfiler : IProfiler
+    public class SerializationProfilerService : IProfilerService
     {
-        private readonly IProfiler _baseProfiler;
+        private readonly IProfilerService _baseProfilerService;
         private readonly ISerializerMetrics _serializerMetrics;
         private readonly IMessageBusService _messageBusService;
         private readonly Dictionary<Guid, SerializerMetricsData> _serializerMetricsCache = new Dictionary<Guid, SerializerMetricsData>();
@@ -29,7 +29,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <summary>
         /// Gets whether profiling is enabled
         /// </summary>
-        public bool IsEnabled => _baseProfiler.IsEnabled;
+        public bool IsEnabled => _baseProfilerService.IsEnabled;
 
         /// <summary>
         /// Gets the message bus used by this profiler
@@ -39,12 +39,12 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <summary>
         /// Creates a new serialization profiler
         /// </summary>
-        /// <param name="baseProfiler">Base profiler implementation for general profiling</param>
+        /// <param name="baseProfilerService">Base profiler implementation for general profiling</param>
         /// <param name="serializerMetrics">Serializer metrics service</param>
         /// <param name="messageBusService">Message bus for publishing profiling messages</param>
-        public SerializationProfiler(IProfiler baseProfiler, ISerializerMetrics serializerMetrics, IMessageBusService messageBusService)
+        public SerializationProfilerService(IProfilerService baseProfilerService, ISerializerMetrics serializerMetrics, IMessageBusService messageBusService)
         {
-            _baseProfiler = baseProfiler ?? throw new ArgumentNullException(nameof(baseProfiler));
+            _baseProfilerService = baseProfilerService ?? throw new ArgumentNullException(nameof(baseProfilerService));
             _serializerMetrics = serializerMetrics ?? throw new ArgumentNullException(nameof(serializerMetrics));
             _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             
@@ -58,7 +58,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Profiler session that should be disposed when sample ends</returns>
         public IDisposable BeginSample(string name)
         {
-            return _baseProfiler.BeginSample(name);
+            return _baseProfilerService.BeginSample(name);
         }
 
         /// <summary>
@@ -68,7 +68,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Profiler session that should be disposed when scope ends</returns>
         public ProfilerSession BeginScope(ProfilerTag tag)
         {
-            return _baseProfiler.BeginScope(tag);
+            return _baseProfilerService.BeginScope(tag);
         }
 
         /// <summary>
@@ -79,7 +79,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Profiler session that should be disposed when scope ends</returns>
         public ProfilerSession BeginScope(ProfilerCategory category, string name)
         {
-            return _baseProfiler.BeginScope(category, name);
+            return _baseProfilerService.BeginScope(category, name);
         }
 
         #region Serialization-Specific Profiling Methods
@@ -367,7 +367,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Profile metrics for the tag</returns>
         public DefaultMetricsData GetMetrics(ProfilerTag tag)
         {
-            return _baseProfiler.GetMetrics(tag);
+            return _baseProfilerService.GetMetrics(tag);
         }
 
         /// <summary>
@@ -376,7 +376,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <returns>Dictionary of all profiling metrics by tag</returns>
         public IReadOnlyDictionary<ProfilerTag, DefaultMetricsData> GetAllMetrics()
         {
-            return _baseProfiler.GetAllMetrics();
+            return _baseProfilerService.GetAllMetrics();
         }
 
         /// <summary>
@@ -399,7 +399,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <param name="threshold">Threshold value to trigger alert</param>
         public void RegisterMetricAlert(ProfilerTag metricTag, double threshold)
         {
-            _baseProfiler.RegisterMetricAlert(metricTag, threshold);
+            _baseProfilerService.RegisterMetricAlert(metricTag, threshold);
         }
 
         /// <summary>
@@ -409,7 +409,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// <param name="thresholdMs">Threshold in milliseconds to trigger alert</param>
         public void RegisterSessionAlert(ProfilerTag sessionTag, double thresholdMs)
         {
-            _baseProfiler.RegisterSessionAlert(sessionTag, thresholdMs);
+            _baseProfilerService.RegisterSessionAlert(sessionTag, thresholdMs);
         }
 
         /// <summary>
@@ -417,7 +417,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// </summary>
         public void ResetStats()
         {
-            _baseProfiler.ResetStats();
+            _baseProfilerService.ResetStats();
             _history.Clear();
             _serializerMetricsCache.Clear();
             _serializerMetrics.Reset();
@@ -428,7 +428,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// </summary>
         public void StartProfiling()
         {
-            _baseProfiler.StartProfiling();
+            _baseProfilerService.StartProfiling();
         }
 
         /// <summary>
@@ -436,7 +436,7 @@ namespace AhBearStudios.Core.Profiling.Profilers
         /// </summary>
         public void StopProfiling()
         {
-            _baseProfiler.StopProfiling();
+            _baseProfilerService.StopProfiling();
         }
 
         #endregion

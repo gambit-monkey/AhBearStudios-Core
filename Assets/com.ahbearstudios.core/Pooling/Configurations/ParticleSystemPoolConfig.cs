@@ -193,7 +193,7 @@ namespace AhBearStudios.Core.Pooling.Configurations
         #region Private Fields
         
         private readonly IPoolLogger _logger;
-        private readonly IPoolingServiceLocator _serviceLocator;
+        private readonly IPoolingService _service;
         private bool _isDisposed;
         
         #endregion
@@ -206,27 +206,27 @@ namespace AhBearStudios.Core.Pooling.Configurations
         public ParticleSystemPoolConfig()
         {
             _logger = null;
-            _serviceLocator = null;
+            _service = null;
         }
         
         /// <summary>
         /// Creates a new instance of the particle system pool configuration with dependency injection.
         /// </summary>
-        /// <param name="serviceLocator">Service locator for pool services</param>
-        public ParticleSystemPoolConfig(IPoolingServiceLocator serviceLocator = null)
+        /// <param name="service">Service locator for pool services</param>
+        public ParticleSystemPoolConfig(IPoolingService service = null)
         {
-            _serviceLocator = serviceLocator ?? DefaultPoolingServices.Instance;
-            _logger = _serviceLocator.GetService<IPoolLogger>();
+            _service = service ?? DefaultPoolingServices.Instance;
+            _logger = _service.GetService<IPoolLogger>();
         }
         
         /// <summary>
         /// Creates a new particle system pool configuration with the specified initial capacity.
         /// </summary>
         /// <param name="initialCapacity">Initial capacity of the pool</param>
-        /// <param name="serviceLocator">Service locator for pool services</param>
+        /// <param name="service">Service locator for pool services</param>
         /// <exception cref="ArgumentOutOfRangeException">Thrown if capacity is negative</exception>
-        public ParticleSystemPoolConfig(int initialCapacity, IPoolingServiceLocator serviceLocator = null) 
-            : this(serviceLocator)
+        public ParticleSystemPoolConfig(int initialCapacity, IPoolingService service = null) 
+            : this(service)
         {
             if (initialCapacity < 0)
                 throw new ArgumentOutOfRangeException(nameof(initialCapacity), "Initial capacity cannot be negative");
@@ -240,10 +240,10 @@ namespace AhBearStudios.Core.Pooling.Configurations
         /// </summary>
         /// <param name="initialCapacity">Initial capacity of the pool</param>
         /// <param name="maxSize">Maximum pool size (0 for unlimited)</param>
-        /// <param name="serviceLocator">Service locator for pool services</param>
+        /// <param name="service">Service locator for pool services</param>
         /// <exception cref="ArgumentOutOfRangeException">Thrown if capacity is negative</exception>
-        public ParticleSystemPoolConfig(int initialCapacity, int maxSize, IPoolingServiceLocator serviceLocator = null) 
-            : this(initialCapacity, serviceLocator)
+        public ParticleSystemPoolConfig(int initialCapacity, int maxSize, IPoolingService service = null) 
+            : this(initialCapacity, service)
         {
             if (maxSize < 0)
                 throw new ArgumentOutOfRangeException(nameof(maxSize), "Maximum size cannot be negative");
@@ -257,9 +257,9 @@ namespace AhBearStudios.Core.Pooling.Configurations
         /// <param name="initialCapacity">Initial capacity of the pool</param>
         /// <param name="maxSize">Maximum pool size (0 for unlimited)</param>
         /// <param name="prewarmOnInit">Whether to prewarm the pool on initialization</param>
-        /// <param name="serviceLocator">Service locator for pool services</param>
-        public ParticleSystemPoolConfig(int initialCapacity, int maxSize, bool prewarmOnInit, IPoolingServiceLocator serviceLocator = null) 
-            : this(initialCapacity, maxSize, serviceLocator)
+        /// <param name="service">Service locator for pool services</param>
+        public ParticleSystemPoolConfig(int initialCapacity, int maxSize, bool prewarmOnInit, IPoolingService service = null) 
+            : this(initialCapacity, maxSize, service)
         {
             PrewarmOnInit = prewarmOnInit;
         }
@@ -268,10 +268,10 @@ namespace AhBearStudios.Core.Pooling.Configurations
         /// Creates a new particle system pool configuration with the specified ID.
         /// </summary>
         /// <param name="configId">Unique identifier for this configuration</param>
-        /// <param name="serviceLocator">Service locator for pool services</param>
+        /// <param name="service">Service locator for pool services</param>
         /// <exception cref="ArgumentException">Thrown if configId is null or empty</exception>
-        public ParticleSystemPoolConfig(string configId, IPoolingServiceLocator serviceLocator = null) 
-            : this(serviceLocator)
+        public ParticleSystemPoolConfig(string configId, IPoolingService service = null) 
+            : this(service)
         {
             if (string.IsNullOrEmpty(configId))
                 throw new ArgumentException("Config ID cannot be null or empty", nameof(configId));
@@ -283,10 +283,10 @@ namespace AhBearStudios.Core.Pooling.Configurations
         /// Creates a new particle system pool configuration by copying settings from another configuration.
         /// </summary>
         /// <param name="source">Source configuration to copy from</param>
-        /// <param name="serviceLocator">Service locator for pool services</param>
+        /// <param name="service">Service locator for pool services</param>
         /// <exception cref="ArgumentNullException">Thrown if source is null</exception>
-        public ParticleSystemPoolConfig(IPoolConfig source, IPoolingServiceLocator serviceLocator = null) 
-            : this(serviceLocator)
+        public ParticleSystemPoolConfig(IPoolConfig source, IPoolingService service = null) 
+            : this(service)
         {
             if (source == null)
                 throw new ArgumentNullException(nameof(source), "Source configuration cannot be null");
@@ -393,7 +393,7 @@ namespace AhBearStudios.Core.Pooling.Configurations
         /// <returns>A new instance of ParticleSystemPoolConfig with the same settings</returns>
         public IPoolConfig Clone()
         {
-            var clone = new ParticleSystemPoolConfig(_serviceLocator)
+            var clone = new ParticleSystemPoolConfig(_service)
             {
                 ConfigId = ConfigId,
                 InitialCapacity = InitialCapacity,

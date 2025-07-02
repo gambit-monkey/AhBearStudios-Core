@@ -181,7 +181,7 @@ namespace AhBearStudios.Core.Pooling.Configurations
         #region Private Fields
 
         private readonly IPoolLogger _logger;
-        private readonly IPoolingServiceLocator _serviceLocator;
+        private readonly IPoolingService _service;
         private bool _isDisposed;
 
         #endregion
@@ -194,20 +194,20 @@ namespace AhBearStudios.Core.Pooling.Configurations
         public ManagedObjectPoolConfig()
         {
             _logger = null;
-            _serviceLocator = null;
+            _service = null;
         }
 
         /// <summary>
         /// Creates a new instance of ManagedObjectPoolConfig with dependency injection.
         /// </summary>
         /// <param name="logger">Logger service for pool operations</param>
-        /// <param name="serviceLocator">Optional service locator for additional services</param>
-        public ManagedObjectPoolConfig(IPoolLogger logger, IPoolingServiceLocator serviceLocator = null)
+        /// <param name="service">Optional service locator for additional services</param>
+        public ManagedObjectPoolConfig(IPoolLogger logger, IPoolingService service = null)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _serviceLocator = serviceLocator ?? DefaultPoolingServices.Instance;
+            _service = service ?? DefaultPoolingServices.Instance;
 
-            if (_serviceLocator is DefaultPoolingServices defaultServices && !defaultServices.IsInitialized)
+            if (_service is DefaultPoolingServices defaultServices && !defaultServices.IsInitialized)
             {
                 defaultServices.Initialize();
             }
@@ -216,19 +216,19 @@ namespace AhBearStudios.Core.Pooling.Configurations
         /// <summary>
         /// Creates a new instance of ManagedObjectPoolConfig with the provided service locator.
         /// </summary>
-        /// <param name="serviceLocator">The service locator to use</param>
-        public ManagedObjectPoolConfig(IPoolingServiceLocator serviceLocator)
+        /// <param name="service">The service locator to use</param>
+        public ManagedObjectPoolConfig(IPoolingService service)
         {
-            _serviceLocator = serviceLocator ?? throw new ArgumentNullException(nameof(serviceLocator));
+            _service = service ?? throw new ArgumentNullException(nameof(service));
 
-            if (_serviceLocator is DefaultPoolingServices defaultServices && !defaultServices.IsInitialized)
+            if (_service is DefaultPoolingServices defaultServices && !defaultServices.IsInitialized)
             {
                 defaultServices.Initialize();
             }
 
-            if (_serviceLocator.HasService<IPoolLogger>())
+            if (_service.HasService<IPoolLogger>())
             {
-                _logger = _serviceLocator.GetService<IPoolLogger>();
+                _logger = _service.GetService<IPoolLogger>();
             }
         }
 
@@ -246,21 +246,21 @@ namespace AhBearStudios.Core.Pooling.Configurations
 
             if (sourceConfig is ManagedObjectPoolConfig managedConfig)
             {
-                _serviceLocator = managedConfig._serviceLocator;
+                _service = managedConfig._service;
                 _logger = managedConfig._logger;
             }
             else
             {
-                _serviceLocator = DefaultPoolingServices.Instance;
+                _service = DefaultPoolingServices.Instance;
 
-                if (_serviceLocator is DefaultPoolingServices defaultServices && !defaultServices.IsInitialized)
+                if (_service is DefaultPoolingServices defaultServices && !defaultServices.IsInitialized)
                 {
                     defaultServices.Initialize();
                 }
 
-                if (_serviceLocator.HasService<IPoolLogger>())
+                if (_service.HasService<IPoolLogger>())
                 {
-                    _logger = _serviceLocator.GetService<IPoolLogger>();
+                    _logger = _service.GetService<IPoolLogger>();
                 }
             }
 
@@ -273,23 +273,23 @@ namespace AhBearStudios.Core.Pooling.Configurations
         /// with the provided service locator.
         /// </summary>
         /// <param name="sourceConfig">The source configuration to copy settings from</param>
-        /// <param name="serviceLocator">The service locator to use</param>
+        /// <param name="service">The service locator to use</param>
         /// <exception cref="ArgumentNullException">Thrown if source config is null</exception>
-        public ManagedObjectPoolConfig(IPoolConfig sourceConfig, IPoolingServiceLocator serviceLocator)
+        public ManagedObjectPoolConfig(IPoolConfig sourceConfig, IPoolingService service)
         {
             if (sourceConfig == null)
                 throw new ArgumentNullException(nameof(sourceConfig));
 
-            _serviceLocator = serviceLocator ?? DefaultPoolingServices.Instance;
+            _service = service ?? DefaultPoolingServices.Instance;
 
-            if (_serviceLocator is DefaultPoolingServices defaultServices && !defaultServices.IsInitialized)
+            if (_service is DefaultPoolingServices defaultServices && !defaultServices.IsInitialized)
             {
                 defaultServices.Initialize();
             }
 
-            if (_serviceLocator.HasService<IPoolLogger>())
+            if (_service.HasService<IPoolLogger>())
             {
-                _logger = _serviceLocator.GetService<IPoolLogger>();
+                _logger = _service.GetService<IPoolLogger>();
             }
 
             CopyFromConfig(sourceConfig);
@@ -360,9 +360,9 @@ namespace AhBearStudios.Core.Pooling.Configurations
             if (string.IsNullOrEmpty(configName))
                 throw new ArgumentException("Config name cannot be null or empty", nameof(configName));
 
-            if (_serviceLocator != null && _serviceLocator.HasService<IPoolConfigRegistry>())
+            if (_service != null && _service.HasService<IPoolConfigRegistry>())
             {
-                var registry = _serviceLocator.GetService<IPoolConfigRegistry>();
+                var registry = _service.GetService<IPoolConfigRegistry>();
                 registry.RegisterConfig(configName, this);
             }
             else
@@ -404,9 +404,9 @@ namespace AhBearStudios.Core.Pooling.Configurations
         /// <returns>This configuration for method chaining</returns>
         public ManagedObjectPoolConfig RegisterForType<T>() where T : class
         {
-            if (_serviceLocator != null && _serviceLocator.HasService<IPoolConfigRegistry>())
+            if (_service != null && _service.HasService<IPoolConfigRegistry>())
             {
-                var registry = _serviceLocator.GetService<IPoolConfigRegistry>();
+                var registry = _service.GetService<IPoolConfigRegistry>();
                 registry.RegisterConfigForType<T>(this);
             }
             else
@@ -430,7 +430,7 @@ namespace AhBearStudios.Core.Pooling.Configurations
         /// <returns>A new ManagedObjectPoolConfig with the same settings as this one</returns>
         public IPoolConfig Clone()
         {
-            var clone = new ManagedObjectPoolConfig(_serviceLocator)
+            var clone = new ManagedObjectPoolConfig(_service)
             {
                 // Copy all IPoolConfig settings
                 InitialCapacity = InitialCapacity,

@@ -236,7 +236,7 @@ namespace AhBearStudios.Core.Pooling.Configurations
         #region Private Fields
         
         private readonly IPoolLogger _logger;
-        private readonly IPoolingServiceLocator _serviceLocator;
+        private readonly IPoolingService _service;
         private bool _isDisposed;
         
         #endregion
@@ -249,18 +249,18 @@ namespace AhBearStudios.Core.Pooling.Configurations
         public GameObjectPoolConfig()
         {
             _logger = null;
-            _serviceLocator = null;
+            _service = null;
         }
         
         /// <summary>
         /// Creates a new instance of GameObjectPoolConfig with dependency injection.
         /// </summary>
         /// <param name="logger">Logger service for pool operations</param>
-        /// <param name="serviceLocator">Optional service locator for additional services</param>
-        public GameObjectPoolConfig(IPoolLogger logger, IPoolingServiceLocator serviceLocator = null)
+        /// <param name="service">Optional service locator for additional services</param>
+        public GameObjectPoolConfig(IPoolLogger logger, IPoolingService service = null)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _serviceLocator = serviceLocator;
+            _service = service;
         }
         
         /// <summary>
@@ -315,7 +315,7 @@ namespace AhBearStudios.Core.Pooling.Configurations
         /// <returns>A new IPoolConfig instance with the same settings</returns>
         public IPoolConfig Clone()
         {
-            var clone = new GameObjectPoolConfig(_logger, _serviceLocator)
+            var clone = new GameObjectPoolConfig(_logger, _service)
             {
                 // Copy IPoolConfig properties
                 ConfigId = Guid.NewGuid().ToString(), // Generate a new ID for the clone

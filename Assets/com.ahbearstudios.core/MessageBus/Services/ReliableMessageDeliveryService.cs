@@ -24,7 +24,7 @@ namespace AhBearStudios.Core.MessageBus.Services
     {
         private readonly IMessageBusService _bus;
         private readonly ILoggingService    _logger;
-        private readonly IProfiler          _profiler;
+        private readonly IProfilerService          _profilerService;
         private readonly DeliveryServiceConfiguration _config;
 
         private readonly ConcurrentDictionary<(Guid,Guid), PendingDelivery> _pending;
@@ -52,12 +52,12 @@ namespace AhBearStudios.Core.MessageBus.Services
         public ReliableMessageDeliveryService(
             IMessageBusService bus,
             ILoggingService    logger,
-            IProfiler          profiler,
+            IProfilerService          profilerService,
             DeliveryServiceConfiguration config = null)
         {
             _bus     = bus     ?? throw new ArgumentNullException(nameof(bus));
             _logger  = logger  ?? throw new ArgumentNullException(nameof(logger));
-            _profiler= profiler?? throw new ArgumentNullException(nameof(profiler));
+            _profilerService= profilerService?? throw new ArgumentNullException(nameof(profilerService));
             _config  = config  ?? new DeliveryServiceConfiguration();
 
             _pending = new ConcurrentDictionary<(Guid,Guid), PendingDelivery>();
@@ -70,7 +70,7 @@ namespace AhBearStudios.Core.MessageBus.Services
 
         public async Task StartAsync(CancellationToken token = default)
         {
-            using var scope = _profiler.BeginScope(_tag);
+            using var scope = _profilerService.BeginScope(_tag);
 
             lock(_statusLock)
             {
@@ -95,7 +95,7 @@ namespace AhBearStudios.Core.MessageBus.Services
 
         public async Task StopAsync(CancellationToken token = default)
         {
-            using var scope = _profiler.BeginScope(_tag);
+            using var scope = _profilerService.BeginScope(_tag);
 
             lock(_statusLock)
             {
@@ -124,7 +124,7 @@ namespace AhBearStudios.Core.MessageBus.Services
         public async Task SendAsync<T>(T message, CancellationToken token = default)
             where T:IMessage
         {
-            using var scope = _profiler.BeginScope(_tag);
+            using var scope = _profilerService.BeginScope(_tag);
             if (message==null) throw new ArgumentNullException(nameof(message));
             EnsureRunning();
 
@@ -168,7 +168,7 @@ namespace AhBearStudios.Core.MessageBus.Services
         public async Task<DeliveryResult> SendWithConfirmationAsync<T>(T message, CancellationToken token = default)
             where T:IMessage
         {
-            using var scope = _profiler.BeginScope(_tag);
+            using var scope = _profilerService.BeginScope(_tag);
             if (message==null) throw new ArgumentNullException(nameof(message));
             EnsureRunning();
 
@@ -226,7 +226,7 @@ namespace AhBearStudios.Core.MessageBus.Services
         public async Task<ReliableDeliveryResult> SendReliableAsync<T>(T message, CancellationToken token = default)
             where T:IReliableMessage
         {
-            using var scope = _profiler.BeginScope(_tag);
+            using var scope = _profilerService.BeginScope(_tag);
             if (message==null) throw new ArgumentNullException(nameof(message));
             EnsureRunning();
 
@@ -283,7 +283,7 @@ namespace AhBearStudios.Core.MessageBus.Services
             BatchDeliveryOptions options,
             CancellationToken token = default)
         {
-            using var scope = _profiler.BeginScope(_tag);
+            using var scope = _profilerService.BeginScope(_tag);
             if (messages==null) throw new ArgumentNullException(nameof(messages));
             if (options==null) throw new ArgumentNullException(nameof(options));
             EnsureRunning();
@@ -337,7 +337,7 @@ namespace AhBearStudios.Core.MessageBus.Services
 
         public async Task AcknowledgeMessageAsync(Guid messageId, Guid deliveryId, CancellationToken token = default)
         {
-            using var scope = _profiler.BeginScope(_tag);
+            using var scope = _profilerService.BeginScope(_tag);
             _bus.Publish(new MessageAcknowledged
             {
                 AcknowledgedMessageId = messageId,
@@ -420,7 +420,7 @@ namespace AhBearStudios.Core.MessageBus.Services
 
         private async Task ProcessPendingDeliveries()
         {
-            using var scope = _profiler.BeginScope(_tag);
+            using var scope = _profilerService.BeginScope(_tag);
             if (!await _lock.WaitAsync(100)) return;
             try
             {
@@ -511,7 +511,7 @@ namespace AhBearStudios.Core.MessageBus.Services
 
         private void OnAckReceived(in MessageAcknowledged ack)
         {
-            using var scope = _profiler.BeginScope(_tag);
+            using var scope = _profilerService.BeginScope(_tag);
             var key = (ack.AcknowledgedMessageId, ack.AcknowledgedDeliveryId);
             if (!_pending.TryRemove(key, out var pd))
                 return;

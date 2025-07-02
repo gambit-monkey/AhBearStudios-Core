@@ -20,7 +20,7 @@ namespace AhBearStudios.Core.MessageBus.Processors
     {
         private readonly IMessageBusJobProcessor _jobProcessor;
         private readonly ILoggingService _logger;
-        private readonly IProfiler _profiler;
+        private readonly IProfilerService _profilerService;
 
         private readonly Dictionary<Type, Delegate> _unmanagedHandlers;
         private readonly Dictionary<Type, Delegate> _managedHandlers;
@@ -31,15 +31,15 @@ namespace AhBearStudios.Core.MessageBus.Processors
         /// </summary>
         /// <param name="jobProcessor">Injected Burst-friendly job processor.</param>
         /// <param name="logger">Injected Burst-capable logger.</param>
-        /// <param name="profiler">Injected profiler for timing samples.</param>
+        /// <param name="profilerService">Injected profiler for timing samples.</param>
         public MessageBatchProcessor(
             IMessageBusJobProcessor jobProcessor,
             ILoggingService logger,
-            IProfiler profiler)
+            IProfilerService profilerService)
         {
             _jobProcessor = jobProcessor ?? throw new ArgumentNullException(nameof(jobProcessor));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             _unmanagedHandlers = new Dictionary<Type, Delegate>();
             _managedHandlers = new Dictionary<Type, Delegate>();
             _disposed = false;
@@ -73,7 +73,7 @@ namespace AhBearStudios.Core.MessageBus.Processors
             if (!_unmanagedHandlers.ContainsKey(type))
                 throw new InvalidOperationException($"No handler registered for {type.Name}");
 
-            using (var scope = _profiler.BeginScope(ProfilerCategory.Scripts, $"ProcessUnmanagedBatch<{type.Name}>"))
+            using (var scope = _profilerService.BeginScope(ProfilerCategory.Scripts, $"ProcessUnmanagedBatch<{type.Name}>"))
             {
                 _logger.LogInfo($"Enqueueing {messages.Length} messages of type {type.Name}");
 
@@ -101,7 +101,7 @@ namespace AhBearStudios.Core.MessageBus.Processors
 
             var handler = (Action<T>)del;
 
-            using (var scope = _profiler.BeginScope(ProfilerCategory.Scripts, $"CompleteAndDispatchUnmanaged<{type.Name}>") )
+            using (var scope = _profilerService.BeginScope(ProfilerCategory.Scripts, $"CompleteAndDispatchUnmanaged<{type.Name}>") )
             {
                 _jobProcessor.CompleteAndDispatch(payload =>
                 {
@@ -134,7 +134,7 @@ namespace AhBearStudios.Core.MessageBus.Processors
 
             var handler = (Action<T>)del;
 
-            using (var scope = _profiler.BeginScope(ProfilerCategory.Scripts, $"ProcessManagedBatch<{type.Name}>") )
+            using (var scope = _profilerService.BeginScope(ProfilerCategory.Scripts, $"ProcessManagedBatch<{type.Name}>") )
             {
                 _logger.LogInfo($"Processing {messages.Count} managed messages of type {type.Name}");
 
