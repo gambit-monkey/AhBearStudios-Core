@@ -43,7 +43,6 @@ namespace AhBearStudios.Core.MessageBus.Messages
         /// <summary>
         /// Constructor for MemoryPack serialization.
         /// </summary>
-        [MemoryPackConstructor]
         public MessageBase(Guid id, long timestampTicks, ushort typeCode)
         {
             Id = id;

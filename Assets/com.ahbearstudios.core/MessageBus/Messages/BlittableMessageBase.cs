@@ -68,7 +68,6 @@ namespace AhBearStudios.Core.MessageBus.Messages
         /// <summary>
         /// Constructor for MemoryPack serialization.
         /// </summary>
-        [MemoryPackConstructor]
         public BlittableMessageBase(uint4 idStorage, long timestampTicks, ushort typeCode)
         {
             _idStorage = idStorage;

@@ -5,7 +5,7 @@ namespace AhBearStudios.Core.MessageBus.Attributes
     /// <summary>
     /// Attribute used to mark and categorize message classes.
     /// </summary>
-    [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = false)]
+    [AttributeUsage(AttributeTargets.Class | AttributeTargets.Struct, AllowMultiple = false, Inherited = false)] 
     public class MessageAttribute : Attribute
     {
         /// <summary>

@@ -1,4 +1,3 @@
-using System;
 using AhBearStudios.Core.MessageBus.Attributes;
 using AhBearStudios.Core.MessageBus.Interfaces;
 using MemoryPack;
@@ -11,14 +10,14 @@ namespace AhBearStudios.Core.MessageBus.Messages
     /// </summary>
     [MemoryPackable]
     [Message("System", "Acknowledgment message for reliable delivery", logOnPublish: false)]
-    [MessageTypeCode(1000)] // Reserve a specific type code for system messages
+    [MessageTypeCode(1000)] // Reserve a specific type of code for system messages
     public readonly partial record struct MessageAcknowledged : IMessage
     {
         /// <summary>
         /// The base message data.
         /// </summary>
         [MemoryPackInclude]
-        public MessageBase BaseMessage { get; init; }
+        private MessageBase BaseMessage { get; init; }
         
         /// <inheritdoc />
         public Guid Id => BaseMessage.Id;
@@ -45,7 +44,7 @@ namespace AhBearStudios.Core.MessageBus.Messages
         /// Gets the time when the acknowledgment was sent.
         /// </summary>
         [MemoryPackInclude]
-        public DateTime AcknowledgmentTime { get; init; }
+        public long AcknowledgmentTime { get; init; }
         
         /// <summary>
         /// Initializes a new instance of the MessageAcknowledged record struct.
@@ -57,15 +56,14 @@ namespace AhBearStudios.Core.MessageBus.Messages
             BaseMessage = new MessageBase(1000); // System message type code
             AcknowledgedMessageId = acknowledgedMessageId;
             AcknowledgedDeliveryId = acknowledgedDeliveryId;
-            AcknowledgmentTime = DateTime.UtcNow;
+            AcknowledgmentTime = DateTime.UtcNow.Ticks;
         }
         
         /// <summary>
         /// Constructor for MemoryPack serialization.
         /// </summary>
-        [MemoryPackConstructor]
         public MessageAcknowledged(MessageBase baseMessage, Guid acknowledgedMessageId, 
-            Guid acknowledgedDeliveryId, DateTime acknowledgmentTime)
+            Guid acknowledgedDeliveryId, long acknowledgmentTime)
         {
             BaseMessage = baseMessage;
             AcknowledgedMessageId = acknowledgedMessageId;
