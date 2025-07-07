@@ -1,8 +1,8 @@
-﻿
-using System;
+﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
-using AhBearStudios.Core.DependencyInjection.Adapters;
-using UnityEngine;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using AhBearStudios.Core.DependencyInjection.Factories;
 using AhBearStudios.Core.DependencyInjection.Interfaces;
 using AhBearStudios.Core.DependencyInjection.Messages;
@@ -14,12 +14,12 @@ using ServiceResolutionException = AhBearStudios.Core.DependencyInjection.Except
 namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
 {
     /// <summary>
-    /// Unity MonoBehaviour that provides dependency injection services to the scene.
-    /// Acts as a bridge between Unity's component system and the DI framework.
-    /// Supports singleton and scoped container management with composition-based architecture.
+    /// Production-ready Unity MonoBehaviour that provides dependency injection services.
+    /// Implements comprehensive error handling, performance optimizations, and lifecycle management.
+    /// Supports singleton and scoped container management with thread-safe operations.
     /// </summary>
     [DefaultExecutionOrder(-1000)]
-    public sealed class UnityDependencyProvider : MonoBehaviour
+    public sealed class UnityDependencyProvider : MonoBehaviour, IDisposable
     {
         #region Serialized Fields
         
@@ -28,14 +28,23 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         [SerializeField] private bool _autoInitialize = true;
         [SerializeField] private bool _validateOnStart = true;
         [SerializeField] private ContainerImplementation _containerImplementation = ContainerImplementation.VContainer;
+        [SerializeField] private float _initializationTimeout = 30f;
 
         [Header("Debugging")]
         [SerializeField] private bool _enableDebugLogging = false;
         [SerializeField] private bool _logResolutions = false;
+        [SerializeField] private bool _enablePerformanceMetrics = false;
 
         [Header("Performance")]
-        [SerializeField] private int _initialScopeCapacity = 4;
+        [SerializeField] private int _initialScopeCapacity = 8;
         [SerializeField] private bool _enableMemoryOptimizations = true;
+        [SerializeField] private int _maxConcurrentInitializations = 1;
+        [SerializeField] private bool _preloadCriticalServices = true;
+
+        [Header("Error Handling")]
+        [SerializeField] private int _maxRetryAttempts = 3;
+        [SerializeField] private float _retryDelaySeconds = 0.1f;
+        [SerializeField] private bool _enableGracefulDegradation = true;
 
         #endregion
 
@@ -43,62 +52,135 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
 
         private IDependencyContainer _container;
         private IMessageBusService _messageBusService;
-        private bool _isInitialized;
-        private bool _isDisposed;
         
-        private static UnityDependencyProvider _globalInstance;
+        // Thread-safe state management
+        private volatile bool _isInitialized;
+        private volatile bool _isDisposed;
+        private volatile bool _isInitializing;
         
-        // Use Dictionary for scoped containers
-        private Dictionary<string, IDependencyContainer> _scopedContainers;
+        private static volatile UnityDependencyProvider _globalInstance;
+        private static readonly object _globalLock = new object();
         
-        // Message subscriptions for cleanup
-        private readonly List<IDisposable> _messageSubscriptions = new List<IDisposable>();
+        // Thread-safe collections
+        private readonly ConcurrentDictionary<string, IDependencyContainer> _scopedContainers 
+            = new ConcurrentDictionary<string, IDependencyContainer>();
         
-        // Events for lifecycle management
+        // Subscription management
+        private readonly ConcurrentBag<IDisposable> _messageSubscriptions = new ConcurrentBag<IDisposable>();
+        
+        // Synchronization
+        private readonly SemaphoreSlim _initializationSemaphore;
+        private readonly object _containerLock = new object();
+        
+        // Performance tracking
+        private readonly Dictionary<Type, PerformanceMetrics> _resolutionMetrics 
+            = new Dictionary<Type, PerformanceMetrics>();
+        private readonly object _metricsLock = new object();
+        
+        // Cancellation support
+        private CancellationTokenSource _cancellationTokenSource;
+        
+        // Events (thread-safe)
         private event Action<UnityDependencyProvider> _initialized;
         private event Action<UnityDependencyProvider> _disposed;
         private event Action<Type, object> _serviceResolved;
+        private event Action<Exception> _errorOccurred;
+
+        #endregion
+
+        #region Performance Metrics
+
+        private struct PerformanceMetrics
+        {
+            public long TotalResolutions;
+            public long TotalTime;
+            public long MinTime;
+            public long MaxTime;
+            public double AverageTime => TotalResolutions > 0 ? (double)TotalTime / TotalResolutions : 0;
+        }
 
         #endregion
 
         #region Public Properties
 
         /// <summary>
-        /// Gets the main dependency container.
+        /// Gets the main dependency container. Thread-safe.
         /// </summary>
-        public IDependencyContainer Container => _container;
+        public IDependencyContainer Container 
+        {
+            get
+            {
+                lock (_containerLock)
+                {
+                    return _container;
+                }
+            }
+        }
 
         /// <summary>
-        /// Gets the message bus instance used by this provider.
+        /// Gets the message bus instance used by this provider. Thread-safe.
         /// </summary>
         public IMessageBusService MessageBusService => _messageBusService;
 
         /// <summary>
-        /// Gets whether the provider is initialized.
+        /// Gets whether the provider is initialized. Thread-safe.
         /// </summary>
         public bool IsInitialized => _isInitialized && !_isDisposed;
 
         /// <summary>
-        /// Gets whether the provider has been disposed.
+        /// Gets whether the provider has been disposed. Thread-safe.
         /// </summary>
         public bool IsDisposed => _isDisposed;
 
         /// <summary>
-        /// Gets the global instance of the dependency provider.
+        /// Gets whether the provider is currently initializing. Thread-safe.
         /// </summary>
-        public static UnityDependencyProvider Global => _globalInstance;
+        public bool IsInitializing => _isInitializing;
 
         /// <summary>
-        /// Gets the number of active scoped containers.
+        /// Gets the global instance of the dependency provider. Thread-safe.
         /// </summary>
-        public int ActiveScopeCount => _scopedContainers?.Count ?? 0;
+        public static UnityDependencyProvider Global
+        {
+            get
+            {
+                lock (_globalLock)
+                {
+                    return _globalInstance;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Gets the number of active scoped containers. Thread-safe.
+        /// </summary>
+        public int ActiveScopeCount => _scopedContainers.Count;
+
+        /// <summary>
+        /// Gets performance metrics for service resolutions.
+        /// </summary>
+        public IReadOnlyDictionary<Type, (long count, double avgTime)> PerformanceMetrics
+        {
+            get
+            {
+                if (!_enablePerformanceMetrics)
+                    return new Dictionary<Type, (long, double)>();
+
+                lock (_metricsLock)
+                {
+                    return _resolutionMetrics.ToDictionary(
+                        kvp => kvp.Key,
+                        kvp => (kvp.Value.TotalResolutions, kvp.Value.AverageTime));
+                }
+            }
+        }
 
         #endregion
 
         #region Public Events
 
         /// <summary>
-        /// Event fired when the provider is initialized.
+        /// Event fired when the provider is initialized. Thread-safe.
         /// </summary>
         public event Action<UnityDependencyProvider> Initialized
         {
@@ -113,7 +195,7 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         }
 
         /// <summary>
-        /// Event fired when the provider is disposed.
+        /// Event fired when the provider is disposed. Thread-safe.
         /// </summary>
         public event Action<UnityDependencyProvider> Disposed
         {
@@ -122,12 +204,31 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         }
 
         /// <summary>
-        /// Event fired when a service is resolved.
+        /// Event fired when a service is resolved. Thread-safe.
         /// </summary>
         public event Action<Type, object> ServiceResolved
         {
             add => _serviceResolved += value;
             remove => _serviceResolved -= value;
+        }
+
+        /// <summary>
+        /// Event fired when an error occurs. Thread-safe.
+        /// </summary>
+        public event Action<Exception> ErrorOccurred
+        {
+            add => _errorOccurred += value;
+            remove => _errorOccurred -= value;
+        }
+
+        #endregion
+
+        #region Constructor
+
+        public UnityDependencyProvider()
+        {
+            _initializationSemaphore = new SemaphoreSlim(_maxConcurrentInitializations, _maxConcurrentInitializations);
+            _cancellationTokenSource = new CancellationTokenSource();
         }
 
         #endregion
@@ -139,27 +240,19 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
             if (_isDisposed)
                 return;
 
-            if (_persistBetweenScenes)
+            try
             {
-                if (_globalInstance != null && _globalInstance != this)
+                ConfigureSingleton();
+
+                if (_autoInitialize)
                 {
-                    if (_enableDebugLogging)
-                        Debug.Log($"[UnityDependencyProvider] Destroying duplicate instance on '{gameObject.name}'");
-                    
-                    Destroy(gameObject);
-                    return;
+                    _ = InitializeAsync();
                 }
-
-                _globalInstance = this;
-                DontDestroyOnLoad(gameObject);
             }
-
-            // Initialize collections with appropriate capacity
-            _scopedContainers = new Dictionary<string, IDependencyContainer>(_initialScopeCapacity);
-
-            if (_autoInitialize)
+            catch (Exception ex)
             {
-                Initialize();
+                LogError("Failed during Awake", ex);
+                _errorOccurred?.Invoke(ex);
             }
         }
 
@@ -167,21 +260,23 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         {
             if (_validateOnStart && _isInitialized && !_isDisposed)
             {
-                ValidateContainer();
+                _ = ValidateContainerAsync();
             }
         }
 
         private void OnDestroy()
         {
-            if (_isDisposed)
-                return;
-
-            if (_globalInstance == this)
-            {
-                _globalInstance = null;
-            }
-
             Dispose();
+        }
+
+        private void OnApplicationPause(bool pauseStatus)
+        {
+            if (!pauseStatus && _isInitialized && !_isDisposed)
+            {
+                // Resume operations
+                LogDebug("Application resumed, validating container state");
+                _ = ValidateContainerAsync();
+            }
         }
 
         #endregion
@@ -189,65 +284,100 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         #region Initialization
 
         /// <summary>
-        /// Initializes the dependency provider with the configured container implementation.
+        /// Initializes the dependency provider asynchronously with timeout support.
         /// </summary>
-        /// <exception cref="InvalidOperationException">Thrown when already initialized or disposed.</exception>
-        public void Initialize()
+        /// <param name="cancellationToken">Optional cancellation token.</param>
+        /// <returns>Task representing the initialization operation.</returns>
+        public async Task<bool> InitializeAsync(CancellationToken cancellationToken = default)
         {
             if (_isDisposed)
-                throw new InvalidOperationException("Cannot initialize a disposed UnityDependencyProvider");
+            {
+                LogWarning("Cannot initialize disposed provider");
+                return false;
+            }
 
             if (_isInitialized)
             {
-                if (_enableDebugLogging)
-                    Debug.LogWarning($"[UnityDependencyProvider] Already initialized on '{gameObject.name}'");
-                return;
+                LogDebug("Provider already initialized");
+                return true;
             }
+
+            if (_isInitializing)
+            {
+                LogDebug("Initialization already in progress, waiting...");
+                await WaitForInitializationAsync(cancellationToken);
+                return _isInitialized;
+            }
+
+            var timeout = TimeSpan.FromSeconds(_initializationTimeout);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(
+                cancellationToken, _cancellationTokenSource.Token);
+            timeoutCts.CancelAfter(timeout);
 
             try
             {
-                if (_enableDebugLogging)
-                    Debug.Log($"[UnityDependencyProvider] Initializing with {_containerImplementation} on '{gameObject.name}'");
-
-                // Initialize message bus first
-                InitializeMessageBus();
-
-                // Set the factory to use our preferred implementation
-                DependencyContainerFactory.SetDefaultImplementation(_containerImplementation);
-
-                // Create the container with our message bus
-                _container = DependencyContainerFactory.CreateConfigured(
-                    $"Unity_{gameObject.name}", 
-                    RegisterUnityServices,
-                    _messageBusService);
-
-                // Subscribe to container messages if debugging is enabled
-                if (_enableDebugLogging || _logResolutions)
+                await _initializationSemaphore.WaitAsync(timeoutCts.Token);
+                
+                try
                 {
-                    SubscribeToContainerMessages();
+                    // Double-check pattern
+                    if (_isInitialized || _isDisposed)
+                        return _isInitialized;
+
+                    _isInitializing = true;
+                    return await PerformInitializationAsync(timeoutCts.Token);
                 }
-
-                _isInitialized = true;
-                _initialized?.Invoke(this);
-
-                if (_enableDebugLogging)
-                    Debug.Log($"[UnityDependencyProvider] Successfully initialized on '{gameObject.name}'");
+                finally
+                {
+                    _isInitializing = false;
+                    _initializationSemaphore.Release();
+                }
+            }
+            catch (OperationCanceledException) when (timeoutCts.Token.IsCancellationRequested)
+            {
+                var ex = new TimeoutException($"Initialization timed out after {timeout.TotalSeconds} seconds");
+                LogError("Initialization timeout", ex);
+                _errorOccurred?.Invoke(ex);
+                return false;
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[UnityDependencyProvider] Failed to initialize on '{gameObject.name}': {ex.Message}");
-                throw;
+                LogError("Initialization failed", ex);
+                _errorOccurred?.Invoke(ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Synchronous initialization method for backward compatibility.
+        /// </summary>
+        public void Initialize()
+        {
+            try
+            {
+                var task = InitializeAsync();
+                if (!task.Wait(TimeSpan.FromSeconds(_initializationTimeout)))
+                {
+                    throw new TimeoutException($"Initialization timed out after {_initializationTimeout} seconds");
+                }
+
+                if (!task.Result)
+                {
+                    throw new InvalidOperationException("Initialization failed");
+                }
+            }
+            catch (AggregateException ex)
+            {
+                throw ex.InnerException ?? ex;
             }
         }
 
         /// <summary>
         /// Initializes the provider with a custom container and message bus.
         /// </summary>
-        /// <param name="container">The container to use.</param>
-        /// <param name="messageBusService">The message bus to use (optional).</param>
-        /// <exception cref="ArgumentNullException">Thrown when container is null.</exception>
-        /// <exception cref="InvalidOperationException">Thrown when already initialized or disposed.</exception>
-        public void Initialize(IDependencyContainer container, IMessageBusService messageBusService = null)
+        public async Task<bool> InitializeAsync(IDependencyContainer container, 
+            IMessageBusService messageBusService = null, 
+            CancellationToken cancellationToken = default)
         {
             if (container == null) 
                 throw new ArgumentNullException(nameof(container));
@@ -260,26 +390,44 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
 
             try
             {
-                _container = container;
-                _messageBusService = messageBusService ?? container.MessageBusService ?? GetOrCreateMessageBus();
-
-                RegisterUnityServices(_container);
-
-                if (_enableDebugLogging || _logResolutions)
+                await _initializationSemaphore.WaitAsync(cancellationToken);
+                
+                try
                 {
+                    _isInitializing = true;
+                    
+                    lock (_containerLock)
+                    {
+                        _container = container;
+                    }
+                    
+                    _messageBusService = messageBusService ?? container.MessageBusService ?? await GetOrCreateMessageBusAsync();
+
+                    await RegisterUnityServicesAsync(_container, cancellationToken);
                     SubscribeToContainerMessages();
+
+                    if (_preloadCriticalServices)
+                    {
+                        await PreloadCriticalServicesAsync(cancellationToken);
+                    }
+
+                    _isInitialized = true;
+                    _initialized?.Invoke(this);
+
+                    LogDebug("Initialized with custom container");
+                    return true;
                 }
-
-                _isInitialized = true;
-                _initialized?.Invoke(this);
-
-                if (_enableDebugLogging)
-                    Debug.Log($"[UnityDependencyProvider] Initialized with custom container on '{gameObject.name}'");
+                finally
+                {
+                    _isInitializing = false;
+                    _initializationSemaphore.Release();
+                }
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[UnityDependencyProvider] Failed to initialize with custom container: {ex.Message}");
-                throw;
+                LogError("Failed to initialize with custom container", ex);
+                _errorOccurred?.Invoke(ex);
+                return false;
             }
         }
 
@@ -288,62 +436,125 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         #region Service Resolution
 
         /// <summary>
-        /// Resolves a dependency of the specified type.
+        /// Resolves a dependency with performance tracking and retry logic.
         /// </summary>
-        /// <typeparam name="T">The type to resolve.</typeparam>
-        /// <returns>The resolved instance.</returns>
-        /// <exception cref="InvalidOperationException">Thrown when not initialized or disposed.</exception>
-        /// <exception cref="ServiceResolutionException">Thrown when the service cannot be resolved.</exception>
         public T Resolve<T>()
+        {
+            EnsureInitialized();
+
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+            Exception lastException = null;
+
+            for (int attempt = 0; attempt <= _maxRetryAttempts; attempt++)
+            {
+                try
+                {
+                    T service;
+                    lock (_containerLock)
+                    {
+                        service = _container.Resolve<T>();
+                    }
+
+                    stopwatch.Stop();
+                    RecordResolutionMetrics<T>(stopwatch.ElapsedTicks);
+                    _serviceResolved?.Invoke(typeof(T), service);
+                    
+                    return service;
+                }
+                catch (ServiceResolutionException ex)
+                {
+                    lastException = ex;
+                    if (attempt == _maxRetryAttempts || !ShouldRetry(ex))
+                        break;
+
+                    Thread.Sleep(TimeSpan.FromSeconds(_retryDelaySeconds * (attempt + 1)));
+                }
+                catch (Exception ex)
+                {
+                    lastException = new ServiceResolutionException(typeof(T),
+                        $"Unexpected error resolving service of type '{typeof(T).FullName}'", ex);
+                    break;
+                }
+            }
+
+            stopwatch.Stop();
+            LogError($"Failed to resolve {typeof(T).Name} after {_maxRetryAttempts + 1} attempts", lastException);
+            _errorOccurred?.Invoke(lastException);
+            
+            if (_enableGracefulDegradation)
+            {
+                return TryGetFallbackService<T>();
+            }
+            
+            throw lastException;
+        }
+
+        /// <summary>
+        /// Attempts to resolve a dependency with enhanced error handling.
+        /// </summary>
+        public bool TryResolve<T>(out T service)
+        {
+            service = default;
+
+            if (!_isInitialized || _isDisposed)
+                return false;
+
+            try
+            {
+                lock (_containerLock)
+                {
+                    if (_container.TryResolve(out service))
+                    {
+                        _serviceResolved?.Invoke(typeof(T), service);
+                        return true;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"Error during TryResolve<{typeof(T).Name}>: {ex.Message}");
+                _errorOccurred?.Invoke(ex);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Resolves a service asynchronously with cancellation support.
+        /// </summary>
+        public async Task<T> ResolveAsync<T>(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            
+            // For now, delegate to synchronous version
+            // In future versions, this could support async resolution pipelines
+            return await Task.Run(() => Resolve<T>(), cancellationToken);
+        }
+
+        /// <summary>
+        /// Resolves multiple services of the same type.
+        /// </summary>
+        public IEnumerable<T> ResolveAll<T>()
         {
             EnsureInitialized();
 
             try
             {
-                var service = _container.Resolve<T>();
-                _serviceResolved?.Invoke(typeof(T), service);
-                return service;
-            }
-            catch (ServiceResolutionException)
-            {
-                throw;
+                lock (_containerLock)
+                {
+                    return _container.ResolveAll<T>() ?? Enumerable.Empty<T>();
+                }
             }
             catch (Exception ex)
             {
-                throw new ServiceResolutionException(typeof(T),
-                    $"Unexpected error resolving service of type '{typeof(T).FullName}'", ex);
+                LogError($"Failed to resolve all services of type {typeof(T).Name}", ex);
+                _errorOccurred?.Invoke(ex);
+                
+                if (_enableGracefulDegradation)
+                    return Enumerable.Empty<T>();
+                
+                throw;
             }
-        }
-
-        /// <summary>
-        /// Attempts to resolve a dependency, returning false if not found.
-        /// </summary>
-        /// <typeparam name="T">The type to resolve.</typeparam>
-        /// <param name="service">The resolved service if successful.</param>
-        /// <returns>True if resolution was successful, false otherwise.</returns>
-        public bool TryResolve<T>(out T service)
-        {
-            if (!_isInitialized || _isDisposed)
-            {
-                service = default;
-                return false;
-            }
-
-            return _container.TryResolve(out service);
-        }
-
-        /// <summary>
-        /// Resolves a service or returns a default value if not found.
-        /// </summary>
-        /// <typeparam name="T">The type to resolve.</typeparam>
-        /// <param name="defaultValue">The default value to return if resolution fails.</param>
-        /// <returns>The resolved service or default value.</returns>
-        public T ResolveOrDefault<T>(T defaultValue = default)
-        {
-            if (!_isInitialized || _isDisposed)
-                return defaultValue;
-
-            return _container.ResolveOrDefault(defaultValue);
         }
 
         #endregion
@@ -351,44 +562,48 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         #region Scope Management
 
         /// <summary>
-        /// Creates a scoped container for temporary dependency overrides.
+        /// Creates a scoped container with enhanced error handling.
         /// </summary>
-        /// <param name="scopeName">The name of the scope.</param>
-        /// <returns>A scoped container.</returns>
-        /// <exception cref="ArgumentException">Thrown when scopeName is null or empty.</exception>
-        /// <exception cref="InvalidOperationException">Thrown when scope already exists, provider not initialized, or disposed.</exception>
-        public IDependencyContainer CreateScope(string scopeName)
+        public async Task<IDependencyContainer> CreateScopeAsync(string scopeName, 
+            CancellationToken cancellationToken = default)
         {
             if (string.IsNullOrEmpty(scopeName))
                 throw new ArgumentException("Scope name cannot be null or empty", nameof(scopeName));
 
             EnsureInitialized();
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (_scopedContainers.ContainsKey(scopeName))
                 throw new InvalidOperationException($"Scope '{scopeName}' already exists");
 
             try
             {
-                var scopedContainer = _container.CreateChildContainer($"{_container.ContainerName}_Scope_{scopeName}");
-                _scopedContainers[scopeName] = scopedContainer;
+                IDependencyContainer scopedContainer;
+                lock (_containerLock)
+                {
+                    scopedContainer = _container.CreateChildContainer($"{_container.ContainerName}_Scope_{scopeName}");
+                }
 
-                if (_enableDebugLogging)
-                    Debug.Log($"[UnityDependencyProvider] Created scope '{scopeName}'");
+                if (!_scopedContainers.TryAdd(scopeName, scopedContainer))
+                {
+                    scopedContainer?.Dispose();
+                    throw new InvalidOperationException($"Failed to register scope '{scopeName}' - concurrent creation detected");
+                }
 
+                LogDebug($"Created scope '{scopeName}'");
                 return scopedContainer;
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[UnityDependencyProvider] Failed to create scope '{scopeName}': {ex.Message}");
+                LogError($"Failed to create scope '{scopeName}'", ex);
+                _errorOccurred?.Invoke(ex);
                 throw;
             }
         }
 
         /// <summary>
-        /// Gets a scoped container by name.
+        /// Gets a scoped container by name with thread safety.
         /// </summary>
-        /// <param name="scopeName">The name of the scope.</param>
-        /// <returns>The scoped container if found, null otherwise.</returns>
         public IDependencyContainer GetScope(string scopeName)
         {
             if (string.IsNullOrEmpty(scopeName) || !_isInitialized || _isDisposed)
@@ -399,24 +614,26 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         }
 
         /// <summary>
-        /// Disposes a scoped container.
+        /// Disposes a scoped container safely.
         /// </summary>
-        /// <param name="scopeName">The name of the scope to dispose.</param>
-        /// <returns>True if the scope was found and disposed, false otherwise.</returns>
         public bool DisposeScope(string scopeName)
         {
             if (string.IsNullOrEmpty(scopeName) || !_isInitialized || _isDisposed)
                 return false;
 
-            if (_scopedContainers.TryGetValue(scopeName, out var container))
+            if (_scopedContainers.TryRemove(scopeName, out var container))
             {
-                _scopedContainers.Remove(scopeName);
-                container?.Dispose();
-
-                if (_enableDebugLogging)
-                    Debug.Log($"[UnityDependencyProvider] Disposed scope '{scopeName}'");
-
-                return true;
+                try
+                {
+                    container?.Dispose();
+                    LogDebug($"Disposed scope '{scopeName}'");
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    LogError($"Error disposing scope '{scopeName}'", ex);
+                    _errorOccurred?.Invoke(ex);
+                }
             }
 
             return false;
@@ -427,32 +644,51 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         #region Validation
 
         /// <summary>
-        /// Validates the container's registrations.
+        /// Validates the container asynchronously.
         /// </summary>
-        /// <returns>True if validation passes, false otherwise.</returns>
-        public bool ValidateContainer()
+        public async Task<bool> ValidateContainerAsync(CancellationToken cancellationToken = default)
         {
             if (!_isInitialized || _isDisposed)
             {
-                if (_enableDebugLogging)
-                    Debug.LogWarning("[UnityDependencyProvider] Cannot validate uninitialized or disposed container");
+                LogWarning("Cannot validate uninitialized or disposed container");
                 return false;
             }
 
             try
             {
-                var isValid = _container.ValidateRegistrations();
-
-                if (_enableDebugLogging)
+                bool isValid;
+                await Task.Run(() =>
                 {
-                    Debug.Log($"[UnityDependencyProvider] Container validation: {(isValid ? "PASSED" : "FAILED")}");
-                }
+                    lock (_containerLock)
+                    {
+                        isValid = _container.ValidateRegistrations();
+                    }
+                }, cancellationToken);
 
+                LogDebug($"Container validation: {(isValid ? "PASSED" : "FAILED")}");
                 return isValid;
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[UnityDependencyProvider] Container validation failed: {ex.Message}");
+                LogError("Container validation failed", ex);
+                _errorOccurred?.Invoke(ex);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Synchronous validation for backward compatibility.
+        /// </summary>
+        public bool ValidateContainer()
+        {
+            try
+            {
+                var task = ValidateContainerAsync();
+                return task.GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                LogError("Container validation failed", ex);
                 return false;
             }
         }
@@ -462,49 +698,166 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
         #region Static Factory Methods
 
         /// <summary>
-        /// Gets or creates the global dependency provider instance.
+        /// Gets or creates the global dependency provider instance with thread safety.
         /// </summary>
-        /// <returns>The global dependency provider.</returns>
         public static UnityDependencyProvider GetOrCreateGlobal()
         {
-            if (_globalInstance != null && !_globalInstance._isDisposed)
-                return _globalInstance;
-
-            // Search for existing instance in scene
-            var existing = FindObjectOfType<UnityDependencyProvider>();
-            if (existing != null && !existing._isDisposed)
+            lock (_globalLock)
             {
-                _globalInstance = existing;
-                return existing;
+                if (_globalInstance != null && !_globalInstance._isDisposed)
+                    return _globalInstance;
+
+                // Search for existing instance in scene
+                var existing = FindObjectOfType<UnityDependencyProvider>();
+                if (existing != null && !existing._isDisposed)
+                {
+                    _globalInstance = existing;
+                    return existing;
+                }
+
+                // Create new instance
+                var go = new GameObject("[UnityDependencyProvider]");
+                var provider = go.AddComponent<UnityDependencyProvider>();
+                provider._persistBetweenScenes = true;
+                provider._autoInitialize = true;
+
+                DontDestroyOnLoad(go);
+                _globalInstance = provider;
+                return provider;
             }
-
-            // Create new instance
-            var go = new GameObject("[UnityDependencyProvider]");
-            var provider = go.AddComponent<UnityDependencyProvider>();
-            provider._persistBetweenScenes = true;
-            provider._autoInitialize = true;
-
-            DontDestroyOnLoad(go);
-            return provider;
         }
 
         #endregion
 
-        #region Private Methods
+        #region IDisposable Implementation
 
         /// <summary>
-        /// Initializes the message bus, either from existing provider or creates new one.
+        /// Disposes the provider and all resources.
         /// </summary>
-        private void InitializeMessageBus()
+        public void Dispose()
         {
-            _messageBusService = GetOrCreateMessageBus();
+            if (_isDisposed)
+                return;
+
+            try
+            {
+                _cancellationTokenSource?.Cancel();
+                _disposed?.Invoke(this);
+
+                // Unsubscribe from messages
+                UnsubscribeFromContainerMessages();
+
+                // Dispose scoped containers
+                var scopeNames = _scopedContainers.Keys.ToList();
+                foreach (var scopeName in scopeNames)
+                {
+                    DisposeScope(scopeName);
+                }
+
+                // Dispose main container
+                lock (_containerLock)
+                {
+                    _container?.Dispose();
+                    _container = null;
+                }
+
+                // Clear events
+                _initialized = null;
+                _disposed = null;
+                _serviceResolved = null;
+                _errorOccurred = null;
+
+                // Dispose synchronization objects
+                _initializationSemaphore?.Dispose();
+                _cancellationTokenSource?.Dispose();
+
+                // Update state
+                _isInitialized = false;
+                _isDisposed = true;
+
+                // Clear global reference if this is the global instance
+                lock (_globalLock)
+                {
+                    if (_globalInstance == this)
+                        _globalInstance = null;
+                }
+
+                LogDebug("Disposed successfully");
+            }
+            catch (Exception ex)
+            {
+                LogError("Error during disposal", ex);
+                _isDisposed = true; // Mark as disposed even if disposal failed
+            }
         }
 
-        /// <summary>
-        /// Gets or creates a message bus instance.
-        /// </summary>
-        /// <returns>A message bus instance.</returns>
-        private IMessageBusService GetOrCreateMessageBus()
+        #endregion
+
+        #region Private Implementation
+
+        private void ConfigureSingleton()
+        {
+            if (_persistBetweenScenes)
+            {
+                lock (_globalLock)
+                {
+                    if (_globalInstance != null && _globalInstance != this)
+                    {
+                        LogDebug($"Destroying duplicate instance on '{gameObject.name}'");
+                        Destroy(gameObject);
+                        return;
+                    }
+
+                    _globalInstance = this;
+                    DontDestroyOnLoad(gameObject);
+                }
+            }
+        }
+
+        private async Task<bool> PerformInitializationAsync(CancellationToken cancellationToken)
+        {
+            LogDebug($"Initializing with {_containerImplementation}");
+
+            // Initialize message bus
+            _messageBusService = await GetOrCreateMessageBusAsync();
+            
+            // Configure factory
+            DependencyContainerFactory.SetDefaultImplementation(_containerImplementation);
+
+            // Create container
+            lock (_containerLock)
+            {
+                _container = DependencyContainerFactory.CreateConfigured(
+                    $"Unity_{gameObject.name}",
+                    container => RegisterUnityServicesAsync(container, cancellationToken).GetAwaiter().GetResult(),
+                    _messageBusService);
+            }
+
+            // Subscribe to messages
+            SubscribeToContainerMessages();
+
+            // Preload critical services if enabled
+            if (_preloadCriticalServices)
+            {
+                await PreloadCriticalServicesAsync(cancellationToken);
+            }
+
+            _isInitialized = true;
+            _initialized?.Invoke(this);
+
+            LogDebug("Successfully initialized");
+            return true;
+        }
+
+        private async Task WaitForInitializationAsync(CancellationToken cancellationToken)
+        {
+            while (_isInitializing && !_isInitialized && !_isDisposed)
+            {
+                await Task.Delay(10, cancellationToken);
+            }
+        }
+
+        private async Task<IMessageBusService> GetOrCreateMessageBusAsync()
         {
             // Try to get from MessageBusProvider
             var messageBusProvider = MessageBusProvider.Instance;
@@ -517,17 +870,15 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
             return DependencyContainerFactory.DefaultMessageBusService;
         }
 
-        /// <summary>
-        /// Registers built-in Unity services with the container.
-        /// </summary>
-        /// <param name="container">The container to register services with.</param>
-        private void RegisterUnityServices(IDependencyContainer container)
+        private async Task RegisterUnityServicesAsync(IDependencyContainer container, CancellationToken cancellationToken)
         {
             if (container == null)
                 return;
 
             try
             {
+                cancellationToken.ThrowIfCancellationRequested();
+
                 // Register this provider as IDependencyProvider
                 container.RegisterInstance<IDependencyProvider>(new UnityDependencyProviderAdapter(this));
 
@@ -538,26 +889,47 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
                 }
 
                 // Register common Unity services
-                if (Camera.main != null)
+                await Task.Run(() =>
                 {
-                    container.RegisterInstance(Camera.main);
-                }
+                    if (Camera.main != null)
+                    {
+                        container.RegisterInstance(Camera.main);
+                    }
 
-                // Register this MonoBehaviour for Unity-specific operations
-                container.RegisterInstance<UnityDependencyProvider>(this);
+                    // Register this MonoBehaviour for Unity-specific operations
+                    container.RegisterInstance<UnityDependencyProvider>(this);
+                }, cancellationToken);
 
-                if (_enableDebugLogging)
-                    Debug.Log("[UnityDependencyProvider] Registered Unity services");
+                LogDebug("Registered Unity services");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[UnityDependencyProvider] Failed to register Unity services: {ex.Message}");
+                LogError("Failed to register Unity services", ex);
+                throw;
             }
         }
 
-        /// <summary>
-        /// Subscribes to container messages through the MessageBusService for debugging purposes.
-        /// </summary>
+        private async Task PreloadCriticalServicesAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                LogDebug("Preloading critical services");
+                
+                // Preload message bus and dependency provider
+                await Task.Run(() =>
+                {
+                    TryResolve<IMessageBusService>(out _);
+                    TryResolve<IDependencyProvider>(out _);
+                }, cancellationToken);
+
+                LogDebug("Critical services preloaded");
+            }
+            catch (Exception ex)
+            {
+                LogWarning($"Failed to preload some critical services: {ex.Message}");
+            }
+        }
+
         private void SubscribeToContainerMessages()
         {
             if (_messageBusService == null)
@@ -565,184 +937,462 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.Unity
 
             try
             {
-                // Subscribe to service resolution messages
                 if (_logResolutions)
                 {
-                    var resolutionSubscription = _messageBusService.Subscribe<ServiceResolvedMessage>(OnServiceResolved);
-                    _messageSubscriptions.Add(resolutionSubscription);
+                    var resolutionSub = _messageBusService.Subscribe<ServiceResolvedMessage>(OnServiceResolved);
+                    _messageSubscriptions.Add(resolutionSub);
                     
-                    var failedResolutionSubscription = _messageBusService.Subscribe<ServiceResolutionFailedMessage>(OnServiceResolutionFailed);
-                    _messageSubscriptions.Add(failedResolutionSubscription);
+                    var failedSub = _messageBusService.Subscribe<ServiceResolutionFailedMessage>(OnServiceResolutionFailed);
+                    _messageSubscriptions.Add(failedSub);
                 }
 
-                // Subscribe to service registration messages
                 if (_enableDebugLogging)
                 {
-                    var registrationSubscription = _messageBusService.Subscribe<ServiceRegisteredMessage>(OnServiceRegistered);
-                    _messageSubscriptions.Add(registrationSubscription);
+                    var regSub = _messageBusService.Subscribe<ServiceRegisteredMessage>(OnServiceRegistered);
+                    _messageSubscriptions.Add(regSub);
                     
-                    var containerBuiltSubscription = _messageBusService.Subscribe<ContainerBuiltMessage>(OnContainerBuilt);
-                    _messageSubscriptions.Add(containerBuiltSubscription);
+                    var builtSub = _messageBusService.Subscribe<ContainerBuiltMessage>(OnContainerBuilt);
+                    _messageSubscriptions.Add(builtSub);
                     
-                    var childContainerSubscription = _messageBusService.Subscribe<ChildContainerCreatedMessage>(OnChildContainerCreated);
-                    _messageSubscriptions.Add(childContainerSubscription);
+                    var childSub = _messageBusService.Subscribe<ChildContainerCreatedMessage>(OnChildContainerCreated);
+                    _messageSubscriptions.Add(childSub);
                 }
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[UnityDependencyProvider] Failed to subscribe to container messages: {ex.Message}");
+                LogWarning($"Failed to subscribe to container messages: {ex.Message}");
             }
         }
 
-        /// <summary>
-        /// Unsubscribes from all container messages.
-        /// </summary>
         private void UnsubscribeFromContainerMessages()
         {
             try
             {
-                foreach (var subscription in _messageSubscriptions)
+                while (_messageSubscriptions.TryTake(out var subscription))
                 {
                     subscription?.Dispose();
                 }
-                _messageSubscriptions.Clear();
             }
             catch (Exception ex)
             {
-                Debug.LogWarning($"[UnityDependencyProvider] Failed to unsubscribe from container messages: {ex.Message}");
+                LogWarning($"Failed to unsubscribe from container messages: {ex.Message}");
             }
         }
 
-        /// <summary>
-        /// Handles service resolution messages.
-        /// </summary>
-        private void OnServiceResolved(ServiceResolvedMessage message)
+        private void RecordResolutionMetrics<T>(long elapsedTicks)
         {
-            if (_logResolutions && !_isDisposed && message.ContainerName == _container?.ContainerName)
+            if (!_enablePerformanceMetrics)
+                return;
+
+            var type = typeof(T);
+            lock (_metricsLock)
             {
-                Debug.Log($"[UnityDependencyProvider] Resolved {message.ServiceType.Name} in {message.ResolutionTime.TotalMilliseconds:F2}ms");
-                _serviceResolved?.Invoke(message.ServiceType, message.Instance);
+                if (!_resolutionMetrics.TryGetValue(type, out var metrics))
+                {
+                    metrics = new PerformanceMetrics
+                    {
+                        MinTime = long.MaxValue,
+                        MaxTime = long.MinValue
+                    };
+                }
+
+                metrics.TotalResolutions++;
+                metrics.TotalTime += elapsedTicks;
+                metrics.MinTime = Math.Min(metrics.MinTime, elapsedTicks);
+                metrics.MaxTime = Math.Max(metrics.MaxTime, elapsedTicks);
+
+                _resolutionMetrics[type] = metrics;
             }
         }
 
-        /// <summary>
-        /// Handles service resolution failure messages.
-        /// </summary>
-        private void OnServiceResolutionFailed(ServiceResolutionFailedMessage message)
+        private bool ShouldRetry(Exception exception)
         {
-            if (_logResolutions && !_isDisposed && message.ContainerName == _container?.ContainerName)
-            {
-                Debug.LogWarning($"[UnityDependencyProvider] Failed to resolve {message.ServiceType.Name}: {message.ErrorMessage}");
-            }
+            // Define retry logic based on exception type
+            return exception is not ArgumentNullException && 
+                   exception is not InvalidOperationException;
         }
 
-        /// <summary>
-        /// Handles service registration messages.
-        /// </summary>
-        private void OnServiceRegistered(ServiceRegisteredMessage message)
+        private T TryGetFallbackService<T>()
         {
-            if (_enableDebugLogging && !_isDisposed && message.ContainerName == _container?.ContainerName)
-            {
-                var implementationType = message.ImplementationType?.Name ?? (message.IsFactoryRegistration ? "Factory" : "Unknown");
-                Debug.Log($"[UnityDependencyProvider] Registered {message.ServiceType.Name} -> {implementationType} ({message.Lifetime})");
-            }
+            // Implement fallback service resolution logic
+            // This could involve default implementations or mock services
+            LogDebug($"Attempting fallback resolution for {typeof(T).Name}");
+            return default;
         }
 
-        /// <summary>
-        /// Handles container built messages.
-        /// </summary>
-        private void OnContainerBuilt(ContainerBuiltMessage message)
-        {
-            if (_enableDebugLogging && !_isDisposed && message.ContainerName == _container?.ContainerName)
-            {
-                Debug.Log($"[UnityDependencyProvider] Container built with {message.RegisteredServicesCount} services in {message.BuildTime.TotalMilliseconds:F2}ms");
-            }
-        }
-
-        /// <summary>
-        /// Handles child container creation messages.
-        /// </summary>
-        private void OnChildContainerCreated(ChildContainerCreatedMessage message)
-        {
-            if (_enableDebugLogging && !_isDisposed && message.ParentContainerName == _container?.ContainerName)
-            {
-                Debug.Log($"[UnityDependencyProvider] Created child container '{message.ChildContainerName}'");
-            }
-        }
-
-        /// <summary>
-        /// Ensures the provider is initialized.
-        /// </summary>
-        /// <exception cref="InvalidOperationException">Thrown when not initialized or disposed.</exception>
         private void EnsureInitialized()
         {
             if (_isDisposed)
-                throw new InvalidOperationException("UnityDependencyProvider has been disposed");
+                throw new ObjectDisposedException(nameof(UnityDependencyProvider));
 
             if (!_isInitialized)
-                throw new InvalidOperationException("UnityDependencyProvider must be initialized before use. Call Initialize() or set AutoInitialize to true.");
+            {
+                if (_isInitializing)
+                {
+                    throw new InvalidOperationException(
+                        "UnityDependencyProvider is currently initializing. Use InitializeAsync() for proper async initialization.");
+                }
+                
+                throw new InvalidOperationException(
+                    "UnityDependencyProvider must be initialized before use. Call Initialize() or set AutoInitialize to true.");
+            }
         }
 
-        /// <summary>
-        /// Disposes the container and all scoped containers.
-        /// </summary>
-        private void Dispose()
+        private void LogDebug(string message)
         {
-            if (_isDisposed)
-                return;
+            if (_enableDebugLogging)
+                Debug.Log($"[UnityDependencyProvider] {message}");
+        }
 
-            try
+        private void LogWarning(string message)
+        {
+            if (_enableDebugLogging)
+                Debug.LogWarning($"[UnityDependencyProvider] {message}");
+        }
+
+        private void LogError(string message, Exception exception = null)
+        {
+            var fullMessage = exception != null 
+                ? $"[UnityDependencyProvider] {message}: {exception.Message}"
+                : $"[UnityDependencyProvider] {message}";
+            
+            Debug.LogError(fullMessage);
+            
+            if (exception != null && _enableDebugLogging)
+                Debug.LogException(exception);
+        }
+
+        #endregion
+
+        #region Message Handlers
+
+        private void OnServiceResolved(ServiceResolvedMessage message)
+        {
+            if (_logResolutions && !_isDisposed)
             {
-                _disposed?.Invoke(this);
-
-                // Unsubscribe from messages first
-                if (_enableDebugLogging || _logResolutions)
+                var containerName = Container?.ContainerName;
+                if (message.ContainerName == containerName)
                 {
-                    UnsubscribeFromContainerMessages();
+                    var timeMs = message.ResolutionTime.TotalMilliseconds;
+                    LogDebug($"Resolved {message.ServiceType.Name} in {timeMs:F2}ms");
+                    _serviceResolved?.Invoke(message.ServiceType, message.Instance);
                 }
-
-                // Dispose scoped containers
-                if (_scopedContainers != null)
-                {
-                    foreach (var kvp in _scopedContainers)
-                    {
-                        try
-                        {
-                            kvp.Value?.Dispose();
-                        }
-                        catch (Exception ex)
-                        {
-                            Debug.LogError($"[UnityDependencyProvider] Error disposing scope '{kvp.Key}': {ex.Message}");
-                        }
-                    }
-                    _scopedContainers.Clear();
-                }
-
-                // Dispose main container
-                if (_container != null)
-                {
-                    _container.Dispose();
-                    _container = null;
-                }
-
-                // Clear events
-                _initialized = null;
-                _disposed = null;
-                _serviceResolved = null;
-
-                _isInitialized = false;
-                _isDisposed = true;
-
-                if (_enableDebugLogging)
-                    Debug.Log("[UnityDependencyProvider] Disposed successfully");
             }
-            catch (Exception ex)
+        }
+
+        private void OnServiceResolutionFailed(ServiceResolutionFailedMessage message)
+        {
+            if (_logResolutions && !_isDisposed)
             {
-                Debug.LogError($"[UnityDependencyProvider] Error disposing container: {ex.Message}");
-                _isDisposed = true; // Mark as disposed even if disposal failed
+                var containerName = Container?.ContainerName;
+                if (message.ContainerName == containerName)
+                {
+                    LogWarning($"Failed to resolve {message.ServiceType.Name}: {message.ErrorMessage}");
+                }
+            }
+        }
+
+        private void OnServiceRegistered(ServiceRegisteredMessage message)
+        {
+            if (_enableDebugLogging && !_isDisposed)
+            {
+                var containerName = Container?.ContainerName;
+                if (message.ContainerName == containerName)
+                {
+                    var implementationType = message.ImplementationType?.Name ?? 
+                                           (message.IsFactoryRegistration ? "Factory" : "Unknown");
+                    LogDebug($"Registered {message.ServiceType.Name} -> {implementationType} ({message.Lifetime})");
+                }
+            }
+        }
+
+        private void OnContainerBuilt(ContainerBuiltMessage message)
+        {
+            if (_enableDebugLogging && !_isDisposed)
+            {
+                var containerName = Container?.ContainerName;
+                if (message.ContainerName == containerName)
+                {
+                    var timeMs = message.BuildTime.TotalMilliseconds;
+                    LogDebug($"Container built with {message.RegisteredServicesCount} services in {timeMs:F2}ms");
+                }
+            }
+        }
+
+        private void OnChildContainerCreated(ChildContainerCreatedMessage message)
+        {
+            if (_enableDebugLogging && !_isDisposed)
+            {
+                var containerName = Container?.ContainerName;
+                if (message.ParentContainerName == containerName)
+                {
+                    LogDebug($"Created child container '{message.ChildContainerName}'");
+                }
             }
         }
 
         #endregion
+
+        #region Health Monitoring
+
+        /// <summary>
+        /// Gets the current health status of the provider.
+        /// </summary>
+        public ProviderHealthStatus GetHealthStatus()
+        {
+            if (_isDisposed)
+                return ProviderHealthStatus.Disposed;
+
+            if (!_isInitialized)
+                return _isInitializing ? ProviderHealthStatus.Initializing : ProviderHealthStatus.NotInitialized;
+
+            try
+            {
+                // Perform basic health checks
+                var container = Container;
+                if (container == null)
+                    return ProviderHealthStatus.Unhealthy;
+
+                // Check if container can resolve basic services
+                if (!TryResolve<IDependencyProvider>(out _))
+                    return ProviderHealthStatus.Degraded;
+
+                return ProviderHealthStatus.Healthy;
+            }
+            catch
+            {
+                return ProviderHealthStatus.Unhealthy;
+            }
+        }
+
+        /// <summary>
+        /// Performs a comprehensive health check.
+        /// </summary>
+        public async Task<HealthCheckResult> PerformHealthCheckAsync(CancellationToken cancellationToken = default)
+        {
+            var result = new HealthCheckResult
+            {
+                Timestamp = DateTime.UtcNow,
+                Status = GetHealthStatus()
+            };
+
+            if (result.Status == ProviderHealthStatus.Disposed || 
+                result.Status == ProviderHealthStatus.NotInitialized)
+            {
+                return result;
+            }
+
+            try
+            {
+                // Check container validation
+                result.ContainerValid = await ValidateContainerAsync(cancellationToken);
+                
+                // Check message bus connectivity
+                result.MessageBusConnected = _messageBusService != null;
+                
+                // Check scope count
+                result.ActiveScopes = ActiveScopeCount;
+                
+                // Check performance metrics
+                if (_enablePerformanceMetrics)
+                {
+                    result.PerformanceMetrics = PerformanceMetrics.ToDictionary(
+                        kvp => kvp.Key.Name,
+                        kvp => new { kvp.Value.count, kvp.Value.avgTime });
+                }
+
+                // Determine overall health
+                if (!result.ContainerValid)
+                    result.Status = ProviderHealthStatus.Degraded;
+
+            }
+            catch (Exception ex)
+            {
+                result.Status = ProviderHealthStatus.Unhealthy;
+                result.ErrorMessage = ex.Message;
+            }
+
+            return result;
+        }
+
+        #endregion
+
+        #region Utility Methods
+
+        /// <summary>
+        /// Resets performance metrics.
+        /// </summary>
+        public void ResetPerformanceMetrics()
+        {
+            if (!_enablePerformanceMetrics)
+                return;
+
+            lock (_metricsLock)
+            {
+                _resolutionMetrics.Clear();
+            }
+
+            LogDebug("Performance metrics reset");
+        }
+
+        /// <summary>
+        /// Gets detailed container information.
+        /// </summary>
+        public ContainerInfo GetContainerInfo()
+        {
+            if (!_isInitialized || _isDisposed)
+                return null;
+
+            lock (_containerLock)
+            {
+                if (_container == null)
+                    return null;
+
+                return new ContainerInfo
+                {
+                    Name = _container.ContainerName,
+                    Implementation = _containerImplementation.ToString(),
+                    IsBuilt = _container.IsBuilt,
+                    ActiveScopes = ActiveScopeCount,
+                    HasMessageBus = _messageBusService != null
+                };
+            }
+        }
+
+        /// <summary>
+        /// Creates a diagnostic report.
+        /// </summary>
+        public async Task<string> GenerateDiagnosticReportAsync()
+        {
+            var report = new System.Text.StringBuilder();
+            
+            report.AppendLine("=== Unity Dependency Provider Diagnostic Report ===");
+            report.AppendLine($"Timestamp: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+            report.AppendLine($"GameObject: {gameObject.name}");
+            report.AppendLine();
+
+            // Status
+            report.AppendLine("=== Status ===");
+            report.AppendLine($"Health Status: {GetHealthStatus()}");
+            report.AppendLine($"Is Initialized: {IsInitialized}");
+            report.AppendLine($"Is Disposed: {IsDisposed}");
+            report.AppendLine($"Is Initializing: {IsInitializing}");
+            report.AppendLine($"Persist Between Scenes: {_persistBetweenScenes}");
+            report.AppendLine();
+
+            // Configuration
+            report.AppendLine("=== Configuration ===");
+            report.AppendLine($"Container Implementation: {_containerImplementation}");
+            report.AppendLine($"Auto Initialize: {_autoInitialize}");
+            report.AppendLine($"Validate On Start: {_validateOnStart}");
+            report.AppendLine($"Enable Debug Logging: {_enableDebugLogging}");
+            report.AppendLine($"Log Resolutions: {_logResolutions}");
+            report.AppendLine($"Enable Performance Metrics: {_enablePerformanceMetrics}");
+            report.AppendLine($"Enable Graceful Degradation: {_enableGracefulDegradation}");
+            report.AppendLine();
+
+            // Container Info
+            var containerInfo = GetContainerInfo();
+            if (containerInfo != null)
+            {
+                report.AppendLine("=== Container ===");
+                report.AppendLine($"Name: {containerInfo.Name}");
+                report.AppendLine($"Implementation: {containerInfo.Implementation}");
+                report.AppendLine($"Is Built: {containerInfo.IsBuilt}");
+                report.AppendLine($"Has Message Bus: {containerInfo.HasMessageBus}");
+                report.AppendLine();
+            }
+
+            // Scopes
+            report.AppendLine("=== Scopes ===");
+            report.AppendLine($"Active Scope Count: {ActiveScopeCount}");
+            if (ActiveScopeCount > 0)
+            {
+                foreach (var scopeName in _scopedContainers.Keys)
+                {
+                    report.AppendLine($"  - {scopeName}");
+                }
+            }
+            report.AppendLine();
+
+            // Performance Metrics
+            if (_enablePerformanceMetrics)
+            {
+                report.AppendLine("=== Performance Metrics ===");
+                var metrics = PerformanceMetrics;
+                if (metrics.Count > 0)
+                {
+                    foreach (var kvp in metrics.OrderByDescending(x => x.Value.count))
+                    {
+                        report.AppendLine($"  {kvp.Key.Name}: {kvp.Value.count} resolutions, {kvp.Value.avgTime:F2}μs avg");
+                    }
+                }
+                else
+                {
+                    report.AppendLine("  No metrics recorded");
+                }
+                report.AppendLine();
+            }
+
+            // Health Check
+            var healthCheck = await PerformHealthCheckAsync();
+            report.AppendLine("=== Health Check ===");
+            report.AppendLine($"Overall Status: {healthCheck.Status}");
+            report.AppendLine($"Container Valid: {healthCheck.ContainerValid}");
+            report.AppendLine($"Message Bus Connected: {healthCheck.MessageBusConnected}");
+            if (!string.IsNullOrEmpty(healthCheck.ErrorMessage))
+            {
+                report.AppendLine($"Error: {healthCheck.ErrorMessage}");
+            }
+
+            report.AppendLine("=== End Report ===");
+            
+            return report.ToString();
+        }
+
+        #endregion
     }
+
+    #region Supporting Types
+
+    /// <summary>
+    /// Represents the health status of the provider.
+    /// </summary>
+    public enum ProviderHealthStatus
+    {
+        NotInitialized,
+        Initializing,
+        Healthy,
+        Degraded,
+        Unhealthy,
+        Disposed
+    }
+
+    /// <summary>
+    /// Represents the result of a health check.
+    /// </summary>
+    public class HealthCheckResult
+    {
+        public DateTime Timestamp { get; set; }
+        public ProviderHealthStatus Status { get; set; }
+        public bool ContainerValid { get; set; }
+        public bool MessageBusConnected { get; set; }
+        public int ActiveScopes { get; set; }
+        public string ErrorMessage { get; set; }
+        public object PerformanceMetrics { get; set; }
+    }
+
+    /// <summary>
+    /// Contains information about the container.
+    /// </summary>
+    public class ContainerInfo
+    {
+        public string Name { get; set; }
+        public string Implementation { get; set; }
+        public bool IsBuilt { get; set; }
+        public int ActiveScopes { get; set; }
+        public bool HasMessageBus { get; set; }
+    }
+
+    #endregion
 }

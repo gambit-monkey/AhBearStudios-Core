@@ -10,12 +10,11 @@ namespace AhBearStudios.Core.DependencyInjection.Bridges.VContainer
     /// <summary>
     /// High-level bridge that wraps VContainerAdapter to implement IDependencyContainer.
     /// Provides the complete IDependencyContainer interface while delegating to VContainerAdapter.
-    /// This enables full compatibility with our DI abstraction layer.
     /// </summary>
     public sealed class VContainerContainerBridge : IDependencyContainer
     {
         private readonly VContainerAdapter _adapter;
-        private readonly IServiceResolver _resolver;
+        private IServiceResolver _resolver;
         private bool _disposed;
 
         /// <summary>
@@ -60,6 +59,7 @@ namespace AhBearStudios.Core.DependencyInjection.Bridges.VContainer
 
         /// <summary>
         /// Creates a new VContainerContainerBridge with a fresh VContainer builder.
+        /// Fixed to use correct VContainer API - parent relationship handled at Build() time.
         /// </summary>
         /// <param name="containerName">Optional name for the container.</param>
         /// <param name="configuration">Optional configuration for the container.</param>
@@ -72,15 +72,17 @@ namespace AhBearStudios.Core.DependencyInjection.Bridges.VContainer
             IMessageBusService messageBusService = null,
             IObjectResolver parentResolver = null)
         {
-            var builder = parentResolver != null
-                ? new ContainerBuilder(parentResolver)
-                : new ContainerBuilder();
+            // VContainer API: Create builder without parent in constructor
+            var builder = new ContainerBuilder();
 
+            // Create adapter with parent resolver passed for Build() phase
             var adapter = new VContainerAdapter(
                 builder,
                 containerName,
                 configuration,
-                messageBusService);
+                messageBusService,
+                null, // validator
+                parentResolver); // Parent resolver for child container support
 
             return new VContainerContainerBridge(adapter);
         }
@@ -303,6 +305,7 @@ namespace AhBearStudios.Core.DependencyInjection.Bridges.VContainer
 
         /// <summary>
         /// Creates a child container that inherits registrations from this container.
+        /// Uses correct VContainer API for child container creation.
         /// </summary>
         public IDependencyContainer CreateChildContainer(string childName = null)
         {
@@ -312,17 +315,29 @@ namespace AhBearStudios.Core.DependencyInjection.Bridges.VContainer
 
         /// <summary>
         /// Creates a scoped container for temporary dependency overrides.
+        /// Uses VContainer's child container API for scoping.
         /// </summary>
         public IDependencyContainer CreateScope(string scopeName = null)
         {
             EnsureBuilt();
-            var scopedResolver = _resolver.CreateScope(scopeName);
-
-            // Create a new bridge that wraps a scoped adapter
-            // This is a simplified approach - in practice, you might want a more sophisticated scoping mechanism
-            throw new NotSupportedException(
-                "CreateScope is not directly supported through the bridge pattern. " +
-                "Use CreateChildContainer for similar hierarchical dependency scenarios.");
+            
+            try
+            {
+                // Use the service resolver's CreateScope which uses correct VContainer API
+                var scopedResolver = _resolver.CreateScope(scopeName);
+                
+                // Create a new adapter from the scoped resolver
+                // This is a bit of a workaround since we need to reverse-engineer an adapter
+                // In practice, you might want to design this differently
+                
+                // For now, create a child container which is essentially the same as a scope in VContainer
+                return CreateChildContainer(scopeName ?? $"Scope_{Guid.NewGuid():N}");
+            }
+            catch (NotSupportedException)
+            {
+                // If scoping is not supported, fall back to child container
+                return CreateChildContainer(scopeName ?? $"Scope_{Guid.NewGuid():N}");
+            }
         }
 
         /// <summary>

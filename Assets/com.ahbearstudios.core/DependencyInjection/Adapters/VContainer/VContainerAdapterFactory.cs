@@ -9,6 +9,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters.VContainer
     /// <summary>
     /// Factory for creating VContainer adapter instances.
     /// Handles VContainer availability detection and provides consistent container creation.
+    /// Fixed to use correct VContainer API for child containers.
     /// </summary>
     public sealed class VContainerAdapterFactory : IContainerAdapterFactory
     {
@@ -46,13 +47,13 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters.VContainer
 
             try
             {
-                // Create a new VContainer builder
+                // Create a new VContainer builder (correct API: no parent in constructor)
                 var builder = new ContainerBuilder();
 
                 // Apply VContainer-specific configuration options
                 ApplyVContainerConfiguration(builder, config);
 
-                // Create the adapter
+                // Create the adapter (no parent resolver for root container)
                 var adapter = new VContainerAdapter(
                     builder,
                     containerName,
@@ -114,7 +115,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters.VContainer
                 // Apply VContainer-specific configuration to the existing builder
                 ApplyVContainerConfiguration(vcontainerBuilder, config);
 
-                // Create the adapter with the existing builder
+                // Create the adapter with the existing builder (no parent resolver)
                 var adapter = new VContainerAdapter(
                     vcontainerBuilder,
                     containerName,
@@ -133,6 +134,117 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters.VContainer
                 if (config.EnableDebugLogging)
                 {
                     UnityEngine.Debug.LogError($"[VContainerAdapterFactory] Failed to create VContainer adapter from builder: {ex.Message}");
+                }
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Creates a VContainer adapter for Unity integration scenarios.
+        /// Fixed to use correct VContainer API - parent relationship handled at Build() time.
+        /// </summary>
+        /// <param name="parentContainer">Optional parent container for hierarchical DI.</param>
+        /// <param name="config">Configuration for the container.</param>
+        /// <param name="containerName">Optional name for the container.</param>
+        /// <param name="messageBusService">Optional message bus service.</param>
+        /// <returns>A new VContainer adapter configured for Unity integration.</returns>
+        public IContainerAdapter CreateForUnity(
+            IObjectResolver parentContainer = null,
+            IDependencyInjectionConfig config = null,
+            string containerName = null,
+            IMessageBusService messageBusService = null)
+        {
+            if (!IsFrameworkAvailable)
+                throw new NotSupportedException("VContainer is not available in the current environment");
+
+            try
+            {
+                // Create builder using correct VContainer API (no parent in constructor)
+                var builder = new ContainerBuilder();
+
+                config ??= new Configuration.DependencyInjectionConfig();
+
+                // Apply Unity-specific VContainer configuration
+                ApplyUnityConfiguration(builder, config);
+
+                // Create adapter and pass parent resolver for Build() phase
+                var adapter = new VContainerAdapter(
+                    builder,
+                    containerName ?? "UnityVContainer",
+                    config,
+                    messageBusService,
+                    null, // validator
+                    parentContainer); // Parent resolver for child container support
+
+                if (config.EnableDebugLogging)
+                {
+                    var parentInfo = parentContainer != null ? " with parent container" : "";
+                    UnityEngine.Debug.Log($"[VContainerAdapterFactory] Created Unity-integrated VContainer adapter '{adapter.ContainerName}'{parentInfo}");
+                }
+
+                return adapter;
+            }
+            catch (Exception ex)
+            {
+                var enableLogging = config?.EnableDebugLogging ?? false;
+                if (enableLogging)
+                {
+                    UnityEngine.Debug.LogError($"[VContainerAdapterFactory] Failed to create Unity VContainer adapter: {ex.Message}");
+                }
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Creates a child VContainer adapter from a parent resolver.
+        /// Uses correct VContainer API for child container creation.
+        /// </summary>
+        /// <param name="parentResolver">The parent VContainer resolver.</param>
+        /// <param name="config">Configuration for the child container.</param>
+        /// <param name="containerName">Optional name for the child container.</param>
+        /// <param name="messageBusService">Optional message bus service.</param>
+        /// <returns>A new child VContainer adapter.</returns>
+        public IContainerAdapter CreateChild(
+            IObjectResolver parentResolver,
+            IDependencyInjectionConfig config = null,
+            string containerName = null,
+            IMessageBusService messageBusService = null)
+        {
+            if (parentResolver == null)
+                throw new ArgumentNullException(nameof(parentResolver));
+
+            if (!IsFrameworkAvailable)
+                throw new NotSupportedException("VContainer is not available in the current environment");
+
+            try
+            {
+                // Create new builder using correct VContainer API
+                var childBuilder = new ContainerBuilder();
+
+                config ??= new Configuration.DependencyInjectionConfig();
+
+                // Create child adapter with parent resolver reference
+                var childAdapter = new VContainerAdapter(
+                    childBuilder,
+                    containerName ?? $"VContainer_Child_{Guid.NewGuid():N}",
+                    config,
+                    messageBusService,
+                    null, // validator
+                    parentResolver); // Parent resolver for Build() phase
+
+                if (config.EnableDebugLogging)
+                {
+                    UnityEngine.Debug.Log($"[VContainerAdapterFactory] Created child VContainer adapter '{childAdapter.ContainerName}'");
+                }
+
+                return childAdapter;
+            }
+            catch (Exception ex)
+            {
+                var enableLogging = config?.EnableDebugLogging ?? false;
+                if (enableLogging)
+                {
+                    UnityEngine.Debug.LogError($"[VContainerAdapterFactory] Failed to create child VContainer adapter: {ex.Message}");
                 }
                 throw;
             }
@@ -208,59 +320,6 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters.VContainer
             {
                 // If any exception occurs, assume VContainer is not available
                 return false;
-            }
-        }
-
-        /// <summary>
-        /// Creates a VContainer adapter for Unity integration scenarios.
-        /// </summary>
-        /// <param name="parentContainer">Optional parent container for hierarchical DI.</param>
-        /// <param name="config">Configuration for the container.</param>
-        /// <param name="containerName">Optional name for the container.</param>
-        /// <param name="messageBusService">Optional message bus service.</param>
-        /// <returns>A new VContainer adapter configured for Unity integration.</returns>
-        public IContainerAdapter CreateForUnity(
-            IObjectResolver parentContainer = null,
-            IDependencyInjectionConfig config = null,
-            string containerName = null,
-            IMessageBusService messageBusService = null)
-        {
-            if (!IsFrameworkAvailable)
-                throw new NotSupportedException("VContainer is not available in the current environment");
-
-            try
-            {
-                // Create builder with optional parent container for Unity scenarios
-                var builder = parentContainer != null 
-                    ? new ContainerBuilder(parentContainer) 
-                    : new ContainerBuilder();
-
-                config ??= new Configuration.DependencyInjectionConfig();
-
-                // Apply Unity-specific VContainer configuration
-                ApplyUnityConfiguration(builder, config);
-
-                var adapter = new VContainerAdapter(
-                    builder,
-                    containerName ?? "UnityVContainer",
-                    config,
-                    messageBusService);
-
-                if (config.EnableDebugLogging)
-                {
-                    UnityEngine.Debug.Log($"[VContainerAdapterFactory] Created Unity-integrated VContainer adapter '{adapter.ContainerName}'");
-                }
-
-                return adapter;
-            }
-            catch (Exception ex)
-            {
-                var enableLogging = config?.EnableDebugLogging ?? false;
-                if (enableLogging)
-                {
-                    UnityEngine.Debug.LogError($"[VContainerAdapterFactory] Failed to create Unity VContainer adapter: {ex.Message}");
-                }
-                throw;
             }
         }
 

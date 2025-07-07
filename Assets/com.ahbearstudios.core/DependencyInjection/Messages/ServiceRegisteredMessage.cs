@@ -1,6 +1,4 @@
-
-using System;
-using AhBearStudios.Core.DependencyInjection.Configuration;
+using AhBearStudios.Core.DependencyInjection.Models;
 using AhBearStudios.Core.MessageBus.Interfaces;
 
 namespace AhBearStudios.Core.DependencyInjection.Messages

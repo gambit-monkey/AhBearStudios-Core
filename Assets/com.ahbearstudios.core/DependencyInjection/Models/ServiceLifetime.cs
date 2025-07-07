@@ -1,4 +1,4 @@
-namespace AhBearStudios.Core.DependencyInjection.Configuration
+namespace AhBearStudios.Core.DependencyInjection.Models
 {
     /// <summary>
     /// Enumeration of service lifetimes.

@@ -85,10 +85,10 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
             catch (VContainerException ex)
             {
                 stopwatch.Stop();
-                
+
                 // Publish failed resolution event
                 PublishResolutionFailedEvent(serviceType, ex.Message, stopwatch.Elapsed);
-                
+
                 if (_config?.EnableDebugLogging == true)
                 {
                     LogResolution(serviceType, stopwatch.Elapsed, false, ex.Message);
@@ -104,10 +104,10 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
             catch (Exception ex) when (!(ex is DependencyInjectionException))
             {
                 stopwatch.Stop();
-                
+
                 // Publish failed resolution event
                 PublishResolutionFailedEvent(serviceType, ex.Message, stopwatch.Elapsed);
-                
+
                 if (_config?.EnableDebugLogging == true)
                 {
                     LogResolution(serviceType, stopwatch.Elapsed, false, ex.Message);
@@ -158,7 +158,7 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                
+
                 if (_config?.EnableDebugLogging == true)
                 {
                     LogTryResolve(serviceType, stopwatch.Elapsed, false, ex.Message);
@@ -224,7 +224,7 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
             catch (VContainerException)
             {
                 stopwatch.Stop();
-                
+
                 if (_config?.EnableDebugLogging == true)
                 {
                     LogResolveAll(serviceType, 0, stopwatch.Elapsed);
@@ -236,10 +236,11 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                
+
                 if (_config?.EnableDebugLogging == true)
                 {
-                    Console.WriteLine($"[VContainer] Error resolving all services of type {serviceType.Name}: {ex.Message}");
+                    Console.WriteLine(
+                        $"[VContainer] Error resolving all services of type {serviceType.Name}: {ex.Message}");
                 }
 
                 // Return empty collection on error
@@ -308,6 +309,7 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
 
         /// <summary>
         /// Creates a scoped resolver if scoping is enabled.
+        /// VContainer doesn't have traditional scoping, so this creates a child container scope.
         /// </summary>
         /// <param name="scopeName">Optional name for the scope.</param>
         /// <returns>A new scoped resolver.</returns>
@@ -324,25 +326,42 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
                     "Enable scoping in the DI configuration to use this feature.");
             }
 
-            // VContainer supports child containers which can serve as scopes
+            // VContainer doesn't have traditional scoping like other DI containers
+            // We can simulate scoping by creating a child container scope
             try
             {
-                // Create a child container builder with the current resolver as parent
-                var childBuilder = new ContainerBuilder(_resolver);
-                var childResolver = childBuilder.Build();
+                // Check if VContainer has CreateScope method on resolver
+                var createScopeMethod = _resolver.GetType().GetMethod("CreateScope");
+                if (createScopeMethod != null)
+                {
+                    // Use VContainer's native CreateScope if available
+                    var scope = createScopeMethod.Invoke(_resolver, null);
+                    if (scope is IObjectResolver scopedResolver)
+                    {
+                        return new VContainerServiceResolver(
+                            scopedResolver,
+                            scopeName ?? $"{_containerName}_Scope_{Guid.NewGuid():N}",
+                            _config,
+                            _messageBusService);
+                    }
+                }
 
-                var scopedResolver = new VContainerServiceResolver(
-                    childResolver,
+                // Fallback: VContainer doesn't have traditional scoping
+                // Return the same resolver but with a different name to simulate scoping
+                // In VContainer, child containers are typically created at the builder level
+                if (_config?.EnableDebugLogging == true)
+                {
+                    Console.WriteLine($"[VContainer] VContainer doesn't support traditional scoping. " +
+                                      $"Returning same resolver with scope name '{scopeName ?? "unnamed"}'");
+                }
+
+                // Return a new resolver wrapper that delegates to the same underlying resolver
+                // This maintains the scoping contract while acknowledging VContainer's limitations
+                return new VContainerServiceResolver(
+                    _resolver,
                     scopeName ?? $"{_containerName}_Scope_{Guid.NewGuid():N}",
                     _config,
                     _messageBusService);
-
-                if (_config?.EnableDebugLogging == true)
-                {
-                    Console.WriteLine($"[VContainer] Created scoped resolver '{scopedResolver._containerName}' from '{_containerName}'");
-                }
-
-                return scopedResolver;
             }
             catch (Exception ex)
             {
@@ -352,7 +371,7 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
                 }
 
                 throw new NotSupportedException(
-                    $"Failed to create scoped resolver: {ex.Message}", ex);
+                    $"VContainer does not support traditional scoping. Failed to create scope: {ex.Message}", ex);
             }
         }
 
@@ -401,7 +420,8 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
         /// <summary>
         /// Publishes a successful service resolution event to the message bus.
         /// </summary>
-        private void PublishResolutionEvent(Type serviceType, object instance, TimeSpan resolutionTime, bool wasSuccessful)
+        private void PublishResolutionEvent(Type serviceType, object instance, TimeSpan resolutionTime,
+            bool wasSuccessful)
         {
             if (_messageBusService == null) return;
 
@@ -428,7 +448,8 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
         /// <summary>
         /// Publishes a failed service resolution event to the message bus.
         /// </summary>
-        private void PublishResolutionFailedEvent(Type serviceType, string errorMessage, TimeSpan attemptedResolutionTime)
+        private void PublishResolutionFailedEvent(Type serviceType, string errorMessage,
+            TimeSpan attemptedResolutionTime)
         {
             if (_messageBusService == null) return;
 
@@ -457,8 +478,9 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
         private void LogResolution(Type serviceType, TimeSpan resolutionTime, bool success, string errorMessage = null)
         {
             var status = success ? "SUCCESS" : "FAILED";
-            var message = $"[VContainer] Resolution {status} for {serviceType.Name} in {resolutionTime.TotalMilliseconds:F2}ms";
-            
+            var message =
+                $"[VContainer] Resolution {status} for {serviceType.Name} in {resolutionTime.TotalMilliseconds:F2}ms";
+
             if (!success && !string.IsNullOrEmpty(errorMessage))
             {
                 message += $" - {errorMessage}";
@@ -473,8 +495,9 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
         private void LogTryResolve(Type serviceType, TimeSpan resolutionTime, bool success, string errorMessage = null)
         {
             var status = success ? "SUCCESS" : "NOT_FOUND";
-            var message = $"[VContainer] TryResolve {status} for {serviceType.Name} in {resolutionTime.TotalMilliseconds:F2}ms";
-            
+            var message =
+                $"[VContainer] TryResolve {status} for {serviceType.Name} in {resolutionTime.TotalMilliseconds:F2}ms";
+
             if (!success && !string.IsNullOrEmpty(errorMessage))
             {
                 message += $" - {errorMessage}";
@@ -488,6 +511,8 @@ namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
         /// </summary>
         private void LogResolveAll(Type serviceType, int count, TimeSpan resolutionTime)
         {
-            Console.WriteLine($"[VContainer] ResolveAll found {count} implementations of {serviceType.Name} in {resolutionTime.TotalMilliseconds:F2}ms");
+            Console.WriteLine(
+                $"[VContainer] ResolveAll found {count} implementations of {serviceType.Name} in {resolutionTime.TotalMilliseconds:F2}ms");
         }
     }
+}

@@ -26,7 +26,7 @@
       "depth": 0,
       "source": "git",
       "dependencies": {},
-      "hash": "f8f1902ebec77284fd4ac83d043e0ef664d31831"
+      "hash": "f789083c31250c83082da9b29be0c976152d699b"
     },
     "com.unity.burst": {
       "version": "1.8.23",
@@ -253,7 +253,7 @@
       }
     },
     "com.unity.visualscripting": {
-      "version": "1.9.7",
+      "version": "1.9.8",
       "depth": 0,
       "source": "registry",
       "dependencies": {
@@ -274,7 +274,7 @@
       "depth": 0,
       "source": "git",
       "dependencies": {},
-      "hash": "53b5e3ac9ff889aa637580769d0d07b5d1e35e4f"
+      "hash": "63205c68cd231fb74ef17360df09acabf451e62b"
     },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",
