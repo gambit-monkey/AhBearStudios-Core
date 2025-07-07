@@ -3,7 +3,7 @@ namespace AhBearStudios.Core.DependencyInjection.Models
     /// <summary>
     /// Represents a warning that occurred during bootstrap.
     /// </summary>
-    public sealed class BootstrapWarning
+    public readonly record struct BootstrapWarning
     {
         /// <summary>
         /// Gets the installer name where the warning occurred.

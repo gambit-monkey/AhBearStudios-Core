@@ -5,7 +5,7 @@ namespace AhBearStudios.Core.DependencyInjection.Models
     /// <summary>
     /// Represents a validation error found during container validation.
     /// </summary>
-    public sealed class ValidationError
+    public readonly record struct ValidationError
     {
         /// <summary>
         /// Gets the error type.

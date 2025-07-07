@@ -3,7 +3,7 @@ namespace AhBearStudios.Core.DependencyInjection.Models
     /// <summary>
     /// Represents an error that occurred during bootstrap.
     /// </summary>
-    public sealed class BootstrapError
+    public readonly record struct BootstrapError
     {
         /// <summary>
         /// Gets the installer name where the error occurred.

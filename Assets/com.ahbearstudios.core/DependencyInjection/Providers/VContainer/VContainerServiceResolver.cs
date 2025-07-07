@@ -1,24 +1,25 @@
+
 using System;
 using AhBearStudios.Core.DependencyInjection.Exceptions;
 using AhBearStudios.Core.DependencyInjection.Interfaces;
 using VContainer;
 
-namespace AhBearStudios.Core.DependencyInjection.Adapters
+namespace AhBearStudios.Core.DependencyInjection.Providers.VContainer
 {
     /// <summary>
-    /// Adapter that wraps VContainer's IObjectResolver to implement our IDependencyProvider interface.
-    /// This allows the rest of the system to use our DI abstractions while VContainer provides the actual resolution.
+    /// VContainer implementation of IDependencyProvider that wraps an IObjectResolver.
+    /// Provides the primary adapter between our DI abstractions and VContainer's resolution system.
     /// </summary>
-    internal sealed class VContainerDependencyProviderAdapter : IDependencyProvider
+    internal sealed class VContainerServiceResolver : IServiceResolver
     {
         private readonly IObjectResolver _resolver;
 
         /// <summary>
-        /// Initializes a new instance of the VContainerDependencyProviderAdapter class.
+        /// Initializes a new instance of the VContainerServiceResolver class.
         /// </summary>
         /// <param name="resolver">The VContainer object resolver to wrap.</param>
         /// <exception cref="ArgumentNullException">Thrown when resolver is null.</exception>
-        public VContainerDependencyProviderAdapter(IObjectResolver resolver)
+        public VContainerServiceResolver(IObjectResolver resolver)
         {
             _resolver = resolver ?? throw new ArgumentNullException(nameof(resolver));
         }
@@ -40,7 +41,7 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
                 throw new ServiceResolutionException(typeof(T), 
                     $"Failed to resolve service of type '{typeof(T).FullName}' from VContainer", ex);
             }
-            catch (Exception ex) when (!(ex is ServiceResolutionException))
+            catch (Exception ex) when (!(ex is DependencyInjectionException))
             {
                 throw new ServiceResolutionException(typeof(T), 
                     $"Unexpected error resolving service of type '{typeof(T).FullName}' from VContainer", ex);
@@ -55,22 +56,15 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
         /// <returns>True if resolution was successful, false otherwise.</returns>
         public bool TryResolve<T>(out T service)
         {
-            service = default;
-    
             try
             {
-                // Attempt to resolve the service
-                service = Resolve<T>();
-                return true;
-            }
-            catch (ServiceResolutionException)
-            {
-                // Service not found or resolution failed
-                return false;
+                // VContainer's TryResolve method returns true if successful
+                return _resolver.TryResolve<T>(out service);
             }
             catch (Exception)
             {
-                // Any other exception means resolution failed
+                // If any exception occurs during resolution, consider it a failure
+                service = default;
                 return false;
             }
         }
@@ -83,12 +77,12 @@ namespace AhBearStudios.Core.DependencyInjection.Adapters
         /// <returns>The resolved service or default value.</returns>
         public T ResolveOrDefault<T>(T defaultValue = default)
         {
-            // Use TryResolve to attempt resolution
+            // Use TryResolve to attempt resolution safely
             if (TryResolve<T>(out T service))
             {
                 return service;
             }
-    
+            
             // Return the default value if resolution failed
             return defaultValue;
         }

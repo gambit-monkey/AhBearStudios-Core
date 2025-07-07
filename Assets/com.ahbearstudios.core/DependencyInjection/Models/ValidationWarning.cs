@@ -3,7 +3,7 @@ namespace AhBearStudios.Core.DependencyInjection.Models
     /// <summary>
     /// Represents a validation warning found during container validation.
     /// </summary>
-    public sealed class ValidationWarning
+    public readonly record struct ValidationWarning
     {
         /// <summary>
         /// Gets the warning type.
