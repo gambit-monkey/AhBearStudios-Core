@@ -1,340 +1,377 @@
-using System;
-using AhBearStudios.Core.DependencyInjection.Adapters;
+using System.Collections.Generic;
 using AhBearStudios.Core.DependencyInjection.Builders;
-using AhBearStudios.Core.DependencyInjection.Extensions.VContainer;
+using AhBearStudios.Core.DependencyInjection.Configuration;
 using AhBearStudios.Core.DependencyInjection.Interfaces;
+using AhBearStudios.Core.DependencyInjection.Models;
+using AhBearStudios.Core.DependencyInjection.Utilities;
 using AhBearStudios.Core.MessageBus.Interfaces;
-using AhBearStudios.Core.MessageBus.MessageBuses;
-using AhBearStudios.Core.MessageBus.Unity;
-using VContainer;
 
 namespace AhBearStudios.Core.DependencyInjection.Factories
 {
     /// <summary>
-    /// Factory for creating dependency injection containers.
-    /// Provides abstraction over different DI container implementations with proper lifecycle management.
+    /// Enhanced factory for creating dependency injection containers with multiple framework support.
+    /// Provides configuration-driven container selection and automatic fallback mechanisms.
     /// </summary>
     public static class DependencyContainerFactory
     {
-        /// <summary>
-        /// The current container implementation being used.
-        /// </summary>
-        public static ContainerImplementation CurrentImplementation { get; private set; } = ContainerImplementation.VContainer;
-
-        /// <summary>
-        /// The default message bus instance to use for containers.
-        /// </summary>
+        private static readonly Dictionary<ContainerFramework, IContainerAdapterFactory> RegisteredFactories 
+            = new Dictionary<ContainerFramework, IContainerAdapterFactory>();
+        
+        private static readonly object FactoryLock = new object();
+        private static IDependencyInjectionConfig _defaultConfig;
         private static IMessageBusService _defaultMessageBusService;
-
+        private static IConfigurationLoader _configurationLoader;
+        
         /// <summary>
-        /// Gets or sets the default message bus used by containers.
-        /// If not set, containers will resolve MessageBusService from themselves or create a fallback.
+        /// Gets or sets the default configuration for new containers.
+        /// </summary>
+        public static IDependencyInjectionConfig DefaultConfiguration
+        {
+            get => _defaultConfig ??= new DependencyInjectionConfig();
+            set => _defaultConfig = value ?? throw new ArgumentNullException(nameof(value));
+        }
+        
+        /// <summary>
+        /// Gets or sets the default message bus service for new containers.
         /// </summary>
         public static IMessageBusService DefaultMessageBusService
         {
             get => _defaultMessageBusService;
             set => _defaultMessageBusService = value;
         }
-
+        
         /// <summary>
-        /// Creates a new dependency container using the current implementation.
+        /// Gets or sets the configuration loader for loading configs from files.
+        /// </summary>
+        public static IConfigurationLoader ConfigurationLoader
+        {
+            get => _configurationLoader ??= new ConfigurationLoader();
+            set => _configurationLoader = value ?? throw new ArgumentNullException(nameof(value));
+        }
+        
+        /// <summary>
+        /// Gets the registered framework factories.
+        /// </summary>
+        public static IReadOnlyDictionary<ContainerFramework, IContainerAdapterFactory> RegisteredFactories => 
+            new Dictionary<ContainerFramework, IContainerAdapterFactory>(RegisteredFactories);
+        
+        static DependencyContainerFactory()
+        {
+            // Initialize with built-in factories
+            InitializeBuiltInFactories();
+        }
+        
+        /// <summary>
+        /// Registers a container adapter factory for a specific framework.
+        /// </summary>
+        /// <param name="factory">The factory to register.</param>
+        /// <exception cref="ArgumentNullException">Thrown when factory is null.</exception>
+        /// <exception cref="ArgumentException">Thrown when framework is already registered.</exception>
+        public static void RegisterFactory(IContainerAdapterFactory factory)
+        {
+            if (factory == null)
+                throw new ArgumentNullException(nameof(factory));
+            
+            lock (FactoryLock)
+            {
+                if (RegisteredFactories.ContainsKey(factory.SupportedFramework))
+                    throw new ArgumentException($"Factory for framework {factory.SupportedFramework} is already registered");
+                
+                RegisteredFactories[factory.SupportedFramework] = factory;
+            }
+        }
+        
+        /// <summary>
+        /// Unregisters a container adapter factory for a specific framework.
+        /// </summary>
+        /// <param name="framework">The framework to unregister.</param>
+        /// <returns>True if the factory was removed, false if it wasn't registered.</returns>
+        public static bool UnregisterFactory(ContainerFramework framework)
+        {
+            lock (FactoryLock)
+            {
+                return RegisteredFactories.Remove(framework);
+            }
+        }
+        
+        /// <summary>
+        /// Creates a new dependency container using the default configuration.
         /// </summary>
         /// <param name="containerName">Optional name for the container.</param>
-        /// <returns>A new dependency container instance.</returns>
-        public static IDependencyContainer Create(string containerName = null)
+        /// <returns>A new container adapter.</returns>
+        public static IContainerAdapter Create(string containerName = null)
         {
-            return CurrentImplementation switch
+            return Create(DefaultConfiguration, containerName, DefaultMessageBusService);
+        }
+        
+        /// <summary>
+        /// Creates a new dependency container with the specified configuration.
+        /// </summary>
+        /// <param name="config">Configuration for the container.</param>
+        /// <param name="containerName">Optional name for the container.</param>
+        /// <param name="messageBusService">Optional message bus service.</param>
+        /// <returns>A new container adapter.</returns>
+        /// <exception cref="ArgumentNullException">Thrown when config is null.</exception>
+        /// <exception cref="NotSupportedException">Thrown when no suitable framework is available.</exception>
+        public static IContainerAdapter Create(
+            IDependencyInjectionConfig config,
+            string containerName = null,
+            IMessageBusService messageBusService = null)
+        {
+            if (config == null)
+                throw new ArgumentNullException(nameof(config));
+            
+            // Try to create with preferred framework
+            var factory = GetFactory(config.PreferredFramework);
+            if (factory != null && factory.IsFrameworkAvailable)
             {
-                ContainerImplementation.VContainer => CreateVContainer(containerName),
-                _ => throw new NotSupportedException($"Container implementation '{CurrentImplementation}' is not supported")
+                return factory.CreateContainer(config, containerName, messageBusService);
+            }
+            
+            // Fallback to any available framework
+            factory = GetFirstAvailableFactory();
+            if (factory != null)
+            {
+                // Create a modified config with the available framework
+                var fallbackConfig = CreateFallbackConfig(config, factory.SupportedFramework);
+                return factory.CreateContainer(fallbackConfig, containerName, messageBusService);
+            }
+            
+            throw new NotSupportedException(
+                $"No suitable DI framework available. Preferred: {config.PreferredFramework}, " +
+                $"Registered: [{string.Join(", ", RegisteredFactories.Keys)}]");
+        }
+        
+        /// <summary>
+        /// Creates a container from a configuration file.
+        /// </summary>
+        /// <param name="configFilePath">Path to the configuration file.</param>
+        /// <param name="containerName">Optional name for the container.</param>
+        /// <param name="messageBusService">Optional message bus service.</param>
+        /// <returns>A new container adapter.</returns>
+        public static IContainerAdapter CreateFromFile(
+            string configFilePath,
+            string containerName = null,
+            IMessageBusService messageBusService = null)
+        {
+            var config = ConfigurationLoader.LoadFromFile(configFilePath);
+            return Create(config, containerName, messageBusService);
+        }
+        
+        /// <summary>
+        /// Creates a container with configuration based on environment.
+        /// </summary>
+        /// <param name="environment">Environment name (Development, Production, Testing).</param>
+        /// <param name="containerName">Optional name for the container.</param>
+        /// <param name="messageBusService">Optional message bus service.</param>
+        /// <returns>A new container adapter.</returns>
+        public static IContainerAdapter CreateForEnvironment(
+            string environment,
+            string containerName = null,
+            IMessageBusService messageBusService = null)
+        {
+            var config = environment?.ToLowerInvariant() switch
+            {
+                "development" => DependencyInjectionConfig.Development,
+                "production" => DependencyInjectionConfig.Production,
+                "testing" => DependencyInjectionConfig.Testing,
+                _ => DefaultConfiguration
             };
+            
+            return Create(config, containerName, messageBusService);
         }
-
-        /// <summary>
-        /// Creates a new VContainer-based dependency container.
-        /// MessageBusService will be resolved from the container or use default if available.
-        /// </summary>
-        /// <param name="containerName">Optional name for the container.</param>
-        /// <returns>A new VContainer-based dependency container.</returns>
-        public static IDependencyContainer CreateVContainer(string containerName = null)
-        {
-            var builder = new ContainerBuilder();
-            
-            // Register default MessageBusService if available
-            if (_defaultMessageBusService != null)
-            {
-                VContainer.ContainerBuilderExtensions.RegisterInstance(builder, _defaultMessageBusService).As<IMessageBusService>();
-            }
-            else
-            {
-                // Register a MessageBusService that will be resolved later
-                RegisterDefaultMessageBus(builder);
-            }
-            
-            return new VContainerAdapter(builder, containerName);
-        }
-
-        /// <summary>
-        /// Creates a dependency container from an existing VContainer builder.
-        /// </summary>
-        /// <param name="builder">The VContainer builder to wrap.</param>
-        /// <param name="containerName">Optional name for the container.</param>
-        /// <returns>A new dependency container wrapping the builder.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when builder is null.</exception>
-        public static IDependencyContainer FromVContainerBuilder(IContainerBuilder builder, string containerName = null)
-        {
-            if (builder == null) throw new ArgumentNullException(nameof(builder));
-            
-            // Ensure MessageBusService is registered
-            EnsureMessageBusRegistered(builder);
-            
-            return new VContainerAdapter(builder, containerName);
-        }
-
-        /// <summary>
-        /// Creates a dependency container from an existing VContainer resolver.
-        /// </summary>
-        /// <param name="resolver">The VContainer resolver to wrap.</param>
-        /// <param name="containerName">Optional name for the container.</param>
-        /// <param name="messageBusService">Optional message bus instance.</param>
-        /// <returns>A new dependency container wrapping the resolver.</returns>
-        /// <exception cref="ArgumentNullException">Thrown when resolver is null.</exception>
-        public static IDependencyContainer FromVContainerResolver(IObjectResolver resolver, string containerName = null, IMessageBusService messageBusService = null)
-        {
-            if (resolver == null) throw new ArgumentNullException(nameof(resolver));
-            
-            // Use provided MessageBusService or try to resolve from container
-            var effectiveMessageBus = messageBusService;
-            if (effectiveMessageBus == null)
-            {
-                // Try to resolve from VContainer resolver
-                if (!resolver.TryResolve<IMessageBusService>(out effectiveMessageBus))
-                {
-                    effectiveMessageBus = _defaultMessageBusService;
-                }
-            }
-            
-            return new VContainerAdapter(resolver, effectiveMessageBus, containerName);
-        }
-
         
         /// <summary>
-        /// Creates a pre-configured container with common registrations.
+        /// Creates a container adapter from an existing framework-specific builder.
         /// </summary>
+        /// <param name="frameworkBuilder">The framework-specific builder object.</param>
+        /// <param name="framework">The framework the builder belongs to.</param>
+        /// <param name="config">Optional configuration (uses default if null).</param>
         /// <param name="containerName">Optional name for the container.</param>
-        /// <param name="configureContainer">Optional action to configure the container.</param>
-        /// <returns>A configured dependency container.</returns>
-        public static IDependencyContainer CreateConfigured(
-            string containerName = null, 
-            Action<IDependencyContainer> configureContainer = null)
+        /// <param name="messageBusService">Optional message bus service.</param>
+        /// <returns>A new container adapter.</returns>
+        public static IContainerAdapter CreateFromBuilder(
+            object frameworkBuilder,
+            ContainerFramework framework,
+            IDependencyInjectionConfig config = null,
+            string containerName = null,
+            IMessageBusService messageBusService = null)
         {
-            var container = Create(containerName);
-    
-            // Apply custom configuration first
-            configureContainer?.Invoke(container);
-    
-            // Register common framework dependencies
-            RegisterCommonDependencies(container);
-    
-            return container;
-        }
-
-        /// <summary>
-        /// Creates a pre-configured container with common registrations and a specific message bus.
-        /// </summary>
-        /// <param name="containerName">Optional name for the container.</param>
-        /// <param name="configureContainer">Optional action to configure the container.</param>
-        /// <param name="messageBusService">The message bus to use for the container.</param>
-        /// <returns>A configured dependency container.</returns>
-        public static IDependencyContainer CreateConfigured(
-            string containerName, 
-            Action<IDependencyContainer> configureContainer,
-            IMessageBusService messageBusService)
-        {
-            // Temporarily set the message bus for this container creation
-            var previousMessageBus = _defaultMessageBusService;
-            _defaultMessageBusService = messageBusService;
-    
-            try
-            {
-                var container = Create(containerName);
-        
-                // Apply custom configuration first
-                configureContainer?.Invoke(container);
-        
-                // Register common framework dependencies
-                RegisterCommonDependencies(container);
-        
-                return container;
-            }
-            finally
-            {
-                // Restore the previous default message bus
-                _defaultMessageBusService = previousMessageBus;
-            }
-        }
-
-        /// <summary>
-        /// Creates a fully built and ready-to-use container.
-        /// </summary>
-        /// <param name="containerName">Optional name for the container.</param>
-        /// <param name="configureContainer">Optional action to configure the container.</param>
-        /// <returns>A built and ready dependency container.</returns>
-        public static IDependencyContainer CreateAndBuild(
-            string containerName = null, 
-            Action<IDependencyContainer> configureContainer = null)
-        {
-            var container = CreateConfigured(containerName, configureContainer);
+            if (frameworkBuilder == null)
+                throw new ArgumentNullException(nameof(frameworkBuilder));
             
-            // Build the container if it's a VContainerAdapter
-            if (container is VContainerAdapter adapter)
+            var factory = GetFactory(framework);
+            if (factory == null)
+                throw new NotSupportedException($"No factory registered for framework {framework}");
+            
+            config ??= DefaultConfiguration;
+            return factory.CreateFromBuilder(frameworkBuilder, config, containerName, messageBusService);
+        }
+        
+        /// <summary>
+        /// Gets available frameworks in order of preference.
+        /// </summary>
+        /// <returns>List of available frameworks.</returns>
+        public static IReadOnlyList<ContainerFramework> GetAvailableFrameworks()
+        {
+            lock (FactoryLock)
             {
-                return adapter.Build();
+                return RegisteredFactories.Values
+                    .Where(f => f.IsFrameworkAvailable)
+                    .Select(f => f.SupportedFramework)
+                    .OrderBy(f => (int)f) // Prefer VContainer first
+                    .ToList();
+            }
+        }
+        
+        /// <summary>
+        /// Checks if a specific framework is available.
+        /// </summary>
+        /// <param name="framework">The framework to check.</param>
+        /// <returns>True if the framework is available, false otherwise.</returns>
+        public static bool IsFrameworkAvailable(ContainerFramework framework)
+        {
+            var factory = GetFactory(framework);
+            return factory?.IsFrameworkAvailable == true;
+        }
+        
+        /// <summary>
+        /// Creates a container builder for fluent configuration.
+        /// </summary>
+        /// <param name="framework">Optional preferred framework.</param>
+        /// <returns>A new container builder.</returns>
+        public static IEnhancedContainerBuilder CreateBuilder(ContainerFramework? framework = null)
+        {
+            var config = framework.HasValue 
+                ? new DependencyInjectionConfigBuilder().WithFramework(framework.Value).Build()
+                : DefaultConfiguration;
+            
+            return new EnhancedContainerBuilder(config);
+        }
+        
+        /// <summary>
+        /// Gets the factory for a specific framework.
+        /// </summary>
+        private static IContainerAdapterFactory GetFactory(ContainerFramework framework)
+        {
+            lock (FactoryLock)
+            {
+                RegisteredFactories.TryGetValue(framework, out var factory);
+                return factory;
+            }
+        }
+        
+        /// <summary>
+        /// Gets the first available factory.
+        /// </summary>
+        private static IContainerAdapterFactory GetFirstAvailableFactory()
+        {
+            lock (FactoryLock)
+            {
+                return RegisteredFactories.Values
+                    .Where(f => f.IsFrameworkAvailable)
+                    .OrderBy(f => (int)f.SupportedFramework)
+                    .FirstOrDefault();
+            }
+        }
+        
+        /// <summary>
+        /// Creates a fallback configuration for a different framework.
+        /// </summary>
+        private static IDependencyInjectionConfig CreateFallbackConfig(
+            IDependencyInjectionConfig originalConfig,
+            ContainerFramework fallbackFramework)
+        {
+            return new DependencyInjectionConfigBuilder()
+                .WithFramework(fallbackFramework)
+                .WithValidation(originalConfig.EnableValidation)
+                .WithDebugLogging(originalConfig.EnableDebugLogging)
+                .WithPerformanceMetrics(originalConfig.EnablePerformanceMetrics)
+                .WithThrowOnValidationFailure(originalConfig.ThrowOnValidationFailure)
+                .WithMaxBuildTimeWarning(originalConfig.MaxBuildTimeWarningMs)
+                .WithScoping(originalConfig.EnableScoping)
+                .WithNamedServices(originalConfig.EnableNamedServices)
+                .Build();
+        }
+        
+        /// <summary>
+        /// Initializes built-in framework factories.
+        /// </summary>
+        private static void InitializeBuiltInFactories()
+        {
+            try
+            {
+                // Register VContainer factory if available
+                var vcontainerFactory = CreateVContainerFactory();
+                if (vcontainerFactory != null)
+                {
+                    RegisteredFactories[ContainerFramework.VContainer] = vcontainerFactory;
+                }
+            }
+            catch
+            {
+                // VContainer not available, continue without it
             }
             
-            return container;
-        }
-
-        /// <summary>
-        /// Sets the default container implementation to use.
-        /// </summary>
-        /// <param name="implementation">The container implementation to use.</param>
-        public static void SetDefaultImplementation(ContainerImplementation implementation)
-        {
-            CurrentImplementation = implementation;
-        }
-
-        /// <summary>
-        /// Sets the default message bus instance for all containers.
-        /// </summary>
-        /// <param name="messageBusService">The message bus instance to use as default.</param>
-        public static void SetDefaultMessageBus(IMessageBusService messageBusService)
-        {
-            _defaultMessageBusService = messageBusService;
-        }
-
-        /// <summary>
-        /// Registers common framework dependencies in the container.
-        /// </summary>
-        /// <param name="container">The container to register dependencies in.</param>
-        private static void RegisterCommonDependencies(IDependencyContainer container)
-        {
-            if (container == null) return;
-
             try
             {
-                // Register the container as IDependencyProvider (self-registration)
-                if (!container.IsRegistered<IDependencyProvider>())
+                // Register Reflex factory if available
+                var reflexFactory = CreateReflexFactory();
+                if (reflexFactory != null)
                 {
-                    container.RegisterInstance<IDependencyProvider>(container);
-                }
-
-                // Register IServiceProvider adapter for .NET compatibility
-                if (!container.IsRegistered<IServiceProvider>())
-                {
-                    container.RegisterSingleton<IServiceProvider>(provider => 
-                        new ServiceProviderAdapter(provider));
+                    RegisteredFactories[ContainerFramework.Reflex] = reflexFactory;
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                UnityEngine.Debug.LogError($"[DependencyContainerFactory] Failed to register common dependencies: {ex.Message}");
+                // Reflex not available, continue without it
             }
         }
-
+        
         /// <summary>
-        /// Ensures MessageBusService is registered in the builder if not already present.
+        /// Creates VContainer factory if VContainer is available.
         /// </summary>
-        /// <param name="builder">The container builder.</param>
-        private static void EnsureMessageBusRegistered(IContainerBuilder builder)
+        private static IContainerAdapterFactory CreateVContainerFactory()
         {
-            if (builder == null) return;
-
-            try
+            // Check if VContainer is available through reflection
+            var vcontainerType = Type.GetType("VContainer.ContainerBuilder, VContainer");
+            if (vcontainerType != null)
             {
-                // Check if MessageBusService is already registered
-                if (!VContainerInspectionExtensions.IsRegistered(builder, typeof(IMessageBusService)))
+                // VContainer is available, create factory
+                var factoryType = Type.GetType(
+                    "AhBearStudios.Core.DependencyInjection.Adapters.VContainer.VContainerAdapterFactory, " +
+                    "AhBearStudios.Core");
+                
+                if (factoryType != null)
                 {
-                    RegisterDefaultMessageBus(builder);
+                    return (IContainerAdapterFactory)Activator.CreateInstance(factoryType);
                 }
             }
-            catch (Exception)
-            {
-                // If we can't check registration, try to register anyway
-                RegisterDefaultMessageBus(builder);
-            }
+            
+            return null;
         }
-
+        
         /// <summary>
-        /// Registers a default MessageBusService implementation in the builder.
+        /// Creates Reflex factory if Reflex is available.
         /// </summary>
-        /// <param name="builder">The container builder.</param>
-        private static void RegisterDefaultMessageBus(IContainerBuilder builder)
+        private static IContainerAdapterFactory CreateReflexFactory()
         {
-            if (builder == null) return;
-
-            try
+            // Check if Reflex is available through reflection
+            var reflexType = Type.GetType("Reflex.Core.ContainerBuilder, Reflex");
+            if (reflexType != null)
             {
-                if (_defaultMessageBusService != null)
+                // Reflex is available, create factory
+                var factoryType = Type.GetType(
+                    "AhBearStudios.Core.DependencyInjection.Adapters.Reflex.ReflexAdapterFactory, " +
+                    "AhBearStudios.Core");
+                
+                if (factoryType != null)
                 {
-                    VContainer.ContainerBuilderExtensions.RegisterInstance(builder, _defaultMessageBusService).As<IMessageBusService>();
-                }
-                else
-                {
-                    // Register a factory that creates MessageBusService from Unity provider
-                    VContainer.ContainerBuilderExtensions.Register<IMessageBusService>(builder, resolver =>
-                    {
-                        try
-                        {
-                            // Try to get from MessageBusProvider
-                            var provider = MessageBusProvider.Instance;
-                            if (provider != null && provider.IsInitialized)
-                            {
-                                return provider.MessageBusService;
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            UnityEngine.Debug.LogWarning($"[DependencyContainerFactory] Failed to get MessageBusService from provider: {ex.Message}");
-                        }
-
-                        // Fallback: create a null message bus to avoid breaking the container
-                        return new NullMessageBusService();
-                    }, Lifetime.Singleton);
+                    return (IContainerAdapterFactory)Activator.CreateInstance(factoryType);
                 }
             }
-            catch (Exception ex)
-            {
-                UnityEngine.Debug.LogError($"[DependencyContainerFactory] Failed to register MessageBusService: {ex.Message}");
-            }
+            
+            return null;
         }
-
-        /// <summary>
-        /// Creates a container builder that can be configured before building.
-        /// </summary>
-        /// <param name="containerName">Optional name for the container.</param>
-        /// <returns>A container builder that can be configured.</returns>
-        public static IDependencyContainerBuilder CreateBuilder(string containerName = null)
-        {
-            return new DependencyContainerBuilder(containerName);
-        }
-    }
-
-    /// <summary>
-    /// Enumeration of supported container implementations.
-    /// </summary>
-    public enum ContainerImplementation
-    {
-        /// <summary>
-        /// VContainer implementation (Unity-focused DI container).
-        /// </summary>
-        VContainer,
-
-        /// <summary>
-        /// Future support for other container implementations.
-        /// </summary>
-        // Zenject,
-        // Microsoft,
-        // Custom
     }
 }

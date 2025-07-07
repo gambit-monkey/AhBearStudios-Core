@@ -1,14 +1,13 @@
-
-using System;
 using System.Collections.Generic;
+using AhBearStudios.Core.DependencyInjection.Models;
 using AhBearStudios.Core.MessageBus.Interfaces;
 
 namespace AhBearStudios.Core.DependencyInjection.Interfaces
 {
     /// <summary>
-    /// Enhanced core interface for dependency injection containers with comprehensive registration and resolution capabilities.
+    /// Enhanced core interface for dependency injection containers with multi-framework support.
     /// Abstracts the underlying DI implementation to allow swapping between different frameworks.
-    /// Uses MessageBusService for event communication and provides advanced features like collections, decorators, and named services.
+    /// Provides comprehensive registration and resolution capabilities with performance optimization.
     /// </summary>
     public interface IDependencyContainer : IDependencyProvider, IDisposable
     {
@@ -23,9 +22,24 @@ namespace AhBearStudios.Core.DependencyInjection.Interfaces
         string ContainerName { get; }
         
         /// <summary>
+        /// Gets the framework this container uses.
+        /// </summary>
+        ContainerFramework Framework { get; }
+        
+        /// <summary>
+        /// Gets the configuration used by this container.
+        /// </summary>
+        IDependencyInjectionConfig Configuration { get; }
+        
+        /// <summary>
         /// Gets the message bus used for publishing container events.
         /// </summary>
         IMessageBusService MessageBusService { get; }
+        
+        /// <summary>
+        /// Gets whether the container has been built and is ready for resolution.
+        /// </summary>
+        bool IsBuilt { get; }
         
         // Core registration methods
         /// <summary>
@@ -141,11 +155,12 @@ namespace AhBearStudios.Core.DependencyInjection.Interfaces
         IEnumerable<T> ResolveAll<T>();
         
         /// <summary>
-        /// Resolves a service by name identifier.
+        /// Resolves a service by name identifier (if named services are enabled).
         /// </summary>
         /// <typeparam name="T">The type to resolve.</typeparam>
         /// <param name="name">The name identifier.</param>
         /// <returns>The named service.</returns>
+        /// <exception cref="NotSupportedException">Thrown when named services are not enabled.</exception>
         T ResolveNamed<T>(string name);
         
         /// <summary>
@@ -159,6 +174,12 @@ namespace AhBearStudios.Core.DependencyInjection.Interfaces
         
         // Container management
         /// <summary>
+        /// Builds the container and makes it ready for resolution.
+        /// </summary>
+        /// <returns>This container instance.</returns>
+        IDependencyContainer Build();
+        
+        /// <summary>
         /// Creates a child container that inherits registrations from this container.
         /// </summary>
         /// <param name="childName">Optional name for the child container.</param>
@@ -166,9 +187,29 @@ namespace AhBearStudios.Core.DependencyInjection.Interfaces
         IDependencyContainer CreateChildContainer(string childName = null);
         
         /// <summary>
+        /// Creates a scoped container for temporary dependency overrides.
+        /// </summary>
+        /// <param name="scopeName">Optional name for the scope.</param>
+        /// <returns>A new scoped container.</returns>
+        /// <exception cref="NotSupportedException">Thrown when scoping is not enabled.</exception>
+        IDependencyContainer CreateScope(string scopeName = null);
+        
+        /// <summary>
         /// Validates that all registered types can be resolved without circular dependencies.
         /// </summary>
-        /// <returns>True if all registrations are valid, false otherwise.</returns>
-        bool ValidateRegistrations();
+        /// <returns>Validation result with detailed information.</returns>
+        IContainerValidationResult ValidateRegistrations();
+        
+        /// <summary>
+        /// Gets performance metrics for this container (if metrics are enabled).
+        /// </summary>
+        /// <returns>Performance metrics or null if not enabled.</returns>
+        IContainerMetrics GetMetrics();
+        
+        /// <summary>
+        /// Gets the underlying container adapter.
+        /// </summary>
+        /// <returns>The container adapter that backs this container.</returns>
+        IContainerAdapter GetAdapter();
     }
 }

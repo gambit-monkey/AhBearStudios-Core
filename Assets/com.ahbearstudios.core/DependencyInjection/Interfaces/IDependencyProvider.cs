@@ -1,10 +1,24 @@
+using AhBearStudios.Core.DependencyInjection.Exceptions;
+using AhBearStudios.Core.DependencyInjection.Models;
+
 namespace AhBearStudios.Core.DependencyInjection.Interfaces
 {
     /// <summary>
-    /// Interface for abstracting dependency injection containers.
+    /// Enhanced interface for abstracting dependency injection containers.
+    /// Provides framework-agnostic service resolution with performance optimization.
     /// </summary>
     public interface IDependencyProvider
     {
+        /// <summary>
+        /// Gets the framework this provider uses.
+        /// </summary>
+        ContainerFramework Framework { get; }
+        
+        /// <summary>
+        /// Gets whether this provider is disposed.
+        /// </summary>
+        bool IsDisposed { get; }
+        
         /// <summary>
         /// Resolves a service of the specified type from the container.
         /// </summary>
