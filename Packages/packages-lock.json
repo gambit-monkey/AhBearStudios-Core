@@ -28,6 +28,13 @@
       "dependencies": {},
       "hash": "f789083c31250c83082da9b29be0c976152d699b"
     },
+    "com.gustavopsantos.reflex": {
+      "version": "https://github.com/gustavopsantos/reflex.git?path=/Assets/Reflex",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "2085c30b43f619f784428040b34a6ad2cb84ced9"
+    },
     "com.unity.burst": {
       "version": "1.8.23",
       "depth": 2,
