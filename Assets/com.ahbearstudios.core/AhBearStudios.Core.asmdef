@@ -7,7 +7,7 @@
     "Unity.Jobs",
     "Unity.Burst",
     "Unity.Mathematics",
-    "VContainer",
+    "Reflex",
     "MemoryPack",
     "MessagePipe",
     "UniTask"
