@@ -5,7 +5,7 @@ namespace AhBearStudios.Core.Bootstrap.Models;
 /// <summary>
 /// Result of recovery attempt with detailed status information.
 /// </summary>
-public readonly struct RecoveryResult
+public readonly record struct RecoveryResult
 {
     /// <summary>Gets whether the recovery attempt was successful.</summary>
     public readonly bool IsSuccessful;

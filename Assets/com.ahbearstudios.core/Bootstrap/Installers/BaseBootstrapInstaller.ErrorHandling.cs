@@ -2,6 +2,7 @@
 using AhBearStudios.Core.Alerts;
 using AhBearStudios.Core.Bootstrap.Interfaces;
 using AhBearStudios.Core.Alerts.Interfaces;
+using AhBearStudios.Core.Bootstrap.Models;
 using Reflex.Core;
 
 namespace AhBearStudios.Core.Bootstrap.Installers
@@ -118,10 +119,55 @@ namespace AhBearStudios.Core.Bootstrap.Installers
                 };
             }
         }
+        
+        /// <inheritdoc />
+        public virtual void Uninstall(Container container, IBootstrapContext context)
+        {
+            if (container == null)
+                throw new ArgumentNullException(nameof(container));
+            if (context == null)
+                throw new ArgumentNullException(nameof(context));
+
+            try
+            {
+                _logger?.LogInfo($"Uninstalling {InstallerName}");
+
+                // Allow derived classes to implement custom uninstall logic
+                OnUninstall(container, context);
+
+                // Reset state
+                _isInstalled = false;
+                _healthStatus.IsHealthy = false;
+                _healthStatus.HealthMessage = "Uninstalled";
+                _healthStatus.LastUpdateTime = DateTime.UtcNow;
+
+                // Reset metrics
+                InitializeMetrics();
+
+                _logger?.LogInfo($"Successfully uninstalled {InstallerName}");
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogException(ex, $"Uninstall failed for {InstallerName}");
+                context.AlertService?.RaiseAlert(
+                    message: $"Uninstall failed for {InstallerName}: {ex.Message}",
+                    severity: AlertSeverity.Warning,
+                    source: InstallerName,
+                    tag: "UninstallFailure"
+                );
+                throw;
+            }
+        }
 
         #endregion
 
         #region Protected Error Handling Methods
+        
+        /// <summary>
+        /// Called during uninstall to allow derived classes to implement custom uninstall logic.
+        /// </summary>
+        protected virtual void OnUninstall(Container container, IBootstrapContext context) { }
+
 
         /// <summary>
         /// Called when installation fails to allow derived classes to implement custom failure handling.
