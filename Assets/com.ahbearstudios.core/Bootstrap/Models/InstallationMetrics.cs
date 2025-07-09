@@ -3,24 +3,24 @@
 /// <summary>
 /// Installation metrics data structure.
 /// </summary>
-public struct InstallationMetrics
+public readonly record struct InstallationMetrics
 {
-    public DateTime ValidationStartTime { get; set; }
-    public DateTime ValidationEndTime { get; set; }
-    public TimeSpan ValidationDuration { get; set; }
-    public DateTime PreInstallStartTime { get; set; }
-    public DateTime PreInstallEndTime { get; set; }
-    public TimeSpan PreInstallDuration { get; set; }
-    public DateTime InstallStartTime { get; set; }
-    public DateTime InstallEndTime { get; set; }
-    public TimeSpan InstallDuration { get; set; }
-    public DateTime PostInstallStartTime { get; set; }
-    public DateTime PostInstallEndTime { get; set; }
-    public TimeSpan PostInstallDuration { get; set; }
-    public TimeSpan TotalInstallDuration { get; set; }
-    public bool IsValidationSuccessful { get; set; }
-    public bool IsInstallationSuccessful { get; set; }
-    public int ValidationErrorCount { get; set; }
-    public int ValidationWarningCount { get; set; }
-    public int RecoveryAttempts { get; set; }
+    public DateTime ValidationStartTime { get; init; }
+    public DateTime ValidationEndTime { get; init; }
+    public TimeSpan ValidationDuration { get; init; }
+    public DateTime PreInstallStartTime { get; init; }
+    public DateTime PreInstallEndTime { get; init; }
+    public TimeSpan PreInstallDuration { get; init; }
+    public DateTime InstallStartTime { get; init; }
+    public DateTime InstallEndTime { get; init; }
+    public TimeSpan InstallDuration { get; init; }
+    public DateTime PostInstallStartTime { get; init; }
+    public DateTime PostInstallEndTime { get; init; }
+    public TimeSpan PostInstallDuration { get; init; }
+    public TimeSpan TotalInstallDuration { get; init; }
+    public bool IsValidationSuccessful { get; init; }
+    public bool IsInstallationSuccessful { get; init; }
+    public int ValidationErrorCount { get; init; }
+    public int ValidationWarningCount { get; init; }
+    public int RecoveryAttempts { get; init; }
 }

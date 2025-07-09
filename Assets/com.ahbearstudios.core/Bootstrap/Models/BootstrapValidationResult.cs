@@ -6,7 +6,7 @@ namespace AhBearStudios.Core.Bootstrap.Models;
     /// Result of bootstrap installer validation with detailed error and warning information.
     /// Provides comprehensive feedback for troubleshooting and configuration correction.
     /// </summary>
-    public readonly struct BootstrapValidationResult
+    public readonly record struct BootstrapValidationResult
     {
         /// <summary>Gets whether the validation passed without critical errors.</summary>
         public readonly bool IsValid;
