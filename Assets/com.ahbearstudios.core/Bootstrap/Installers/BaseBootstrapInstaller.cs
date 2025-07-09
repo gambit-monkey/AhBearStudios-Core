@@ -1,6 +1,8 @@
-﻿using AhBearStudios.Core.Bootstrap.Interfaces;
-using AhBearStudios.Core.Logging.Interfaces;
+﻿using System;
+using AhBearStudios.Core.Bootstrap.Interfaces;
 using AhBearStudios.Core.Bootstrap.Models;
+using AhBearStudios.Core.Logging.Interfaces;
+using Reflex.Core;
 using Unity.Collections;
 
 namespace AhBearStudios.Core.Bootstrap.Installers
@@ -78,6 +80,64 @@ namespace AhBearStudios.Core.Bootstrap.Installers
             InitializeMetrics();
             InitializeHealthStatus();
         }
+
+        #endregion
+
+        #region Abstract Methods for Derived Classes
+
+        /// <summary>
+        /// Called during the pre-installation phase. Override in derived classes to implement custom logic.
+        /// </summary>
+        protected abstract void OnPreInstall(IBootstrapConfig config, IBootstrapContext context);
+
+        /// <summary>
+        /// Called during the installation phase. Override in derived classes to implement service registration.
+        /// </summary>
+        protected abstract void OnInstall(Container container, IBootstrapConfig config, IBootstrapContext context);
+
+        /// <summary>
+        /// Called during the post-installation phase. Override in derived classes to implement custom logic.
+        /// </summary>
+        protected abstract void OnPostInstall(Container container, IBootstrapConfig config, IBootstrapContext context);
+
+        /// <summary>
+        /// Called during installer validation. Override in derived classes to add custom validation.
+        /// </summary>
+        protected virtual void OnValidateInstaller(IBootstrapConfig config, BootstrapValidationResult result) { }
+
+        #endregion
+
+        #region IDisposable Implementation
+
+        /// <summary>
+        /// Performs application-defined tasks associated with freeing, releasing, or resetting unmanaged resources.
+        /// </summary>
+        public void Dispose()
+        {
+            Dispose(true);
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Releases unmanaged and - optionally - managed resources.
+        /// </summary>
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!_isDisposed)
+            {
+                if (disposing)
+                {
+                    // Dispose managed resources
+                    OnDispose();
+                }
+                _isDisposed = true;
+            }
+        }
+
+        /// <summary>
+        /// Called when the installer is being disposed. Override in derived classes to cleanup resources.
+        /// </summary>
+        protected virtual void OnDispose() { }
 
         #endregion
     }

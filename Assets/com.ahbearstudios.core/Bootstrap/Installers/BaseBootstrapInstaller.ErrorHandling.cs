@@ -1,7 +1,6 @@
 ﻿using System;
-using System.Collections.Generic;
+using AhBearStudios.Core.Alerts;
 using AhBearStudios.Core.Bootstrap.Interfaces;
-using AhBearStudios.Core.DependencyInjection.Bootstrap;
 using AhBearStudios.Core.Alerts.Interfaces;
 using Reflex.Core;
 
@@ -62,11 +61,12 @@ namespace AhBearStudios.Core.Bootstrap.Installers
         /// <inheritdoc />
         public virtual RecoveryOptions GetRecoveryOptions()
         {
+            var options = GetAvailableRecoveryOptions();
             return new RecoveryOptions
             {
                 InstallerName = InstallerName,
-                AvailableOptions = GetAvailableRecoveryOptions(),
-                DefaultOption = GetDefaultRecoveryOption(),
+                AvailableOptions = options,
+                DefaultOption = GetDefaultRecoveryOption(options),
                 SupportsGracefulDegradation = SupportsGracefulDegradation(),
                 RequiresManualIntervention = RequiresManualIntervention()
             };
@@ -147,6 +147,12 @@ namespace AhBearStudios.Core.Bootstrap.Installers
                     Name = "Minimal",
                     Description = "Install with minimal functionality",
                     IsDefault = false
+                },
+                new RecoveryOption
+                {
+                    Name = "Skip",
+                    Description = "Skip this installer and continue with others",
+                    IsDefault = false
                 }
             };
         }
@@ -155,9 +161,11 @@ namespace AhBearStudios.Core.Bootstrap.Installers
         /// Gets the default recovery option for this installer.
         /// Override in derived classes to specify a different default.
         /// </summary>
-        protected virtual RecoveryOption GetDefaultRecoveryOption()
+        protected virtual RecoveryOption GetDefaultRecoveryOption(RecoveryOption[] options)
         {
-            var options = GetAvailableRecoveryOptions();
+            if (options == null || options.Length == 0)
+                return new RecoveryOption { Name = "Retry", IsDefault = true };
+
             return Array.Find(options, o => o.IsDefault) ?? options[0];
         }
 
@@ -167,16 +175,16 @@ namespace AhBearStudios.Core.Bootstrap.Installers
         /// </summary>
         protected virtual bool SupportsGracefulDegradation()
         {
-            return false;
+            return Category == SystemCategory.Optional || Category == SystemCategory.Performance;
         }
 
         /// <summary>
-        /// Gets whether recovery requires manual intervention.
-        /// Override in derived classes to specify intervention requirements.
+        /// Gets whether this installer requires manual intervention for recovery.
+        /// Override in derived classes to specify manual intervention requirements.
         /// </summary>
         protected virtual bool RequiresManualIntervention()
         {
-            return false;
+            return Category == SystemCategory.Core;
         }
 
         /// <summary>
@@ -186,34 +194,95 @@ namespace AhBearStudios.Core.Bootstrap.Installers
         protected virtual RecoveryResult OnAttemptRecovery(RecoveryOption option, Container container, 
             IBootstrapConfig config, IBootstrapContext context)
         {
-            // Default implementation just retries the installation
+            switch (option.Name)
+            {
+                case "Retry":
+                    return AttemptRetryRecovery(container, config, context);
+                    
+                case "Minimal":
+                    return AttemptMinimalRecovery(container, config, context);
+                    
+                case "Skip":
+                    return AttemptSkipRecovery();
+                    
+                default:
+                    return new RecoveryResult
+                    {
+                        IsSuccessful = false,
+                        ErrorMessage = $"Recovery option '{option.Name}' not implemented",
+                        RecoveryOption = option
+                    };
+            }
+        }
+
+        /// <summary>
+        /// Attempts retry recovery.
+        /// </summary>
+        private RecoveryResult AttemptRetryRecovery(Container container, IBootstrapConfig config, IBootstrapContext context)
+        {
             try
             {
                 OnInstall(container, config, context);
-                return new RecoveryResult
-                {
-                    IsSuccessful = true,
-                    RecoveryOption = option
-                };
+                return new RecoveryResult { IsSuccessful = true };
             }
             catch (Exception ex)
             {
                 return new RecoveryResult
                 {
                     IsSuccessful = false,
-                    ErrorMessage = ex.Message,
-                    RecoveryOption = option
+                    ErrorMessage = ex.Message
                 };
             }
         }
 
         /// <summary>
-        /// Cleans up resources after a failed installation.
+        /// Attempts minimal recovery.
+        /// </summary>
+        private RecoveryResult AttemptMinimalRecovery(Container container, IBootstrapConfig config, IBootstrapContext context)
+        {
+            try
+            {
+                // Override in derived classes to implement minimal functionality
+                OnInstallMinimal(container, config, context);
+                return new RecoveryResult { IsSuccessful = true };
+            }
+            catch (Exception ex)
+            {
+                return new RecoveryResult
+                {
+                    IsSuccessful = false,
+                    ErrorMessage = ex.Message
+                };
+            }
+        }
+
+        /// <summary>
+        /// Attempts skip recovery.
+        /// </summary>
+        private RecoveryResult AttemptSkipRecovery()
+        {
+            return new RecoveryResult { IsSuccessful = true };
+        }
+
+        /// <summary>
+        /// Called during minimal recovery. Override in derived classes to implement minimal functionality.
+        /// </summary>
+        protected virtual void OnInstallMinimal(Container container, IBootstrapConfig config, IBootstrapContext context)
+        {
+            // Default implementation: do nothing
+        }
+
+        /// <summary>
+        /// Cleans up after a failed installation.
         /// Override in derived classes to implement custom cleanup logic.
         /// </summary>
         protected virtual void CleanupFailedInstallation(IBootstrapContext context)
         {
-            // Default implementation does nothing
+            // Default implementation: reset state
+            _isInstalled = false;
+            _healthStatus.IsHealthy = false;
+            _healthStatus.HealthMessage = "Installation failed - cleaned up";
+            _healthStatus.LastUpdateTime = DateTime.UtcNow;
         }
 
         #endregion

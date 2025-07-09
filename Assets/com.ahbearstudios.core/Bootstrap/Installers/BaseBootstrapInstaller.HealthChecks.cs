@@ -23,7 +23,8 @@ namespace AhBearStudios.Core.Bootstrap.Installers
             public BaseInstallerHealthCheck(BaseBootstrapInstaller installer)
             {
                 _installer = installer ?? throw new ArgumentNullException(nameof(installer));
-                Name = new FixedString64Bytes($"{installer.InstallerName}Health");
+                var name = $"{installer.InstallerName}Health";
+                Name = new FixedString64Bytes(name.Length > 64 ? name.Substring(0, 64) : name);
             }
 
             public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
@@ -45,12 +46,15 @@ namespace AhBearStudios.Core.Bootstrap.Installers
                     }
 
                     // Check if dependencies are healthy
-                    foreach (var dependency in healthStatus.DependencyStatus)
+                    if (healthStatus.DependencyStatus != null)
                     {
-                        if (!dependency.Value)
+                        foreach (var dependency in healthStatus.DependencyStatus)
                         {
-                            return HealthCheckResult.Degraded(
-                                $"Dependency {dependency.Key} is unhealthy for installer {_installer.InstallerName}");
+                            if (!dependency.Value)
+                            {
+                                return HealthCheckResult.Degraded(
+                                    $"Dependency {dependency.Key} is unhealthy for installer {_installer.InstallerName}");
+                            }
                         }
                     }
 
@@ -61,7 +65,11 @@ namespace AhBearStudios.Core.Bootstrap.Installers
                         ["InstallDuration"] = metrics.InstallDuration.TotalMilliseconds,
                         ["ServicesRegistered"] = metrics.ServicesRegistered,
                         ["ErrorCount"] = metrics.ErrorCount,
-                        ["LastUpdateTime"] = healthStatus.LastUpdateTime
+                        ["WarningCount"] = metrics.WarningCount,
+                        ["LastUpdateTime"] = healthStatus.LastUpdateTime,
+                        ["Category"] = _installer.Category.ToString(),
+                        ["Priority"] = _installer.Priority,
+                        ["MemoryUsage"] = metrics.MemoryUsageAfter - metrics.MemoryUsageBefore
                     };
 
                     return HealthCheckResult.Healthy(
@@ -75,6 +83,14 @@ namespace AhBearStudios.Core.Bootstrap.Installers
                         ex);
                 }
             }
+        }
+
+        /// <summary>
+        /// Creates a health check for this installer.
+        /// </summary>
+        protected virtual IHealthCheck CreateHealthCheck()
+        {
+            return new BaseInstallerHealthCheck(this);
         }
     }
 }

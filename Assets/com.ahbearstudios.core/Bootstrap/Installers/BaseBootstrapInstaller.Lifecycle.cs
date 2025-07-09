@@ -1,11 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using AhBearStudios.Core.Alerts;
 using AhBearStudios.Core.Bootstrap.Interfaces;
-using AhBearStudios.Core.DependencyInjection.Bootstrap;
 using AhBearStudios.Core.Alerts.Interfaces;
 using Reflex.Core;
-using Unity.Collections;
 
 namespace AhBearStudios.Core.Bootstrap.Installers
 {
@@ -19,6 +18,8 @@ namespace AhBearStudios.Core.Bootstrap.Installers
             if (config == null)
                 throw new ArgumentNullException(nameof(config));
 
+            var stopwatch = Stopwatch.StartNew();
+            
             try
             {
                 var result = new BootstrapValidationResult
@@ -43,9 +44,13 @@ namespace AhBearStudios.Core.Bootstrap.Installers
                     result.IsValid = false;
                 }
 
+                // Validate service registrations
+                ValidateServiceRegistrations(result);
+
                 // Allow derived classes to add custom validation
                 OnValidateInstaller(config, result);
 
+                result.ValidationDuration = stopwatch.Elapsed;
                 return result;
             }
             catch (Exception ex)
@@ -55,8 +60,13 @@ namespace AhBearStudios.Core.Bootstrap.Installers
                     IsValid = false,
                     InstallerName = InstallerName,
                     Errors = new List<string> { $"Validation failed with exception: {ex.Message}" },
-                    Warnings = new List<string>()
+                    Warnings = new List<string>(),
+                    ValidationDuration = stopwatch.Elapsed
                 };
+            }
+            finally
+            {
+                stopwatch.Stop();
             }
         }
 
@@ -73,7 +83,7 @@ namespace AhBearStudios.Core.Bootstrap.Installers
                 _logger = context.Logger;
                 _correlationId = context.CorrelationId;
 
-                _logger.LogInfo($"Starting pre-installation for {InstallerName} (CorrelationId: {_correlationId})");
+                LogPhaseStart("pre-installation");
 
                 lock (_metricsLock)
                 {
@@ -89,10 +99,15 @@ namespace AhBearStudios.Core.Bootstrap.Installers
                     _metrics.PreInstallDuration = _metrics.PreInstallEndTime - _metrics.PreInstallStartTime;
                 }
 
-                _logger.LogInfo($"Pre-installation completed for {InstallerName} in {_metrics.PreInstallDuration.TotalMilliseconds:F2}ms");
+                LogPhaseEnd("pre-installation", _metrics.PreInstallDuration);
             }
             catch (Exception ex)
             {
+                lock (_metricsLock)
+                {
+                    _metrics.ErrorCount++;
+                }
+
                 _logger?.LogException(ex, $"Pre-installation failed for {InstallerName}");
                 context.AlertService?.RaiseAlert(
                     message: $"Pre-installation failed for {InstallerName}",
@@ -118,11 +133,18 @@ namespace AhBearStudios.Core.Bootstrap.Installers
             {
                 using var profileScope = context.Profiler?.BeginScope($"{InstallerName}.Install");
 
-                _logger.LogInfo($"Starting installation for {InstallerName}");
+                LogPhaseStart("installation");
 
                 lock (_metricsLock)
                 {
                     _metrics.InstallStartTime = DateTime.UtcNow;
+                    _metrics.MemoryUsageBefore = GetCurrentMemoryUsage();
+                }
+
+                // Validate dependencies before installation
+                if (!ValidateDependencies(container))
+                {
+                    throw new InvalidOperationException($"Dependencies not satisfied for {InstallerName}");
                 }
 
                 // Execute the actual installation logic
@@ -133,16 +155,23 @@ namespace AhBearStudios.Core.Bootstrap.Installers
                     _metrics.InstallEndTime = DateTime.UtcNow;
                     _metrics.InstallDuration = _metrics.InstallEndTime - _metrics.InstallStartTime;
                     _metrics.ServicesRegistered = GetServiceRegistrations().Length;
+                    _metrics.MemoryUsageAfter = GetCurrentMemoryUsage();
                 }
 
                 _isInstalled = true;
                 _healthStatus.IsHealthy = true;
+                _healthStatus.HealthMessage = "Installation completed successfully";
                 _healthStatus.LastUpdateTime = DateTime.UtcNow;
 
-                _logger.LogInfo($"Installation completed for {InstallerName} in {_metrics.InstallDuration.TotalMilliseconds:F2}ms");
+                LogPhaseEnd("installation", _metrics.InstallDuration);
             }
             catch (Exception ex)
             {
+                lock (_metricsLock)
+                {
+                    _metrics.ErrorCount++;
+                }
+
                 _logger?.LogException(ex, $"Installation failed for {InstallerName}");
                 HandleInstallationFailure(ex, context);
                 throw;
@@ -161,7 +190,7 @@ namespace AhBearStudios.Core.Bootstrap.Installers
 
             try
             {
-                _logger.LogInfo($"Starting post-installation for {InstallerName}");
+                LogPhaseStart("post-installation");
 
                 lock (_metricsLock)
                 {
@@ -182,14 +211,20 @@ namespace AhBearStudios.Core.Bootstrap.Installers
                     _metrics.TotalInstallDuration = _metrics.PostInstallEndTime - _metrics.PreInstallStartTime;
                 }
 
-                _logger.LogInfo($"Post-installation completed for {InstallerName} in {_metrics.PostInstallDuration.TotalMilliseconds:F2}ms");
+                LogPhaseEnd("post-installation", _metrics.PostInstallDuration);
             }
             catch (Exception ex)
             {
+                lock (_metricsLock)
+                {
+                    _metrics.ErrorCount++;
+                    _metrics.WarningCount++;
+                }
+
                 _logger?.LogException(ex, $"Post-installation failed for {InstallerName}");
                 context.AlertService?.RaiseAlert(
                     message: $"Post-installation failed for {InstallerName}",
-                    severity: AlertSeverity.Critical,
+                    severity: AlertSeverity.Warning,
                     source: InstallerName,
                     tag: "PostInstallFailure"
                 );
@@ -197,61 +232,96 @@ namespace AhBearStudios.Core.Bootstrap.Installers
             }
         }
 
-        /// <inheritdoc />
-        public virtual void Uninstall(Container container, IBootstrapContext context)
-        {
-            if (!SupportsHotReload)
-                return;
+        #endregion
 
+        #region Private Lifecycle Methods
+
+        /// <summary>
+        /// Validates service registrations for this installer.
+        /// </summary>
+        private void ValidateServiceRegistrations(BootstrapValidationResult result)
+        {
             try
             {
-                _logger?.LogInfo($"Starting uninstallation for {InstallerName}");
+                var serviceRegistrations = GetServiceRegistrations();
+                if (serviceRegistrations == null)
+                {
+                    result.Warnings.Add("GetServiceRegistrations returned null");
+                    return;
+                }
 
-                // Allow derived classes to implement custom uninstallation logic
-                OnUninstall(container, context);
+                foreach (var registration in serviceRegistrations)
+                {
+                    if (registration == null)
+                    {
+                        result.Errors.Add("Service registration cannot be null");
+                        continue;
+                    }
 
-                _isInstalled = false;
-                _healthStatus.IsHealthy = false;
-                _healthStatus.LastUpdateTime = DateTime.UtcNow;
+                    if (registration.ServiceType == null)
+                    {
+                        result.Errors.Add($"Service type cannot be null for registration: {registration.ServiceName}");
+                    }
 
-                _logger?.LogInfo($"Uninstallation completed for {InstallerName}");
+                    if (registration.ImplementationType == null)
+                    {
+                        result.Errors.Add($"Implementation type cannot be null for registration: {registration.ServiceName}");
+                    }
+
+                    if (registration.ServiceType != null && registration.ImplementationType != null)
+                    {
+                        if (!registration.ServiceType.IsAssignableFrom(registration.ImplementationType))
+                        {
+                            result.Errors.Add($"Implementation type {registration.ImplementationType.Name} does not implement service type {registration.ServiceType.Name}");
+                        }
+                    }
+                }
             }
             catch (Exception ex)
             {
-                _logger?.LogException(ex, $"Uninstallation failed for {InstallerName}");
-                // Don't rethrow during uninstall - log and continue
+                result.Errors.Add($"Failed to validate service registrations: {ex.Message}");
             }
         }
 
-        #endregion
-
-        #region Abstract Methods for Derived Classes
+        /// <summary>
+        /// Registers health checks for this installer.
+        /// </summary>
+        private void RegisterHealthChecks(Container container, IBootstrapContext context)
+        {
+            try
+            {
+                var healthCheck = CreateHealthCheck();
+                context.HealthCheckService?.RegisterHealthCheck(healthCheck);
+                _logger?.LogDebug($"Health check registered for {InstallerName}");
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogException(ex, $"Failed to register health check for {InstallerName}");
+            }
+        }
 
         /// <summary>
-        /// Called during validation to allow derived classes to add custom validation logic.
+        /// Configures alerting for this installer.
         /// </summary>
-        protected virtual void OnValidateInstaller(IBootstrapConfig config, BootstrapValidationResult result) { }
+        private void ConfigureAlerting(IBootstrapContext context)
+        {
+            try
+            {
+                // Configure installer-specific alerting rules
+                OnConfigureAlerting(context);
+                _logger?.LogDebug($"Alerting configured for {InstallerName}");
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogException(ex, $"Failed to configure alerting for {InstallerName}");
+            }
+        }
 
         /// <summary>
-        /// Called during pre-installation to allow derived classes to implement custom logic.
+        /// Called to configure alerting for this installer.
+        /// Override in derived classes to setup custom alerting rules.
         /// </summary>
-        protected virtual void OnPreInstall(IBootstrapConfig config, IBootstrapContext context) { }
-
-        /// <summary>
-        /// Called during installation to register services with the container.
-        /// Derived classes must implement this method.
-        /// </summary>
-        protected abstract void OnInstall(Container container, IBootstrapConfig config, IBootstrapContext context);
-
-        /// <summary>
-        /// Called during post-installation to allow derived classes to implement custom logic.
-        /// </summary>
-        protected virtual void OnPostInstall(Container container, IBootstrapConfig config, IBootstrapContext context) { }
-
-        /// <summary>
-        /// Called during uninstallation to allow derived classes to implement custom cleanup logic.
-        /// </summary>
-        protected virtual void OnUninstall(Container container, IBootstrapContext context) { }
+        protected virtual void OnConfigureAlerting(IBootstrapContext context) { }
 
         #endregion
     }

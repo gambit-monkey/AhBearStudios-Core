@@ -1,5 +1,6 @@
 ﻿using System;
 using AhBearStudios.Core.Bootstrap.Interfaces;
+using AhBearStudios.Core.Bootstrap.Models;
 
 namespace AhBearStudios.Core.Bootstrap.Installers
 {
@@ -100,23 +101,32 @@ namespace AhBearStudios.Core.Bootstrap.Installers
         private bool ValidateConfigurationRequirements(IBootstrapConfig config, 
             ConfigurationRequirements requirements, BootstrapValidationResult result)
         {
+            if (config == null || requirements == null || result == null)
+                return false;
+
             var isValid = true;
 
-            foreach (var section in requirements.RequiredSections)
+            if (requirements.RequiredSections != null)
             {
-                if (!HasConfigurationSection(config, section))
+                foreach (var section in requirements.RequiredSections)
                 {
-                    result.Errors.Add($"Required configuration section '{section}' is missing");
-                    isValid = false;
+                    if (!HasConfigurationSection(config, section))
+                    {
+                        result.Errors.Add($"Required configuration section '{section}' is missing");
+                        isValid = false;
+                    }
                 }
             }
 
-            foreach (var rule in requirements.ValidationRules)
+            if (requirements.ValidationRules != null)
             {
-                if (!ValidateConfigurationRule(config, rule))
+                foreach (var rule in requirements.ValidationRules)
                 {
-                    result.Errors.Add($"Configuration validation failed for rule: {rule.RuleName}");
-                    isValid = false;
+                    if (!ValidateConfigurationRule(config, rule))
+                    {
+                        result.Errors.Add($"Configuration validation failed for rule: {rule.RuleName}");
+                        isValid = false;
+                    }
                 }
             }
 
@@ -126,6 +136,9 @@ namespace AhBearStudios.Core.Bootstrap.Installers
         private bool ValidatePlatformRequirements(PlatformRequirements requirements, 
             BootstrapValidationResult result)
         {
+            if (requirements?.SupportedPlatforms == null || result == null)
+                return false;
+
             var currentPlatform = UnityEngine.Application.platform;
             var isSupported = Array.Exists(requirements.SupportedPlatforms, p => p == currentPlatform);
 
@@ -140,16 +153,36 @@ namespace AhBearStudios.Core.Bootstrap.Installers
 
         private bool HasConfigurationSection(IBootstrapConfig config, string section)
         {
-            // Implementation would check if the configuration has the required section
-            // This is simplified for the example
-            return true;
+            if (config == null || string.IsNullOrEmpty(section))
+                return false;
+
+            try
+            {
+                // Check if the configuration has the required section
+                // This would need to be implemented based on the actual IBootstrapConfig structure
+                return config.HasSection(section);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning($"Failed to check configuration section '{section}': {ex.Message}");
+                return false;
+            }
         }
 
         private bool ValidateConfigurationRule(IBootstrapConfig config, ConfigurationValidationRule rule)
         {
-            // Implementation would validate the configuration against the rule
-            // This is simplified for the example
-            return true;
+            if (config == null || rule?.ValidationFunction == null)
+                return false;
+
+            try
+            {
+                return rule.ValidationFunction(config);
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogWarning($"Configuration validation rule '{rule.RuleName}' failed: {ex.Message}");
+                return false;
+            }
         }
 
         #endregion

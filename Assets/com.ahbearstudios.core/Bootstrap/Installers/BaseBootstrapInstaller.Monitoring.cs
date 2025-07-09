@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Bootstrap.Interfaces;
+using AhBearStudios.Core.Bootstrap.Models;
 
 namespace AhBearStudios.Core.Bootstrap.Installers
 {
@@ -88,7 +89,19 @@ namespace AhBearStudios.Core.Bootstrap.Installers
                 InstallerName = InstallerName,
                 ServicesRegistered = 0,
                 ErrorCount = 0,
-                WarningCount = 0
+                WarningCount = 0,
+                PreInstallStartTime = DateTime.MinValue,
+                PreInstallEndTime = DateTime.MinValue,
+                InstallStartTime = DateTime.MinValue,
+                InstallEndTime = DateTime.MinValue,
+                PostInstallStartTime = DateTime.MinValue,
+                PostInstallEndTime = DateTime.MinValue,
+                PreInstallDuration = TimeSpan.Zero,
+                InstallDuration = TimeSpan.Zero,
+                PostInstallDuration = TimeSpan.Zero,
+                TotalInstallDuration = TimeSpan.Zero,
+                MemoryUsageBefore = 0,
+                MemoryUsageAfter = 0
             };
         }
 
@@ -99,19 +112,76 @@ namespace AhBearStudios.Core.Bootstrap.Installers
                 InstallerName = InstallerName,
                 IsHealthy = false,
                 LastUpdateTime = DateTime.UtcNow,
-                HealthMessage = "Not installed"
+                HealthMessage = "Not installed",
+                RegisteredServices = Array.Empty<ServiceRegistrationInfo>(),
+                DependencyStatus = new Dictionary<string, bool>()
             };
         }
 
         private Dictionary<string, bool> GetDependencyStatus()
         {
             var status = new Dictionary<string, bool>();
-            foreach (var dependency in Dependencies)
+            
+            if (Dependencies != null)
             {
-                // In a real implementation, you would check if the dependency is properly installed
-                status[dependency.Name] = true; // Simplified for this example
+                foreach (var dependency in Dependencies)
+                {
+                    if (dependency == null)
+                    {
+                        status[$"null_dependency_{Guid.NewGuid()}"] = false;
+                        continue;
+                    }
+
+                    // In a real implementation, you would check if the dependency is properly installed
+                    // For now, we'll mark all dependencies as healthy if they're defined
+                    status[dependency.Name] = true;
+                }
             }
+            
             return status;
+        }
+
+        /// <summary>
+        /// Updates the health status of this installer.
+        /// </summary>
+        protected void UpdateHealthStatus(bool isHealthy, string message = null)
+        {
+            _healthStatus.IsHealthy = isHealthy;
+            _healthStatus.HealthMessage = message ?? (isHealthy ? "Healthy" : "Unhealthy");
+            _healthStatus.LastUpdateTime = DateTime.UtcNow;
+        }
+
+        /// <summary>
+        /// Increments the error count in metrics.
+        /// </summary>
+        protected void IncrementErrorCount()
+        {
+            lock (_metricsLock)
+            {
+                _metrics.ErrorCount++;
+            }
+        }
+
+        /// <summary>
+        /// Increments the warning count in metrics.
+        /// </summary>
+        protected void IncrementWarningCount()
+        {
+            lock (_metricsLock)
+            {
+                _metrics.WarningCount++;
+            }
+        }
+
+        /// <summary>
+        /// Records the number of services registered by this installer.
+        /// </summary>
+        protected void RecordServicesRegistered(int count)
+        {
+            lock (_metricsLock)
+            {
+                _metrics.ServicesRegistered = count;
+            }
         }
 
         #endregion
