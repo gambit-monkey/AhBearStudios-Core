@@ -1,4 +1,6 @@
-﻿using AhBearStudios.Core.DependencyInjection.Bootstrap;
+﻿using AhBearStudios.Core.Bootstrap.Models;
+using Reflex.Core;
+using BootstrapValidationResult = AhBearStudios.Core.DependencyInjection.Bootstrap.BootstrapValidationResult;
 
 namespace AhBearStudios.Core.Bootstrap.Interfaces
 {
