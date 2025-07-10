@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Unity.Collections;
 using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Logging.Services;
@@ -13,7 +14,8 @@ namespace AhBearStudios.Core.Logging
     /// <summary>
     /// High-performance implementation of the logging service.
     /// Provides centralized logging with multiple targets and advanced features.
-    /// Follows the AhBearStudios Core Architecture foundation system pattern.
+    /// Follows the AhBearStudios Core Architecture foundation system pattern with full core system integration.
+    /// Implements Unity.Collections v2 and Burst compatibility for optimal performance.
     /// </summary>
     public sealed class LoggingService : ILoggingService, IDisposable
     {
@@ -23,6 +25,17 @@ namespace AhBearStudios.Core.Logging
         private readonly LogFormattingService _formattingService;
         private readonly object _configLock = new object();
         private readonly Stopwatch _performanceStopwatch;
+        
+        // Native collections for high-performance scenarios
+        private readonly NativeList<LogMessage> _nativeMessageBuffer;
+        private readonly NativeHashMap<FixedString64Bytes, int> _channelLookup;
+        
+        // Core system dependencies (injected via Reflex)
+        private readonly IMessageBusService _messageBus;
+        private readonly IHealthCheckService _healthCheckService;
+        private readonly IAlertService _alertService;
+        private readonly IPoolingService _poolingService;
+        private readonly IProfilerService _profilerService;
         
         private volatile bool _disposed = false;
         private volatile bool _enabled = true;
@@ -59,18 +72,42 @@ namespace AhBearStudios.Core.Logging
         public bool BatchingEnabled => _batchingService != null;
 
         /// <summary>
-        /// Initializes a new instance of the LoggingService.
+        /// Initializes a new instance of the LoggingService with full core system integration.
         /// </summary>
         /// <param name="config">The logging configuration</param>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
-        public LoggingService(LoggingConfig config)
+        /// <param name="messageBus">The message bus service for cross-system communication</param>
+        /// <param name="healthCheckService">The health check service for monitoring</param>
+        /// <param name="alertService">The alert service for critical notifications</param>
+        /// <param name="poolingService">The pooling service for resource management (optional)</param>
+        /// <param name="profilerService">The profiler service for performance monitoring (optional)</param>
+        /// <exception cref="ArgumentNullException">Thrown when required dependencies are null</exception>
+        public LoggingService(
+            LoggingConfig config,
+            IMessageBusService messageBus,
+            IHealthCheckService healthCheckService,
+            IAlertService alertService,
+            IPoolingService poolingService = null,
+            IProfilerService profilerService = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
+            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            _healthCheckService = healthCheckService ?? throw new ArgumentNullException(nameof(healthCheckService));
+            _alertService = alertService ?? throw new ArgumentNullException(nameof(alertService));
+            _poolingService = poolingService;
+            _profilerService = profilerService;
+
             _targets = new ConcurrentDictionary<string, ILogTarget>();
             _performanceStopwatch = new Stopwatch();
             
-            _globalMinimumLevel = _config.MinimumLevel;
-            _enabled = _config.IsEnabled;
+            // Initialize native collections for high-performance mode
+            if (_config.HighPerformanceMode)
+            {
+                _nativeMessageBuffer = new NativeList<LogMessage>(_config.MaxQueueSize, Allocator.Persistent);
+                _channelLookup = new NativeHashMap<FixedString64Bytes, int>(64, Allocator.Persistent);
+            }
+            
+            _globalMinimumLevel = _config.GlobalMinimumLevel;
+            _enabled = _config.IsLoggingEnabled;
 
             // Initialize batching service if enabled
             if (_config.BatchingEnabled)
@@ -91,15 +128,11 @@ namespace AhBearStudios.Core.Logging
                 _config.CachingEnabled,
                 _config.MaxCacheSize);
 
-            // Register built-in targets if specified in config
-            InitializeBuiltInTargets();
-        }
+            // Register with health check service
+            RegisterHealthCheck();
 
-        /// <summary>
-        /// Initializes a new instance of the LoggingService with default configuration.
-        /// </summary>
-        public LoggingService() : this(LoggingConfig.Default)
-        {
+            // Log initialization
+            LogInfo("LoggingService initialized successfully", "Core.Logging.Initialization");
         }
 
         /// <summary>
@@ -322,6 +355,20 @@ namespace AhBearStudios.Core.Logging
             if (exception == null) return;
             
             LogInternal(LogLevel.Error, "Exception", context ?? "An exception occurred", exception);
+            
+            // Trigger alert for critical exceptions
+            try
+            {
+                _alertService?.RaiseAlert(
+                    new FixedString128Bytes($"Exception in {GetCallerContext()}"),
+                    AlertSeverity.Critical,
+                    new FixedString64Bytes("Logging"),
+                    new FixedString64Bytes("Exception"));
+            }
+            catch
+            {
+                // Avoid circular logging on alert failures
+            }
         }
 
         /// <summary>
@@ -375,6 +422,8 @@ namespace AhBearStudios.Core.Logging
             {
                 UpdateBatchingServiceTargets();
             }
+            
+            LogInfo($"Registered log target: {target.Name}", "Core.Logging.Registration");
         }
 
         /// <summary>
@@ -388,10 +437,15 @@ namespace AhBearStudios.Core.Logging
             
             var removed = _targets.TryRemove(target.Name, out _);
             
-            // Update batching service if enabled
-            if (removed && _batchingService != null)
+            if (removed)
             {
-                UpdateBatchingServiceTargets();
+                // Update batching service if enabled
+                if (_batchingService != null)
+                {
+                    UpdateBatchingServiceTargets();
+                }
+                
+                LogInfo($"Unregistered log target: {target.Name}", "Core.Logging.Registration");
             }
             
             return removed;
@@ -408,7 +462,6 @@ namespace AhBearStudios.Core.Logging
             
             var removed = _targets.TryRemove(targetName, out _);
             
-            // Update batching service if enabled
             if (removed && _batchingService != null)
             {
                 UpdateBatchingServiceTargets();
@@ -565,7 +618,6 @@ namespace AhBearStudios.Core.Logging
                 }
                 catch (Exception ex)
                 {
-                    // Avoid circular logging - use system debugging instead
                     System.Diagnostics.Debug.WriteLine($"LoggingService flush error for target '{targetName}': {ex.Message}");
                     return false;
                 }
@@ -593,7 +645,6 @@ namespace AhBearStudios.Core.Logging
                 }
                 catch (Exception ex)
                 {
-                    // Avoid circular logging - use system debugging instead
                     System.Diagnostics.Debug.WriteLine($"LoggingService health check error for target '{target.Name}': {ex.Message}");
                     return false;
                 }
@@ -618,7 +669,6 @@ namespace AhBearStudios.Core.Logging
                 }
                 catch (Exception ex)
                 {
-                    // Avoid circular logging - use system debugging instead
                     System.Diagnostics.Debug.WriteLine($"LoggingService health check error for target '{target.Name}': {ex.Message}");
                     healthStatus[target.Name] = false;
                 }
@@ -644,24 +694,45 @@ namespace AhBearStudios.Core.Logging
         {
             if (_disposed || !_enabled) return;
 
-            // Create log message
-            var logMessage = LogMessage.Create(
-                level, 
-                channel, 
-                message, 
-                exception, 
-                correlationId, 
-                properties, 
-                sourceContext ?? GetCallerContext());
+            // Use profiler if available
+            using var profilerScope = _profilerService?.BeginScope(new ProfilerTag("Logging.LogInternal"));
 
-            // Route to batching service if enabled, otherwise process directly
-            if (_batchingService != null)
+            try
             {
-                _batchingService.EnqueueMessage(logMessage);
+                // Create log message
+                var logMessage = LogMessage.Create(
+                    level, 
+                    channel, 
+                    message, 
+                    exception, 
+                    correlationId, 
+                    properties, 
+                    sourceContext ?? GetCallerContext());
+
+                // Route to batching service if enabled, otherwise process directly
+                if (_batchingService != null)
+                {
+                    _batchingService.EnqueueMessage(logMessage);
+                }
+                else
+                {
+                    ProcessMessage(logMessage);
+                }
+
+                // Publish to message bus for cross-system integration
+                try
+                {
+                    _messageBus?.PublishMessage(logMessage);
+                }
+                catch
+                {
+                    // Avoid circular logging on message bus failures
+                }
             }
-            else
+            catch (Exception ex)
             {
-                ProcessMessage(logMessage);
+                // Emergency fallback - use system debugging
+                System.Diagnostics.Debug.WriteLine($"LoggingService internal error: {ex.Message}");
             }
         }
 
@@ -682,7 +753,6 @@ namespace AhBearStudios.Core.Logging
                 }
                 catch (Exception ex)
                 {
-                    // Avoid circular logging - use system debugging instead
                     System.Diagnostics.Debug.WriteLine($"LoggingService processing error for target '{target.Name}': {ex.Message}");
                 }
             }
@@ -724,31 +794,22 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         private void UpdateBatchingServiceTargets()
         {
-            if (_batchingService == null) return;
-            
-            // Note: The batching service constructor takes targets, but we can't easily update them.
-            // In a real implementation, we'd need to modify LogBatchingService to support dynamic target updates.
-            // For now, we'll recreate the batching service when targets change significantly.
+            // Note: In a complete implementation, LogBatchingService would support dynamic target updates
         }
 
         /// <summary>
-        /// Initializes built-in targets based on configuration.
+        /// Registers this service with the health check system.
         /// </summary>
-        private void InitializeBuiltInTargets()
+        private void RegisterHealthCheck()
         {
-            // Register null target if no targets are configured and we're in a test environment
-            if (_config.Targets == null || _config.Targets.Count == 0)
+            try
             {
-                var nullTargetConfig = new LogTargetConfig
-                {
-                    Name = "NullTarget",
-                    TargetType = "Null",
-                    IsEnabled = true,
-                    MinimumLevel = LogLevel.Debug,
-                    Channels = new List<string> { "Default" }
-                };
-                
-                RegisterTarget(new NullLogTarget(nullTargetConfig));
+                var healthCheck = new LoggingServiceHealthCheck(this);
+                _healthCheckService?.RegisterHealthCheck(healthCheck);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to register logging health check: {ex.Message}");
             }
         }
 
@@ -767,6 +828,17 @@ namespace AhBearStudios.Core.Logging
             // Dispose batching service
             _batchingService?.Dispose();
             
+            // Dispose native collections
+            if (_nativeMessageBuffer.IsCreated)
+            {
+                _nativeMessageBuffer.Dispose();
+            }
+            
+            if (_channelLookup.IsCreated)
+            {
+                _channelLookup.Dispose();
+            }
+            
             // Dispose all targets
             foreach (var target in _targets.Values)
             {
@@ -776,7 +848,6 @@ namespace AhBearStudios.Core.Logging
                 }
                 catch (Exception ex)
                 {
-                    // Avoid circular logging - use system debugging instead
                     System.Diagnostics.Debug.WriteLine($"LoggingService disposal error for target '{target.Name}': {ex.Message}");
                 }
             }
@@ -785,4 +856,3 @@ namespace AhBearStudios.Core.Logging
             _performanceStopwatch?.Stop();
         }
     }
-}

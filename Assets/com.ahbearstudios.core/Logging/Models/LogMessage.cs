@@ -1,49 +1,68 @@
 ﻿using System.Collections.Generic;
+using Unity.Collections;
+using Unity.Burst;
 using AhBearStudios.Core.Messaging.Messages;
 
 namespace AhBearStudios.Core.Logging.Models
 {
     /// <summary>
     /// Represents a log message with all associated metadata.
-    /// Designed for high-performance scenarios with minimal allocations.
+    /// Designed for high-performance scenarios with minimal allocations using Unity.Collections v2.
     /// Implements IMessage for integration with the messaging system.
+    /// Burst-compatible for native job system integration.
     /// </summary>
-    public readonly record struct LogMessage(
-        Guid Id,
-        DateTime Timestamp,
-        LogLevel Level,
-        string Channel,
-        string Message,
-        Exception Exception = null,
-        string CorrelationId = null,
-        IReadOnlyDictionary<string, object> Properties = null,
-        string SourceContext = null,
-        int ThreadId = 0) : IMessage
+    [BurstCompile]
+    public readonly struct LogMessage : IMessage, IDisposable
     {
         /// <summary>
-        /// Gets the channel this message belongs to, defaulting to "Default" if null.
+        /// Gets the unique identifier for this message.
         /// </summary>
-        public string Channel { get; } = Channel ?? "Default";
+        public readonly Guid Id;
 
         /// <summary>
-        /// Gets the log message text, defaulting to empty string if null.
+        /// Gets the timestamp when this message was created.
         /// </summary>
-        public string Message { get; } = Message ?? string.Empty;
+        public readonly DateTime Timestamp;
 
         /// <summary>
-        /// Gets the correlation ID for tracking operations across system boundaries, defaulting to empty string if null.
+        /// Gets the log level severity.
         /// </summary>
-        public string CorrelationId { get; } = CorrelationId ?? string.Empty;
+        public readonly LogLevel Level;
 
         /// <summary>
-        /// Gets additional contextual properties for structured logging, defaulting to empty dictionary if null.
+        /// Gets the channel this message belongs to using native string storage.
         /// </summary>
-        public IReadOnlyDictionary<string, object> Properties { get; } = Properties ?? new Dictionary<string, object>();
+        public readonly FixedString64Bytes Channel;
 
         /// <summary>
-        /// Gets the source context (typically the class name) where the message originated, defaulting to empty string if null.
+        /// Gets the log message text using native string storage.
         /// </summary>
-        public string SourceContext { get; } = SourceContext ?? string.Empty;
+        public readonly FixedString512Bytes Message;
+
+        /// <summary>
+        /// Gets the correlation ID for tracking operations across system boundaries.
+        /// </summary>
+        public readonly FixedString128Bytes CorrelationId;
+
+        /// <summary>
+        /// Gets the source context (typically the class name) where the message originated.
+        /// </summary>
+        public readonly FixedString128Bytes SourceContext;
+
+        /// <summary>
+        /// Gets the thread ID where the message was created.
+        /// </summary>
+        public readonly int ThreadId;
+
+        /// <summary>
+        /// Gets whether this message has an associated exception.
+        /// </summary>
+        public readonly bool HasException;
+
+        /// <summary>
+        /// Gets whether this message has structured properties.
+        /// </summary>
+        public readonly bool HasProperties;
 
         /// <summary>
         /// Gets the timestamp as ticks for IMessage interface compatibility.
@@ -52,27 +71,66 @@ namespace AhBearStudios.Core.Logging.Models
 
         /// <summary>
         /// Gets the type code for IMessage interface compatibility.
-        /// Uses a predefined type code for log messages.
         /// </summary>
         public ushort TypeCode => MessageTypeCodes.LogMessage;
 
+        // Non-Burst compatible fields for rich data (managed separately)
+        private readonly Exception _exception;
+        private readonly IReadOnlyDictionary<string, object> _properties;
+
         /// <summary>
-        /// Creates a formatted string representation of this log message.
+        /// Gets the associated exception, if any (not Burst-compatible).
         /// </summary>
-        /// <param name="format">The format template to use</param>
-        /// <returns>The formatted log message</returns>
-        public string Format(string format = null)
+        public Exception Exception => _exception;
+
+        /// <summary>
+        /// Gets additional contextual properties for structured logging (not Burst-compatible).
+        /// </summary>
+        public IReadOnlyDictionary<string, object> Properties => _properties ?? EmptyProperties;
+
+        /// <summary>
+        /// Empty properties dictionary to avoid allocations.
+        /// </summary>
+        private static readonly IReadOnlyDictionary<string, object> EmptyProperties = 
+            new Dictionary<string, object>();
+
+        /// <summary>
+        /// Initializes a new instance of the LogMessage struct.
+        /// </summary>
+        /// <param name="id">The unique message identifier</param>
+        /// <param name="timestamp">The message timestamp</param>
+        /// <param name="level">The log level</param>
+        /// <param name="channel">The channel name</param>
+        /// <param name="message">The log message text</param>
+        /// <param name="correlationId">The correlation ID</param>
+        /// <param name="sourceContext">The source context</param>
+        /// <param name="threadId">The thread ID</param>
+        /// <param name="exception">The associated exception</param>
+        /// <param name="properties">Additional structured properties</param>
+        public LogMessage(
+            Guid id,
+            DateTime timestamp,
+            LogLevel level,
+            FixedString64Bytes channel,
+            FixedString512Bytes message,
+            FixedString128Bytes correlationId = default,
+            FixedString128Bytes sourceContext = default,
+            int threadId = 0,
+            Exception exception = null,
+            IReadOnlyDictionary<string, object> properties = null)
         {
-            format ??= "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Level}] [{Channel}] {Message}";
-            
-            return format
-                .Replace("{Timestamp:yyyy-MM-dd HH:mm:ss.fff}", Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff"))
-                .Replace("{Level}", Level.ToString())
-                .Replace("{Channel}", Channel)
-                .Replace("{Message}", Message)
-                .Replace("{CorrelationId}", CorrelationId)
-                .Replace("{SourceContext}", SourceContext)
-                .Replace("{ThreadId}", ThreadId.ToString());
+            Id = id;
+            Timestamp = timestamp;
+            Level = level;
+            Channel = channel.IsEmpty ? new FixedString64Bytes("Default") : channel;
+            Message = message;
+            CorrelationId = correlationId;
+            SourceContext = sourceContext;
+            ThreadId = threadId == 0 ? Environment.CurrentManagedThreadId : threadId;
+            HasException = exception != null;
+            HasProperties = properties != null && properties.Count > 0;
+            _exception = exception;
+            _properties = properties;
         }
 
         /// <summary>
@@ -87,6 +145,7 @@ namespace AhBearStudios.Core.Logging.Models
         /// <param name="sourceContext">The source context</param>
         /// <param name="threadId">The thread ID</param>
         /// <returns>A new LogMessage instance</returns>
+        [BurstCompile]
         public static LogMessage Create(
             LogLevel level,
             string channel,
@@ -98,16 +157,162 @@ namespace AhBearStudios.Core.Logging.Models
             int threadId = 0)
         {
             return new LogMessage(
-                Id: Guid.NewGuid(),
-                Timestamp: DateTime.UtcNow,
-                Level: level,
-                Channel: channel,
-                Message: message,
-                Exception: exception,
-                CorrelationId: correlationId,
-                Properties: properties,
-                SourceContext: sourceContext,
-                ThreadId: threadId == 0 ? Environment.CurrentManagedThreadId : threadId);
+                id: Guid.NewGuid(),
+                timestamp: DateTime.UtcNow,
+                level: level,
+                channel: new FixedString64Bytes(channel ?? "Default"),
+                message: new FixedString512Bytes(message ?? string.Empty),
+                correlationId: new FixedString128Bytes(correlationId ?? string.Empty),
+                sourceContext: new FixedString128Bytes(sourceContext ?? string.Empty),
+                threadId: threadId == 0 ? Environment.CurrentManagedThreadId : threadId,
+                exception: exception,
+                properties: properties);
+        }
+
+        /// <summary>
+        /// Creates a Burst-compatible LogMessage from native strings.
+        /// </summary>
+        /// <param name="level">The log level</param>
+        /// <param name="channel">The channel name as FixedString</param>
+        /// <param name="message">The log message as FixedString</param>
+        /// <param name="correlationId">The correlation ID as FixedString</param>
+        /// <param name="sourceContext">The source context as FixedString</param>
+        /// <param name="threadId">The thread ID</param>
+        /// <returns>A new Burst-compatible LogMessage instance</returns>
+        [BurstCompile]
+        public static LogMessage CreateNative(
+            LogLevel level,
+            FixedString64Bytes channel,
+            FixedString512Bytes message,
+            FixedString128Bytes correlationId = default,
+            FixedString128Bytes sourceContext = default,
+            int threadId = 0)
+        {
+            return new LogMessage(
+                id: Guid.NewGuid(),
+                timestamp: DateTime.UtcNow,
+                level: level,
+                channel: channel.IsEmpty ? new FixedString64Bytes("Default") : channel,
+                message: message,
+                correlationId: correlationId,
+                sourceContext: sourceContext,
+                threadId: threadId == 0 ? Environment.CurrentManagedThreadId : threadId,
+                exception: null,
+                properties: null);
+        }
+
+        /// <summary>
+        /// Creates a formatted string representation of this log message.
+        /// </summary>
+        /// <param name="format">The format template to use</param>
+        /// <returns>The formatted log message</returns>
+        public string Format(string format = null)
+        {
+            format ??= "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Level}] [{Channel}] {Message}";
+            
+            return format
+                .Replace("{Timestamp:yyyy-MM-dd HH:mm:ss.fff}", Timestamp.ToString("yyyy-MM-dd HH:mm:ss.fff"))
+                .Replace("{Level}", Level.ToString())
+                .Replace("{Channel}", Channel.ToString())
+                .Replace("{Message}", Message.ToString())
+                .Replace("{CorrelationId}", CorrelationId.ToString())
+                .Replace("{SourceContext}", SourceContext.ToString())
+                .Replace("{ThreadId}", ThreadId.ToString());
+        }
+
+        /// <summary>
+        /// Creates a Burst-compatible formatted representation using native strings.
+        /// </summary>
+        /// <returns>A FixedString containing the formatted message</returns>
+        [BurstCompile]
+        public FixedString512Bytes FormatNative()
+        {
+            var result = new FixedString512Bytes();
+            
+            // Simple format: [Level] [Channel] Message
+            result.Append('[');
+            result.Append(Level.ToString());
+            result.Append("] [");
+            result.Append(Channel);
+            result.Append("] ");
+            result.Append(Message);
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Converts native strings to managed strings for interop scenarios.
+        /// </summary>
+        /// <returns>A tuple containing the managed string representations</returns>
+        public (string channel, string message, string correlationId, string sourceContext) ToManagedStrings()
+        {
+            return (
+                Channel.ToString(),
+                Message.ToString(),
+                CorrelationId.ToString(),
+                SourceContext.ToString()
+            );
+        }
+
+        /// <summary>
+        /// Determines if this message should be processed based on minimum level.
+        /// </summary>
+        /// <param name="minimumLevel">The minimum level to check against</param>
+        /// <returns>True if the message should be processed</returns>
+        [BurstCompile]
+        public bool ShouldProcess(LogLevel minimumLevel)
+        {
+            return Level >= minimumLevel;
+        }
+
+        /// <summary>
+        /// Gets the size in bytes of the native portion of this message.
+        /// </summary>
+        /// <returns>The size in bytes</returns>
+        [BurstCompile]
+        public int GetNativeSize()
+        {
+            return sizeof(Guid) + sizeof(DateTime) + sizeof(LogLevel) + 
+                   Channel.LengthInBytes + Message.LengthInBytes + 
+                   CorrelationId.LengthInBytes + SourceContext.LengthInBytes + 
+                   sizeof(int) + sizeof(bool) + sizeof(bool);
+        }
+
+        /// <summary>
+        /// Disposes any managed resources (for IDisposable compliance).
+        /// </summary>
+        public void Dispose()
+        {
+            // Native strings are stack-allocated, no disposal needed
+            // Managed properties are handled by GC
+        }
+
+        /// <summary>
+        /// Returns a string representation of this log message.
+        /// </summary>
+        /// <returns>A formatted string representation</returns>
+        public override string ToString()
+        {
+            return Format();
+        }
+
+        /// <summary>
+        /// Determines equality based on message ID.
+        /// </summary>
+        /// <param name="other">The other LogMessage to compare</param>
+        /// <returns>True if messages are equal</returns>
+        public bool Equals(LogMessage other)
+        {
+            return Id.Equals(other.Id);
+        }
+
+        /// <summary>
+        /// Gets the hash code based on message ID.
+        /// </summary>
+        /// <returns>The hash code</returns>
+        public override int GetHashCode()
+        {
+            return Id.GetHashCode();
         }
     }
 }
