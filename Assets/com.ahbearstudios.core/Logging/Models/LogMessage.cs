@@ -17,7 +17,7 @@ namespace AhBearStudios.Core.Logging.Models
         /// <summary>
         /// Gets the unique identifier for this message.
         /// </summary>
-        public readonly Guid Id;
+        private readonly Guid _id;
 
         /// <summary>
         /// Gets the timestamp when this message was created.
@@ -63,6 +63,11 @@ namespace AhBearStudios.Core.Logging.Models
         /// Gets whether this message has structured properties.
         /// </summary>
         public readonly bool HasProperties;
+
+        /// <summary>
+        /// Gets the unique identifier for this message (IMessage interface implementation).
+        /// </summary>
+        public Guid Id => _id;
 
         /// <summary>
         /// Gets the timestamp as ticks for IMessage interface compatibility.
@@ -119,7 +124,7 @@ namespace AhBearStudios.Core.Logging.Models
             Exception exception = null,
             IReadOnlyDictionary<string, object> properties = null)
         {
-            Id = id;
+            _id = id;
             Timestamp = timestamp;
             Level = level;
             Channel = channel.IsEmpty ? new FixedString64Bytes("Default") : channel;
@@ -265,6 +270,7 @@ namespace AhBearStudios.Core.Logging.Models
             return Level >= minimumLevel;
         }
 
+        
         /// <summary>
         /// Gets the size in bytes of the native portion of this message.
         /// </summary>
@@ -272,9 +278,9 @@ namespace AhBearStudios.Core.Logging.Models
         [BurstCompile]
         public int GetNativeSize()
         {
-            return sizeof(Guid) + sizeof(DateTime) + sizeof(LogLevel) + 
-                   Channel.LengthInBytes + Message.LengthInBytes + 
-                   CorrelationId.LengthInBytes + SourceContext.LengthInBytes + 
+            return 16 + 8 + sizeof(LogLevel) + // Guid (16 bytes) + DateTime (8 bytes) + LogLevel
+                   Channel.Length + Message.Length + 
+                   CorrelationId.Length + SourceContext.Length + 
                    sizeof(int) + sizeof(bool) + sizeof(bool);
         }
 
