@@ -6,6 +6,9 @@ using AhBearStudios.Core.Logging.Factories;
 using AhBearStudios.Core.Logging.Targets;
 using AhBearStudios.Core.Logging.HealthChecks;
 using AhBearStudios.Core.Logging.Models;
+using AhBearStudios.Core.Logging.Services;
+using AhBearStudios.Unity.Logging.ScriptableObjects;
+using AhBearStudios.Unity.Logging.Targets;
 
 namespace AhBearStudios.Unity.Logging.Installers
 {

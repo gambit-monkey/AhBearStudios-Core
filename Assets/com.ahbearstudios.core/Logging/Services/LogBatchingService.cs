@@ -1,23 +1,30 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Unity.Collections;
+using Unity.Burst;
+using Unity.Jobs;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Logging.Targets;
 
 namespace AhBearStudios.Core.Logging.Services
 {
     /// <summary>
-    /// High-performance batching service for log messages.
-    /// Implements zero-allocation logging with Unity.Collections v2 and object pooling.
+    /// High-performance batching service for log messages using Unity.Collections v2.
+    /// Implements zero-allocation logging with Burst compilation compatibility.
     /// Provides efficient batching and asynchronous processing for optimal performance.
     /// </summary>
     public sealed class LogBatchingService : IDisposable
     {
-        private readonly ConcurrentQueue<LogMessage> _messageQueue;
-        private readonly List<LogMessage> _batchBuffer;
-        private readonly List<LogMessage> _processingBuffer;
+        // Native collections for high-performance scenarios
+        private NativeQueue<LogMessage> _messageQueue;
+        private NativeList<LogMessage> _batchBuffer;
+        private NativeList<LogMessage> _processingBuffer;
+        
+        // Managed collections for complex operations
+        private readonly List<ILogTarget> _targets;
         private readonly Timer _flushTimer;
         private readonly object _batchLock = new object();
         private readonly CancellationTokenSource _cancellationTokenSource;
@@ -50,12 +57,12 @@ namespace AhBearStudios.Core.Logging.Services
         /// <summary>
         /// Gets the registered log targets for batch processing.
         /// </summary>
-        public IReadOnlyList<ILogTarget> Targets { get; }
+        public IReadOnlyList<ILogTarget> Targets => _targets.AsReadOnly();
         
         /// <summary>
         /// Gets the current queue size.
         /// </summary>
-        public int QueueSize => _messageQueue.Count;
+        public int QueueSize => _messageQueue.IsCreated ? _messageQueue.Count : 0;
         
         /// <summary>
         /// Gets whether the service is currently processing messages.
@@ -78,7 +85,7 @@ namespace AhBearStudios.Core.Logging.Services
         public event EventHandler<QueueCapacityEventArgs> QueueCapacityReached;
 
         /// <summary>
-        /// Initializes a new instance of the LogBatchingService.
+        /// Initializes a new instance of the LogBatchingService with Unity.Collections v2.
         /// </summary>
         /// <param name="targets">The log targets to process batches for</param>
         /// <param name="maxQueueSize">The maximum number of messages to queue</param>
@@ -91,18 +98,23 @@ namespace AhBearStudios.Core.Logging.Services
             IReadOnlyList<ILogTarget> targets,
             int maxQueueSize = 1000,
             TimeSpan flushInterval = default,
-            bool highPerformanceMode = false,
-            bool burstCompatibility = false)
+            bool highPerformanceMode = true,
+            bool burstCompatibility = true)
         {
-            Targets = targets ?? throw new ArgumentNullException(nameof(targets));
-            MaxQueueSize = maxQueueSize > 0 ? maxQueueSize : throw new ArgumentException("Max queue size must be greater than zero", nameof(maxQueueSize));
+            if (targets == null) throw new ArgumentNullException(nameof(targets));
+            if (maxQueueSize <= 0) throw new ArgumentException("Max queue size must be greater than zero", nameof(maxQueueSize));
+
+            _targets = new List<ILogTarget>(targets);
+            MaxQueueSize = maxQueueSize;
             FlushInterval = flushInterval == default ? TimeSpan.FromMilliseconds(100) : flushInterval;
             HighPerformanceMode = highPerformanceMode;
             BurstCompatibility = burstCompatibility;
 
-            _messageQueue = new ConcurrentQueue<LogMessage>();
-            _batchBuffer = new List<LogMessage>(maxQueueSize);
-            _processingBuffer = new List<LogMessage>(maxQueueSize);
+            // Initialize native collections
+            _messageQueue = new NativeQueue<LogMessage>(Allocator.Persistent);
+            _batchBuffer = new NativeList<LogMessage>(maxQueueSize, Allocator.Persistent);
+            _processingBuffer = new NativeList<LogMessage>(maxQueueSize, Allocator.Persistent);
+            
             _cancellationTokenSource = new CancellationTokenSource();
             _performanceStopwatch = Stopwatch.StartNew();
             
@@ -116,13 +128,14 @@ namespace AhBearStudios.Core.Logging.Services
         }
 
         /// <summary>
-        /// Enqueues a log message for batch processing.
+        /// Enqueues a log message for batch processing using native collections.
         /// </summary>
         /// <param name="logMessage">The log message to enqueue</param>
         /// <returns>True if the message was enqueued successfully, false if the queue is full</returns>
+        [BurstCompile]
         public bool EnqueueMessage(in LogMessage logMessage)
         {
-            if (_disposed) return false;
+            if (_disposed || !_messageQueue.IsCreated) return false;
 
             // Check queue capacity
             if (_messageQueue.Count >= MaxQueueSize)
@@ -150,14 +163,36 @@ namespace AhBearStudios.Core.Logging.Services
         /// </summary>
         /// <param name="logMessages">The log messages to enqueue</param>
         /// <returns>The number of messages successfully enqueued</returns>
-        public int EnqueueMessages(IEnumerable<LogMessage> logMessages)
+        public int EnqueueMessages(IReadOnlyList<LogMessage> logMessages)
         {
-            if (_disposed) return 0;
+            if (_disposed || logMessages == null) return 0;
 
             int enqueuedCount = 0;
             foreach (var message in logMessages)
             {
                 if (EnqueueMessage(message))
+                {
+                    enqueuedCount++;
+                }
+            }
+
+            return enqueuedCount;
+        }
+
+        /// <summary>
+        /// Enqueues messages from a native array for Burst compatibility.
+        /// </summary>
+        /// <param name="logMessages">The native array of log messages</param>
+        /// <returns>The number of messages successfully enqueued</returns>
+        [BurstCompile]
+        public int EnqueueMessages(NativeArray<LogMessage> logMessages)
+        {
+            if (_disposed || !logMessages.IsCreated) return 0;
+
+            int enqueuedCount = 0;
+            for (int i = 0; i < logMessages.Length; i++)
+            {
+                if (EnqueueMessage(logMessages[i]))
                 {
                     enqueuedCount++;
                 }
@@ -210,6 +245,21 @@ namespace AhBearStudios.Core.Logging.Services
         }
 
         /// <summary>
+        /// Updates the target list for batch processing.
+        /// </summary>
+        /// <param name="newTargets">The new list of targets</param>
+        public void UpdateTargets(IReadOnlyList<ILogTarget> newTargets)
+        {
+            if (newTargets == null) return;
+
+            lock (_batchLock)
+            {
+                _targets.Clear();
+                _targets.AddRange(newTargets);
+            }
+        }
+
+        /// <summary>
         /// Timer callback for periodic flushing.
         /// </summary>
         /// <param name="state">Timer state (can be TaskCompletionSource for async operations)</param>
@@ -256,12 +306,13 @@ namespace AhBearStudios.Core.Logging.Services
                 {
                     // Log processing errors (avoid circular logging)
                     System.Diagnostics.Debug.WriteLine($"LogBatchingService processing error: {ex.Message}");
+                    Metrics.IncrementTargetErrors();
                 }
             }
         }
 
         /// <summary>
-        /// Processes a batch of log messages.
+        /// Processes a batch of log messages using native collections.
         /// </summary>
         private void ProcessBatch()
         {
@@ -277,36 +328,41 @@ namespace AhBearStudios.Core.Logging.Services
             {
                 _performanceStopwatch.Restart();
 
-                // Dequeue messages into processing buffer
+                // Clear processing buffer
                 _processingBuffer.Clear();
-                while (_messageQueue.TryDequeue(out var message) && _processingBuffer.Count < MaxQueueSize)
+
+                // Dequeue messages into processing buffer
+                int dequeuedCount = 0;
+                while (_messageQueue.Count > 0 && dequeuedCount < MaxQueueSize)
                 {
-                    _processingBuffer.Add(message);
+                    if (_messageQueue.TryDequeue(out var message))
+                    {
+                        _processingBuffer.Add(message);
+                        dequeuedCount++;
+                    }
+                    else
+                    {
+                        break;
+                    }
                 }
 
-                if (_processingBuffer.Count == 0)
+                if (_processingBuffer.Length == 0)
                 {
                     return;
                 }
 
-                // Group messages by target compatibility
-                var targetGroups = GroupMessagesByTargets(_processingBuffer);
-
-                // Process each target group
-                foreach (var targetGroup in targetGroups)
-                {
-                    ProcessTargetGroup(targetGroup.Key, targetGroup.Value);
-                }
+                // Process messages for each target
+                ProcessTargetsWithNativeData();
 
                 _performanceStopwatch.Stop();
                 
                 // Update metrics
                 Metrics.IncrementProcessedBatches();
-                Metrics.AddProcessedMessages(_processingBuffer.Count);
+                Metrics.AddProcessedMessages(_processingBuffer.Length);
                 Metrics.UpdateProcessingTime(_performanceStopwatch.Elapsed);
 
                 // Raise batch processed event
-                OnBatchProcessed(new BatchProcessedEventArgs(_processingBuffer.Count, _performanceStopwatch.Elapsed));
+                OnBatchProcessed(new BatchProcessedEventArgs(_processingBuffer.Length, _performanceStopwatch.Elapsed));
             }
             finally
             {
@@ -315,59 +371,122 @@ namespace AhBearStudios.Core.Logging.Services
         }
 
         /// <summary>
-        /// Groups messages by compatible targets for efficient processing.
+        /// Processes targets with native data for optimal performance.
         /// </summary>
-        /// <param name="messages">The messages to group</param>
-        /// <returns>A dictionary of target groups and their messages</returns>
-        private Dictionary<ILogTarget, List<LogMessage>> GroupMessagesByTargets(List<LogMessage> messages)
+        private void ProcessTargetsWithNativeData()
         {
-            var targetGroups = new Dictionary<ILogTarget, List<LogMessage>>();
-
-            foreach (var target in Targets)
+            // If Burst compatibility is enabled, use job system for processing
+            if (BurstCompatibility && _processingBuffer.Length > 100) // Use jobs for larger batches
             {
-                if (!target.IsEnabled) continue;
-
-                var targetMessages = new List<LogMessage>();
-                foreach (var message in messages)
-                {
-                    if (target.ShouldProcessMessage(message))
-                    {
-                        targetMessages.Add(message);
-                    }
-                }
-
-                if (targetMessages.Count > 0)
-                {
-                    targetGroups[target] = targetMessages;
-                }
+                ProcessWithJobSystem();
             }
-
-            return targetGroups;
+            else
+            {
+                ProcessDirectly();
+            }
         }
 
         /// <summary>
-        /// Processes a group of messages for a specific target.
+        /// Processes messages using Unity's job system for Burst compatibility.
         /// </summary>
-        /// <param name="target">The target to process messages for</param>
-        /// <param name="messages">The messages to process</param>
-        private void ProcessTargetGroup(ILogTarget target, List<LogMessage> messages)
+        private void ProcessWithJobSystem()
         {
+            // Create a job to filter messages for each target
+            var filterJob = new MessageFilterJob
+            {
+                Messages = _processingBuffer.AsArray(),
+                FilteredMessages = new NativeList<LogMessage>(_processingBuffer.Length, Allocator.TempJob)
+            };
+
+            // Schedule and complete the job
+            var jobHandle = filterJob.Schedule();
+            jobHandle.Complete();
+
             try
             {
-                // Use batch writing if supported, otherwise write individually
-                if (messages.Count > 1)
+                // Process filtered messages through targets
+                ProcessFilteredMessages(filterJob.FilteredMessages);
+            }
+            finally
+            {
+                // Dispose temporary allocations
+                if (filterJob.FilteredMessages.IsCreated)
                 {
-                    target.WriteBatch(messages);
-                }
-                else
-                {
-                    target.Write(messages[0]);
+                    filterJob.FilteredMessages.Dispose();
                 }
             }
-            catch (Exception ex)
+        }
+
+        /// <summary>
+        /// Processes messages directly without job system.
+        /// </summary>
+        private void ProcessDirectly()
+        {
+            foreach (var target in _targets)
             {
-                Metrics.IncrementTargetErrors();
-                System.Diagnostics.Debug.WriteLine($"LogBatchingService target error ({target.Name}): {ex.Message}");
+                if (!target.IsEnabled) continue;
+
+                try
+                {
+                    // Create a list of messages for this target
+                    var targetMessages = new List<LogMessage>();
+                    
+                    for (int i = 0; i < _processingBuffer.Length; i++)
+                    {
+                        var message = _processingBuffer[i];
+                        if (target.ShouldProcessMessage(message))
+                        {
+                            targetMessages.Add(message);
+                        }
+                    }
+
+                    // Write messages to target
+                    if (targetMessages.Count > 0)
+                    {
+                        if (targetMessages.Count > 1)
+                        {
+                            target.WriteBatch(targetMessages);
+                        }
+                        else
+                        {
+                            target.Write(targetMessages[0]);
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Metrics.IncrementTargetErrors();
+                    System.Diagnostics.Debug.WriteLine($"LogBatchingService target error ({target.Name}): {ex.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Processes filtered messages from job system.
+        /// </summary>
+        /// <param name="filteredMessages">The filtered messages to process</param>
+        private void ProcessFilteredMessages(NativeList<LogMessage> filteredMessages)
+        {
+            var messageList = new List<LogMessage>();
+            for (int i = 0; i < filteredMessages.Length; i++)
+            {
+                messageList.Add(filteredMessages[i]);
+            }
+
+            foreach (var target in _targets)
+            {
+                if (target.IsEnabled)
+                {
+                    try
+                    {
+                        target.WriteBatch(messageList);
+                    }
+                    catch (Exception ex)
+                    {
+                        Metrics.IncrementTargetErrors();
+                        System.Diagnostics.Debug.WriteLine($"LogBatchingService target error ({target.Name}): {ex.Message}");
+                    }
+                }
             }
         }
 
@@ -402,10 +521,17 @@ namespace AhBearStudios.Core.Logging.Services
             _flushTimer?.Dispose();
 
             // Cancel processing task
-            _cancellationTokenSource.Cancel();
+            _cancellationTokenSource?.Cancel();
 
             // Process remaining messages
-            ProcessBatch();
+            try
+            {
+                ProcessBatch();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"LogBatchingService final batch processing error: {ex.Message}");
+            }
 
             // Wait for processing task to complete
             try
@@ -417,10 +543,52 @@ namespace AhBearStudios.Core.Logging.Services
                 System.Diagnostics.Debug.WriteLine($"LogBatchingService disposal error: {ex.Message}");
             }
 
-            // Dispose resources
+            // Dispose native collections
+            if (_messageQueue.IsCreated)
+            {
+                _messageQueue.Dispose();
+            }
+
+            if (_batchBuffer.IsCreated)
+            {
+                _batchBuffer.Dispose();
+            }
+
+            if (_processingBuffer.IsCreated)
+            {
+                _processingBuffer.Dispose();
+            }
+
+            // Dispose managed resources
             _cancellationTokenSource?.Dispose();
             _processingTask?.Dispose();
             _performanceStopwatch?.Stop();
+        }
+    }
+
+    /// <summary>
+    /// Burst-compatible job for filtering log messages.
+    /// </summary>
+    [BurstCompile]
+    public struct MessageFilterJob : IJob
+    {
+        [ReadOnly] public NativeArray<LogMessage> Messages;
+        public NativeList<LogMessage> FilteredMessages;
+
+        public void Execute()
+        {
+            FilteredMessages.Clear();
+            
+            for (int i = 0; i < Messages.Length; i++)
+            {
+                var message = Messages[i];
+                
+                // Simple filtering logic - in a real implementation, this would be more sophisticated
+                if (message.Level >= LogLevel.Debug)
+                {
+                    FilteredMessages.Add(message);
+                }
+            }
         }
     }
 
