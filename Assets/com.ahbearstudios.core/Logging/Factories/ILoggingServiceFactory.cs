@@ -1,10 +1,13 @@
 ﻿using System.Collections.Generic;
 using AhBearStudios.Core.Logging.Configs;
+using AhBearStudios.Core.Logging.Builders;
+using AhBearStudios.Core.Logging.Models;
 
 namespace AhBearStudios.Core.Logging.Factories
 {
     /// <summary>
     /// Factory interface for creating logging service instances from configuration.
+    /// Provides cohesive integration with ILogConfigBuilder and LogConfigBuilder patterns.
     /// Completes the Builder → Config → Factory → Service pattern for the logging system.
     /// </summary>
     public interface ILoggingServiceFactory
@@ -41,6 +44,30 @@ namespace AhBearStudios.Core.Logging.Factories
         ILoggingService CreateDevelopmentLoggingService(LoggingConfig config);
 
         /// <summary>
+        /// Creates a logging service using a fluent builder configuration.
+        /// This method bridges the gap between builder patterns and factory creation.
+        /// </summary>
+        /// <param name="builderAction">Action to configure the logging builder</param>
+        /// <returns>A fully configured logging service instance</returns>
+        /// <exception cref="ArgumentNullException">Thrown when builderAction is null</exception>
+        ILoggingService CreateLoggingServiceFromBuilder(Action<ILogConfigBuilder> builderAction);
+
+        /// <summary>
+        /// Creates a logging service for a specific scenario using preset configurations.
+        /// </summary>
+        /// <param name="scenario">The deployment scenario</param>
+        /// <param name="customizations">Optional customizations to apply</param>
+        /// <returns>A logging service configured for the specified scenario</returns>
+        ILoggingService CreateLoggingServiceForScenario(LoggingScenario scenario, Action<ILogConfigBuilder> customizations = null);
+
+        /// <summary>
+        /// Creates a minimal logging service with basic console output.
+        /// Useful as a fallback when configuration fails.
+        /// </summary>
+        /// <returns>A minimal logging service with console target</returns>
+        ILoggingService CreateMinimalLoggingService();
+
+        /// <summary>
         /// Validates that a configuration can be used to create a logging service.
         /// </summary>
         /// <param name="config">The configuration to validate</param>
@@ -55,5 +82,11 @@ namespace AhBearStudios.Core.Logging.Factories
         /// <returns>A logging service instance using the custom target factory</returns>
         /// <exception cref="ArgumentNullException">Thrown when config or targetFactory is null</exception>
         ILoggingService CreateLoggingService(LoggingConfig config, ILogTargetFactory targetFactory);
+
+        /// <summary>
+        /// Gets information about available target types and their capabilities.
+        /// </summary>
+        /// <returns>Dictionary mapping target types to their descriptions</returns>
+        IReadOnlyDictionary<string, string> GetAvailableTargetTypes();
     }
 }
