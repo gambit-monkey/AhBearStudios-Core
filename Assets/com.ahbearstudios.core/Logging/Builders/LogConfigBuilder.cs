@@ -6,8 +6,9 @@ using AhBearStudios.Core.Logging.Models;
 namespace AhBearStudios.Core.Logging.Builders
 {
     /// <summary>
-    /// Enhanced implementation of ILogConfigBuilder that provides a fluent interface for building logging configurations.
-    /// Follows the Builder pattern as specified in the AhBearStudios Core Architecture with complete pattern integration.
+    /// Complete implementation of ILogConfigBuilder that provides a fluent interface for building logging configurations.
+    /// Supports all available log targets and provides comprehensive scenario-specific presets.
+    /// Follows the Builder pattern as specified in the AhBearStudios Core Architecture.
     /// </summary>
     public sealed class LogConfigBuilder : ILogConfigBuilder
     {
@@ -100,12 +101,7 @@ namespace AhBearStudios.Core.Logging.Builders
             return this;
         }
 
-        /// <summary>
-        /// Enables or disables batching for high-performance logging scenarios.
-        /// </summary>
-        /// <param name="enabled">True to enable batching</param>
-        /// <param name="batchSize">The size of each batch (default: 100)</param>
-        /// <returns>The builder instance for method chaining</returns>
+        /// <inheritdoc />
         public ILogConfigBuilder WithBatching(bool enabled, int batchSize = 100)
         {
             if (enabled && batchSize <= 0)
@@ -116,12 +112,7 @@ namespace AhBearStudios.Core.Logging.Builders
             return this;
         }
 
-        /// <summary>
-        /// Enables or disables message caching for performance optimization.
-        /// </summary>
-        /// <param name="enabled">True to enable caching</param>
-        /// <param name="maxCacheSize">The maximum cache size (default: 1000)</param>
-        /// <returns>The builder instance for method chaining</returns>
+        /// <inheritdoc />
         public ILogConfigBuilder WithCaching(bool enabled, int maxCacheSize = 1000)
         {
             if (enabled && maxCacheSize <= 0)
@@ -161,12 +152,7 @@ namespace AhBearStudios.Core.Logging.Builders
             return this;
         }
 
-        /// <summary>
-        /// Adds a console target with the specified configuration.
-        /// </summary>
-        /// <param name="name">The name of the target (default: "Console")</param>
-        /// <param name="minimumLevel">The minimum log level (default: Debug)</param>
-        /// <returns>The builder instance for method chaining</returns>
+        /// <inheritdoc />
         public ILogConfigBuilder WithConsoleTarget(string name = "Console", LogLevel minimumLevel = LogLevel.Debug)
         {
             var targetConfig = new LogTargetConfig
@@ -181,14 +167,7 @@ namespace AhBearStudios.Core.Logging.Builders
             return WithTarget(targetConfig);
         }
 
-        /// <summary>
-        /// Adds a file target with the specified configuration.
-        /// </summary>
-        /// <param name="name">The name of the target</param>
-        /// <param name="filePath">The path to the log file</param>
-        /// <param name="minimumLevel">The minimum log level (default: Info)</param>
-        /// <param name="bufferSize">The buffer size for file writing (default: 100)</param>
-        /// <returns>The builder instance for method chaining</returns>
+        /// <inheritdoc />
         public ILogConfigBuilder WithFileTarget(string name, string filePath, LogLevel minimumLevel = LogLevel.Info, int bufferSize = 100)
         {
             if (string.IsNullOrWhiteSpace(name))
@@ -213,13 +192,7 @@ namespace AhBearStudios.Core.Logging.Builders
             return WithTarget(targetConfig);
         }
 
-        /// <summary>
-        /// Adds a memory target for in-memory log storage.
-        /// </summary>
-        /// <param name="name">The name of the target (default: "Memory")</param>
-        /// <param name="maxEntries">The maximum number of entries to store (default: 1000)</param>
-        /// <param name="minimumLevel">The minimum log level (default: Debug)</param>
-        /// <returns>The builder instance for method chaining</returns>
+        /// <inheritdoc />
         public ILogConfigBuilder WithMemoryTarget(string name = "Memory", int maxEntries = 1000, LogLevel minimumLevel = LogLevel.Debug)
         {
             var targetConfig = new LogTargetConfig
@@ -232,6 +205,172 @@ namespace AhBearStudios.Core.Logging.Builders
                 Properties = new Dictionary<string, object>
                 {
                     ["MaxEntries"] = maxEntries
+                }
+            };
+            
+            return WithTarget(targetConfig);
+        }
+
+        /// <inheritdoc />
+        public ILogConfigBuilder WithSerilogTarget(string name = "Serilog", LogLevel minimumLevel = LogLevel.Info, object loggerConfiguration = null)
+        {
+            var targetConfig = new LogTargetConfig
+            {
+                Name = name,
+                TargetType = "Serilog",
+                MinimumLevel = minimumLevel,
+                IsEnabled = true,
+                UseAsyncWrite = true,
+                BufferSize = 500,
+                Properties = new Dictionary<string, object>()
+            };
+
+            if (loggerConfiguration != null)
+            {
+                targetConfig.Properties["LoggerConfiguration"] = loggerConfiguration;
+            }
+            
+            return WithTarget(targetConfig);
+        }
+
+        /// <inheritdoc />
+        public ILogConfigBuilder WithNullTarget(string name = "Null")
+        {
+            var targetConfig = new LogTargetConfig
+            {
+                Name = name,
+                TargetType = "Null",
+                MinimumLevel = LogLevel.Debug,
+                IsEnabled = true,
+                UseAsyncWrite = false // No point in async for null target
+            };
+            
+            return WithTarget(targetConfig);
+        }
+
+        /// <inheritdoc />
+        public ILogConfigBuilder WithStandardConsoleTarget(string name = "StdConsole", LogLevel minimumLevel = LogLevel.Debug, bool useColors = true)
+        {
+            var targetConfig = new LogTargetConfig
+            {
+                Name = name,
+                TargetType = "Console",
+                MinimumLevel = minimumLevel,
+                IsEnabled = true,
+                UseAsyncWrite = false, // Console output is typically synchronous
+                Properties = new Dictionary<string, object>
+                {
+                    ["UseColors"] = useColors
+                }
+            };
+            
+            return WithTarget(targetConfig);
+        }
+
+        /// <inheritdoc />
+        public ILogConfigBuilder WithUnityConsoleTarget(string name = "UnityConsole", LogLevel minimumLevel = LogLevel.Debug, bool useColors = true, bool showStackTraces = true)
+        {
+            var targetConfig = new LogTargetConfig
+            {
+                Name = name,
+                TargetType = "UnityConsole",
+                MinimumLevel = minimumLevel,
+                IsEnabled = true,
+                UseAsyncWrite = false, // Unity Console is synchronous
+                Properties = new Dictionary<string, object>
+                {
+                    ["UseColors"] = useColors,
+                    ["ShowStackTraces"] = showStackTraces,
+                    ["IncludeTimestamp"] = true,
+                    ["IncludeThreadId"] = false
+                }
+            };
+            
+            return WithTarget(targetConfig);
+        }
+
+        /// <inheritdoc />
+        public ILogConfigBuilder WithNetworkTarget(string name, string endpoint, LogLevel minimumLevel = LogLevel.Info, int timeoutSeconds = 30)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException("Target name cannot be null or empty.", nameof(name));
+            if (string.IsNullOrWhiteSpace(endpoint))
+                throw new ArgumentException("Network endpoint cannot be null or empty.", nameof(endpoint));
+            
+            var targetConfig = new LogTargetConfig
+            {
+                Name = name,
+                TargetType = "Network",
+                MinimumLevel = minimumLevel,
+                IsEnabled = true,
+                UseAsyncWrite = true, // Network operations should be async
+                BufferSize = 200,
+                Properties = new Dictionary<string, object>
+                {
+                    ["Endpoint"] = endpoint,
+                    ["TimeoutSeconds"] = timeoutSeconds,
+                    ["RetryCount"] = 3,
+                    ["RetryDelayMs"] = 1000
+                }
+            };
+            
+            return WithTarget(targetConfig);
+        }
+
+        /// <inheritdoc />
+        public ILogConfigBuilder WithDatabaseTarget(string name, string connectionString, string tableName = "Logs", LogLevel minimumLevel = LogLevel.Info)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException("Target name cannot be null or empty.", nameof(name));
+            if (string.IsNullOrWhiteSpace(connectionString))
+                throw new ArgumentException("Connection string cannot be null or empty.", nameof(connectionString));
+            
+            var targetConfig = new LogTargetConfig
+            {
+                Name = name,
+                TargetType = "Database",
+                MinimumLevel = minimumLevel,
+                IsEnabled = true,
+                UseAsyncWrite = true,
+                BufferSize = 100,
+                Properties = new Dictionary<string, object>
+                {
+                    ["ConnectionString"] = connectionString,
+                    ["TableName"] = tableName,
+                    ["BatchInsert"] = true,
+                    ["CreateTableIfNotExists"] = true
+                }
+            };
+            
+            return WithTarget(targetConfig);
+        }
+
+        /// <inheritdoc />
+        public ILogConfigBuilder WithEmailTarget(string name, string smtpServer, string fromEmail, string[] toEmails, LogLevel minimumLevel = LogLevel.Error)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                throw new ArgumentException("Target name cannot be null or empty.", nameof(name));
+            if (string.IsNullOrWhiteSpace(smtpServer))
+                throw new ArgumentException("SMTP server cannot be null or empty.", nameof(smtpServer));
+            if (string.IsNullOrWhiteSpace(fromEmail))
+                throw new ArgumentException("From email cannot be null or empty.", nameof(fromEmail));
+            if (toEmails == null || toEmails.Length == 0)
+                throw new ArgumentException("At least one recipient email is required.", nameof(toEmails));
+            
+            var targetConfig = new LogTargetConfig
+            {
+                Name = name,
+                TargetType = "Email",
+                MinimumLevel = minimumLevel,
+                IsEnabled = true,
+                UseAsyncWrite = true,
+                Properties = new Dictionary<string, object>
+                {
+                    ["SmtpServer"] = smtpServer,
+                    ["FromEmail"] = fromEmail,
+                    ["ToEmails"] = toEmails,
+                    ["Subject"] = "Application Log Alert",
+                    ["MaxEmailsPerHour"] = 10 // Prevent email spam
                 }
             };
             
@@ -267,13 +406,7 @@ namespace AhBearStudios.Core.Logging.Builders
             return this;
         }
 
-        /// <summary>
-        /// Adds a channel with the specified configuration.
-        /// </summary>
-        /// <param name="name">The channel name</param>
-        /// <param name="minimumLevel">The minimum log level for the channel</param>
-        /// <param name="enabled">Whether the channel is enabled</param>
-        /// <returns>The builder instance for method chaining</returns>
+        /// <inheritdoc />
         public ILogConfigBuilder WithChannel(string name, LogLevel minimumLevel = LogLevel.Debug, bool enabled = true)
         {
             if (string.IsNullOrWhiteSpace(name))
@@ -333,25 +466,24 @@ namespace AhBearStudios.Core.Logging.Builders
             return this;
         }
 
-        /// <summary>
-        /// Configures the builder for production use with optimized settings.
-        /// </summary>
-        /// <returns>The builder instance for method chaining</returns>
+        /// <inheritdoc />
         public ILogConfigBuilder ForProduction()
         {
             return this
                 .WithGlobalMinimumLevel(LogLevel.Info)
                 .WithHighPerformanceMode(true)
                 .WithBurstCompatibility(true)
-                .WithBatching(true, 100)
-                .WithCaching(true, 1000)
-                .WithStructuredLogging(true);
+                .WithBatching(true, 200)
+                .WithCaching(true, 2000)
+                .WithStructuredLogging(true)
+                .WithSerilogTarget("Production", LogLevel.Info)           // Enterprise logging
+                .WithFileTarget("ErrorLog", "logs/errors.log", LogLevel.Error, 500) // Error-specific file
+                .WithMemoryTarget("Recent", 5000, LogLevel.Warning)       // Recent critical events
+                .WithEmailTarget("Alerts", "smtp.company.com", "app@company.com", 
+                    new[] { "ops@company.com" }, LogLevel.Critical);      // Critical alerts
         }
 
-        /// <summary>
-        /// Configures the builder for development use with debugging-friendly settings.
-        /// </summary>
-        /// <returns>The builder instance for method chaining</returns>
+        /// <inheritdoc />
         public ILogConfigBuilder ForDevelopment()
         {
             return this
@@ -360,21 +492,117 @@ namespace AhBearStudios.Core.Logging.Builders
                 .WithBatching(false)
                 .WithStructuredLogging(true)
                 .WithTimestamps(true)
-                .WithConsoleTarget()
-                .WithMemoryTarget();
+                .WithUnityConsoleTarget("Unity", LogLevel.Debug, true, true) // Unity console with stack traces
+                .WithStandardConsoleTarget("Console", LogLevel.Debug, true)  // Standard console
+                .WithMemoryTarget("Debug", 10000, LogLevel.Debug)            // Large debug buffer
+                .WithFileTarget("DevLog", "logs/development.log", LogLevel.Debug, 100); // Dev file logging
         }
 
-        /// <summary>
-        /// Configures the builder for testing scenarios.
-        /// </summary>
-        /// <returns>The builder instance for method chaining</returns>
+        /// <inheritdoc />
         public ILogConfigBuilder ForTesting()
         {
             return this
                 .WithGlobalMinimumLevel(LogLevel.Debug)
                 .WithHighPerformanceMode(false)
                 .WithBatching(false)
-                .WithMemoryTarget("TestMemory", 10000);
+                .WithStructuredLogging(true)
+                .WithMemoryTarget("TestCapture", 50000, LogLevel.Debug)     // Large test capture
+                .WithNullTarget("Null");                                    // Null target for disabled scenarios
+        }
+
+        /// <inheritdoc />
+        public ILogConfigBuilder ForStaging()
+        {
+            return this
+                .WithGlobalMinimumLevel(LogLevel.Debug)
+                .WithHighPerformanceMode(true)
+                .WithBurstCompatibility(true)
+                .WithBatching(true, 150)
+                .WithCaching(true, 1500)
+                .WithStructuredLogging(true)
+                .WithSerilogTarget("Staging", LogLevel.Debug)               // Full Serilog capture
+                .WithFileTarget("StagingApp", "logs/staging-app.log", LogLevel.Info, 300)
+                .WithFileTarget("StagingError", "logs/staging-errors.log", LogLevel.Error, 200)
+                .WithMemoryTarget("StagingRecent", 3000, LogLevel.Info)
+                .WithUnityConsoleTarget("Unity", LogLevel.Warning, true, false); // Warnings+ only
+        }
+
+        /// <inheritdoc />
+        public ILogConfigBuilder ForPerformanceTesting()
+        {
+            return this
+                .WithGlobalMinimumLevel(LogLevel.Warning)                   // Reduce log volume
+                .WithHighPerformanceMode(true)
+                .WithBurstCompatibility(true)
+                .WithBatching(true, 500)                                    // Large batches
+                .WithCaching(true, 5000)                                    // Aggressive caching
+                .WithStructuredLogging(false)                               // Reduce allocations
+                .WithMemoryTarget("PerfTest", 20000, LogLevel.Warning)      // Memory only for speed
+                .WithNullTarget("Disabled");                                // Null for comparison
+        }
+
+        /// <inheritdoc />
+        public ILogConfigBuilder ForHighAvailability()
+        {
+            return this
+                .WithGlobalMinimumLevel(LogLevel.Info)
+                .WithHighPerformanceMode(true)
+                .WithBurstCompatibility(true)
+                .WithBatching(true, 300)
+                .WithCaching(true, 3000)
+                .WithStructuredLogging(true)
+                .WithSerilogTarget("Primary", LogLevel.Info)                // Primary enterprise logging
+                .WithDatabaseTarget("DbLogs", "Server=db;Database=Logs", "ApplicationLogs", LogLevel.Warning)
+                .WithNetworkTarget("RemoteLogs", "https://logs.company.com/api", LogLevel.Error, 60)
+                .WithEmailTarget("CriticalAlerts", "smtp.company.com", "system@company.com", 
+                    new[] { "oncall@company.com", "ops@company.com" }, LogLevel.Critical)
+                .WithMemoryTarget("HABuffer", 10000, LogLevel.Info);        // High-availability buffer
+        }
+
+        /// <inheritdoc />
+        public ILogConfigBuilder ForCloudDeployment()
+        {
+            return this
+                .WithGlobalMinimumLevel(LogLevel.Info)
+                .WithHighPerformanceMode(true)
+                .WithBurstCompatibility(true)
+                .WithBatching(true, 250)
+                .WithCaching(true, 2500)
+                .WithStructuredLogging(true)
+                .WithNetworkTarget("CloudLogs", "https://logging-service.cloud.com/ingest", LogLevel.Info, 120)
+                .WithMemoryTarget("CloudBuffer", 5000, LogLevel.Warning)    // Cloud failover buffer
+                .WithFileTarget("LocalBackup", "/var/log/app/backup.log", LogLevel.Error, 200) // Local backup
+                .WithEmailTarget("CloudAlerts", "smtp.cloud.com", "alerts@app.com", 
+                    new[] { "devops@company.com" }, LogLevel.Critical);
+        }
+
+        /// <inheritdoc />
+        public ILogConfigBuilder ForMobile()
+        {
+            return this
+                .WithGlobalMinimumLevel(LogLevel.Warning)                   // Minimize mobile logging
+                .WithHighPerformanceMode(true)
+                .WithBurstCompatibility(true)
+                .WithBatching(true, 100)                                    // Small batches for memory
+                .WithCaching(true, 500)                                     // Limited caching
+                .WithStructuredLogging(false)                               // Reduce allocations
+                .WithMemoryTarget("Mobile", 1000, LogLevel.Warning)         // Small memory buffer
+                .WithFileTarget("MobileErrors", "logs/mobile-errors.log", LogLevel.Error, 50); // Critical errors only
+        }
+
+        /// <inheritdoc />
+        public ILogConfigBuilder ForDebugging(string debugChannel = "Debug")
+        {
+            return this
+                .WithGlobalMinimumLevel(LogLevel.Debug)
+                .WithHighPerformanceMode(false)                             // Favor completeness over speed
+                .WithBatching(false)                                        // Immediate output
+                .WithStructuredLogging(true)
+                .WithTimestamps(true)
+                .WithUnityConsoleTarget("Unity", LogLevel.Debug, true, true)
+                .WithFileTarget("DebugTrace", $"logs/debug-{debugChannel}.log", LogLevel.Debug, 50)
+                .WithMemoryTarget("DebugCapture", 25000, LogLevel.Debug)    // Large debug capture
+                .WithChannel(debugChannel, LogLevel.Debug, true);           // Specific debug channel
         }
 
         /// <inheritdoc />

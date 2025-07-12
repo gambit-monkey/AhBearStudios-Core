@@ -268,6 +268,41 @@ namespace AhBearStudios.Core.Logging
         }
         
         /// <inheritdoc />
+        public void LogException(Exception exception, string context, string correlationId, string sourceContext = null)
+        {
+            if (exception == null) return;
+            
+            if (ShouldLog(LogLevel.Error))
+            {
+                var message = context != null ? $"{context}: {exception.Message}" : exception.Message;
+                LogInternal(LogLevel.Error, "Default", message, exception, correlationId, null, sourceContext);
+                TriggerErrorAlert(message, exception);
+                
+                Interlocked.Increment(ref _totalErrorsEncountered);
+            }
+        }
+        
+        /// <inheritdoc />
+        public void Log(LogLevel level, string channel, string message, Exception exception = null, 
+                       string correlationId = null, IReadOnlyDictionary<string, object> properties = null, 
+                       string sourceContext = null)
+        {
+            if (ShouldLog(level))
+            {
+                LogInternal(level, channel ?? "Default", message, exception, correlationId, properties, sourceContext);
+                
+                // Trigger alerts for errors and critical messages
+                if (level >= LogLevel.Error)
+                {
+                    if (level == LogLevel.Critical)
+                        TriggerCriticalAlert(message, exception);
+                    else
+                        TriggerErrorAlert(message, exception);
+                }
+            }
+        }
+        
+        /// <inheritdoc />
         public void RegisterTarget(ILogTarget target)
         {
             if (target == null)
@@ -288,6 +323,13 @@ namespace AhBearStudios.Core.Logging
                     LogWarning($"Target with name '{target.Name}' is already registered", "Logging.Registration", "LoggingService");
                 }
             }
+        }
+        
+        /// <inheritdoc />
+        public bool UnregisterTarget(ILogTarget target)
+        {
+            if (target == null) return false;
+            return UnregisterTarget(target.Name);
         }
         
         /// <inheritdoc />
@@ -316,6 +358,106 @@ namespace AhBearStudios.Core.Logging
                 
                 return false;
             }
+        }
+        
+        /// <inheritdoc />
+        public ILogTarget GetTarget(string targetName)
+        {
+            if (string.IsNullOrEmpty(targetName)) return null;
+            
+            _targets.TryGetValue(targetName, out var target);
+            return target;
+        }
+        
+        /// <inheritdoc />
+        public bool HasTarget(string targetName)
+        {
+            if (string.IsNullOrEmpty(targetName)) return false;
+            return _targets.ContainsKey(targetName);
+        }
+        
+        /// <inheritdoc />
+        public void SetMinimumLevel(LogLevel minimumLevel)
+        {
+            foreach (var target in _targets.Values)
+            {
+                try
+                {
+                    target.MinimumLevel = minimumLevel;
+                }
+                catch (Exception ex)
+                {
+                    LogError($"Failed to set minimum level for target '{target.Name}': {ex.Message}", "Logging.Configuration", "LoggingService");
+                }
+            }
+            
+            LogInfo($"Set global minimum level to {minimumLevel}", "Logging.Configuration", "LoggingService");
+        }
+        
+        /// <inheritdoc />
+        public bool SetMinimumLevel(string targetName, LogLevel minimumLevel)
+        {
+            if (string.IsNullOrEmpty(targetName)) return false;
+            
+            if (_targets.TryGetValue(targetName, out var target))
+            {
+                try
+                {
+                    target.MinimumLevel = minimumLevel;
+                    LogInfo($"Set minimum level for target '{targetName}' to {minimumLevel}", "Logging.Configuration", "LoggingService");
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    LogError($"Failed to set minimum level for target '{targetName}': {ex.Message}", "Logging.Configuration", "LoggingService");
+                    return false;
+                }
+            }
+            
+            return false;
+        }
+        
+        /// <inheritdoc />
+        public void SetEnabled(bool enabled)
+        {
+            _isEnabled = enabled;
+            
+            foreach (var target in _targets.Values)
+            {
+                try
+                {
+                    target.IsEnabled = enabled;
+                }
+                catch (Exception ex)
+                {
+                    LogError($"Failed to set enabled state for target '{target.Name}': {ex.Message}", "Logging.Configuration", "LoggingService");
+                }
+            }
+            
+            LogInfo($"Set global enabled state to {enabled}", "Logging.Configuration", "LoggingService");
+        }
+        
+        /// <inheritdoc />
+        public bool SetEnabled(string targetName, bool enabled)
+        {
+            if (string.IsNullOrEmpty(targetName)) return false;
+            
+            if (_targets.TryGetValue(targetName, out var target))
+            {
+                try
+                {
+                    target.IsEnabled = enabled;
+                    LogInfo($"Set enabled state for target '{targetName}' to {enabled}", "Logging.Configuration", "LoggingService");
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    LogError($"Failed to set enabled state for target '{targetName}': {ex.Message}", "Logging.Configuration", "LoggingService");
+                    return false;
+                }
+            }
+            
+            return false;
         }
         
         /// <inheritdoc />

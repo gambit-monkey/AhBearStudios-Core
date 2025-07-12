@@ -8,7 +8,7 @@ namespace AhBearStudios.Core.Logging.Builders
     /// <summary>
     /// Interface for building logging configuration in a fluent manner.
     /// Follows the Builder pattern as specified in the AhBearStudios Core Architecture.
-    /// Provides comprehensive configuration options for the logging system.
+    /// Provides comprehensive configuration options for all available log targets.
     /// </summary>
     public interface ILogConfigBuilder
     {
@@ -126,6 +126,72 @@ namespace AhBearStudios.Core.Logging.Builders
         ILogConfigBuilder WithMemoryTarget(string name = "Memory", int maxEntries = 1000, LogLevel minimumLevel = LogLevel.Debug);
 
         /// <summary>
+        /// Adds a Serilog target with enterprise-grade logging features.
+        /// </summary>
+        /// <param name="name">The name of the target (default: "Serilog")</param>
+        /// <param name="minimumLevel">The minimum log level (default: Info)</param>
+        /// <param name="loggerConfiguration">Optional Serilog logger configuration</param>
+        /// <returns>The builder instance for method chaining</returns>
+        ILogConfigBuilder WithSerilogTarget(string name = "Serilog", LogLevel minimumLevel = LogLevel.Info, object loggerConfiguration = null);
+
+        /// <summary>
+        /// Adds a null target for testing or disabled scenarios.
+        /// </summary>
+        /// <param name="name">The name of the target (default: "Null")</param>
+        /// <returns>The builder instance for method chaining</returns>
+        ILogConfigBuilder WithNullTarget(string name = "Null");
+
+        /// <summary>
+        /// Adds a standard console target (not Unity-specific).
+        /// </summary>
+        /// <param name="name">The name of the target (default: "StdConsole")</param>
+        /// <param name="minimumLevel">The minimum log level (default: Debug)</param>
+        /// <param name="useColors">Whether to use colored output (default: true)</param>
+        /// <returns>The builder instance for method chaining</returns>
+        ILogConfigBuilder WithStandardConsoleTarget(string name = "StdConsole", LogLevel minimumLevel = LogLevel.Debug, bool useColors = true);
+
+        /// <summary>
+        /// Adds a Unity console target with Unity-specific features.
+        /// </summary>
+        /// <param name="name">The name of the target (default: "UnityConsole")</param>
+        /// <param name="minimumLevel">The minimum log level (default: Debug)</param>
+        /// <param name="useColors">Whether to use colored output (default: true)</param>
+        /// <param name="showStackTraces">Whether to show stack traces (default: true)</param>
+        /// <returns>The builder instance for method chaining</returns>
+        ILogConfigBuilder WithUnityConsoleTarget(string name = "UnityConsole", LogLevel minimumLevel = LogLevel.Debug, bool useColors = true, bool showStackTraces = true);
+
+        /// <summary>
+        /// Adds a network target for remote logging.
+        /// </summary>
+        /// <param name="name">The name of the target</param>
+        /// <param name="endpoint">The network endpoint (URL or IP:Port)</param>
+        /// <param name="minimumLevel">The minimum log level (default: Info)</param>
+        /// <param name="timeoutSeconds">Network timeout in seconds (default: 30)</param>
+        /// <returns>The builder instance for method chaining</returns>
+        ILogConfigBuilder WithNetworkTarget(string name, string endpoint, LogLevel minimumLevel = LogLevel.Info, int timeoutSeconds = 30);
+
+        /// <summary>
+        /// Adds a database target for structured log storage.
+        /// </summary>
+        /// <param name="name">The name of the target</param>
+        /// <param name="connectionString">The database connection string</param>
+        /// <param name="tableName">The table name for log storage (default: "Logs")</param>
+        /// <param name="minimumLevel">The minimum log level (default: Info)</param>
+        /// <returns>The builder instance for method chaining</returns>
+        ILogConfigBuilder WithDatabaseTarget(string name, string connectionString, string tableName = "Logs", LogLevel minimumLevel = LogLevel.Info);
+
+        /// <summary>
+        /// Adds an email target for critical alerts.
+        /// </summary>
+        /// <param name="name">The name of the target</param>
+        /// <param name="smtpServer">The SMTP server address</param>
+        /// <param name="fromEmail">The sender email address</param>
+        /// <param name="toEmails">The recipient email addresses</param>
+        /// <param name="minimumLevel">The minimum log level (default: Error)</param>
+        /// <returns>The builder instance for method chaining</returns>
+        ILogConfigBuilder WithEmailTarget(string name, string smtpServer, string fromEmail, string[] toEmails, LogLevel minimumLevel = LogLevel.Error);
+
+        /// <summary>
         /// Adds a log channel configuration to the builder.
         /// </summary>
         /// <param name="channelConfig">The log channel configuration to add</param>
@@ -191,25 +257,68 @@ namespace AhBearStudios.Core.Logging.Builders
         ILogConfigBuilder WithTimestampFormat(string format);
 
         /// <summary>
-        /// Configures the builder for production use with optimized settings.
-        /// Sets high-performance mode, burst compatibility, batching, and info-level logging.
+        /// Configures the builder for production use with enterprise-grade logging.
+        /// Sets Serilog, file logging, memory buffer, and email alerts.
         /// </summary>
         /// <returns>The builder instance for method chaining</returns>
         ILogConfigBuilder ForProduction();
 
         /// <summary>
-        /// Configures the builder for development use with debugging-friendly settings.
-        /// Sets debug-level logging, console and memory targets, and disables batching.
+        /// Configures the builder for development use with comprehensive debugging.
+        /// Sets Unity console, standard console, memory buffer, and file logging.
         /// </summary>
         /// <returns>The builder instance for method chaining</returns>
         ILogConfigBuilder ForDevelopment();
 
         /// <summary>
-        /// Configures the builder for testing scenarios.
-        /// Sets debug-level logging with memory target optimized for testing.
+        /// Configures the builder for testing scenarios with comprehensive capture.
+        /// Sets large memory buffer and null target for testing.
         /// </summary>
         /// <returns>The builder instance for method chaining</returns>
         ILogConfigBuilder ForTesting();
+
+        /// <summary>
+        /// Configures the builder for staging environments with production-like settings.
+        /// Sets Serilog, file logging, memory buffer, and Unity console for warnings.
+        /// </summary>
+        /// <returns>The builder instance for method chaining</returns>
+        ILogConfigBuilder ForStaging();
+
+        /// <summary>
+        /// Configures the builder for performance testing scenarios.
+        /// Minimizes logging overhead with memory-only targets.
+        /// </summary>
+        /// <returns>The builder instance for method chaining</returns>
+        ILogConfigBuilder ForPerformanceTesting();
+
+        /// <summary>
+        /// Configures the builder for high-availability production environments.
+        /// Sets comprehensive logging with Serilog, database, network, and email alerts.
+        /// </summary>
+        /// <returns>The builder instance for method chaining</returns>
+        ILogConfigBuilder ForHighAvailability();
+
+        /// <summary>
+        /// Configures the builder for cloud deployment scenarios.
+        /// Sets network logging, memory buffer, local backup, and cloud alerts.
+        /// </summary>
+        /// <returns>The builder instance for method chaining</returns>
+        ILogConfigBuilder ForCloudDeployment();
+
+        /// <summary>
+        /// Configures the builder for mobile/embedded scenarios with minimal overhead.
+        /// Sets minimal logging with small memory buffer and error-only file logging.
+        /// </summary>
+        /// <returns>The builder instance for method chaining</returns>
+        ILogConfigBuilder ForMobile();
+
+        /// <summary>
+        /// Configures the builder for debugging specific issues with targeted logging.
+        /// Sets comprehensive debugging with Unity console, file trace, and debug channel.
+        /// </summary>
+        /// <param name="debugChannel">The specific channel to debug</param>
+        /// <returns>The builder instance for method chaining</returns>
+        ILogConfigBuilder ForDebugging(string debugChannel = "Debug");
 
         /// <summary>
         /// Validates the current configuration and returns any validation errors.
