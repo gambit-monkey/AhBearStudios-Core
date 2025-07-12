@@ -3,142 +3,100 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
+using System.Threading.Tasks;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Models;
-using AhBearStudios.Core.Logging.Services;
 using AhBearStudios.Core.Logging.Targets;
+using AhBearStudios.Core.Logging.Services;
+using AhBearStudios.Core.Logging.HealthChecks;
 
 namespace AhBearStudios.Core.Logging
 {
     /// <summary>
-    /// High-performance implementation of the logging service.
-    /// Provides centralized logging with multiple targets and advanced features.
-    /// Follows the AhBearStudios Core Architecture foundation system pattern with full core system integration.
-    /// Implements Unity.Collections v2 and Burst compatibility for optimal performance.
+    /// Enhanced high-performance logging service implementation with full system integration.
+    /// Provides centralized logging with health monitoring, alerting, and performance tracking.
+    /// Follows AhBearStudios Core Architecture patterns with complete dependency integration.
     /// </summary>
     public sealed class LoggingService : ILoggingService, IDisposable
     {
-        private readonly ConcurrentDictionary<string, ILogTarget> _targets;
         private readonly LoggingConfig _config;
-        private readonly LogBatchingService _batchingService;
+        private readonly ConcurrentDictionary<string, ILogTarget> _targets;
         private readonly LogFormattingService _formattingService;
-        private readonly object _configLock = new object();
-        private readonly Stopwatch _performanceStopwatch;
-        
-        // Native collections for high-performance scenarios
-        private readonly NativeList<LogMessage> _nativeMessageBuffer;
-        private readonly NativeHashMap<FixedString64Bytes, int> _channelLookup;
-        
-        // Core system dependencies (injected via Reflex)
-        private readonly IMessageBusService _messageBus;
+        private readonly LogBatchingService _batchingService;
         private readonly IHealthCheckService _healthCheckService;
         private readonly IAlertService _alertService;
-        private readonly IPoolingService _poolingService;
         private readonly IProfilerService _profilerService;
         
-        private volatile bool _disposed = false;
-        private volatile bool _enabled = true;
-        private volatile LogLevel _globalMinimumLevel = LogLevel.Debug;
-
+        private readonly object _lock = new object();
+        private readonly Stopwatch _performanceStopwatch;
+        private volatile bool _disposed;
+        private volatile bool _isEnabled;
+        
+        // Native collections for high-performance scenarios
+        private NativeArray<LogMessage> _nativeMessageBuffer;
+        private NativeHashMap<FixedString64Bytes, int> _channelLookup;
+        
+        // Performance tracking
+        private long _totalMessagesProcessed;
+        private long _totalErrorsEncountered;
+        private DateTime _lastHealthCheck;
+        private readonly TimeSpan _healthCheckInterval = TimeSpan.FromMinutes(1);
+        
+        // Alert tracking
+        private DateTime _lastCriticalAlert = DateTime.MinValue;
+        private readonly TimeSpan _alertCooldown = TimeSpan.FromMinutes(5);
+        
         /// <summary>
-        /// Gets the current logging configuration.
-        /// </summary>
-        public LoggingConfig Configuration => _config;
-
-        /// <summary>
-        /// Gets whether the logging service is enabled.
-        /// </summary>
-        public bool IsEnabled => _enabled && !_disposed;
-
-        /// <summary>
-        /// Gets the global minimum log level.
-        /// </summary>
-        public LogLevel GlobalMinimumLevel => _globalMinimumLevel;
-
-        /// <summary>
-        /// Gets the number of registered targets.
-        /// </summary>
-        public int TargetCount => _targets.Count;
-
-        /// <summary>
-        /// Gets whether high-performance mode is enabled.
-        /// </summary>
-        public bool HighPerformanceMode => _config?.HighPerformanceMode ?? false;
-
-        /// <summary>
-        /// Gets whether batch processing is enabled.
-        /// </summary>
-        public bool BatchingEnabled => _batchingService != null;
-
-        /// <summary>
-        /// Initializes a new instance of the LoggingService with full core system integration.
+        /// Initializes a new instance of the LoggingService with full system integration.
         /// </summary>
         /// <param name="config">The logging configuration</param>
-        /// <param name="messageBus">The message bus service for cross-system communication</param>
-        /// <param name="healthCheckService">The health check service for monitoring</param>
-        /// <param name="alertService">The alert service for critical notifications</param>
-        /// <param name="poolingService">The pooling service for resource management (optional)</param>
-        /// <param name="profilerService">The profiler service for performance monitoring (optional)</param>
-        /// <exception cref="ArgumentNullException">Thrown when required dependencies are null</exception>
+        /// <param name="targets">Initial log targets to register</param>
+        /// <param name="formattingService">Service for formatting log messages</param>
+        /// <param name="batchingService">Service for batching log operations</param>
+        /// <param name="healthCheckService">Health check service for monitoring</param>
+        /// <param name="alertService">Alert service for critical notifications</param>
+        /// <param name="profilerService">Profiler service for performance monitoring</param>
         public LoggingService(
             LoggingConfig config,
-            IMessageBusService messageBus,
-            IHealthCheckService healthCheckService,
-            IAlertService alertService,
-            IPoolingService poolingService = null,
+            IEnumerable<ILogTarget> targets = null,
+            LogFormattingService formattingService = null,
+            LogBatchingService batchingService = null,
+            IHealthCheckService healthCheckService = null,
+            IAlertService alertService = null,
             IProfilerService profilerService = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
-            _healthCheckService = healthCheckService ?? throw new ArgumentNullException(nameof(healthCheckService));
-            _alertService = alertService ?? throw new ArgumentNullException(nameof(alertService));
-            _poolingService = poolingService;
-            _profilerService = profilerService;
-
             _targets = new ConcurrentDictionary<string, ILogTarget>();
-            _performanceStopwatch = new Stopwatch();
+            _formattingService = formattingService;
+            _batchingService = batchingService;
+            _healthCheckService = healthCheckService;
+            _alertService = alertService;
+            _profilerService = profilerService;
             
-            // Initialize native collections for high-performance mode
-            if (_config.HighPerformanceMode)
-            {
-                _nativeMessageBuffer = new NativeList<LogMessage>(_config.MaxQueueSize, Allocator.Persistent);
-                _channelLookup = new NativeHashMap<FixedString64Bytes, int>(64, Allocator.Persistent);
-            }
+            _isEnabled = config.IsLoggingEnabled;
+            _performanceStopwatch = Stopwatch.StartNew();
+            _lastHealthCheck = DateTime.UtcNow;
             
-            _globalMinimumLevel = _config.GlobalMinimumLevel;
-            _enabled = _config.IsLoggingEnabled;
-
-            // Initialize batching service if enabled
-            if (_config.BatchingEnabled)
-            {
-                _batchingService = new LogBatchingService(
-                    Array.Empty<ILogTarget>(), // Will be updated when targets are registered
-                    _config.BatchSize,
-                    _config.FlushInterval,
-                    _config.HighPerformanceMode,
-                    _config.BurstCompatibility);
-            }
-
-            // Initialize formatting service
-            _formattingService = new LogFormattingService(
-                _config.MessageFormat,
-                _config.TimestampFormat,
-                _config.HighPerformanceMode,
-                _config.CachingEnabled,
-                _config.MaxCacheSize);
-
-            // Register with health check service
+            InitializeNativeCollections();
+            RegisterInitialTargets(targets);
             RegisterHealthCheck();
-
-            // Log initialization
-            LogInfo("LoggingService initialized successfully", "Core.Logging.Initialization");
+            
+            LogInfo("LoggingService initialized successfully", "Logging.Bootstrap", "LoggingService");
         }
-
+        
         /// <summary>
-        /// Logs a debug message.
+        /// Gets the current configuration of the logging service.
         /// </summary>
-        /// <param name="message">The message to log</param>
+        public LoggingConfig Configuration => _config;
+        
+        /// <summary>
+        /// Gets whether the logging service is enabled.
+        /// </summary>
+        public bool IsEnabled => _isEnabled && !_disposed;
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogDebug(string message)
         {
@@ -147,12 +105,8 @@ namespace AhBearStudios.Core.Logging
                 LogInternal(LogLevel.Debug, "Default", message);
             }
         }
-
-        /// <summary>
-        /// Logs a debug message with structured properties.
-        /// </summary>
-        /// <param name="message">The message to log</param>
-        /// <param name="properties">Additional structured properties</param>
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogDebug(string message, IReadOnlyDictionary<string, object> properties)
         {
@@ -161,13 +115,8 @@ namespace AhBearStudios.Core.Logging
                 LogInternal(LogLevel.Debug, "Default", message, null, null, properties);
             }
         }
-
-        /// <summary>
-        /// Logs a debug message with correlation ID and source context.
-        /// </summary>
-        /// <param name="message">The message to log</param>
-        /// <param name="correlationId">The correlation ID for tracking</param>
-        /// <param name="sourceContext">The source context (typically class name)</param>
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogDebug(string message, string correlationId, string sourceContext = null)
         {
@@ -176,11 +125,8 @@ namespace AhBearStudios.Core.Logging
                 LogInternal(LogLevel.Debug, "Default", message, null, correlationId, null, sourceContext);
             }
         }
-
-        /// <summary>
-        /// Logs an informational message.
-        /// </summary>
-        /// <param name="message">The message to log</param>
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogInfo(string message)
         {
@@ -189,12 +135,8 @@ namespace AhBearStudios.Core.Logging
                 LogInternal(LogLevel.Info, "Default", message);
             }
         }
-
-        /// <summary>
-        /// Logs an informational message with structured properties.
-        /// </summary>
-        /// <param name="message">The message to log</param>
-        /// <param name="properties">Additional structured properties</param>
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogInfo(string message, IReadOnlyDictionary<string, object> properties)
         {
@@ -203,13 +145,8 @@ namespace AhBearStudios.Core.Logging
                 LogInternal(LogLevel.Info, "Default", message, null, null, properties);
             }
         }
-
-        /// <summary>
-        /// Logs an informational message with correlation ID and source context.
-        /// </summary>
-        /// <param name="message">The message to log</param>
-        /// <param name="correlationId">The correlation ID for tracking</param>
-        /// <param name="sourceContext">The source context (typically class name)</param>
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogInfo(string message, string correlationId, string sourceContext = null)
         {
@@ -218,11 +155,8 @@ namespace AhBearStudios.Core.Logging
                 LogInternal(LogLevel.Info, "Default", message, null, correlationId, null, sourceContext);
             }
         }
-
-        /// <summary>
-        /// Logs a warning message.
-        /// </summary>
-        /// <param name="message">The message to log</param>
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogWarning(string message)
         {
@@ -231,12 +165,8 @@ namespace AhBearStudios.Core.Logging
                 LogInternal(LogLevel.Warning, "Default", message);
             }
         }
-
-        /// <summary>
-        /// Logs a warning message with structured properties.
-        /// </summary>
-        /// <param name="message">The message to log</param>
-        /// <param name="properties">Additional structured properties</param>
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogWarning(string message, IReadOnlyDictionary<string, object> properties)
         {
@@ -245,13 +175,8 @@ namespace AhBearStudios.Core.Logging
                 LogInternal(LogLevel.Warning, "Default", message, null, null, properties);
             }
         }
-
-        /// <summary>
-        /// Logs a warning message with correlation ID and source context.
-        /// </summary>
-        /// <param name="message">The message to log</param>
-        /// <param name="correlationId">The correlation ID for tracking</param>
-        /// <param name="sourceContext">The source context (typically class name)</param>
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogWarning(string message, string correlationId, string sourceContext = null)
         {
@@ -260,327 +185,150 @@ namespace AhBearStudios.Core.Logging
                 LogInternal(LogLevel.Warning, "Default", message, null, correlationId, null, sourceContext);
             }
         }
-
-        /// <summary>
-        /// Logs an error message.
-        /// </summary>
-        /// <param name="message">The message to log</param>
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogError(string message)
         {
             if (ShouldLog(LogLevel.Error))
             {
                 LogInternal(LogLevel.Error, "Default", message);
+                TriggerErrorAlert(message, null);
             }
         }
-
-        /// <summary>
-        /// Logs an error message with structured properties.
-        /// </summary>
-        /// <param name="message">The message to log</param>
-        /// <param name="properties">Additional structured properties</param>
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogError(string message, IReadOnlyDictionary<string, object> properties)
         {
             if (ShouldLog(LogLevel.Error))
             {
                 LogInternal(LogLevel.Error, "Default", message, null, null, properties);
+                TriggerErrorAlert(message, null);
             }
         }
-
-        /// <summary>
-        /// Logs an error message with correlation ID and source context.
-        /// </summary>
-        /// <param name="message">The message to log</param>
-        /// <param name="correlationId">The correlation ID for tracking</param>
-        /// <param name="sourceContext">The source context (typically class name)</param>
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogError(string message, string correlationId, string sourceContext = null)
         {
             if (ShouldLog(LogLevel.Error))
             {
                 LogInternal(LogLevel.Error, "Default", message, null, correlationId, null, sourceContext);
+                TriggerErrorAlert(message, null);
             }
         }
-
-        /// <summary>
-        /// Logs a critical message.
-        /// </summary>
-        /// <param name="message">The message to log</param>
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogCritical(string message)
         {
             if (ShouldLog(LogLevel.Critical))
             {
                 LogInternal(LogLevel.Critical, "Default", message);
+                TriggerCriticalAlert(message, null);
             }
         }
-
-        /// <summary>
-        /// Logs a critical message with structured properties.
-        /// </summary>
-        /// <param name="message">The message to log</param>
-        /// <param name="properties">Additional structured properties</param>
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogCritical(string message, IReadOnlyDictionary<string, object> properties)
         {
             if (ShouldLog(LogLevel.Critical))
             {
                 LogInternal(LogLevel.Critical, "Default", message, null, null, properties);
+                TriggerCriticalAlert(message, null);
             }
         }
-
-        /// <summary>
-        /// Logs a critical message with correlation ID and source context.
-        /// </summary>
-        /// <param name="message">The message to log</param>
-        /// <param name="correlationId">The correlation ID for tracking</param>
-        /// <param name="sourceContext">The source context (typically class name)</param>
+        
+        /// <inheritdoc />
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void LogCritical(string message, string correlationId, string sourceContext = null)
         {
             if (ShouldLog(LogLevel.Critical))
             {
                 LogInternal(LogLevel.Critical, "Default", message, null, correlationId, null, sourceContext);
+                TriggerCriticalAlert(message, null);
             }
         }
-
-        /// <summary>
-        /// Logs an exception with context information.
-        /// </summary>
-        /// <param name="exception">The exception to log</param>
-        /// <param name="context">Additional context information</param>
-        public void LogException(Exception exception, string context)
+        
+        /// <inheritdoc />
+        public void LogException(Exception exception, string context = null)
         {
             if (exception == null) return;
             
-            LogInternal(LogLevel.Error, "Exception", context ?? "An exception occurred", exception);
-            
-            // Trigger alert for critical exceptions
-            try
+            if (ShouldLog(LogLevel.Error))
             {
-                _alertService?.RaiseAlert(
-                    new FixedString128Bytes($"Exception in {GetCallerContext()}"),
-                    AlertSeverity.Critical,
-                    new FixedString64Bytes("Logging"),
-                    new FixedString64Bytes("Exception"));
-            }
-            catch
-            {
-                // Avoid circular logging on alert failures
+                var message = context != null ? $"{context}: {exception.Message}" : exception.Message;
+                LogInternal(LogLevel.Error, "Default", message, exception);
+                TriggerErrorAlert(message, exception);
+                
+                Interlocked.Increment(ref _totalErrorsEncountered);
             }
         }
-
-        /// <summary>
-        /// Logs an exception with context and correlation ID.
-        /// </summary>
-        /// <param name="exception">The exception to log</param>
-        /// <param name="context">Additional context information</param>
-        /// <param name="correlationId">The correlation ID for tracking</param>
-        /// <param name="sourceContext">The source context (typically class name)</param>
-        public void LogException(Exception exception, string context, string correlationId, string sourceContext = null)
-        {
-            if (exception == null) return;
-            
-            LogInternal(LogLevel.Error, "Exception", context ?? "An exception occurred", exception, correlationId, null, sourceContext);
-        }
-
-        /// <summary>
-        /// Logs a message with the specified level and channel.
-        /// </summary>
-        /// <param name="level">The log level</param>
-        /// <param name="channel">The channel name</param>
-        /// <param name="message">The message to log</param>
-        /// <param name="exception">The associated exception, if any</param>
-        /// <param name="correlationId">The correlation ID</param>
-        /// <param name="properties">Additional structured properties</param>
-        /// <param name="sourceContext">The source context</param>
-        public void Log(LogLevel level, string channel, string message, Exception exception = null, 
-                       string correlationId = null, IReadOnlyDictionary<string, object> properties = null, 
-                       string sourceContext = null)
-        {
-            if (ShouldLog(level))
-            {
-                LogInternal(level, channel ?? "Default", message, exception, correlationId, properties, sourceContext);
-            }
-        }
-
-        /// <summary>
-        /// Registers a log target with the service.
-        /// </summary>
-        /// <param name="target">The log target to register</param>
-        /// <exception cref="ArgumentNullException">Thrown when target is null</exception>
+        
+        /// <inheritdoc />
         public void RegisterTarget(ILogTarget target)
         {
-            if (target == null) throw new ArgumentNullException(nameof(target));
-            if (_disposed) return;
-
-            _targets.TryAdd(target.Name, target);
+            if (target == null)
+                throw new ArgumentNullException(nameof(target));
             
-            // Update batching service if enabled
-            if (_batchingService != null)
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(LoggingService));
+            
+            lock (_lock)
             {
-                UpdateBatchingServiceTargets();
-            }
-            
-            LogInfo($"Registered log target: {target.Name}", "Core.Logging.Registration");
-        }
-
-        /// <summary>
-        /// Unregisters a log target from the service.
-        /// </summary>
-        /// <param name="target">The log target to unregister</param>
-        /// <returns>True if the target was unregistered, false if it was not found</returns>
-        public bool UnregisterTarget(ILogTarget target)
-        {
-            if (target == null) return false;
-            
-            var removed = _targets.TryRemove(target.Name, out _);
-            
-            if (removed)
-            {
-                // Update batching service if enabled
-                if (_batchingService != null)
+                if (_targets.TryAdd(target.Name, target))
                 {
                     UpdateBatchingServiceTargets();
+                    LogInfo($"Registered log target: {target.Name}", "Logging.Registration", "LoggingService");
                 }
-                
-                LogInfo($"Unregistered log target: {target.Name}", "Core.Logging.Registration");
+                else
+                {
+                    LogWarning($"Target with name '{target.Name}' is already registered", "Logging.Registration", "LoggingService");
+                }
             }
-            
-            return removed;
         }
-
-        /// <summary>
-        /// Unregisters a log target by name.
-        /// </summary>
-        /// <param name="targetName">The name of the target to unregister</param>
-        /// <returns>True if the target was unregistered, false if it was not found</returns>
+        
+        /// <inheritdoc />
         public bool UnregisterTarget(string targetName)
         {
             if (string.IsNullOrEmpty(targetName)) return false;
+            if (_disposed) return false;
             
-            var removed = _targets.TryRemove(targetName, out _);
-            
-            if (removed && _batchingService != null)
+            lock (_lock)
             {
-                UpdateBatchingServiceTargets();
+                if (_targets.TryRemove(targetName, out var target))
+                {
+                    try
+                    {
+                        target.Dispose();
+                        UpdateBatchingServiceTargets();
+                        LogInfo($"Unregistered log target: {targetName}", "Logging.Registration", "LoggingService");
+                        return true;
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError($"Error disposing target '{targetName}': {ex.Message}", "Logging.Registration", "LoggingService");
+                        return false;
+                    }
+                }
+                
+                return false;
             }
-            
-            return removed;
         }
-
-        /// <summary>
-        /// Gets all registered log targets.
-        /// </summary>
-        /// <returns>A read-only list of registered targets</returns>
+        
+        /// <inheritdoc />
         public IReadOnlyList<ILogTarget> GetRegisteredTargets()
         {
             return _targets.Values.ToList().AsReadOnly();
         }
-
-        /// <summary>
-        /// Gets a registered log target by name.
-        /// </summary>
-        /// <param name="targetName">The name of the target to retrieve</param>
-        /// <returns>The log target if found, null otherwise</returns>
-        public ILogTarget GetTarget(string targetName)
-        {
-            if (string.IsNullOrEmpty(targetName)) return null;
-            
-            _targets.TryGetValue(targetName, out var target);
-            return target;
-        }
-
-        /// <summary>
-        /// Determines whether a log target is registered.
-        /// </summary>
-        /// <param name="targetName">The name of the target to check</param>
-        /// <returns>True if the target is registered, false otherwise</returns>
-        public bool HasTarget(string targetName)
-        {
-            if (string.IsNullOrEmpty(targetName)) return false;
-            
-            return _targets.ContainsKey(targetName);
-        }
-
-        /// <summary>
-        /// Sets the minimum log level for all targets.
-        /// </summary>
-        /// <param name="minimumLevel">The minimum log level</param>
-        public void SetMinimumLevel(LogLevel minimumLevel)
-        {
-            lock (_configLock)
-            {
-                _globalMinimumLevel = minimumLevel;
-                
-                foreach (var target in _targets.Values)
-                {
-                    target.MinimumLevel = minimumLevel;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Sets the minimum log level for a specific target.
-        /// </summary>
-        /// <param name="targetName">The name of the target</param>
-        /// <param name="minimumLevel">The minimum log level</param>
-        /// <returns>True if the target was found and updated, false otherwise</returns>
-        public bool SetMinimumLevel(string targetName, LogLevel minimumLevel)
-        {
-            if (string.IsNullOrEmpty(targetName)) return false;
-            
-            if (_targets.TryGetValue(targetName, out var target))
-            {
-                target.MinimumLevel = minimumLevel;
-                return true;
-            }
-            
-            return false;
-        }
-
-        /// <summary>
-        /// Enables or disables all log targets.
-        /// </summary>
-        /// <param name="enabled">True to enable all targets, false to disable</param>
-        public void SetEnabled(bool enabled)
-        {
-            lock (_configLock)
-            {
-                _enabled = enabled;
-                
-                foreach (var target in _targets.Values)
-                {
-                    target.IsEnabled = enabled;
-                }
-            }
-        }
-
-        /// <summary>
-        /// Enables or disables a specific log target.
-        /// </summary>
-        /// <param name="targetName">The name of the target</param>
-        /// <param name="enabled">True to enable the target, false to disable</param>
-        /// <returns>True if the target was found and updated, false otherwise</returns>
-        public bool SetEnabled(string targetName, bool enabled)
-        {
-            if (string.IsNullOrEmpty(targetName)) return false;
-            
-            if (_targets.TryGetValue(targetName, out var target))
-            {
-                target.IsEnabled = enabled;
-                return true;
-            }
-            
-            return false;
-        }
-
-        /// <summary>
-        /// Forces all log targets to flush their buffers.
-        /// </summary>
+        
+        /// <inheritdoc />
         public void Flush()
         {
+            using var scope = _profilerService?.BeginScope("LoggingService.Flush");
+            
             if (_batchingService != null)
             {
                 _batchingService.ForceFlush();
@@ -596,15 +344,12 @@ namespace AhBearStudios.Core.Logging
                 {
                     // Avoid circular logging - use system debugging instead
                     System.Diagnostics.Debug.WriteLine($"LoggingService flush error for target '{target.Name}': {ex.Message}");
+                    TriggerTargetErrorAlert(target.Name, ex);
                 }
             }
         }
-
-        /// <summary>
-        /// Forces a specific log target to flush its buffer.
-        /// </summary>
-        /// <param name="targetName">The name of the target to flush</param>
-        /// <returns>True if the target was found and flushed, false otherwise</returns>
+        
+        /// <inheritdoc />
         public bool Flush(string targetName)
         {
             if (string.IsNullOrEmpty(targetName)) return false;
@@ -619,20 +364,20 @@ namespace AhBearStudios.Core.Logging
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"LoggingService flush error for target '{targetName}': {ex.Message}");
+                    TriggerTargetErrorAlert(targetName, ex);
                     return false;
                 }
             }
             
             return false;
         }
-
-        /// <summary>
-        /// Performs a health check on all registered targets.
-        /// </summary>
-        /// <returns>True if all targets are healthy, false if any target is unhealthy</returns>
+        
+        /// <inheritdoc />
         public bool PerformHealthCheck()
         {
             if (_disposed) return false;
+            
+            _lastHealthCheck = DateTime.UtcNow;
             
             foreach (var target in _targets.Values)
             {
@@ -646,17 +391,15 @@ namespace AhBearStudios.Core.Logging
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine($"LoggingService health check error for target '{target.Name}': {ex.Message}");
+                    TriggerTargetErrorAlert(target.Name, ex);
                     return false;
                 }
             }
             
             return true;
         }
-
-        /// <summary>
-        /// Gets health status information for all registered targets.
-        /// </summary>
-        /// <returns>A dictionary containing health status for each target</returns>
+        
+        /// <inheritdoc />
         public IReadOnlyDictionary<string, bool> GetHealthStatus()
         {
             var healthStatus = new Dictionary<string, bool>();
@@ -669,126 +412,272 @@ namespace AhBearStudios.Core.Logging
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"LoggingService health check error for target '{target.Name}': {ex.Message}");
                     healthStatus[target.Name] = false;
+                    System.Diagnostics.Debug.WriteLine($"Health check failed for target '{target.Name}': {ex.Message}");
                 }
             }
             
-            return healthStatus;
+            return healthStatus.AsReadOnly();
         }
-
+        
         /// <summary>
-        /// Internal logging method that handles the actual message processing.
+        /// Gets performance statistics for the logging service.
         /// </summary>
-        /// <param name="level">The log level</param>
-        /// <param name="channel">The channel name</param>
-        /// <param name="message">The message to log</param>
-        /// <param name="exception">The associated exception, if any</param>
-        /// <param name="correlationId">The correlation ID</param>
-        /// <param name="properties">Additional structured properties</param>
-        /// <param name="sourceContext">The source context</param>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void LogInternal(LogLevel level, string channel, string message, Exception exception = null, 
-                                string correlationId = null, IReadOnlyDictionary<string, object> properties = null, 
-                                string sourceContext = null)
+        /// <returns>Performance statistics</returns>
+        public LoggingStatistics GetStatistics()
         {
-            if (_disposed || !_enabled) return;
-
-            // Use profiler if available
-            using var profilerScope = _profilerService?.BeginScope(new ProfilerTag("Logging.LogInternal"));
-
+            var totalTargets = _targets.Count;
+            var healthyTargets = GetHealthStatus().Values.Count(healthy => healthy);
+            var errorRate = _totalMessagesProcessed > 0 ? (double)_totalErrorsEncountered / _totalMessagesProcessed : 0.0;
+            
+            return new LoggingStatistics
+            {
+                MessagesProcessed = _totalMessagesProcessed,
+                ErrorCount = _totalErrorsEncountered,
+                ErrorRate = errorRate,
+                ActiveTargets = totalTargets,
+                HealthyTargets = healthyTargets,
+                UptimeSeconds = _performanceStopwatch.Elapsed.TotalSeconds,
+                LastHealthCheck = _lastHealthCheck
+            };
+        }
+        
+        /// <summary>
+        /// Internal logging method with full feature support.
+        /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void LogInternal(
+            LogLevel level,
+            string channel,
+            string message,
+            Exception exception = null,
+            string correlationId = null,
+            IReadOnlyDictionary<string, object> properties = null,
+            string sourceContext = null)
+        {
+            if (!IsEnabled || message == null) return;
+            
             try
             {
-                // Create log message
-                var logMessage = LogMessage.Create(
-                    level, 
-                    channel, 
-                    message, 
-                    exception, 
-                    correlationId, 
-                    properties, 
-                    sourceContext ?? GetCallerContext());
-
-                // Route to batching service if enabled, otherwise process directly
-                if (_batchingService != null)
+                using var scope = _profilerService?.BeginScope("LoggingService.LogInternal");
+                
+                var logMessage = CreateLogMessage(level, channel, message, exception, correlationId, properties, sourceContext);
+                
+                if (_config.HighPerformanceMode && _batchingService != null)
                 {
-                    _batchingService.EnqueueMessage(logMessage);
+                    _batchingService.QueueMessage(logMessage);
                 }
                 else
                 {
-                    ProcessMessage(logMessage);
+                    WriteToTargets(logMessage);
                 }
-
-                // Publish to message bus for cross-system integration
-                try
+                
+                Interlocked.Increment(ref _totalMessagesProcessed);
+                
+                // Periodic health check
+                if (DateTime.UtcNow - _lastHealthCheck > _healthCheckInterval)
                 {
-                    _messageBus?.PublishMessage(logMessage);
-                }
-                catch
-                {
-                    // Avoid circular logging on message bus failures
+                    Task.Run(() => PerformAsyncHealthCheck());
                 }
             }
             catch (Exception ex)
             {
-                // Emergency fallback - use system debugging
+                Interlocked.Increment(ref _totalErrorsEncountered);
                 System.Diagnostics.Debug.WriteLine($"LoggingService internal error: {ex.Message}");
+                TriggerInternalErrorAlert(ex);
             }
         }
-
+        
         /// <summary>
-        /// Processes a log message through all registered targets.
+        /// Creates a structured log message from the provided parameters.
         /// </summary>
-        /// <param name="logMessage">The log message to process</param>
-        private void ProcessMessage(in LogMessage logMessage)
+        private LogMessage CreateLogMessage(
+            LogLevel level,
+            string channel,
+            string message,
+            Exception exception,
+            string correlationId,
+            IReadOnlyDictionary<string, object> properties,
+            string sourceContext)
+        {
+            var timestamp = DateTime.UtcNow;
+            
+            if (string.IsNullOrEmpty(correlationId) && _config.AutoCorrelationId)
+            {
+                correlationId = Guid.NewGuid().ToString("N");
+            }
+            
+            return new LogMessage
+            {
+                Level = level,
+                Channel = channel ?? "Default",
+                Message = message,
+                Exception = exception,
+                Timestamp = timestamp,
+                CorrelationId = correlationId,
+                SourceContext = sourceContext,
+                Properties = properties,
+                ThreadId = Thread.CurrentThread.ManagedThreadId
+            };
+        }
+        
+        /// <summary>
+        /// Writes a log message to all appropriate targets.
+        /// </summary>
+        private void WriteToTargets(LogMessage logMessage)
         {
             foreach (var target in _targets.Values)
             {
                 try
                 {
-                    if (target.ShouldProcessMessage(logMessage))
+                    if (target.IsEnabled && target.ShouldProcessMessage(logMessage))
                     {
                         target.Write(logMessage);
                     }
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"LoggingService processing error for target '{target.Name}': {ex.Message}");
+                    Interlocked.Increment(ref _totalErrorsEncountered);
+                    System.Diagnostics.Debug.WriteLine($"Error writing to target '{target.Name}': {ex.Message}");
+                    TriggerTargetErrorAlert(target.Name, ex);
                 }
             }
         }
-
+        
         /// <summary>
-        /// Determines whether a message should be logged based on the current configuration.
+        /// Determines whether a message at the specified level should be logged.
         /// </summary>
-        /// <param name="level">The log level to check</param>
-        /// <returns>True if the message should be logged, false otherwise</returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private bool ShouldLog(LogLevel level)
         {
-            return _enabled && !_disposed && level >= _globalMinimumLevel;
+            return IsEnabled && level >= _config.GlobalMinimumLevel;
         }
-
+        
         /// <summary>
-        /// Gets the caller context for source tracking.
+        /// Triggers an error-level alert for critical logging failures.
         /// </summary>
-        /// <returns>The caller's class name or null if not available</returns>
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static string GetCallerContext()
+        private void TriggerErrorAlert(string message, Exception exception)
         {
+            if (_alertService == null) return;
+            
             try
             {
-                var stackTrace = new StackTrace(3, false);
-                var frame = stackTrace.GetFrame(0);
-                var method = frame?.GetMethod();
-                return method?.DeclaringType?.Name;
+                var alertMessage = exception != null ? $"{message} - {exception.Message}" : message;
+                _alertService.RaiseAlert(
+                    new FixedString128Bytes(alertMessage.Substring(0, Math.Min(alertMessage.Length, 127))),
+                    AlertSeverity.High,
+                    new FixedString64Bytes("LoggingService"),
+                    new FixedString64Bytes("Error"));
             }
-            catch
+            catch (Exception ex)
             {
-                return null;
+                System.Diagnostics.Debug.WriteLine($"Failed to raise error alert: {ex.Message}");
             }
         }
-
+        
+        /// <summary>
+        /// Triggers a critical-level alert for severe logging failures.
+        /// </summary>
+        private void TriggerCriticalAlert(string message, Exception exception)
+        {
+            if (_alertService == null) return;
+            
+            var now = DateTime.UtcNow;
+            if (now - _lastCriticalAlert < _alertCooldown) return; // Prevent alert spam
+            
+            _lastCriticalAlert = now;
+            
+            try
+            {
+                var alertMessage = exception != null ? $"CRITICAL: {message} - {exception.Message}" : $"CRITICAL: {message}";
+                _alertService.RaiseAlert(
+                    new FixedString128Bytes(alertMessage.Substring(0, Math.Min(alertMessage.Length, 127))),
+                    AlertSeverity.Critical,
+                    new FixedString64Bytes("LoggingService"),
+                    new FixedString64Bytes("Critical"));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to raise critical alert: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Triggers an alert for target-specific errors.
+        /// </summary>
+        private void TriggerTargetErrorAlert(string targetName, Exception exception)
+        {
+            if (_alertService == null) return;
+            
+            try
+            {
+                var alertMessage = $"Log target '{targetName}' error: {exception.Message}";
+                _alertService.RaiseAlert(
+                    new FixedString128Bytes(alertMessage.Substring(0, Math.Min(alertMessage.Length, 127))),
+                    AlertSeverity.Medium,
+                    new FixedString64Bytes("LoggingService"),
+                    new FixedString64Bytes("TargetError"));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to raise target error alert: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Triggers an alert for internal logging service errors.
+        /// </summary>
+        private void TriggerInternalErrorAlert(Exception exception)
+        {
+            if (_alertService == null) return;
+            
+            try
+            {
+                var alertMessage = $"Logging service internal error: {exception.Message}";
+                _alertService.RaiseAlert(
+                    new FixedString128Bytes(alertMessage.Substring(0, Math.Min(alertMessage.Length, 127))),
+                    AlertSeverity.Critical,
+                    new FixedString64Bytes("LoggingService"),
+                    new FixedString64Bytes("Internal"));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to raise internal error alert: {ex.Message}");
+            }
+        }
+        
+        /// <summary>
+        /// Initializes native collections for high-performance scenarios.
+        /// </summary>
+        private void InitializeNativeCollections()
+        {
+            if (_config.HighPerformanceMode)
+            {
+                _nativeMessageBuffer = new NativeArray<LogMessage>(_config.MaxQueueSize, Allocator.Persistent);
+                _channelLookup = new NativeHashMap<FixedString64Bytes, int>(16, Allocator.Persistent);
+            }
+        }
+        
+        /// <summary>
+        /// Registers initial targets with the logging service.
+        /// </summary>
+        private void RegisterInitialTargets(IEnumerable<ILogTarget> targets)
+        {
+            if (targets == null) return;
+            
+            foreach (var target in targets)
+            {
+                try
+                {
+                    RegisterTarget(target);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Failed to register initial target '{target?.Name}': {ex.Message}");
+                }
+            }
+        }
+        
         /// <summary>
         /// Updates the batching service with current targets.
         /// </summary>
@@ -796,23 +685,44 @@ namespace AhBearStudios.Core.Logging
         {
             // Note: In a complete implementation, LogBatchingService would support dynamic target updates
         }
-
+        
         /// <summary>
         /// Registers this service with the health check system.
         /// </summary>
         private void RegisterHealthCheck()
         {
+            if (_healthCheckService == null) return;
+            
             try
             {
                 var healthCheck = new LoggingServiceHealthCheck(this);
-                _healthCheckService?.RegisterHealthCheck(healthCheck);
+                _healthCheckService.RegisterHealthCheck(healthCheck);
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine($"Failed to register logging health check: {ex.Message}");
             }
         }
-
+        
+        /// <summary>
+        /// Performs an asynchronous health check without blocking the main thread.
+        /// </summary>
+        private async Task PerformAsyncHealthCheck()
+        {
+            try
+            {
+                var isHealthy = PerformHealthCheck();
+                if (!isHealthy)
+                {
+                    TriggerErrorAlert("Logging service health check failed", null);
+                }
+            }
+            catch (Exception ex)
+            {
+                TriggerInternalErrorAlert(ex);
+            }
+        }
+        
         /// <summary>
         /// Disposes the logging service and all registered targets.
         /// </summary>
@@ -856,3 +766,4 @@ namespace AhBearStudios.Core.Logging
             _performanceStopwatch?.Stop();
         }
     }
+}
