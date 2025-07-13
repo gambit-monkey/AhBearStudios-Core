@@ -2,7 +2,7 @@
 using AhBearStudios.Core.HealthChecking.Models;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.HealthCheck.Configs;
+namespace AhBearStudios.Core.HealthChecking.Configs;
 
 /// <summary>
 /// Configuration for degradation impact assessment

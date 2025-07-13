@@ -1,10 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
+﻿using System.Collections.Generic;
 using AhBearStudios.Core.HealthChecking.Models;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.HealthCheck.Configs
+namespace AhBearStudios.Core.HealthChecking.Configs
 {
     /// <summary>
     /// Advanced scheduling configuration for health check execution with flexible timing options

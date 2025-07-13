@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using AhBearStudios.Core.HealthChecking.Models;
 
-namespace AhBearStudios.Core.HealthCheck.Configs;
+namespace AhBearStudios.Core.HealthChecking.Configs;
 
 /// <summary>
 /// Holiday and exception date configuration

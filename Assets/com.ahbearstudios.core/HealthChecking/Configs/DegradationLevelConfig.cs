@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.HealthCheck.Configs;
+namespace AhBearStudios.Core.HealthChecking.Configs;
 
 /// <summary>
     /// Configuration for a specific degradation level

@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace AhBearStudios.Core.HealthCheck.Configs;
+namespace AhBearStudios.Core.HealthChecking.Configs;
 
 /// <summary>
 /// Additional configuration classes for comprehensive reporting

@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace AhBearStudios.Core.HealthCheck.Configs;
+namespace AhBearStudios.Core.HealthChecking.Configs;
 
 /// <summary>
 /// Trend analysis configuration for health evaluation

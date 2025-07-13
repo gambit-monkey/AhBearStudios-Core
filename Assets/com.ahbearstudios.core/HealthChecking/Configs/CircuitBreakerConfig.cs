@@ -3,7 +3,7 @@ using System.Linq;
 using AhBearStudios.Core.HealthChecking.Models;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.HealthCheck.Configs
+namespace AhBearStudios.Core.HealthChecking.Configs
 {
     /// <summary>
     /// Comprehensive configuration for circuit breaker behavior with advanced fault tolerance settings

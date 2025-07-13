@@ -1,22 +1,18 @@
-﻿using System;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.Alerting.Models;
-using Unity.Collections;
-using AhBearStudios.Core.HealthCheck.Models;
-using AhBearStudios.Core.HealthCheck.Configs;
-using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Alerts;
+using AhBearStudios.Core.HealthChecking.Checks;
+using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.HealthChecking.Models;
-using AhBearStudios.Core.Profiler;
+using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Profiling;
-using IHealthCheck = AhBearStudios.Core.HealthCheck.Checks.IHealthCheck;
+using Unity.Collections;
 
-namespace AhBearStudios.Core.HealthCheck
+namespace AhBearStudios.Core.HealthChecking
 {
     /// <summary>
     /// Production-ready health check service providing comprehensive system health monitoring,

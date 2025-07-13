@@ -1,9 +1,8 @@
 ﻿using System.Collections.Generic;
-using AhBearStudios.Core.HealthCheck.Configs;
-using AhBearStudios.Core.HealthChecking.Models;
+using AhBearStudios.Core.HealthChecking.Configs;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.HealthCheck.Models
+namespace AhBearStudios.Core.HealthChecking.Models
 {
     /// <summary>
     /// Comprehensive configuration for system degradation thresholds and graceful degradation behavior

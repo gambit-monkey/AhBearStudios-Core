@@ -1,12 +1,12 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using AhBearStudios.Core.HealthChecking.Checks;
+using AhBearStudios.Core.HealthChecking.Configs;
+using AhBearStudios.Core.HealthChecking.Models;
 using Unity.Collections;
-using AhBearStudios.Core.HealthCheck.Models;
-using AhBearStudios.Core.HealthCheck.Checks;
 
-namespace AhBearStudios.Core.HealthCheck
+namespace AhBearStudios.Core.HealthChecking
 {
     /// <summary>
     /// Enhanced health check service providing comprehensive system health monitoring,

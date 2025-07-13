@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
-using AhBearStudios.Core.HealthCheck.Configs;
+using AhBearStudios.Core.HealthChecking.Configs;
 using Unity.Collections;
 
 namespace AhBearStudios.Core.HealthChecking.Models;

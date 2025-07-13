@@ -2,7 +2,7 @@
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.HealthChecking.Models;
 
-namespace AhBearStudios.Core.HealthCheck.Configs;
+namespace AhBearStudios.Core.HealthChecking.Configs;
 
 /// <summary>
 /// Monitoring configuration for degradation events

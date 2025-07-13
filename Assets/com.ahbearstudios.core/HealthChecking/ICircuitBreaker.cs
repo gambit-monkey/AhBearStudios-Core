@@ -1,8 +1,10 @@
 ﻿using System.Threading;
 using System.Threading.Tasks;
+using AhBearStudios.Core.HealthChecking.Configs;
+using AhBearStudios.Core.HealthChecking.Models;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.HealthCheck
+namespace AhBearStudios.Core.HealthChecking
 {
     /// <summary>
     /// Interface for circuit breaker implementation providing fault tolerance and system protection

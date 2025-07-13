@@ -1,5 +1,5 @@
 ﻿using System.Collections.Generic;
-using AhBearStudios.Core.HealthCheck.Configs;
+using AhBearStudios.Core.HealthChecking.Configs;
 
 namespace AhBearStudios.Core.HealthChecking.Models;
 

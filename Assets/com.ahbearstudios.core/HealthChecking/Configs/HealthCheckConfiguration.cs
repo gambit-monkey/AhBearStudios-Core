@@ -4,7 +4,7 @@ using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Logging.Models;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.HealthCheck.Configs
+namespace AhBearStudios.Core.HealthChecking.Configs
 {
     /// <summary>
     /// Configuration for individual health checks with comprehensive settings

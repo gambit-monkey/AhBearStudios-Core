@@ -1,12 +1,11 @@
 ﻿using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using AhBearStudios.Core.HealthCheck.Configs;
-using AhBearStudios.Core.HealthCheck.Models;
+using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.HealthChecking.Models;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.HealthCheck.Checks
+namespace AhBearStudios.Core.HealthChecking.Checks
 {
     /// <summary>
     /// Interface for implementing health checks with comprehensive monitoring capabilities

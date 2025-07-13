@@ -2,7 +2,7 @@
 using Unity.Collections;
 using AhBearStudios.Core.HealthChecking.Models;
 
-namespace AhBearStudios.Core.HealthCheck.Configs
+namespace AhBearStudios.Core.HealthChecking.Configs
 {
     /// <summary>
     /// Comprehensive configuration for health check reporting, monitoring, and data export

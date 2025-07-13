@@ -1,11 +1,10 @@
 ﻿using System.Collections.Generic;
 using AhBearStudios.Core.Alerting.Models;
-using AhBearStudios.Core.HealthCheck.Models;
 using Unity.Collections;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Logging.Models;
 
-namespace AhBearStudios.Core.HealthCheck.Configs
+namespace AhBearStudios.Core.HealthChecking.Configs
 {
     /// <summary>
     /// Configuration for the HealthCheck Service with comprehensive monitoring settings

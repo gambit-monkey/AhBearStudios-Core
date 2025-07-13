@@ -1,8 +1,7 @@
 ﻿using System.Collections.Generic;
-using AhBearStudios.Core.HealthChecking.Models;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.HealthCheck.Models
+namespace AhBearStudios.Core.HealthChecking.Models
 {
     /// <summary>
     /// Represents the result of a health check execution with comprehensive diagnostic information
