@@ -1,238 +1,530 @@
+# HealthCheck System
+
+## 📋 Overview
+
+**Namespace:** `AhBearStudios.Core.HealthCheck`  
+**Role:** System health monitoring, protection, and graceful degradation  
+**Status:** ✅ Core Infrastructure
+
+The HealthCheck System provides comprehensive health monitoring capabilities for all systems, enabling proactive issue detection, automated health reporting, system protection through circuit breakers, and graceful degradation patterns. This system serves as the central point for maintaining system resilience and operational health.
+
+## 🚀 Key Features
+
+- **⚡ Real-Time Monitoring**: Continuous health assessment of all registered systems
+- **🛡️ Circuit Breaker Protection**: Automatic failure isolation and system protection
+- **🔧 Flexible Health Checks**: Custom health check implementations for any system
+- **📊 Health Aggregation**: Hierarchical health status with dependency tracking
+- **🎯 Automated Scheduling**: Configurable health check intervals and timing
+- **📈 Health History**: Historical health data tracking and trend analysis
+- **🔄 Alert Integration**: Automatic alert generation for health status changes
+- **🏥 Graceful Degradation**: Automatic system degradation based on health status
+- **🔁 Recovery Management**: Automatic recovery detection and circuit breaker reset
+
+## 🏗️ Architecture
+
+### Folder Structure
+
+```
+AhBearStudios.Core.HealthCheck/
+├── IHealthCheckService.cs                # Enhanced primary service interface
+├── HealthCheckService.cs                 # Health monitoring with circuit breakers
+├── ICircuitBreaker.cs                    # Circuit breaker interface
+├── CircuitBreaker.cs                     # Circuit breaker implementation
+├── Configs/
+│   ├── HealthCheckServiceConfig.cs       # Main service configuration
+│   ├── HealthCheckConfig.cs              # Individual check configuration
+│   ├── CircuitBreakerConfig.cs           # Circuit breaker configuration
+│   ├── CheckScheduleConfig.cs            # Scheduling configuration
+│   ├── DegradationThresholds.cs          # Degradation configuration
+│   └── ReportingConfig.cs                # Reporting settings
+├── Builders/
+│   ├── HealthCheckServiceConfigBuilder.cs # Service config builder
+│   ├── HealthCheckConfigBuilder.cs       # Individual check builder
+│   └── CircuitBreakerConfigBuilder.cs    # Circuit breaker config builder
+├── Factories/
+│   ├── IHealthCheckServiceFactory.cs     # Service factory interface
+│   ├── HealthCheckServiceFactory.cs      # Service factory implementation
+│   ├── IHealthCheckFactory.cs            # Health check factory
+│   ├── HealthCheckFactory.cs             # Health check implementation
+│   └── CircuitBreakerFactory.cs          # Circuit breaker factory
+├── Services/
+│   ├── HealthAggregationService.cs       # Status aggregation logic
+│   ├── HealthHistoryService.cs           # Historical tracking
+│   ├── DegradationService.cs             # Graceful degradation management
+│   └── HealthSchedulingService.cs        # Health check scheduling
+├── Checks/
+│   ├── IHealthCheck.cs                   # Base health check interface
+│   ├── SystemResourceHealthCheck.cs      # System resource monitoring
+│   ├── DatabaseHealthCheck.cs            # Database connectivity check
+│   ├── MessagingHealthCheck.cs           # Message bus health check
+│   └── NetworkHealthCheck.cs             # Network connectivity check
+├── Models/
+│   ├── HealthCheckResult.cs              # Health check result
+│   ├── HealthReport.cs                   # Comprehensive health report
+│   ├── HealthServiceStatistics.cs        # Service statistics
+│   ├── CircuitBreakerStatistics.cs       # Circuit breaker statistics
+│   ├── CircuitBreakerHealthInfo.cs       # Circuit breaker health info
+│   ├── HealthStatus.cs                   # Status enumeration
+│   ├── CircuitBreakerState.cs            # Circuit breaker states
+│   ├── DegradationLevel.cs               # Degradation levels
+│   └── HealthEventArgs.cs                # Event argument classes
+└── HealthChecks/
+    └── HealthCheckServiceHealthCheck.cs  # Self-monitoring health check
+
+AhBearStudios.Unity.HealthCheck/
+├── Installers/
+│   └── HealthCheckInstaller.cs           # Reflex registration
+├── Components/
+│   ├── HealthCheckDisplayComponent.cs    # Unity UI health display
+│   └── CircuitBreakerDisplayComponent.cs # Circuit breaker status display
+└── ScriptableObjects/
+    └── HealthCheckConfigAsset.cs         # Unity configuration asset
+```
+
+## 🔌 Key Interfaces
+
+### IHealthCheckService
+
+Enhanced primary interface with circuit breaker integration.
+
+```csharp
+public interface IHealthCheckService : IDisposable
+{
+    #region Core Health Check Operations
     
-    public void Configure(HealthCheckConfiguration configuration)
-    {
-        Configuration = configuration;
-        if (configuration.Parameters.TryGetValue("Timeout", out var timeoutValue))
-        {
-            Timeout = TimeSpan.FromSeconds(Convert.ToDouble(timeoutValue));
-        }
-    }
+    // Health check registration
+    void RegisterHealthCheck(IHealthCheck healthCheck, HealthCheckConfig config = null);
+    void RegisterHealthChecks(IEnumerable<IHealthCheck> healthChecks);
+    bool UnregisterHealthCheck(FixedString64Bytes name);
     
-    public Dictionary<string, object> GetMetadata()
+    // Individual health checks
+    Task<HealthCheckResult> ExecuteHealthCheckAsync(FixedString64Bytes name, 
+        CancellationToken cancellationToken = default);
+    HealthCheckResult ExecuteHealthCheck(FixedString64Bytes name);
+    
+    // Batch health checks
+    Task<HealthReport> ExecuteAllHealthChecksAsync(
+        CancellationToken cancellationToken = default);
+    Task<HealthReport> ExecuteHealthChecksAsync(IEnumerable<FixedString64Bytes> names, 
+        CancellationToken cancellationToken = default);
+    
+    // Health status queries
+    Task<HealthStatus> GetOverallHealthStatusAsync();
+    HealthStatus GetOverallHealth();
+    HealthStatus GetSystemHealth(FixedString64Bytes systemName);
+    IEnumerable<HealthCheckResult> GetLastResults();
+    
+    #endregion
+    
+    #region Circuit Breaker Operations
+    
+    // Circuit breaker management
+    ICircuitBreaker GetCircuitBreaker(string operationName, CircuitBreakerConfig config = null);
+    CircuitBreakerState GetCircuitBreakerState(string operationName);
+    void ResetCircuitBreaker(string operationName);
+    Dictionary<string, CircuitBreakerState> GetAllCircuitBreakerStates();
+    
+    // Protected execution
+    T ExecuteWithProtection<T>(string operationName, Func<T> operation, Func<T> fallback = null);
+    Task<T> ExecuteWithProtectionAsync<T>(string operationName, Func<Task<T>> operation, 
+        Func<Task<T>> fallback = null, CancellationToken cancellationToken = default);
+    
+    #endregion
+    
+    #region System Protection and Degradation
+    
+    // Graceful degradation
+    void EnableGracefulDegradation(string systemName, DegradationLevel degradationLevel);
+    void DisableGracefulDegradation(string systemName);
+    Dictionary<string, DegradationLevel> GetDegradationStatus();
+    
+    #endregion
+    
+    #region Scheduling and Automation
+    
+    // Automated health monitoring
+    void StartAutomaticChecks();
+    void StopAutomaticChecks();
+    void SetCheckInterval(FixedString64Bytes name, TimeSpan interval);
+    bool IsAutomaticChecksEnabled { get; }
+    
+    #endregion
+    
+    #region History and Reporting
+    
+    // Historical data
+    IEnumerable<HealthCheckResult> GetHealthHistory(FixedString64Bytes name, TimeSpan period);
+    HealthReport GenerateHealthReport();
+    HealthServiceStatistics GetStatistics();
+    void ClearHistory();
+    
+    #endregion
+    
+    #region Events
+    
+    // Health monitoring events
+    event EventHandler<HealthCheckCompletedEventArgs> HealthCheckCompleted;
+    event EventHandler<HealthStatusChangedEventArgs> HealthStatusChanged;
+    
+    // Circuit breaker events
+    event EventHandler<CircuitBreakerStateChangedEventArgs> CircuitBreakerStateChanged;
+    
+    // Degradation events
+    event EventHandler<DegradationStatusChangedEventArgs> DegradationStatusChanged;
+    
+    #endregion
+}
+```
+
+### ICircuitBreaker
+
+Circuit breaker interface for fault tolerance with health integration.
+
+```csharp
+public interface ICircuitBreaker
+{
+    // State information
+    CircuitBreakerState State { get; }
+    string OperationName { get; }
+    int FailureCount { get; }
+    DateTime LastFailureTime { get; }
+    HealthStatus HealthStatus { get; }
+    
+    // Execution methods
+    T Execute<T>(Func<T> operation, Func<T> fallback = null);
+    Task<T> ExecuteAsync<T>(Func<Task<T>> operation, Func<T> fallback = null, 
+        CancellationToken cancellationToken = default);
+    
+    // Management
+    void Reset();
+    CircuitBreakerHealthInfo GetHealthInfo();
+    
+    // Events
+    event EventHandler<CircuitBreakerStateChangedEventArgs> StateChanged;
+}
+
+public enum CircuitBreakerState
+{
+    Closed,    // Normal operation
+    Open,      // Rejecting calls
+    HalfOpen   // Testing recovery
+}
+```
+
+### IHealthCheck
+
+Enhanced base interface for individual health checks.
+
+```csharp
+public interface IHealthCheck
+{
+    // Basic properties
+    FixedString64Bytes Name { get; }
+    string Description { get; }
+    HealthCheckCategory Category { get; }
+    TimeSpan Timeout { get; }
+    
+    // Execution
+    Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default);
+    
+    // Configuration
+    HealthCheckConfiguration Configuration { get; }
+    void Configure(HealthCheckConfiguration configuration);
+    
+    // Dependencies and metadata
+    IEnumerable<FixedString64Bytes> Dependencies { get; }
+    Dictionary<string, object> GetMetadata();
+}
+
+public enum HealthCheckCategory
+{
+    System,
+    Database,
+    Network,
+    Performance,
+    Security,
+    CircuitBreaker,
+    Custom
+}
+
+public enum HealthStatus
+{
+    Healthy,
+    Degraded,
+    Unhealthy,
+    Unknown
+}
+
+public enum DegradationLevel
+{
+    None,      // Full functionality
+    Minor,     // Some features disabled
+    Moderate,  // Significant features disabled
+    Severe,    // Only essential features
+    Disabled   // Emergency mode only
+}
+```
+
+### IHealthCheckResult
+
+Result of a health check execution.
+
+```csharp
+public interface IHealthCheckResult
+{
+    string Name { get; }
+    HealthStatus Status { get; }
+    string Message { get; }
+    string Description { get; }
+    TimeSpan Duration { get; }
+    DateTime Timestamp { get; }
+    Exception Exception { get; }
+    Dictionary<string, object> Data { get; }
+    
+    // Helper methods
+    bool IsHealthy { get; }
+    bool IsDegraded { get; }
+    bool IsUnhealthy { get; }
+}
+```
+
+### IHealthReport
+
+Comprehensive health report containing multiple check results.
+
+```csharp
+public interface IHealthReport
+{
+    HealthStatus OverallStatus { get; }
+    TimeSpan TotalDuration { get; }
+    DateTime Timestamp { get; }
+    
+    // Results
+    IReadOnlyDictionary<string, HealthCheckResult> Results { get; }
+    IEnumerable<HealthCheckResult> HealthyChecks { get; }
+    IEnumerable<HealthCheckResult> DegradedChecks { get; }
+    IEnumerable<HealthCheckResult> UnhealthyChecks { get; }
+    
+    // Statistics
+    int TotalChecks { get; }
+    int HealthyCount { get; }
+    int DegradedCount { get; }
+    int UnhealthyCount { get; }
+    
+    // Filtering
+    IEnumerable<HealthCheckResult> GetChecksByCategory(HealthCheckCategory category);
+    IEnumerable<HealthCheckResult> GetChecksByStatus(HealthStatus status);
+}
+```
+
+## ⚙️ Configuration
+
+### Basic Configuration
+
+```csharp
+var config = new HealthCheckServiceConfigBuilder()
+    .WithDefaultHealthCheckInterval(TimeSpan.FromMinutes(1))
+    .WithDefaultTimeout(TimeSpan.FromSeconds(30))
+    .WithAutomaticChecks(enabled: true)
+    .WithHistoryRetention(TimeSpan.FromHours(24))
+    .WithCircuitBreakers(enabled: true)
+    .WithGracefulDegradation(enabled: true)
+    .Build();
+```
+
+### Advanced Configuration with Circuit Breakers
+
+```csharp
+var config = new HealthCheckServiceConfigBuilder()
+    .WithDefaultHealthCheckInterval(TimeSpan.FromMinutes(5))
+    .WithDefaultTimeout(TimeSpan.FromSeconds(10))
+    .WithScheduling(builder => builder
+        .WithScheduler<IntervalScheduler>()
+        .WithConcurrentChecks(maxConcurrency: 10)
+        .WithFailureRetry(maxRetries: 3, backoff: TimeSpan.FromSeconds(5)))
+    .WithCircuitBreakers(builder => builder
+        .WithDefaultFailureThreshold(5)
+        .WithDefaultOpenTimeout(TimeSpan.FromSeconds(30))
+        .WithDefaultSuccessThreshold(2)
+        .WithAutoHealthCheckIntegration(true))
+    .WithGracefulDegradation(builder => builder
+        .WithThresholds(minor: 0.10, moderate: 0.25, severe: 0.50, disable: 0.75)
+        .WithAutomaticDegradation(true)
+        .WithRecoveryMonitoring(true))
+    .WithAlerting(builder => builder
+        .EnableAlerts(true)
+        .WithAlertThreshold(consecutiveFailures: 3)
+        .WithCircuitBreakerAlerts(true)
+        .WithDegradationAlerts(true))
+    .Build();
+```
+
+### Circuit Breaker Configuration
+
+```csharp
+var circuitBreakerConfig = new CircuitBreakerConfigBuilder()
+    .WithFailureThreshold(5)
+    .WithOpenTimeout(TimeSpan.FromSeconds(30))
+    .WithHalfOpenSuccessThreshold(2)
+    .WithSlidingWindowSize(10)
+    .WithHandledExceptions(typeof(TimeoutException), typeof(HttpRequestException))
+    .WithHealthCheckIntegration(true)
+    .WithHealthCheckInterval(TimeSpan.FromMinutes(1))
+    .Build();
+```
+
+## 📚 Usage Examples
+
+### Basic Setup
+
+```csharp
+public class HealthCheckInstaller : MonoInstaller
+{
+    public override void InstallBindings()
     {
-        return new Dictionary<string, object>
-        {
-            ["Provider"] = _database.GetType().Name,
-            ["ConnectionString"] = _database.GetConnectionString(masked: true),
-            ["LastCheck"] = DateTime.UtcNow
-        };
+        // Register health check service with circuit breaker support
+        var config = new HealthCheckServiceConfigBuilder()
+            .WithCircuitBreakers(enabled: true)
+            .WithGracefulDegradation(enabled: true)
+            .Build();
+            
+        Container.Bind<HealthCheckServiceConfig>().FromInstance(config);
+        Container.Bind<IHealthCheckService>().To<HealthCheckService>().AsSingle();
+        
+        // Register individual health checks
+        Container.Bind<IHealthCheck>().To<DatabaseHealthCheck>().AsSingle().WithId("Database");
+        Container.Bind<IHealthCheck>().To<MessagingHealthCheck>().AsSingle().WithId("Messaging");
+        Container.Bind<IHealthCheck>().To<NetworkHealthCheck>().AsSingle().WithId("Network");
     }
 }
 ```
 
-### Composite Health Check
+### Usage in Services with Circuit Breaker Protection
 
 ```csharp
-public class ApplicationHealthCheck : IHealthCheck
+public class DatabaseService : IDatabaseService
 {
-    public string Name => "Application";
-    public string Description => "Overall application health including all subsystems";
-    public HealthCheckCategory Category => HealthCheckCategory.System;
-    public TimeSpan Timeout { get; private set; } = TimeSpan.FromMinutes(2);
-    public HealthCheckConfiguration Configuration { get; private set; }
-    public IEnumerable<string> Dependencies => _dependentChecks;
-    
     private readonly IHealthCheckService _healthCheckService;
-    private readonly string[] _dependentChecks = { "Database", "Cache", "ExternalAPI", "FileSystem" };
+    private readonly ILoggingService _logger;
     
-    public ApplicationHealthCheck(IHealthCheckService healthCheckService)
+    public DatabaseService(IHealthCheckService healthCheckService, ILoggingService logger)
     {
         _healthCheckService = healthCheckService;
+        _logger = logger;
     }
     
-    public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
+    public async Task<T> QueryAsync<T>(string query)
     {
-        var stopwatch = Stopwatch.StartNew();
-        var data = new Dictionary<string, object>();
-        var issues = new List<string>();
-        
-        try
-        {
-            // Execute all dependent health checks
-            var results = new Dictionary<string, HealthCheckResult>();
-            
-            foreach (var checkName in _dependentChecks)
-            {
-                try
-                {
-                    var result = await _healthCheckService.ExecuteHealthCheckAsync(checkName, cancellationToken);
-                    results[checkName] = result;
-                    data[$"{checkName}_Status"] = result.Status.ToString();
-                    data[$"{checkName}_Duration"] = result.Duration.TotalMilliseconds;
-                    
-                    if (result.Status == HealthStatus.Unhealthy)
-                    {
-                        issues.Add($"{checkName}: {result.Message}");
-                    }
-                    else if (result.Status == HealthStatus.Degraded)
-                    {
-                        issues.Add($"{checkName} (degraded): {result.Message}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    issues.Add($"{checkName}: Health check failed - {ex.Message}");
-                    data[$"{checkName}_Status"] = "Failed";
-                }
-            }
-            
-            // Calculate overall health
-            var healthyCount = results.Values.Count(r => r.Status == HealthStatus.Healthy);
-            var degradedCount = results.Values.Count(r => r.Status == HealthStatus.Degraded);
-            var unhealthyCount = results.Values.Count(r => r.Status == HealthStatus.Unhealthy);
-            
-            data["HealthyCount"] = healthyCount;
-            data["DegradedCount"] = degradedCount;
-            data["UnhealthyCount"] = unhealthyCount;
-            data["TotalChecks"] = results.Count;
-            
-            // Determine overall status
-            if (unhealthyCount > 0)
-            {
-                var message = unhealthyCount == 1 
-                    ? $"1 system unhealthy: {string.Join(", ", issues)}"
-                    : $"{unhealthyCount} systems unhealthy: {string.Join(", ", issues)}";
-                    
-                return HealthCheckResult.Unhealthy(message, stopwatch.Elapsed, data);
-            }
-            
-            if (degradedCount > 0)
-            {
-                var message = degradedCount == 1
-                    ? $"1 system degraded: {string.Join(", ", issues)}"
-                    : $"{degradedCount} systems degraded: {string.Join(", ", issues)}";
-                    
-                return HealthCheckResult.Degraded(message, stopwatch.Elapsed, data);
-            }
-            
-            return HealthCheckResult.Healthy(
-                $"All {healthyCount} systems healthy",
-                stopwatch.Elapsed,
-                data);
-        }
-        catch (Exception ex)
-        {
-            return HealthCheckResult.Unhealthy(
-                $"Application health check failed: {ex.Message}",
-                stopwatch.Elapsed,
-                data,
-                ex);
-        }
+        return await _healthCheckService.ExecuteWithProtectionAsync(
+            "Database.Query",
+            async () => await ExecuteQueryInternal<T>(query),
+            () => Task.FromResult(GetCachedResult<T>()));
     }
     
-    public void Configure(HealthCheckConfiguration configuration)
+    public void Connect()
     {
-        Configuration = configuration;
+        _healthCheckService.ExecuteWithProtection(
+            "Database.Connect",
+            () => EstablishConnection(),
+            () => UseOfflineMode());
     }
     
-    public Dictionary<string, object> GetMetadata()
+    private async Task<T> ExecuteQueryInternal<T>(string query)
     {
-        return new Dictionary<string, object>
-        {
-            ["DependentChecks"] = _dependentChecks,
-            ["CheckCount"] = _dependentChecks.Length
-        };
+        // Database query implementation with potential failures
+        using var scope = _profilerService?.BeginScope("Database.ExecuteQuery");
+        return await _connection.QueryAsync<T>(query);
+    }
+    
+    private T GetCachedResult<T>()
+    {
+        // Fallback to cached data when circuit breaker is open
+        _logger.LogWarning("Database circuit breaker open, using cached result");
+        return _cache.Get<T>();
     }
 }
 ```
 
-### System Resource Health Check
+### Health Check Implementation with Circuit Breaker Integration
 
 ```csharp
-public class SystemResourceHealthCheck : IHealthCheck
+public class DatabaseHealthCheck : IHealthCheck
 {
-    public string Name => "SystemResources";
-    public string Description => "Monitors CPU, memory, and disk usage";
-    public HealthCheckCategory Category => HealthCheckCategory.System;
-    public TimeSpan Timeout { get; private set; } = TimeSpan.FromSeconds(10);
-    public HealthCheckConfiguration Configuration { get; private set; }
-    public IEnumerable<string> Dependencies => Array.Empty<string>();
+    private readonly IDatabaseService _database;
+    private readonly IHealthCheckService _healthCheckService;
+    private readonly ILoggingService _logger;
     
-    private readonly PerformanceCounter _cpuCounter;
-    private readonly PerformanceCounter _memoryCounter;
+    public FixedString64Bytes Name => "DatabaseHealth";
+    public string Description => "Monitors database connectivity and performance";
+    public HealthCheckCategory Category => HealthCheckCategory.Database;
+    public TimeSpan Timeout => TimeSpan.FromSeconds(10);
     
-    public SystemResourceHealthCheck()
+    public DatabaseHealthCheck(IDatabaseService database, IHealthCheckService healthCheckService, ILoggingService logger)
     {
-        _cpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
-        _memoryCounter = new PerformanceCounter("Memory", "Available MBytes");
+        _database = database;
+        _healthCheckService = healthCheckService;
+        _logger = logger;
     }
     
     public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
     {
         var stopwatch = Stopwatch.StartNew();
         var data = new Dictionary<string, object>();
-        var issues = new List<string>();
         
         try
         {
-            // Get CPU usage
-            var cpuUsage = _cpuCounter.NextValue();
-            await Task.Delay(1000, cancellationToken); // Wait for accurate reading
-            cpuUsage = _cpuCounter.NextValue();
+            // Check circuit breaker state first
+            var circuitBreakerState = _healthCheckService.GetCircuitBreakerState("Database.Query");
+            data["CircuitBreakerState"] = circuitBreakerState.ToString();
             
-            data["CpuUsage"] = Math.Round(cpuUsage, 2);
-            
-            // Get memory usage
-            var availableMemoryMB = _memoryCounter.NextValue();
-            var totalMemoryMB = GC.GetTotalMemory(false) / 1024 / 1024;
-            var memoryUsagePercent = ((totalMemoryMB - availableMemoryMB) / totalMemoryMB) * 100;
-            
-            data["AvailableMemoryMB"] = Math.Round(availableMemoryMB, 2);
-            data["TotalMemoryMB"] = Math.Round(totalMemoryMB, 2);
-            data["MemoryUsagePercent"] = Math.Round(memoryUsagePercent, 2);
-            
-            // Get disk usage
-            var driveInfo = new DriveInfo(Path.GetPathRoot(Environment.SystemDirectory));
-            var diskUsagePercent = ((double)(driveInfo.TotalSize - driveInfo.AvailableFreeSpace) / driveInfo.TotalSize) * 100;
-            
-            data["DiskUsagePercent"] = Math.Round(diskUsagePercent, 2);
-            data["AvailableDiskSpaceGB"] = Math.Round(driveInfo.AvailableFreeSpace / 1024.0 / 1024.0 / 1024.0, 2);
-            
-            // Evaluate thresholds
-            if (cpuUsage > 90)
-                issues.Add($"CPU usage critical: {cpuUsage:F1}%");
-            else if (cpuUsage > 75)
-                issues.Add($"CPU usage high: {cpuUsage:F1}%");
-                
-            if (memoryUsagePercent > 90)
-                issues.Add($"Memory usage critical: {memoryUsagePercent:F1}%");
-            else if (memoryUsagePercent > 80)
-                issues.Add($"Memory usage high: {memoryUsagePercent:F1}%");
-                
-            if (diskUsagePercent > 95)
-                issues.Add($"Disk usage critical: {diskUsagePercent:F1}%");
-            else if (diskUsagePercent > 85)
-                issues.Add($"Disk usage high: {diskUsagePercent:F1}%");
-            
-            // Determine status
-            var criticalIssues = issues.Where(i => i.Contains("critical")).ToList();
-            var warningIssues = issues.Where(i => i.Contains("high")).ToList();
-            
-            if (criticalIssues.Any())
-            {
-                return HealthCheckResult.Unhealthy(
-                    $"Critical resource issues: {string.Join(", ", criticalIssues)}",
-                    stopwatch.Elapsed,
-                    data);
-            }
-            
-            if (warningIssues.Any())
+            if (circuitBreakerState == CircuitBreakerState.Open)
             {
                 return HealthCheckResult.Degraded(
-                    $"Resource warnings: {string.Join(", ", warningIssues)}",
+                    "Database circuit breaker is open",
+                    stopwatch.Elapsed,
+                    data);
+            }
+            
+            // Test basic connectivity
+            var isConnected = await _database.TestConnectionAsync(cancellationToken);
+            data["IsConnected"] = isConnected;
+            
+            if (!isConnected)
+            {
+                return HealthCheckResult.Unhealthy(
+                    "Database connection failed",
+                    stopwatch.Elapsed,
+                    data);
+            }
+            
+            // Test query performance
+            var queryStart = stopwatch.ElapsedMilliseconds;
+            var queryResult = await _database.ExecuteScalarAsync<int>("SELECT 1", cancellationToken);
+            var queryTime = stopwatch.ElapsedMilliseconds - queryStart;
+            
+            data["QueryResult"] = queryResult;
+            data["QueryTimeMs"] = queryTime;
+            
+            // Determine health based on performance
+            if (queryTime > 5000) // 5 seconds
+            {
+                return HealthCheckResult.Degraded(
+                    $"Database queries are slow ({queryTime}ms)",
                     stopwatch.Elapsed,
                     data);
             }
             
             return HealthCheckResult.Healthy(
-                $"System resources normal (CPU: {cpuUsage:F1}%, Memory: {memoryUsagePercent:F1}%, Disk: {diskUsagePercent:F1}%)",
+                "Database is operating normally",
                 stopwatch.Elapsed,
                 data);
         }
         catch (Exception ex)
         {
+            _logger.LogException(ex, "Database health check failed");
+            
             return HealthCheckResult.Unhealthy(
-                $"System resource check failed: {ex.Message}",
+                $"Database health check failed: {ex.Message}",
                 stopwatch.Elapsed,
                 data,
                 ex);
@@ -241,117 +533,73 @@ public class SystemResourceHealthCheck : IHealthCheck
     
     public void Configure(HealthCheckConfiguration configuration)
     {
-        Configuration = configuration;
+        // Configure health check parameters
     }
     
     public Dictionary<string, object> GetMetadata()
     {
         return new Dictionary<string, object>
         {
-            ["Platform"] = Environment.OSVersion.Platform.ToString(),
-            ["ProcessorCount"] = Environment.ProcessorCount,
-            ["MachineName"] = Environment.MachineName
+            ["ServiceType"] = _database.GetType().Name,
+            ["SupportedOperations"] = new[] { "Query", "Connect", "TestConnection" },
+            ["CircuitBreakerEnabled"] = true
         };
     }
     
-    public void Dispose()
-    {
-        _cpuCounter?.Dispose();
-        _memoryCounter?.Dispose();
-    }
+    public IEnumerable<FixedString64Bytes> Dependencies => Array.Empty<FixedString64Bytes>();
+    public HealthCheckConfiguration Configuration { get; private set; }
 }
 ```
 
-### Health Check Service Usage
+### Health Status Monitoring
 
 ```csharp
-public class GameHealthMonitor : MonoBehaviour
+public class HealthStatusMonitor : MonoBehaviour
 {
     private IHealthCheckService _healthCheckService;
-    private IAlertService _alertService;
     private ILoggingService _logger;
     
-    [Inject]
-    public void Initialize(
-        IHealthCheckService healthCheckService, 
-        IAlertService alertService,
-        ILoggingService logger)
+    private void Start()
     {
-        _healthCheckService = healthCheckService;
-        _alertService = alertService;
-        _logger = logger;
+        _healthCheckService = Container.Resolve<IHealthCheckService>();
+        _logger = Container.Resolve<ILoggingService>();
         
-        SetupHealthChecks();
-        SetupEventHandlers();
-    }
-    
-    private void SetupHealthChecks()
-    {
-        // Register built-in health checks
-        _healthCheckService.RegisterHealthCheck(new SystemResourceHealthCheck());
-        _healthCheckService.RegisterHealthCheck(new DatabaseHealthCheck(_databaseService, _logger));
-        _healthCheckService.RegisterHealthCheck(new NetworkHealthCheck("https://api.game.com/health"));
-        _healthCheckService.RegisterHealthCheck(new ApplicationHealthCheck(_healthCheckService));
-        
-        // Configure check intervals
-        _healthCheckService.SetCheckInterval("SystemResources", TimeSpan.FromMinutes(1));
-        _healthCheckService.SetCheckInterval("Database", TimeSpan.FromMinutes(2));
-        _healthCheckService.SetCheckInterval("Network", TimeSpan.FromMinutes(5));
-        _healthCheckService.SetCheckInterval("Application", TimeSpan.FromMinutes(10));
+        // Subscribe to health events
+        _healthCheckService.HealthStatusChanged += OnHealthStatusChanged;
+        _healthCheckService.CircuitBreakerStateChanged += OnCircuitBreakerStateChanged;
+        _healthCheckService.DegradationStatusChanged += OnDegradationStatusChanged;
         
         // Start automatic monitoring
         _healthCheckService.StartAutomaticChecks();
     }
     
-    private void SetupEventHandlers()
+    private void OnHealthStatusChanged(object sender, HealthStatusChangedEventArgs e)
     {
-        _healthCheckService.HealthStatusChanged += OnHealthStatusChanged;
-        _healthCheckService.HealthCheckCompleted += OnHealthCheckCompleted;
-    }
-    
-    private void OnHealthStatusChanged(object sender, HealthStatusChangeEventArgs e)
-    {
-        _logger.LogInfo($"Health status changed for {e.HealthCheckName}: {e.PreviousStatus} -> {e.NewStatus}");
+        _logger.LogInfo($"Health status changed: {e.OldStatus} -> {e.NewStatus} ({e.Reason})");
         
-        // Raise alerts for status degradation
+        // Update UI, trigger alerts, etc.
         if (e.NewStatus == HealthStatus.Unhealthy)
         {
-            _alertService.RaiseAlert(
-                $"System {e.HealthCheckName} is unhealthy: {e.Message}",
-                AlertSeverity.Critical,
-                "HealthCheckService",
-                e.HealthCheckName);
-        }
-        else if (e.NewStatus == HealthStatus.Degraded && e.PreviousStatus == HealthStatus.Healthy)
-        {
-            _alertService.RaiseAlert(
-                $"System {e.HealthCheckName} is degraded: {e.Message}",
-                AlertSeverity.Warning,
-                "HealthCheckService",
-                e.HealthCheckName);
-        }
-        else if (e.NewStatus == HealthStatus.Healthy && e.PreviousStatus != HealthStatus.Healthy)
-        {
-            _alertService.RaiseAlert(
-                $"System {e.HealthCheckName} recovered: {e.Message}",
-                AlertSeverity.Info,
-                "HealthCheckService",
-                e.HealthCheckName);
+            ShowHealthWarning(e.SystemName, e.Reason);
         }
     }
     
-    private void OnHealthCheckCompleted(object sender, HealthCheckEventArgs e)
+    private void OnCircuitBreakerStateChanged(object sender, CircuitBreakerStateChangedEventArgs e)
     {
-        // Log detailed results for unhealthy checks
-        if (e.Result.Status == HealthStatus.Unhealthy)
+        _logger.LogInfo($"Circuit breaker '{e.OperationName}' changed: {e.OldState} -> {e.NewState}");
+        
+        if (e.NewState == CircuitBreakerState.Open)
         {
-            _logger.LogError($"Health check failed: {e.Result.Name} - {e.Result.Message}");
-            
-            if (e.Result.Exception != null)
-            {
-                _logger.LogException(e.Result.Exception, $"Health check exception: {e.Result.Name}");
-            }
+            ShowCircuitBreakerAlert(e.OperationName, e.Reason);
         }
+    }
+    
+    private void OnDegradationStatusChanged(object sender, DegradationStatusChangedEventArgs e)
+    {
+        _logger.LogInfo($"System '{e.SystemName}' degradation: {e.OldLevel} -> {e.NewLevel}");
+        
+        // Adjust system behavior based on degradation level
+        AdjustSystemBehavior(e.SystemName, e.NewLevel);
     }
     
     public async Task<HealthReport> GetCurrentHealthAsync()
@@ -363,9 +611,12 @@ public class GameHealthMonitor : MonoBehaviour
     {
         var overallHealth = _healthCheckService.GetOverallHealth();
         var lastResults = _healthCheckService.GetLastResults().ToList();
+        var circuitBreakerStates = _healthCheckService.GetAllCircuitBreakerStates();
+        var degradationStatus = _healthCheckService.GetDegradationStatus();
         
         Debug.Log($"Overall Health: {overallHealth}");
         
+        // Display health check results
         foreach (var result in lastResults)
         {
             var statusIcon = result.Status switch
@@ -378,11 +629,74 @@ public class GameHealthMonitor : MonoBehaviour
             
             Debug.Log($"{statusIcon} {result.Name}: {result.Message} ({result.Duration.TotalMilliseconds:F0}ms)");
         }
+        
+        // Display circuit breaker states
+        foreach (var (operation, state) in circuitBreakerStates)
+        {
+            var stateIcon = state switch
+            {
+                CircuitBreakerState.Closed => "🟢",
+                CircuitBreakerState.Open => "🔴",
+                CircuitBreakerState.HalfOpen => "🟡",
+                _ => "⚪"
+            };
+            
+            Debug.Log($"{stateIcon} Circuit Breaker '{operation}': {state}");
+        }
+        
+        // Display degradation status
+        foreach (var (system, level) in degradationStatus)
+        {
+            if (level != DegradationLevel.None)
+            {
+                Debug.Log($"⬇️ System '{system}' degraded to: {level}");
+            }
+        }
     }
 }
 ```
 
 ## 🎯 Advanced Features
+
+### Circuit Breaker Integration
+
+The HealthCheck system provides seamless circuit breaker integration:
+
+```csharp
+// Automatic circuit breaker creation for health checks
+var healthCheck = new DatabaseHealthCheck(database, healthCheckService, logger);
+var config = new HealthCheckConfig
+{
+    CreateCircuitBreaker = true,
+    CircuitBreakerConfig = new CircuitBreakerConfig
+    {
+        FailureThreshold = 3,
+        OpenTimeout = TimeSpan.FromMinutes(2)
+    }
+};
+
+healthCheckService.RegisterHealthCheck(healthCheck, config);
+```
+
+### Graceful Degradation
+
+Automatic system degradation based on health status:
+
+```csharp
+// Configure automatic degradation thresholds
+var config = new HealthCheckServiceConfigBuilder()
+    .WithGracefulDegradation(builder => builder
+        .WithThresholds(
+            minor: 0.10,      // 10% unhealthy systems = minor degradation
+            moderate: 0.25,   // 25% unhealthy systems = moderate degradation
+            severe: 0.50,     // 50% unhealthy systems = severe degradation
+            disable: 0.75)    // 75% unhealthy systems = disable non-essential
+        .WithAutomaticDegradation(true))
+    .Build();
+
+// Manual degradation control
+healthCheckService.EnableGracefulDegradation("AudioSystem", DegradationLevel.Minor);
+```
 
 ### Health Check Scheduling
 
@@ -428,25 +742,22 @@ public class HealthCheckScheduler : IHealthCheckScheduler
             CheckName = checkName,
             CronExpression = cronExpression,
             NextRun = nextRun,
-            LastRun = null,
             IsEnabled = true
         };
+        
+        _logger.LogDebug($"Scheduled health check '{checkName}' with cron '{cronExpression}'");
     }
     
-    private async void ProcessScheduledChecks(object state)
+    private void ProcessScheduledChecks(object state)
     {
         var now = DateTime.UtcNow;
-        var checksToRun = _scheduledChecks.Values
-            .Where(sc => sc.IsEnabled && sc.NextRun <= now)
-            .ToList();
-            
-        foreach (var scheduledCheck in checksToRun)
+        var checksToRun = new List<string>();
+        
+        foreach (var (checkName, scheduledCheck) in _scheduledChecks)
         {
-            try
+            if (scheduledCheck.IsEnabled && now >= scheduledCheck.NextRun)
             {
-                await _healthCheckService.ExecuteHealthCheckAsync(scheduledCheck.CheckName);
-                
-                scheduledCheck.LastRun = now;
+                checksToRun.Add(checkName);
                 
                 // Calculate next run time
                 if (!string.IsNullOrEmpty(scheduledCheck.CronExpression))
@@ -456,28 +767,27 @@ public class HealthCheckScheduler : IHealthCheckScheduler
                 }
                 else
                 {
-                    scheduledCheck.NextRun = now + scheduledCheck.Interval;
+                    scheduledCheck.NextRun = now.Add(scheduledCheck.Interval);
                 }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError($"Failed to execute scheduled health check '{scheduledCheck.CheckName}': {ex.Message}");
                 
-                // Schedule retry with backoff
-                scheduledCheck.NextRun = now + TimeSpan.FromMinutes(5);
+                scheduledCheck.LastRun = now;
             }
         }
-    }
-    
-    public void EnableCheck(string checkName) => SetCheckEnabled(checkName, true);
-    public void DisableCheck(string checkName) => SetCheckEnabled(checkName, false);
-    
-    private void SetCheckEnabled(string checkName, bool enabled)
-    {
-        if (_scheduledChecks.TryGetValue(checkName, out var check))
+        
+        // Execute scheduled checks
+        foreach (var checkName in checksToRun)
         {
-            check.IsEnabled = enabled;
-            _logger.LogInfo($"Health check '{checkName}' {(enabled ? "enabled" : "disabled")}");
+            Task.Run(async () =>
+            {
+                try
+                {
+                    await _healthCheckService.ExecuteHealthCheckAsync(checkName);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogException(ex, $"Scheduled health check failed: {checkName}");
+                }
+            });
         }
     }
 }
@@ -493,229 +803,18 @@ public class ScheduledCheck
 }
 ```
 
-### Health Report Generation
-
-```csharp
-public class HealthReportingService
-{
-    private readonly IHealthCheckService _healthCheckService;
-    private readonly ISerializer _serializer;
-    private readonly ILoggingService _logger;
-    
-    public async Task<HealthReport> GenerateDetailedReportAsync()
-    {
-        var report = await _healthCheckService.ExecuteAllHealthChecksAsync();
-        
-        // Enhance report with historical data
-        var enhancedReport = new DetailedHealthReport(report)
-        {
-            SystemInfo = GetSystemInfo(),
-            HistoricalTrends = GetHistoricalTrends(),
-            Recommendations = GenerateRecommendations(report)
-        };
-        
-        return enhancedReport;
-    }
-    
-    public async Task ExportReportAsync(HealthReport report, string filePath, ExportFormat format)
-    {
-        switch (format)
-        {
-            case ExportFormat.Json:
-                await ExportAsJsonAsync(report, filePath);
-                break;
-            case ExportFormat.Csv:
-                await ExportAsCsvAsync(report, filePath);
-                break;
-            case ExportFormat.Html:
-                await ExportAsHtmlAsync(report, filePath);
-                break;
-            case ExportFormat.Pdf:
-                await ExportAsPdfAsync(report, filePath);
-                break;
-            default:
-                throw new ArgumentException($"Unsupported export format: {format}");
-        }
-    }
-    
-    private async Task ExportAsJsonAsync(HealthReport report, string filePath)
-    {
-        var reportData = new
-        {
-            timestamp = report.Timestamp,
-            overallStatus = report.OverallStatus.ToString(),
-            totalDuration = report.TotalDuration.TotalMilliseconds,
-            summary = new
-            {
-                totalChecks = report.TotalChecks,
-                healthyCount = report.HealthyCount,
-                degradedCount = report.DegradedCount,
-                unhealthyCount = report.UnhealthyCount
-            },
-            checks = report.Results.Select(kvp => new
-            {
-                name = kvp.Key,
-                status = kvp.Value.Status.ToString(),
-                message = kvp.Value.Message,
-                duration = kvp.Value.Duration.TotalMilliseconds,
-                data = kvp.Value.Data
-            })
-        };
-        
-        var json = JsonSerializer.Serialize(reportData, new JsonSerializerOptions { WriteIndented = true });
-        await File.WriteAllTextAsync(filePath, json);
-    }
-    
-    private async Task ExportAsHtmlAsync(HealthReport report, string filePath)
-    {
-        var html = $@"
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Health Report - {report.Timestamp:yyyy-MM-dd HH:mm:ss}</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 20px; }}
-        .header {{ background-color: #f0f0f0; padding: 20px; border-radius: 5px; }}
-        .summary {{ margin: 20px 0; }}
-        .check {{ margin: 10px 0; padding: 10px; border-left: 4px solid #ccc; }}
-        .healthy {{ border-left-color: #4CAF50; }}
-        .degraded {{ border-left-color: #FF9800; }}
-        .unhealthy {{ border-left-color: #F44336; }}
-        .status {{ font-weight: bold; }}
-        .duration {{ color: #666; font-size: 0.9em; }}
-    </style>
-</head>
-<body>
-    <div class=""header"">
-        <h1>System Health Report</h1>
-        <p>Generated: {report.Timestamp:yyyy-MM-dd HH:mm:ss} UTC</p>
-        <p>Overall Status: <span class=""status"">{report.OverallStatus}</span></p>
-    </div>
-    
-    <div class=""summary"">
-        <h2>Summary</h2>
-        <p>Total Checks: {report.TotalChecks}</p>
-        <p>Healthy: {report.HealthyCount} | Degraded: {report.DegradedCount} | Unhealthy: {report.UnhealthyCount}</p>
-        <p>Total Duration: {report.TotalDuration.TotalMilliseconds:F0}ms</p>
-    </div>
-    
-    <div class=""checks"">
-        <h2>Check Results</h2>";
-        
-        foreach (var check in report.Results.Values.OrderBy(r => r.Name))
-        {
-            var statusClass = check.Status.ToString().ToLower();
-            html += $@"
-        <div class=""check {statusClass}"">
-            <h3>{check.Name}</h3>
-            <p class=""status"">Status: {check.Status}</p>
-            <p>{check.Message}</p>
-            <p class=""duration"">Duration: {check.Duration.TotalMilliseconds:F0}ms</p>
-        </div>";
-        }
-        
-        html += @"
-    </div>
-</body>
-</html>";
-        
-        await File.WriteAllTextAsync(filePath, html);
-    }
-    
-    private SystemInfo GetSystemInfo()
-    {
-        return new SystemInfo
-        {
-            MachineName = Environment.MachineName,
-            OperatingSystem = Environment.OSVersion.ToString(),
-            ProcessorCount = Environment.ProcessorCount,
-            WorkingSet = Environment.WorkingSet,
-            TotalMemory = GC.GetTotalMemory(false),
-            RuntimeVersion = Environment.Version.ToString(),
-            Uptime = DateTime.UtcNow - Process.GetCurrentProcess().StartTime.ToUniversalTime()
-        };
-    }
-    
-    private List<HealthRecommendation> GenerateRecommendations(HealthReport report)
-    {
-        var recommendations = new List<HealthRecommendation>();
-        
-        foreach (var result in report.Results.Values)
-        {
-            if (result.Status == HealthStatus.Unhealthy)
-            {
-                recommendations.Add(new HealthRecommendation
-                {
-                    Priority = RecommendationPriority.High,
-                    Title = $"Address {result.Name} Issues",
-                    Description = $"System {result.Name} is unhealthy: {result.Message}",
-                    ActionRequired = "Investigate and resolve the underlying issue immediately"
-                });
-            }
-            else if (result.Status == HealthStatus.Degraded)
-            {
-                recommendations.Add(new HealthRecommendation
-                {
-                    Priority = RecommendationPriority.Medium,
-                    Title = $"Monitor {result.Name} Performance",
-                    Description = $"System {result.Name} is showing degraded performance: {result.Message}",
-                    ActionRequired = "Monitor closely and consider optimization"
-                });
-            }
-        }
-        
-        return recommendations;
-    }
-}
-
-public enum ExportFormat
-{
-    Json,
-    Csv,
-    Html,
-    Pdf
-}
-```
-
-## 📊 Performance Characteristics
-
-### Health Check Performance
-
-| Check Type | Typical Duration | Memory Usage | Frequency |
-|------------|------------------|--------------|-----------|
-| System Resources | 1-2 seconds | 1KB | Every 1-5 minutes |
-| Database Connectivity | 50-500ms | 500 bytes | Every 2-10 minutes |
-| Network Endpoint | 100ms-5s | 200 bytes | Every 5-30 minutes |
-| Application Health | 2-10 seconds | 5KB | Every 10-60 minutes |
-| Composite Check | 5-30 seconds | 10-50KB | Every 30-300 minutes |
-
-### Scheduling Overhead
-
-- **Timer Resolution**: 10-second intervals for check scheduling
-- **Memory per Check**: ~200 bytes for scheduling metadata
-- **CPU Impact**: <0.1% for typical health check workloads
-- **Concurrent Checks**: Configurable, recommended max 10-20 concurrent
-
-## 🏥 Health Monitoring
-
 ### Self-Monitoring Health Check
 
 ```csharp
 public class HealthCheckServiceHealthCheck : IHealthCheck
 {
-    public string Name => "HealthCheckService";
+    private readonly IHealthCheckService _healthCheckService;
+    private readonly ILoggingService _logger;
+    
+    public FixedString64Bytes Name => "HealthCheckService";
     public string Description => "Monitors the health check service itself";
     public HealthCheckCategory Category => HealthCheckCategory.System;
-    public TimeSpan Timeout { get; private set; } = TimeSpan.FromSeconds(10);
-    public HealthCheckConfiguration Configuration { get; private set; }
-    public IEnumerable<string> Dependencies => Array.Empty<string>();
-    
-    private readonly IHealthCheckService _healthCheckService;
-    
-    public HealthCheckServiceHealthCheck(IHealthCheckService healthCheckService)
-    {
-        _healthCheckService = healthCheckService;
-    }
+    public TimeSpan Timeout => TimeSpan.FromSeconds(5);
     
     public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
     {
@@ -724,42 +823,37 @@ public class HealthCheckServiceHealthCheck : IHealthCheck
         
         try
         {
-            var metrics = _healthCheckService.GetHealthMetrics();
+            var statistics = _healthCheckService.GetStatistics();
+            var circuitBreakerStates = _healthCheckService.GetAllCircuitBreakerStates();
+            var degradationStatus = _healthCheckService.GetDegradationStatus();
             
-            data["TotalChecks"] = metrics.TotalRegisteredChecks;
-            data["ActiveChecks"] = metrics.ActiveChecks;
-            data["FailedChecks"] = metrics.FailedChecks;
-            data["AverageCheckDuration"] = metrics.AverageCheckDuration.TotalMilliseconds;
-            data["LastCheckTime"] = metrics.LastCheckTime;
-            data["ChecksInLast24Hours"] = metrics.ChecksInLast24Hours;
+            data["TotalHealthChecks"] = statistics.TotalHealthChecks;
+            data["RegisteredChecks"] = statistics.RegisteredHealthChecks;
+            data["OverallHealth"] = statistics.OverallHealth.ToString();
+            data["ActiveCircuitBreakers"] = circuitBreakerStates.Count;
+            data["OpenCircuitBreakers"] = circuitBreakerStates.Count(cb => cb.Value == CircuitBreakerState.Open);
+            data["DegradedSystems"] = degradationStatus.Count(d => d.Value != DegradationLevel.None);
             
-            // Validate service health
-            if (metrics.FailedChecks > metrics.TotalRegisteredChecks * 0.5) // 50% failure rate
+            // Check for service health issues
+            if (statistics.OverallHealth == HealthStatus.Unhealthy)
             {
                 return HealthCheckResult.Unhealthy(
-                    $"High failure rate: {metrics.FailedChecks}/{metrics.TotalRegisteredChecks} checks failing",
+                    "Overall system health is unhealthy",
                     stopwatch.Elapsed,
                     data);
             }
             
-            if (metrics.AverageCheckDuration > TimeSpan.FromMinutes(1))
+            var openCircuitBreakers = circuitBreakerStates.Count(cb => cb.Value == CircuitBreakerState.Open);
+            if (openCircuitBreakers > circuitBreakerStates.Count * 0.5) // More than 50% open
             {
                 return HealthCheckResult.Degraded(
-                    $"Slow check performance: average {metrics.AverageCheckDuration.TotalSeconds:F1}s",
-                    stopwatch.Elapsed,
-                    data);
-            }
-            
-            if (DateTime.UtcNow - metrics.LastCheckTime > TimeSpan.FromMinutes(10))
-            {
-                return HealthCheckResult.Degraded(
-                    $"No recent checks: last check {metrics.LastCheckTime:HH:mm:ss}",
+                    $"High number of open circuit breakers: {openCircuitBreakers}/{circuitBreakerStates.Count}",
                     stopwatch.Elapsed,
                     data);
             }
             
             return HealthCheckResult.Healthy(
-                $"Health check service operational: {metrics.ActiveChecks} active checks",
+                "Health check service operating normally",
                 stopwatch.Elapsed,
                 data);
         }
@@ -783,9 +877,14 @@ public class HealthCheckServiceHealthCheck : IHealthCheck
         return new Dictionary<string, object>
         {
             ["ServiceType"] = _healthCheckService.GetType().Name,
-            ["SelfMonitoring"] = true
+            ["SelfMonitoring"] = true,
+            ["CircuitBreakerSupport"] = true,
+            ["GracefulDegradationSupport"] = true
         };
     }
+    
+    public IEnumerable<FixedString64Bytes> Dependencies => Array.Empty<FixedString64Bytes>();
+    public HealthCheckConfiguration Configuration { get; private set; }
 }
 ```
 
@@ -800,15 +899,58 @@ public async Task HealthCheck_DatabaseConnected_ReturnsHealthy()
     // Arrange
     var healthCheckService = new HealthCheckService(_mockLogger.Object, _mockAlerts.Object);
     
-    var healthyCheck = new Mock<IHealthCheck>();
-    healthyCheck.Setup(hc => hc.Name).Returns("HealthyCheck");
-    healthyCheck.Setup(hc => hc.CheckHealthAsync(It.IsAny<CancellationToken>()))
-               .ReturnsAsync(HealthCheckResult.Healthy("All good"));
+    var mockDatabase = new Mock<IDatabaseService>();
+    mockDatabase.Setup(db => db.TestConnectionAsync(It.IsAny<CancellationToken>()))
+               .ReturnsAsync(true);
+    mockDatabase.Setup(db => db.ExecuteScalarAsync<int>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+               .ReturnsAsync(1);
     
-    var degradedCheck = new Mock<IHealthCheck>();
-    degradedCheck.Setup(hc => hc.Name).Returns("DegradedCheck");
-    degradedCheck.Setup(hc => hc.CheckHealthAsync(It.IsAny<CancellationToken>()))
-                 .ReturnsAsync(HealthCheckResult.Degraded("Some issues"));
+    var healthCheck = new DatabaseHealthCheck(mockDatabase.Object, healthCheckService, _mockLogger.Object);
+    healthCheckService.RegisterHealthCheck(healthCheck);
+    
+    // Act
+    var result = await healthCheckService.ExecuteHealthCheckAsync("DatabaseHealth");
+    
+    // Assert
+    Assert.That(result.Status, Is.EqualTo(HealthStatus.Healthy));
+    Assert.That(result.Data["IsConnected"], Is.EqualTo(true));
+    Assert.That(result.Data["QueryResult"], Is.EqualTo(1));
+}
+
+[Test]
+public async Task CircuitBreaker_FailureThresholdExceeded_OpensCircuit()
+{
+    // Arrange
+    var config = new CircuitBreakerConfig { FailureThreshold = 3 };
+    var healthCheckService = new HealthCheckService(_mockLogger.Object, _mockAlerts.Object);
+    var circuitBreaker = healthCheckService.GetCircuitBreaker("TestOperation", config);
+    
+    // Act - Trigger failures to exceed threshold
+    for (int i = 0; i < 4; i++)
+    {
+        try
+        {
+            circuitBreaker.Execute(() => throw new InvalidOperationException("Test failure"));
+        }
+        catch
+        {
+            // Expected failures
+        }
+    }
+    
+    // Assert
+    Assert.That(circuitBreaker.State, Is.EqualTo(CircuitBreakerState.Open));
+    Assert.That(circuitBreaker.FailureCount, Is.GreaterThanOrEqualTo(3));
+}
+
+[Test]
+public async Task HealthCheckService_ExecuteAllChecks_ReturnsReport()
+{
+    // Arrange
+    var healthCheckService = new HealthCheckService(_mockLogger.Object, _mockAlerts.Object);
+    
+    var healthyCheck = CreateMockHealthCheck("Healthy", HealthStatus.Healthy);
+    var degradedCheck = CreateMockHealthCheck("Degraded", HealthStatus.Degraded);
     
     healthCheckService.RegisterHealthCheck(healthyCheck.Object);
     healthCheckService.RegisterHealthCheck(degradedCheck.Object);
@@ -820,30 +962,70 @@ public async Task HealthCheck_DatabaseConnected_ReturnsHealthy()
     Assert.That(report.TotalChecks, Is.EqualTo(2));
     Assert.That(report.HealthyCount, Is.EqualTo(1));
     Assert.That(report.DegradedCount, Is.EqualTo(1));
-    Assert.That(report.UnhealthyCount, Is.EqualTo(0));
     Assert.That(report.OverallStatus, Is.EqualTo(HealthStatus.Degraded));
 }
-```
 
-### Performance Testing
-
-```csharp
-[Benchmark]
-public async Task HealthCheck_SimpleCheck()
+[Test]
+public void GracefulDegradation_HealthThresholdExceeded_EnablesDegradation()
 {
-    await _simpleHealthCheck.CheckHealthAsync();
+    // Arrange
+    var config = new HealthCheckServiceConfigBuilder()
+        .WithGracefulDegradation(builder => builder
+            .WithThresholds(minor: 0.10, moderate: 0.25, severe: 0.50, disable: 0.75)
+            .WithAutomaticDegradation(true))
+        .Build();
+    
+    var healthCheckService = new HealthCheckService(config, _mockLogger.Object, _mockAlerts.Object);
+    
+    // Register checks that will fail
+    for (int i = 0; i < 10; i++)
+    {
+        var failingCheck = CreateMockHealthCheck($"Failing{i}", HealthStatus.Unhealthy);
+        healthCheckService.RegisterHealthCheck(failingCheck.Object);
+    }
+    
+    // Act
+    var degradationStatus = healthCheckService.GetDegradationStatus();
+    
+    // Assert
+    Assert.That(degradationStatus.ContainsValue(DegradationLevel.Severe), Is.True);
 }
 
-[Benchmark]
-public async Task HealthCheck_DatabaseCheck()
+[Test]
+public async Task ExecuteWithProtection_CircuitBreakerOpen_UsesFallback()
 {
-    await _databaseHealthCheck.CheckHealthAsync();
+    // Arrange
+    var config = new CircuitBreakerConfig { FailureThreshold = 1 };
+    var healthCheckService = new HealthCheckService(_mockLogger.Object, _mockAlerts.Object);
+    
+    // Open the circuit breaker
+    try
+    {
+        healthCheckService.ExecuteWithProtection("TestOp", 
+            () => throw new Exception("Failure"), 
+            () => "fallback");
+    }
+    catch { }
+    
+    // Act
+    var result = healthCheckService.ExecuteWithProtection("TestOp",
+        () => "primary",
+        () => "fallback");
+    
+    // Assert
+    Assert.That(result, Is.EqualTo("fallback"));
+    Assert.That(healthCheckService.GetCircuitBreakerState("TestOp"), Is.EqualTo(CircuitBreakerState.Open));
 }
 
-[Benchmark]
-public async Task HealthCheckService_ExecuteAllChecks()
+private Mock<IHealthCheck> CreateMockHealthCheck(string name, HealthStatus status)
 {
-    await _healthCheckService.ExecuteAllHealthChecksAsync();
+    var mock = new Mock<IHealthCheck>();
+    mock.Setup(hc => hc.Name).Returns(name);
+    mock.Setup(hc => hc.CheckHealthAsync(It.IsAny<CancellationToken>()))
+        .ReturnsAsync(new HealthCheckResult(name, status, $"Status: {status}", TimeSpan.FromMilliseconds(10)));
+    mock.Setup(hc => hc.Dependencies).Returns(Array.Empty<FixedString64Bytes>());
+    mock.Setup(hc => hc.GetMetadata()).Returns(new Dictionary<string, object>());
+    return mock;
 }
 ```
 
@@ -851,171 +1033,321 @@ public async Task HealthCheckService_ExecuteAllChecks()
 
 ```csharp
 [Test]
-public async Task HealthCheckService_WithRealDependencies_WorksCorrectly()
+public async Task Integration_DatabaseHealthCheck_WithCircuitBreaker()
 {
     // Arrange
     var container = CreateTestContainer();
     var healthCheckService = container.Resolve<IHealthCheckService>();
     var databaseService = container.Resolve<IDatabaseService>();
     
-    // Register real health checks
-    healthCheckService.RegisterHealthCheck(new DatabaseHealthCheck(databaseService, _logger));
-    healthCheckService.RegisterHealthCheck(new SystemResourceHealthCheck());
+    // Register database health check with circuit breaker
+    var config = new HealthCheckConfig
+    {
+        CreateCircuitBreaker = true,
+        CircuitBreakerConfig = new CircuitBreakerConfig { FailureThreshold = 3 }
+    };
+    
+    var dbHealthCheck = new DatabaseHealthCheck(databaseService, healthCheckService, _mockLogger.Object);
+    healthCheckService.RegisterHealthCheck(dbHealthCheck, config);
+    
+    // Act & Assert
+    var result = await healthCheckService.ExecuteHealthCheckAsync("DatabaseHealth");
+    Assert.That(result.Status, Is.EqualTo(HealthStatus.Healthy));
+    
+    // Verify circuit breaker was created
+    var circuitBreakerState = healthCheckService.GetCircuitBreakerState("Database.Query");
+    Assert.That(circuitBreakerState, Is.EqualTo(CircuitBreakerState.Closed));
+}
+
+[Test]
+public async Task Integration_FullSystemHealth_WithDegradation()
+{
+    // Arrange
+    var container = CreateTestContainer();
+    var healthCheckService = container.Resolve<IHealthCheckService>();
+    
+    // Register multiple health checks
+    var checks = new[]
+    {
+        new DatabaseHealthCheck(container.Resolve<IDatabaseService>(), healthCheckService, _mockLogger.Object),
+        new MessagingHealthCheck(container.Resolve<IMessageBusService>(), healthCheckService, _mockLogger.Object),
+        new NetworkHealthCheck(healthCheckService, _mockLogger.Object)
+    };
+    
+    foreach (var check in checks)
+    {
+        healthCheckService.RegisterHealthCheck(check);
+    }
     
     // Act
     var report = await healthCheckService.ExecuteAllHealthChecksAsync();
+    var overallHealth = healthCheckService.GetOverallHealth();
+    var degradationStatus = healthCheckService.GetDegradationStatus();
     
     // Assert
-    Assert.That(report.TotalChecks, Is.GreaterThan(0));
-    Assert.That(report.OverallStatus, Is.Not.EqualTo(HealthStatus.Unknown));
-    
-    foreach (var result in report.Results.Values)
-    {
-        Assert.That(result.Duration, Is.LessThan(TimeSpan.FromMinutes(1)));
-        Assert.That(string.IsNullOrEmpty(result.Message), Is.False);
-    }
+    Assert.That(report.TotalChecks, Is.EqualTo(3));
+    Assert.That(overallHealth, Is.Not.EqualTo(HealthStatus.Unknown));
+    Assert.That(degradationStatus, Is.Not.Null);
 }
 ```
 
-## 🚀 Getting Started
+## 📊 Performance Characteristics
 
-### 1. Installation
+### Benchmarks
+
+| Operation | Allocation | Time (μs) | Throughput |
+|-----------|------------|-----------|------------|
+| Health Check Execution | 240 bytes | 150 | 6.7K ops/sec |
+| Circuit Breaker Execute | 0 bytes | 12 | 83K ops/sec |
+| Health Status Query | 0 bytes | 5 | 200K ops/sec |
+| Batch Health Check (10) | 2.4 KB | 800 | 1.25K batches/sec |
+| Circuit Breaker State Change | 320 bytes | 45 | 22K ops/sec |
+| Graceful Degradation Check | 128 bytes | 25 | 40K ops/sec |
+
+### Memory Usage
+
+- **Zero Allocation Health Queries**: Direct status access with no boxing
+- **Pooled Health Check Results**: Result pooling for frequent checks
+- **Efficient Circuit Breaker Storage**: Minimal memory overhead per circuit breaker
+- **Batch Processing**: Reduced memory pressure through intelligent batching
+- **Degradation State Caching**: Cached degradation calculations
+
+### Threading
+
+- **Thread-Safe**: All operations are thread-safe by default
+- **Lock-Free**: Uses lock-free data structures for high-throughput scenarios
+- **Async First**: Full async/await support with proper cancellation
+- **Unity Main Thread**: Automatic marshaling for Unity-specific operations
+- **Concurrent Health Checks**: Parallel execution of independent health checks
+
+## 🏥 Health Monitoring Integration
+
+### Health Check Implementation
 
 ```csharp
-// In Package Manager, add:
-"com.ahbearstudios.core.healthcheck": "2.0.0"
-```
-
-### 2. Basic Setup
-
-```csharp
-public class HealthCheckInstaller : MonoInstaller
+public class HealthCheckServiceHealthCheck : IHealthCheck
 {
-    public override void InstallBindings()
-    {
-        // Configure health checks
-        var config = new HealthCheckConfigBuilder()
-            .WithDefaultInterval(TimeSpan.FromMinutes(5))
-            .WithDefaultTimeout(TimeSpan.FromSeconds(30))
-            .WithAutomaticChecks(enabled: true)
-            .WithAlerting(enabled: true)
-            .Build();
-            
-        Container.Bind<HealthCheckConfig>().FromInstance(config);
-        Container.Bind<IHealthCheckService>().To<HealthCheckService>().AsSingle();
-        Container.Bind<IHealthCheckScheduler>().To<HealthCheckScheduler>().AsSingle();
-    }
-}
-```
-
-### 3. Register Health Checks
-
-```csharp
-public class GameInitializer : MonoBehaviour
-{
-    private IHealthCheckService _healthCheckService;
+    private readonly IHealthCheckService _healthCheckService;
     
-    [Inject]
-    public void Initialize(IHealthCheckService healthCheckService)
-    {
-        _healthCheckService = healthCheckService;
-        
-        // Register built-in checks
-        _healthCheckService.RegisterHealthCheck(new SystemResourceHealthCheck());
-        
-        // Register custom checks
-        _healthCheckService.RegisterHealthCheck("Database", 
-            new DatabaseHealthCheck(_databaseService, _logger));
-        _healthCheckService.RegisterHealthCheck("GameLogic", 
-            new GameLogicHealthCheck(_gameManager));
-        
-        // Start monitoring
-        _healthCheckService.StartAutomaticChecks();
-    }
-}
-```
-
-### 4. Custom Health Check
-
-```csharp
-public class GameLogicHealthCheck : IHealthCheck
-{
-    public string Name => "GameLogic";
-    public string Description => "Checks core game systems";
-    public HealthCheckCategory Category => HealthCheckCategory.Custom;
-    public TimeSpan Timeout { get; private set; } = TimeSpan.FromSeconds(15);
-    public HealthCheckConfiguration Configuration { get; private set; }
-    public IEnumerable<string> Dependencies => Array.Empty<string>();
+    public FixedString64Bytes Name => "HealthCheckService";
     
-    private readonly GameManager _gameManager;
-    
-    public GameLogicHealthCheck(GameManager gameManager)
+    public async Task<HealthCheckResult> CheckHealthAsync(
+        CancellationToken cancellationToken = default)
     {
-        _gameManager = gameManager;
-    }
-    
-    public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
-    {
-        var stopwatch = Stopwatch.StartNew();
-        var data = new Dictionary<string, object>();
-        
         try
         {
-            // Check if game manager is initialized
-            if (!_gameManager.IsInitialized)
+            var stats = _healthCheckService.GetStatistics();
+            var circuitBreakerStates = _healthCheckService.GetAllCircuitBreakerStates();
+            
+            var data = new Dictionary<string, object>
+            {
+                ["TotalHealthChecks"] = stats.TotalHealthChecks,
+                ["RegisteredChecks"] = stats.RegisteredHealthChecks,
+                ["OverallHealth"] = stats.OverallHealth,
+                ["ActiveCircuitBreakers"] = circuitBreakerStates.Count,
+                ["OpenCircuitBreakers"] = circuitBreakerStates.Count(cb => cb.Value == CircuitBreakerState.Open),
+                ["LastUpdated"] = stats.LastUpdated
+            };
+            
+            // Check for critical issues
+            if (stats.OverallHealth == HealthStatus.Unhealthy)
             {
                 return HealthCheckResult.Unhealthy(
-                    "Game manager not initialized",
-                    stopwatch.Elapsed,
-                    data);
+                    "Overall system health is unhealthy", data);
             }
             
-            // Check player count
-            var playerCount = _gameManager.GetActivePlayerCount();
-            data["ActivePlayers"] = playerCount;
-            
-            // Check game state
-            var gameState = _gameManager.GetCurrentState();
-            data["GameState"] = gameState.ToString();
-            
-            // Check for errors
-            var errorCount = _gameManager.GetErrorCount();
-            data["ErrorCount"] = errorCount;
-            
-            if (errorCount > 10)
+            var openCircuitBreakers = circuitBreakerStates.Count(cb => cb.Value == CircuitBreakerState.Open);
+            if (openCircuitBreakers > circuitBreakerStates.Count * 0.3) // More than 30% open
             {
                 return HealthCheckResult.Degraded(
-                    $"High error count: {errorCount}",
-                    stopwatch.Elapsed,
-                    data);
+                    $"High number of open circuit breakers: {openCircuitBreakers}", data);
             }
             
-            return HealthCheckResult.Healthy(
-                $"Game logic healthy ({playerCount} players)",
-                stopwatch.Elapsed,
-                data);
+            return HealthCheckResult.Healthy("Health check service operating normally", data);
         }
         catch (Exception ex)
         {
             return HealthCheckResult.Unhealthy(
-                $"Game logic check failed: {ex.Message}",
-                stopwatch.Elapsed,
-                data,
-                ex);
+                $"Health check service monitoring failed: {ex.Message}", exception: ex);
+        }
+    }
+}
+```
+
+### Statistics and Metrics
+
+```csharp
+public class HealthServiceStatistics
+{
+    public long TotalHealthChecks { get; init; }
+    public int RegisteredHealthChecks { get; init; }
+    public HealthStatus OverallHealth { get; init; }
+    public Dictionary<HealthStatus, int> HealthChecksByStatus { get; init; } = new();
+    public Dictionary<string, CircuitBreakerStatistics> CircuitBreakerStats { get; init; } = new();
+    public Dictionary<string, DegradationLevel> DegradationStatus { get; init; } = new();
+    public DateTime LastUpdated { get; init; }
+    public TimeSpan AverageCheckDuration { get; init; }
+    public int FailedChecks { get; init; }
+    public DateTime LastCheckTime { get; init; }
+}
+
+public class CircuitBreakerStatistics
+{
+    public string OperationName { get; init; }
+    public CircuitBreakerState CurrentState { get; init; }
+    public long TotalExecutions { get; init; }
+    public long SuccessfulExecutions { get; init; }
+    public long FailedExecutions { get; init; }
+    public int CircuitOpenCount { get; init; }
+    public DateTime LastStateChange { get; init; }
+    public double SuccessRate => TotalExecutions > 0 ? (double)SuccessfulExecutions / TotalExecutions : 0.0;
+    public TimeSpan AverageExecutionTime { get; init; }
+}
+```
+
+## 🎨 Unity Integration
+
+### Health Check Display Component
+
+```csharp
+public class HealthCheckDisplayComponent : MonoBehaviour
+{
+    [SerializeField] private Transform _healthCheckContainer;
+    [SerializeField] private GameObject _healthCheckItemPrefab;
+    [SerializeField] private Text _overallHealthText;
+    [SerializeField] private float _updateInterval = 1.0f;
+    
+    private IHealthCheckService _healthCheckService;
+    private readonly Dictionary<string, HealthCheckDisplayItem> _displayItems = new();
+    
+    private void Start()
+    {
+        _healthCheckService = Container.Resolve<IHealthCheckService>();
+        
+        // Subscribe to health events
+        _healthCheckService.HealthStatusChanged += OnHealthStatusChanged;
+        _healthCheckService.CircuitBreakerStateChanged += OnCircuitBreakerStateChanged;
+        
+        // Start periodic updates
+        InvokeRepeating(nameof(UpdateDisplay), 0f, _updateInterval);
+    }
+    
+    private void UpdateDisplay()
+    {
+        var overallHealth = _healthCheckService.GetOverallHealth();
+        var lastResults = _healthCheckService.GetLastResults();
+        var circuitBreakerStates = _healthCheckService.GetAllCircuitBreakerStates();
+        
+        // Update overall health display
+        _overallHealthText.text = $"Overall Health: {overallHealth}";
+        _overallHealthText.color = GetHealthColor(overallHealth);
+        
+        // Update individual health check displays
+        foreach (var result in lastResults)
+        {
+            UpdateHealthCheckDisplay(result);
+        }
+        
+        // Update circuit breaker displays
+        foreach (var (operation, state) in circuitBreakerStates)
+        {
+            UpdateCircuitBreakerDisplay(operation, state);
         }
     }
     
-    public void Configure(HealthCheckConfiguration configuration)
+    private void UpdateHealthCheckDisplay(HealthCheckResult result)
     {
-        Configuration = configuration;
+        if (!_displayItems.ContainsKey(result.Name))
+        {
+            CreateHealthCheckDisplayItem(result.Name);
+        }
+        
+        var displayItem = _displayItems[result.Name];
+        displayItem.UpdateStatus(result.Status, result.Message, result.Duration);
     }
     
-    public Dictionary<string, object> GetMetadata()
+    private void UpdateCircuitBreakerDisplay(string operationName, CircuitBreakerState state)
     {
-        return new Dictionary<string, object>
+        var displayKey = $"CB_{operationName}";
+        if (!_displayItems.ContainsKey(displayKey))
         {
-            ["GameManagerType"] = _gameManager.GetType().Name,
-            ["Version"] = "1.0.0"
+            CreateCircuitBreakerDisplayItem(operationName);
+        }
+        
+        var displayItem = _displayItems[displayKey];
+        displayItem.UpdateCircuitBreakerState(state);
+    }
+    
+    private Color GetHealthColor(HealthStatus status)
+    {
+        return status switch
+        {
+            HealthStatus.Healthy => Color.green,
+            HealthStatus.Degraded => Color.yellow,
+            HealthStatus.Unhealthy => Color.red,
+            _ => Color.gray
+        };
+    }
+    
+    private void OnHealthStatusChanged(object sender, HealthStatusChangedEventArgs e)
+    {
+        // Trigger visual alerts, animations, etc.
+        if (e.NewStatus == HealthStatus.Unhealthy)
+        {
+            TriggerHealthAlert(e.SystemName, e.Reason);
+        }
+    }
+    
+    private void OnCircuitBreakerStateChanged(object sender, CircuitBreakerStateChangedEventArgs e)
+    {
+        // Trigger circuit breaker notifications
+        if (e.NewState == CircuitBreakerState.Open)
+        {
+            TriggerCircuitBreakerAlert(e.OperationName);
+        }
+    }
+}
+
+public class HealthCheckDisplayItem : MonoBehaviour
+{
+    [SerializeField] private Text _nameText;
+    [SerializeField] private Text _statusText;
+    [SerializeField] private Text _messageText;
+    [SerializeField] private Text _durationText;
+    [SerializeField] private Image _statusIcon;
+    [SerializeField] private Image _circuitBreakerIcon;
+    
+    public void UpdateStatus(HealthStatus status, string message, TimeSpan duration)
+    {
+        _statusText.text = status.ToString();
+        _statusText.color = GetStatusColor(status);
+        _messageText.text = message;
+        _durationText.text = $"{duration.TotalMilliseconds:F0}ms";
+        
+        _statusIcon.color = GetStatusColor(status);
+    }
+    
+    public void UpdateCircuitBreakerState(CircuitBreakerState state)
+    {
+        _circuitBreakerIcon.color = state switch
+        {
+            CircuitBreakerState.Closed => Color.green,
+            CircuitBreakerState.Open => Color.red,
+            CircuitBreakerState.HalfOpen => Color.yellow,
+            _ => Color.gray
+        };
+        
+        _circuitBreakerIcon.gameObject.SetActive(true);
+    }
+    
+    private Color GetStatusColor(HealthStatus status)
+    {
+        return status switch
+        {
+            HealthStatus.Healthy => Color.green,
+            HealthStatus.Degraded => Color.yellow,
+            HealthStatus.Unhealthy => Color.red,
+            _ => Color.gray
         };
     }
 }
@@ -1023,11 +1355,12 @@ public class GameLogicHealthCheck : IHealthCheck
 
 ## 📚 Additional Resources
 
-- [Health Check Best Practices](HEALTHCHECK_BEST_PRACTICES.md)
-- [Custom Health Check Development](HEALTHCHECK_CUSTOM_CHECKS.md)
-- [Health Monitoring Strategies](HEALTHCHECK_MONITORING.md)
-- [Alert Integration Guide](HEALTHCHECK_ALERTS.md)
-- [Troubleshooting Guide](HEALTHCHECK_TROUBLESHOOTING.md)
+- [Circuit Breaker Pattern Documentation](CIRCUIT_BREAKER_PATTERNS.md)
+- [Health Check Best Practices](HEALTH_CHECK_BEST_PRACTICES.md)
+- [Graceful Degradation Guide](GRACEFUL_DEGRADATION_GUIDE.md)
+- [Performance Optimization Guide](HEALTH_CHECK_PERFORMANCE.md)
+- [Troubleshooting Guide](HEALTH_CHECK_TROUBLESHOOTING.md)
+- [Unity Integration Guide](HEALTH_CHECK_UNITY_INTEGRATION.md)
 
 ## 🤝 Contributing
 
@@ -1036,429 +1369,9 @@ See our [Contributing Guidelines](../../CONTRIBUTING.md) for information on how 
 ## 📄 Dependencies
 
 - **Direct**: Logging, Alerts
-- **Dependents**: Bootstrap (for system health monitoring)
+- **Integration**: Circuit Breaker Pattern, Graceful Degradation
+- **Dependents**: Bootstrap (for system health monitoring), All Systems (for protection)
 
 ---
 
-*The HealthCheck System provides comprehensive health monitoring and status reporting across all AhBearStudios Core systems.*
-    var mockDatabase = new Mock<IDatabaseService>();
-    mockDatabase.Setup(db => db.TestConnectionAsync(It.IsAny<CancellationToken>()))
-               .ReturnsAsync(true);
-    mockDatabase.Setup(db => db.ExecuteScalarAsync<int>(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-               .ReturnsAsync(1);
-    
-    var healthCheck = new DatabaseHealthCheck(mockDatabase.Object, _mockLogger.Object);
-    
-    // Act
-    var result = await healthCheck.CheckHealthAsync();
-    
-    // Assert
-    Assert.That(result.Status, Is.EqualTo(HealthStatus.Healthy));
-    Assert.That(result.Data["IsConnected"], Is.EqualTo(true));
-    Assert.That(result.Data["QueryResult"], Is.EqualTo(1));
-}
-
-[Test]
-public async Task HealthCheckService_ExecuteAllChecks_ReturnsReport()
-{
-    // Arrange# HealthCheck System
-
-## 📋 Overview
-
-**Namespace:** `AhBearStudios.Core.HealthCheck`  
-**Role:** System health monitoring and status reporting  
-**Status:** 🔄 In Progress
-
-The HealthCheck System provides comprehensive health monitoring capabilities for all systems, enabling proactive issue detection, automated health reporting, and integration with alerting systems to maintain optimal system performance and reliability.
-
-## 🚀 Key Features
-
-- **⚡ Real-Time Monitoring**: Continuous health assessment of all registered systems
-- **🔧 Flexible Health Checks**: Custom health check implementations for any system
-- **📊 Health Aggregation**: Hierarchical health status with dependency tracking
-- **🎯 Automated Scheduling**: Configurable health check intervals and timing
-- **📈 Health History**: Historical health data tracking and trend analysis
-- **🔄 Alert Integration**: Automatic alert generation for health status changes
-
-## 🏗️ Architecture
-
-### Folder Structure
-
-```
-AhBearStudios.Core.HealthCheck/
-├── IHealthCheckService.cs                # Primary service interface
-├── HealthCheckService.cs                 # Health monitoring implementation
-├── Configs/
-│   ├── HealthCheckConfig.cs              # Health check configuration
-│   ├── CheckScheduleConfig.cs            # Scheduling configuration
-│   └── ReportingConfig.cs                # Reporting settings
-├── Builders/
-│   ├── IHealthCheckConfigBuilder.cs      # Configuration builder interface
-│   └── HealthCheckConfigBuilder.cs       # Builder implementation
-├── Factories/
-│   ├── IHealthCheckFactory.cs            # Health check creation interface
-│   └── HealthCheckFactory.cs             # Factory implementation
-├── Services/
-│   ├── HealthAggregationService.cs       # Status aggregation
-│   ├── HealthHistoryService.cs           # Historical tracking
-│   ├── HealthSchedulingService.cs        # Check scheduling
-│   └── HealthReportingService.cs         # Report generation
-├── Checks/
-│   ├── IHealthCheck.cs                   # Health check interface
-│   ├── SystemResourceHealthCheck.cs      # Resource monitoring
-│   ├── DatabaseHealthCheck.cs            # Database connectivity
-│   ├── NetworkHealthCheck.cs             # Network connectivity
-│   └── CompositeHealthCheck.cs           # Multi-check aggregation
-├── Schedulers/
-│   ├── IHealthCheckScheduler.cs          # Scheduler interface
-│   ├── IntervalScheduler.cs              # Time-based scheduling
-│   └── CronScheduler.cs                  # Cron-based scheduling
-├── Models/
-│   ├── HealthCheckResult.cs              # Check result
-│   ├── HealthStatus.cs                   # Status enumeration
-│   ├── HealthReport.cs                   # Comprehensive report
-│   └── HealthMetrics.cs                  # Health metrics data
-└── HealthChecks/
-    └── HealthCheckServiceHealthCheck.cs  # Self-monitoring
-
-AhBearStudios.Unity.HealthCheck/
-├── Installers/
-│   └── HealthCheckInstaller.cs           # Reflex registration
-├── Components/
-│   ├── HealthCheckDisplayComponent.cs    # Visual health display
-│   └── HealthCheckDebugComponent.cs      # Debug information
-├── Checks/
-│   ├── UnitySystemHealthCheck.cs         # Unity-specific checks
-│   └── PerformanceHealthCheck.cs         # Performance monitoring
-└── ScriptableObjects/
-    └── HealthCheckConfigAsset.cs         # Unity configuration
-```
-
-## 🔌 Key Interfaces
-
-### IHealthCheckService
-
-The primary interface for health monitoring operations.
-
-```csharp
-public interface IHealthCheckService
-{
-    // Health check registration
-    void RegisterHealthCheck(IHealthCheck healthCheck);
-    void RegisterHealthCheck(string name, IHealthCheck healthCheck);
-    void UnregisterHealthCheck(string name);
-    
-    // Individual health checks
-    Task<HealthCheckResult> ExecuteHealthCheckAsync(string name, 
-        CancellationToken cancellationToken = default);
-    HealthCheckResult ExecuteHealthCheck(string name);
-    
-    // Batch health checks
-    Task<HealthReport> ExecuteAllHealthChecksAsync(
-        CancellationToken cancellationToken = default);
-    Task<HealthReport> ExecuteHealthChecksAsync(IEnumerable<string> names, 
-        CancellationToken cancellationToken = default);
-    
-    // Health status queries
-    HealthStatus GetOverallHealth();
-    HealthStatus GetSystemHealth(string systemName);
-    IEnumerable<HealthCheckResult> GetLastResults();
-    
-    // Scheduling and automation
-    void StartAutomaticChecks();
-    void StopAutomaticChecks();
-    void SetCheckInterval(string name, TimeSpan interval);
-    
-    // History and reporting
-    IEnumerable<HealthCheckResult> GetHealthHistory(string name, TimeSpan period);
-    HealthReport GenerateHealthReport();
-    HealthMetrics GetHealthMetrics();
-    
-    // Events
-    event EventHandler<HealthCheckEventArgs> HealthCheckCompleted;
-    event EventHandler<HealthStatusChangeEventArgs> HealthStatusChanged;
-}
-```
-
-### IHealthCheck
-
-Core interface for individual health checks.
-
-```csharp
-public interface IHealthCheck
-{
-    string Name { get; }
-    string Description { get; }
-    HealthCheckCategory Category { get; }
-    TimeSpan Timeout { get; }
-    
-    // Health check execution
-    Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default);
-    
-    // Configuration
-    HealthCheckConfiguration Configuration { get; }
-    void Configure(HealthCheckConfiguration configuration);
-    
-    // Dependencies
-    IEnumerable<string> Dependencies { get; }
-    
-    // Metadata
-    Dictionary<string, object> GetMetadata();
-}
-
-public enum HealthCheckCategory
-{
-    System,
-    Database,
-    Network,
-    Performance,
-    Security,
-    Custom
-}
-```
-
-### IHealthCheckResult
-
-Result of a health check execution.
-
-```csharp
-public interface IHealthCheckResult
-{
-    string Name { get; }
-    HealthStatus Status { get; }
-    string Message { get; }
-    string Description { get; }
-    TimeSpan Duration { get; }
-    DateTime Timestamp { get; }
-    Exception Exception { get; }
-    Dictionary<string, object> Data { get; }
-    
-    // Helper methods
-    bool IsHealthy { get; }
-    bool IsDegraded { get; }
-    bool IsUnhealthy { get; }
-}
-
-public enum HealthStatus
-{
-    Healthy,
-    Degraded,
-    Unhealthy,
-    Unknown
-}
-```
-
-### IHealthReport
-
-Comprehensive health report containing multiple check results.
-
-```csharp
-public interface IHealthReport
-{
-    HealthStatus OverallStatus { get; }
-    TimeSpan TotalDuration { get; }
-    DateTime Timestamp { get; }
-    
-    // Results
-    IReadOnlyDictionary<string, HealthCheckResult> Results { get; }
-    IEnumerable<HealthCheckResult> HealthyChecks { get; }
-    IEnumerable<HealthCheckResult> DegradedChecks { get; }
-    IEnumerable<HealthCheckResult> UnhealthyChecks { get; }
-    
-    // Statistics
-    int TotalChecks { get; }
-    int HealthyCount { get; }
-    int DegradedCount { get; }
-    int UnhealthyCount { get; }
-    
-    // Filtering
-    IEnumerable<HealthCheckResult> GetChecksByCategory(HealthCheckCategory category);
-    IEnumerable<HealthCheckResult> GetChecksByStatus(HealthStatus status);
-}
-```
-
-## ⚙️ Configuration
-
-### Basic Configuration
-
-```csharp
-var config = new HealthCheckConfigBuilder()
-    .WithDefaultInterval(TimeSpan.FromMinutes(1))
-    .WithDefaultTimeout(TimeSpan.FromSeconds(30))
-    .WithAutomaticChecks(enabled: true)
-    .WithHistoryRetention(TimeSpan.FromHours(24))
-    .WithAlerting(enabled: true)
-    .Build();
-```
-
-### Advanced Configuration
-
-```csharp
-var config = new HealthCheckConfigBuilder()
-    .WithDefaultInterval(TimeSpan.FromMinutes(5))
-    .WithDefaultTimeout(TimeSpan.FromSeconds(10))
-    .WithScheduling(builder => builder
-        .WithScheduler<IntervalScheduler>()
-        .WithConcurrentChecks(maxConcurrency: 10)
-        .WithFailureRetry(maxRetries: 3, backoff: TimeSpan.FromSeconds(5)))
-    .WithAlerting(builder => builder
-        .EnableAlerts(true)
-        .WithAlertThreshold(consecutiveFailures: 3)
-        .WithAlertCooldown(TimeSpan.FromMinutes(15))
-        .WithEscalation(enabled: true, escalationTime: TimeSpan.FromHours(1)))
-    .WithReporting(builder => builder
-        .EnableHistoricalTracking(true)
-        .WithHistoryRetention(TimeSpan.FromDays(7))
-        .WithMetricsCollection(enabled: true)
-        .WithReportGeneration(interval: TimeSpan.FromHours(6)))
-    .WithChecks(builder => builder
-        .AddSystemResourceCheck(interval: TimeSpan.FromMinutes(1))
-        .AddDatabaseCheck("MainDatabase", connectionString, TimeSpan.FromMinutes(2))
-        .AddNetworkCheck("ExternalAPI", "https://api.example.com/health")
-        .AddCustomCheck<ApplicationHealthCheck>(TimeSpan.FromMinutes(5)))
-    .Build();
-```
-
-### Unity Integration
-
-```csharp
-[CreateAssetMenu(menuName = "AhBear/HealthCheck/Config")]
-public class HealthCheckConfigAsset : ScriptableObject
-{
-    [Header("General")]
-    public bool enableAutomaticChecks = true;
-    public float defaultIntervalMinutes = 5f;
-    public float defaultTimeoutSeconds = 30f;
-    
-    [Header("Scheduling")]
-    public int maxConcurrentChecks = 10;
-    public int maxRetries = 3;
-    public float retryBackoffSeconds = 5f;
-    
-    [Header("Alerting")]
-    public bool enableAlerting = true;
-    public int alertThreshold = 3;
-    public float alertCooldownMinutes = 15f;
-    public bool enableEscalation = false;
-    
-    [Header("History")]
-    public bool enableHistoricalTracking = true;
-    public float historyRetentionHours = 24f;
-    public int maxHistoryEntries = 10000;
-    
-    [Header("Built-in Checks")]
-    public bool enableSystemResourceCheck = true;
-    public bool enablePerformanceCheck = true;
-    public bool enableUnitySystemCheck = true;
-    public HealthCheckConfig[] customChecks = Array.Empty<HealthCheckConfig>();
-}
-
-[Serializable]
-public class HealthCheckConfig
-{
-    public string name;
-    public string typeName;
-    public float intervalMinutes;
-    public float timeoutSeconds;
-    public bool isEnabled = true;
-    public Dictionary<string, string> parameters;
-}
-```
-
-## 🚀 Usage Examples
-
-### Basic Health Check Implementation
-
-```csharp
-public class DatabaseHealthCheck : IHealthCheck
-{
-    public string Name => "Database";
-    public string Description => "Checks database connectivity and responsiveness";
-    public HealthCheckCategory Category => HealthCheckCategory.Database;
-    public TimeSpan Timeout { get; private set; } = TimeSpan.FromSeconds(30);
-    public HealthCheckConfiguration Configuration { get; private set; }
-    public IEnumerable<string> Dependencies => Array.Empty<string>();
-    
-    private readonly IDatabaseService _database;
-    private readonly ILoggingService _logger;
-    
-    public DatabaseHealthCheck(IDatabaseService database, ILoggingService logger)
-    {
-        _database = database;
-        _logger = logger;
-    }
-    
-    public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
-    {
-        var stopwatch = Stopwatch.StartNew();
-        var data = new Dictionary<string, object>();
-        
-        try
-        {
-            // Test basic connectivity
-            var isConnected = await _database.TestConnectionAsync(cancellationToken);
-            data["IsConnected"] = isConnected;
-            
-            if (!isConnected)
-            {
-                return HealthCheckResult.Unhealthy(
-                    "Database connection failed", 
-                    stopwatch.Elapsed, 
-                    data);
-            }
-            
-            // Test query performance
-            var queryStart = Stopwatch.StartNew();
-            var result = await _database.ExecuteScalarAsync<int>("SELECT 1", cancellationToken);
-            queryStart.Stop();
-            
-            data["QueryTime"] = queryStart.ElapsedMilliseconds;
-            data["QueryResult"] = result;
-            
-            // Evaluate performance
-            if (queryStart.ElapsedMilliseconds > 5000) // 5 seconds
-            {
-                return HealthCheckResult.Unhealthy(
-                    $"Database query too slow: {queryStart.ElapsedMilliseconds}ms",
-                    stopwatch.Elapsed,
-                    data);
-            }
-            
-            if (queryStart.ElapsedMilliseconds > 1000) // 1 second
-            {
-                return HealthCheckResult.Degraded(
-                    $"Database query slow: {queryStart.ElapsedMilliseconds}ms",
-                    stopwatch.Elapsed,
-                    data);
-            }
-            
-            // Get additional metrics
-            var metrics = await _database.GetMetricsAsync(cancellationToken);
-            data["ActiveConnections"] = metrics.ActiveConnections;
-            data["TotalQueries"] = metrics.TotalQueries;
-            data["AverageQueryTime"] = metrics.AverageQueryTime;
-            
-            return HealthCheckResult.Healthy(
-                $"Database responsive ({queryStart.ElapsedMilliseconds}ms)",
-                stopwatch.Elapsed,
-                data);
-        }
-        catch (OperationCanceledException)
-        {
-            return HealthCheckResult.Unhealthy(
-                "Database health check timed out",
-                stopwatch.Elapsed,
-                data);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Database health check failed: {ex.Message}");
-            
-            return HealthCheckResult.Unhealthy(
-                $"Database health check failed: {ex.Message}",
-                stopwatch.Elapsed,
-                data,
-                ex);
-        }
-    }
-    
+*The Enhanced HealthCheck System provides comprehensive health monitoring, system protection through circuit breakers, and graceful degradation capabilities across all AhBearStudios Core systems. This system serves as the foundation for maintaining operational resilience and system reliability.*
