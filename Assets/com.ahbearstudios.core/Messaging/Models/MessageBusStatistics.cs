@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using AhBearStudios.Core.HealthChecking;
 using AhBearStudios.Core.HealthChecking.Models;
 
 namespace AhBearStudios.Core.Messaging.Models;

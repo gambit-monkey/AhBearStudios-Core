@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
+using AhBearStudios.Core.HealthChecking;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
