@@ -1,314 +1,748 @@
 ﻿using AhBearStudios.Core.Messaging.Configs;
-using Unity.Collections;
 
 namespace AhBearStudios.Core.Messaging.Builders
 {
     /// <summary>
-    /// Builder for constructing MessageBusConfig instances with fluent API.
-    /// Provides validation and sensible defaults for all configuration options.
+    /// Fluent builder for MessageBusConfig with comprehensive validation and defaults.
+    /// Follows the Builder pattern from AhBearStudios Core Development Guidelines.
     /// </summary>
     public sealed class MessageBusConfigBuilder
     {
-        private bool _asyncSupport = true;
-        private bool _performanceMonitoring = true;
-        private bool _filteringEnabled = true;
-        private bool _routingEnabled = true;
-        private bool _healthChecksEnabled = true;
-        private bool _alertsEnabled = true;
-        private int _maxConcurrentHandlers = 100;
-        private int _maxQueueSize = 10000;
-        private TimeSpan _handlerTimeout = TimeSpan.FromSeconds(30);
-        private TimeSpan _healthCheckInterval = TimeSpan.FromMinutes(1);
-        private TimeSpan _messageHistoryRetention = TimeSpan.FromHours(24);
-        private int _maxRetryAttempts = 3;
-        private TimeSpan _retryBaseDelay = TimeSpan.FromMilliseconds(100);
-        private double _retryBackoffMultiplier = 2.0;
-        private FixedString64Bytes _instanceName = "MessageBus";
-        private bool _serializationEnabled = false;
-        private bool _compressionEnabled = false;
-        private int _compressionThreshold = 1024;
-        private bool _deadLetterQueueEnabled = true;
-        private int _deadLetterQueueMaxSize = 1000;
+        private readonly MessageBusConfig _config;
 
         /// <summary>
-        /// Sets whether async message handling is enabled.
+        /// Initializes a new instance of the MessageBusConfigBuilder class.
         /// </summary>
-        /// <param name="enabled">True to enable async support, false otherwise</param>
-        /// <returns>This builder instance for method chaining</returns>
-        public MessageBusConfigBuilder WithAsyncSupport(bool enabled)
+        public MessageBusConfigBuilder()
         {
-            _asyncSupport = enabled;
+            _config = new MessageBusConfig();
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the MessageBusConfigBuilder class with an existing configuration.
+        /// </summary>
+        /// <param name="existingConfig">The existing configuration to start with</param>
+        /// <exception cref="ArgumentNullException">Thrown when existingConfig is null</exception>
+        public MessageBusConfigBuilder(MessageBusConfig existingConfig)
+        {
+            _config = existingConfig?.Clone() ?? throw new ArgumentNullException(nameof(existingConfig));
+        }
+
+        #region Core Configuration
+
+        /// <summary>
+        /// Sets the instance name for the message bus.
+        /// </summary>
+        /// <param name="instanceName">The instance name</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentNullException">Thrown when instanceName is null or empty</exception>
+        public MessageBusConfigBuilder WithInstanceName(string instanceName)
+        {
+            if (string.IsNullOrWhiteSpace(instanceName))
+                throw new ArgumentNullException(nameof(instanceName));
+
+            _config.InstanceName = instanceName;
             return this;
         }
 
         /// <summary>
-        /// Sets whether performance monitoring is enabled.
+        /// Configures async support for message handling.
         /// </summary>
-        /// <param name="enabled">True to enable performance monitoring, false otherwise</param>
-        /// <returns>This builder instance for method chaining</returns>
-        public MessageBusConfigBuilder WithPerformanceMonitoring(bool enabled)
+        /// <param name="enabled">Whether async support is enabled</param>
+        /// <returns>This builder for chaining</returns>
+        public MessageBusConfigBuilder WithAsyncSupport(bool enabled = true)
         {
-            _performanceMonitoring = enabled;
-            return this;
-        }
-
-        /// <summary>
-        /// Sets whether message filtering capabilities are enabled.
-        /// </summary>
-        /// <param name="enabled">True to enable filtering, false otherwise</param>
-        /// <returns>This builder instance for method chaining</returns>
-        public MessageBusConfigBuilder WithFiltering(bool enabled)
-        {
-            _filteringEnabled = enabled;
-            return this;
-        }
-
-        /// <summary>
-        /// Sets whether message routing is enabled.
-        /// </summary>
-        /// <param name="enabled">True to enable routing, false otherwise</param>
-        /// <returns>This builder instance for method chaining</returns>
-        public MessageBusConfigBuilder WithRouting(bool enabled)
-        {
-            _routingEnabled = enabled;
-            return this;
-        }
-
-        /// <summary>
-        /// Sets whether health checks are enabled.
-        /// </summary>
-        /// <param name="enabled">True to enable health checks, false otherwise</param>
-        /// <returns>This builder instance for method chaining</returns>
-        public MessageBusConfigBuilder WithHealthChecks(bool enabled)
-        {
-            _healthChecksEnabled = enabled;
-            return this;
-        }
-
-        /// <summary>
-        /// Sets whether alerts are enabled.
-        /// </summary>
-        /// <param name="enabled">True to enable alerts, false otherwise</param>
-        /// <returns>This builder instance for method chaining</returns>
-        public MessageBusConfigBuilder WithAlerts(bool enabled)
-        {
-            _alertsEnabled = enabled;
+            _config.AsyncSupport = enabled;
             return this;
         }
 
         /// <summary>
         /// Sets the maximum number of concurrent message handlers.
         /// </summary>
-        /// <param name="maxHandlers">Maximum concurrent handlers (must be positive)</param>
-        /// <returns>This builder instance for method chaining</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when maxHandlers is not positive</exception>
+        /// <param name="maxHandlers">The maximum number of concurrent handlers</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when maxHandlers is less than 1</exception>
         public MessageBusConfigBuilder WithMaxConcurrentHandlers(int maxHandlers)
         {
-            if (maxHandlers <= 0)
-                throw new ArgumentOutOfRangeException(nameof(maxHandlers), "Max concurrent handlers must be positive");
+            if (maxHandlers < 1)
+                throw new ArgumentOutOfRangeException(nameof(maxHandlers), "Must be at least 1");
 
-            _maxConcurrentHandlers = maxHandlers;
+            _config.MaxConcurrentHandlers = maxHandlers;
             return this;
         }
 
         /// <summary>
-        /// Sets the maximum message queue size.
+        /// Sets the maximum queue size before backpressure.
         /// </summary>
-        /// <param name="maxSize">Maximum queue size (must be positive)</param>
-        /// <returns>This builder instance for method chaining</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when maxSize is not positive</exception>
-        public MessageBusConfigBuilder WithMaxQueueSize(int maxSize)
+        /// <param name="maxQueueSize">The maximum queue size</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when maxQueueSize is less than 1</exception>
+        public MessageBusConfigBuilder WithMaxQueueSize(int maxQueueSize)
         {
-            if (maxSize <= 0)
-                throw new ArgumentOutOfRangeException(nameof(maxSize), "Max queue size must be positive");
+            if (maxQueueSize < 1)
+                throw new ArgumentOutOfRangeException(nameof(maxQueueSize), "Must be at least 1");
 
-            _maxQueueSize = maxSize;
+            _config.MaxQueueSize = maxQueueSize;
             return this;
         }
 
         /// <summary>
-        /// Sets the timeout for message handler execution.
+        /// Sets the timeout for individual message handlers.
         /// </summary>
-        /// <param name="timeout">Handler timeout (must be positive)</param>
-        /// <returns>This builder instance for method chaining</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when timeout is not positive</exception>
+        /// <param name="timeout">The handler timeout</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when timeout is zero or negative</exception>
         public MessageBusConfigBuilder WithHandlerTimeout(TimeSpan timeout)
         {
             if (timeout <= TimeSpan.Zero)
-                throw new ArgumentOutOfRangeException(nameof(timeout), "Handler timeout must be positive");
+                throw new ArgumentOutOfRangeException(nameof(timeout), "Must be greater than zero");
 
-            _handlerTimeout = timeout;
+            _config.HandlerTimeout = timeout;
+            return this;
+        }
+
+        #endregion
+
+        #region Feature Configuration
+
+        /// <summary>
+        /// Configures performance monitoring.
+        /// </summary>
+        /// <param name="enabled">Whether performance monitoring is enabled</param>
+        /// <returns>This builder for chaining</returns>
+        public MessageBusConfigBuilder WithPerformanceMonitoring(bool enabled = true)
+        {
+            _config.PerformanceMonitoring = enabled;
             return this;
         }
 
         /// <summary>
-        /// Sets the health check execution interval.
+        /// Configures health checks.
         /// </summary>
-        /// <param name="interval">Health check interval (must be positive)</param>
-        /// <returns>This builder instance for method chaining</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when interval is not positive</exception>
+        /// <param name="enabled">Whether health checks are enabled</param>
+        /// <returns>This builder for chaining</returns>
+        public MessageBusConfigBuilder WithHealthChecks(bool enabled = true)
+        {
+            _config.HealthChecksEnabled = enabled;
+            return this;
+        }
+
+        /// <summary>
+        /// Configures alerts.
+        /// </summary>
+        /// <param name="enabled">Whether alerts are enabled</param>
+        /// <returns>This builder for chaining</returns>
+        public MessageBusConfigBuilder WithAlerts(bool enabled = true)
+        {
+            _config.AlertsEnabled = enabled;
+            return this;
+        }
+
+        /// <summary>
+        /// Configures object pooling for performance optimization.
+        /// </summary>
+        /// <param name="enabled">Whether object pooling is enabled</param>
+        /// <returns>This builder for chaining</returns>
+        public MessageBusConfigBuilder WithObjectPooling(bool enabled = true)
+        {
+            _config.UseObjectPooling = enabled;
+            return this;
+        }
+
+        /// <summary>
+        /// Configures memory pre-allocation for performance.
+        /// </summary>
+        /// <param name="enabled">Whether to pre-allocate memory</param>
+        /// <returns>This builder for chaining</returns>
+        public MessageBusConfigBuilder WithPreAllocateMemory(bool enabled = true)
+        {
+            _config.PreAllocateMemory = enabled;
+            return this;
+        }
+
+        /// <summary>
+        /// Configures thread pool warm-up on startup.
+        /// </summary>
+        /// <param name="enabled">Whether to warm up the thread pool</param>
+        /// <returns>This builder for chaining</returns>
+        public MessageBusConfigBuilder WithWarmUpThreadPool(bool enabled = true)
+        {
+            _config.WarmUpThreadPool = enabled;
+            return this;
+        }
+
+        #endregion
+
+        #region Retry Policy Configuration
+
+        /// <summary>
+        /// Configures retry policy for failed messages.
+        /// </summary>
+        /// <param name="enabled">Whether retry is enabled</param>
+        /// <param name="maxAttempts">Maximum number of retry attempts</param>
+        /// <param name="delay">Initial delay between retries</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are invalid</exception>
+        public MessageBusConfigBuilder WithRetryPolicy(bool enabled = true, int maxAttempts = 3, TimeSpan? delay = null)
+        {
+            _config.RetryFailedMessages = enabled;
+
+            if (enabled)
+            {
+                if (maxAttempts < 1)
+                    throw new ArgumentOutOfRangeException(nameof(maxAttempts), "Must be at least 1");
+
+                var retryDelay = delay ?? TimeSpan.FromSeconds(1);
+                if (retryDelay <= TimeSpan.Zero)
+                    throw new ArgumentOutOfRangeException(nameof(delay), "Must be greater than zero");
+
+                _config.MaxRetryAttempts = maxAttempts;
+                _config.RetryDelay = retryDelay;
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the retry processing interval.
+        /// </summary>
+        /// <param name="interval">The retry processing interval</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when interval is zero or negative</exception>
+        public MessageBusConfigBuilder WithRetryInterval(TimeSpan interval)
+        {
+            if (interval <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(interval), "Must be greater than zero");
+
+            _config.RetryInterval = interval;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the maximum number of messages to retry in a single batch.
+        /// </summary>
+        /// <param name="batchSize">The maximum retry batch size</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when batchSize is less than 1</exception>
+        public MessageBusConfigBuilder WithMaxRetryBatchSize(int batchSize)
+        {
+            if (batchSize < 1)
+                throw new ArgumentOutOfRangeException(nameof(batchSize), "Must be at least 1");
+
+            _config.MaxRetryBatchSize = batchSize;
+            return this;
+        }
+
+        #endregion
+
+        #region Circuit Breaker Configuration
+
+        /// <summary>
+        /// Configures circuit breaker pattern.
+        /// </summary>
+        /// <param name="enabled">Whether circuit breaker is enabled</param>
+        /// <param name="failureThreshold">Number of failures to open circuit</param>
+        /// <param name="openTimeout">Timeout before transitioning to half-open</param>
+        /// <param name="halfOpenSuccessThreshold">Successes needed to close circuit</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are invalid</exception>
+        public MessageBusConfigBuilder WithCircuitBreaker(
+            bool enabled = true,
+            int failureThreshold = 5,
+            TimeSpan? openTimeout = null,
+            int halfOpenSuccessThreshold = 2)
+        {
+            _config.UseCircuitBreaker = enabled;
+
+            if (enabled)
+            {
+                if (failureThreshold < 1)
+                    throw new ArgumentOutOfRangeException(nameof(failureThreshold), "Must be at least 1");
+
+                var timeout = openTimeout ?? TimeSpan.FromSeconds(30);
+                if (timeout <= TimeSpan.Zero)
+                    throw new ArgumentOutOfRangeException(nameof(openTimeout), "Must be greater than zero");
+
+                if (halfOpenSuccessThreshold < 1)
+                    throw new ArgumentOutOfRangeException(nameof(halfOpenSuccessThreshold), "Must be at least 1");
+
+                _config.CircuitBreakerConfig = new CircuitBreakerConfig
+                {
+                    FailureThreshold = failureThreshold,
+                    OpenTimeout = timeout,
+                    HalfOpenSuccessThreshold = halfOpenSuccessThreshold
+                };
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the circuit breaker check interval.
+        /// </summary>
+        /// <param name="interval">The check interval</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when interval is zero or negative</exception>
+        public MessageBusConfigBuilder WithCircuitBreakerCheckInterval(TimeSpan interval)
+        {
+            if (interval <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(interval), "Must be greater than zero");
+
+            _config.CircuitBreakerCheckInterval = interval;
+            return this;
+        }
+
+        #endregion
+
+        #region Monitoring Configuration
+
+        /// <summary>
+        /// Sets the statistics update interval.
+        /// </summary>
+        /// <param name="interval">The statistics update interval</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when interval is zero or negative</exception>
+        public MessageBusConfigBuilder WithStatisticsUpdateInterval(TimeSpan interval)
+        {
+            if (interval <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(interval), "Must be greater than zero");
+
+            _config.StatisticsUpdateInterval = interval;
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the health check interval.
+        /// </summary>
+        /// <param name="interval">The health check interval</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when interval is zero or negative</exception>
         public MessageBusConfigBuilder WithHealthCheckInterval(TimeSpan interval)
         {
             if (interval <= TimeSpan.Zero)
-                throw new ArgumentOutOfRangeException(nameof(interval), "Health check interval must be positive");
+                throw new ArgumentOutOfRangeException(nameof(interval), "Must be greater than zero");
 
-            _healthCheckInterval = interval;
+            _config.HealthCheckInterval = interval;
             return this;
         }
 
         /// <summary>
-        /// Sets the message history retention period.
+        /// Configures error rate thresholds for monitoring.
         /// </summary>
-        /// <param name="retention">Retention period (must be positive)</param>
-        /// <returns>This builder instance for method chaining</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when retention is not positive</exception>
-        public MessageBusConfigBuilder WithMessageHistoryRetention(TimeSpan retention)
+        /// <param name="warningThreshold">Warning threshold (0.0 to 1.0)</param>
+        /// <param name="criticalThreshold">Critical threshold (0.0 to 1.0)</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when thresholds are invalid</exception>
+        public MessageBusConfigBuilder WithErrorRateThresholds(double warningThreshold, double criticalThreshold)
         {
-            if (retention <= TimeSpan.Zero)
-                throw new ArgumentOutOfRangeException(nameof(retention), "Message history retention must be positive");
+            if (warningThreshold < 0 || warningThreshold > 1)
+                throw new ArgumentOutOfRangeException(nameof(warningThreshold), "Must be between 0 and 1");
 
-            _messageHistoryRetention = retention;
+            if (criticalThreshold < 0 || criticalThreshold > 1)
+                throw new ArgumentOutOfRangeException(nameof(criticalThreshold), "Must be between 0 and 1");
+
+            if (criticalThreshold <= warningThreshold)
+                throw new ArgumentOutOfRangeException(nameof(criticalThreshold), "Must be greater than warning threshold");
+
+            _config.WarningErrorRateThreshold = warningThreshold;
+            _config.CriticalErrorRateThreshold = criticalThreshold;
             return this;
         }
 
         /// <summary>
-        /// Sets the retry configuration for failed message handling.
+        /// Configures queue size thresholds for monitoring.
         /// </summary>
-        /// <param name="maxAttempts">Maximum retry attempts (must be non-negative)</param>
-        /// <param name="baseDelay">Base delay for exponential backoff (must be non-negative)</param>
-        /// <param name="backoffMultiplier">Backoff multiplier (must be positive)</param>
-        /// <returns>This builder instance for method chaining</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are invalid</exception>
-        public MessageBusConfigBuilder WithRetryPolicy(int maxAttempts, TimeSpan baseDelay, double backoffMultiplier = 2.0)
+        /// <param name="warningThreshold">Warning threshold</param>
+        /// <param name="criticalThreshold">Critical threshold</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when thresholds are invalid</exception>
+        public MessageBusConfigBuilder WithQueueSizeThresholds(int warningThreshold, int criticalThreshold)
         {
-            if (maxAttempts < 0)
-                throw new ArgumentOutOfRangeException(nameof(maxAttempts), "Max retry attempts must be non-negative");
-            if (baseDelay < TimeSpan.Zero)
-                throw new ArgumentOutOfRangeException(nameof(baseDelay), "Base delay must be non-negative");
-            if (backoffMultiplier <= 0)
-                throw new ArgumentOutOfRangeException(nameof(backoffMultiplier), "Backoff multiplier must be positive");
+            if (warningThreshold < 0)
+                throw new ArgumentOutOfRangeException(nameof(warningThreshold), "Must be non-negative");
 
-            _maxRetryAttempts = maxAttempts;
-            _retryBaseDelay = baseDelay;
-            _retryBackoffMultiplier = backoffMultiplier;
+            if (criticalThreshold <= warningThreshold)
+                throw new ArgumentOutOfRangeException(nameof(criticalThreshold), "Must be greater than warning threshold");
+
+            _config.WarningQueueSizeThreshold = warningThreshold;
+            _config.CriticalQueueSizeThreshold = criticalThreshold;
             return this;
         }
 
         /// <summary>
-        /// Sets the instance name for this message bus.
+        /// Configures processing time thresholds for monitoring.
         /// </summary>
-        /// <param name="name">Instance name</param>
-        /// <returns>This builder instance for method chaining</returns>
-        /// <exception cref="ArgumentNullException">Thrown when name is null</exception>
-        public MessageBusConfigBuilder WithInstanceName(FixedString64Bytes name)
+        /// <param name="warningThreshold">Warning threshold</param>
+        /// <param name="criticalThreshold">Critical threshold</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when thresholds are invalid</exception>
+        public MessageBusConfigBuilder WithProcessingTimeThresholds(TimeSpan warningThreshold, TimeSpan criticalThreshold)
         {
-            _instanceName = name;
+            if (warningThreshold <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(warningThreshold), "Must be greater than zero");
+
+            if (criticalThreshold <= warningThreshold)
+                throw new ArgumentOutOfRangeException(nameof(criticalThreshold), "Must be greater than warning threshold");
+
+            _config.WarningProcessingTimeThreshold = warningThreshold;
+            _config.CriticalProcessingTimeThreshold = criticalThreshold;
             return this;
         }
 
+        #endregion
+
+        #region Memory Configuration
+
         /// <summary>
-        /// Sets whether message serialization is enabled.
+        /// Sets the maximum memory pressure threshold.
         /// </summary>
-        /// <param name="enabled">True to enable serialization, false otherwise</param>
-        /// <returns>This builder instance for method chaining</returns>
-        public MessageBusConfigBuilder WithSerialization(bool enabled)
+        /// <param name="maxMemoryPressure">Maximum memory pressure in bytes</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when maxMemoryPressure is less than 1</exception>
+        public MessageBusConfigBuilder WithMaxMemoryPressure(long maxMemoryPressure)
         {
-            _serializationEnabled = enabled;
+            if (maxMemoryPressure < 1)
+                throw new ArgumentOutOfRangeException(nameof(maxMemoryPressure), "Must be at least 1");
+
+            _config.MaxMemoryPressure = maxMemoryPressure;
             return this;
         }
 
+        #endregion
+
+        #region Predefined Configurations
+
         /// <summary>
-        /// Sets compression configuration for messages.
+        /// Configures the builder for high-performance scenarios.
         /// </summary>
-        /// <param name="enabled">True to enable compression, false otherwise</param>
-        /// <param name="threshold">Size threshold in bytes for compression (must be non-negative)</param>
-        /// <returns>This builder instance for method chaining</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is negative</exception>
-        public MessageBusConfigBuilder WithCompression(bool enabled, int threshold = 1024)
+        /// <returns>This builder for chaining</returns>
+        public MessageBusConfigBuilder ForHighPerformance()
         {
-            if (threshold < 0)
-                throw new ArgumentOutOfRangeException(nameof(threshold), "Compression threshold must be non-negative");
-
-            _compressionEnabled = enabled;
-            _compressionThreshold = threshold;
-            return this;
+            return WithInstanceName("HighPerformanceMessageBus")
+                .WithAsyncSupport(true)
+                .WithPerformanceMonitoring(true)
+                .WithHealthChecks(true)
+                .WithAlerts(false) // Disabled for maximum performance
+                .WithRetryPolicy(false) // Disabled for maximum performance
+                .WithCircuitBreaker(false) // Disabled for maximum performance
+                .WithObjectPooling(true)
+                .WithMaxConcurrentHandlers(Environment.ProcessorCount * 4)
+                .WithMaxQueueSize(50000)
+                .WithHandlerTimeout(TimeSpan.FromSeconds(5))
+                .WithStatisticsUpdateInterval(TimeSpan.FromSeconds(30))
+                .WithHealthCheckInterval(TimeSpan.FromMinutes(1))
+                .WithPreAllocateMemory(true)
+                .WithWarmUpThreadPool(true);
         }
 
         /// <summary>
-        /// Sets dead letter queue configuration.
+        /// Configures the builder for reliability-focused scenarios.
         /// </summary>
-        /// <param name="enabled">True to enable dead letter queue, false otherwise</param>
-        /// <param name="maxSize">Maximum number of messages in dead letter queue (must be non-negative)</param>
-        /// <returns>This builder instance for method chaining</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when maxSize is negative</exception>
-        public MessageBusConfigBuilder WithDeadLetterQueue(bool enabled, int maxSize = 1000)
+        /// <returns>This builder for chaining</returns>
+        public MessageBusConfigBuilder ForReliability()
         {
-            if (maxSize < 0)
-                throw new ArgumentOutOfRangeException(nameof(maxSize), "Dead letter queue max size must be non-negative");
+            return WithInstanceName("ReliableMessageBus")
+                .WithAsyncSupport(true)
+                .WithPerformanceMonitoring(true)
+                .WithHealthChecks(true)
+                .WithAlerts(true)
+                .WithRetryPolicy(true, 5, TimeSpan.FromSeconds(2))
+                .WithCircuitBreaker(true)
+                .WithObjectPooling(true)
+                .WithMaxConcurrentHandlers(Environment.ProcessorCount)
+                .WithMaxQueueSize(10000)
+                .WithHandlerTimeout(TimeSpan.FromSeconds(60))
+                .WithStatisticsUpdateInterval(TimeSpan.FromSeconds(5))
+                .WithHealthCheckInterval(TimeSpan.FromSeconds(15))
+                .WithErrorRateThresholds(0.02, 0.05) // 2% warning, 5% critical
+                .WithQueueSizeThresholds(500, 2000) // 500 warning, 2000 critical
+                .WithProcessingTimeThresholds(TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(2));
+        }
 
-            _deadLetterQueueEnabled = enabled;
-            _deadLetterQueueMaxSize = maxSize;
+        /// <summary>
+        /// Configures the builder for development scenarios.
+        /// </summary>
+        /// <returns>This builder for chaining</returns>
+        public MessageBusConfigBuilder ForDevelopment()
+        {
+            return WithInstanceName("DevelopmentMessageBus")
+                .WithAsyncSupport(true)
+                .WithPerformanceMonitoring(true)
+                .WithHealthChecks(true)
+                .WithAlerts(true)
+                .WithRetryPolicy(true, 2, TimeSpan.FromMilliseconds(500))
+                .WithCircuitBreaker(true)
+                .WithObjectPooling(false) // Disabled for easier debugging
+                .WithMaxConcurrentHandlers(2)
+                .WithMaxQueueSize(1000)
+                .WithHandlerTimeout(TimeSpan.FromMinutes(5)) // Longer for debugging
+                .WithStatisticsUpdateInterval(TimeSpan.FromSeconds(1))
+                .WithHealthCheckInterval(TimeSpan.FromSeconds(5))
+                .WithErrorRateThresholds(0.10, 0.25) // More lenient thresholds
+                .WithQueueSizeThresholds(100, 500)
+                .WithProcessingTimeThresholds(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30));
+        }
+
+        #endregion
+
+        #region Advanced Configuration
+
+        /// <summary>
+        /// Applies a custom configuration action.
+        /// </summary>
+        /// <param name="configureAction">Action to configure the message bus config</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentNullException">Thrown when configureAction is null</exception>
+        public MessageBusConfigBuilder Configure(Action<MessageBusConfig> configureAction)
+        {
+            if (configureAction == null)
+                throw new ArgumentNullException(nameof(configureAction));
+
+            configureAction(_config);
             return this;
         }
 
         /// <summary>
-        /// Builds and validates the MessageBusConfig instance.
+        /// Applies conditional configuration based on a predicate.
         /// </summary>
-        /// <returns>A validated MessageBusConfig instance</returns>
+        /// <param name="condition">Condition to evaluate</param>
+        /// <param name="configureAction">Action to apply if condition is true</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentNullException">Thrown when configureAction is null</exception>
+        public MessageBusConfigBuilder When(bool condition, Action<MessageBusConfigBuilder> configureAction)
+        {
+            if (configureAction == null)
+                throw new ArgumentNullException(nameof(configureAction));
+
+            if (condition)
+            {
+                configureAction(this);
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Applies conditional configuration based on a predicate function.
+        /// </summary>
+        /// <param name="predicate">Predicate function to evaluate</param>
+        /// <param name="configureAction">Action to apply if predicate returns true</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentNullException">Thrown when predicate or configureAction is null</exception>
+        public MessageBusConfigBuilder When(Func<MessageBusConfig, bool> predicate, Action<MessageBusConfigBuilder> configureAction)
+        {
+            if (predicate == null)
+                throw new ArgumentNullException(nameof(predicate));
+            if (configureAction == null)
+                throw new ArgumentNullException(nameof(configureAction));
+
+            if (predicate(_config))
+            {
+                configureAction(this);
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Merges settings from another configuration.
+        /// </summary>
+        /// <param name="otherConfig">Configuration to merge from</param>
+        /// <param name="overrideExisting">Whether to override existing values</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentNullException">Thrown when otherConfig is null</exception>
+        public MessageBusConfigBuilder MergeFrom(MessageBusConfig otherConfig, bool overrideExisting = false)
+        {
+            if (otherConfig == null)
+                throw new ArgumentNullException(nameof(otherConfig));
+
+            if (overrideExisting || string.IsNullOrWhiteSpace(_config.InstanceName))
+                _config.InstanceName = otherConfig.InstanceName;
+
+            if (overrideExisting || !_config.AsyncSupport)
+                _config.AsyncSupport = otherConfig.AsyncSupport;
+
+            if (overrideExisting || _config.MaxConcurrentHandlers == Environment.ProcessorCount * 2)
+                _config.MaxConcurrentHandlers = otherConfig.MaxConcurrentHandlers;
+
+            if (overrideExisting || _config.MaxQueueSize == 10000)
+                _config.MaxQueueSize = otherConfig.MaxQueueSize;
+
+            if (overrideExisting || _config.HandlerTimeout == TimeSpan.FromSeconds(30))
+                _config.HandlerTimeout = otherConfig.HandlerTimeout;
+
+            // Continue merging other properties as needed...
+            return this;
+        }
+
+        #endregion
+
+        #region Validation and Building
+
+        /// <summary>
+        /// Validates the current configuration.
+        /// </summary>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when configuration is invalid</exception>
+        public MessageBusConfigBuilder Validate()
+        {
+            var errors = _config.GetValidationErrors();
+            if (!string.IsNullOrEmpty(errors))
+            {
+                throw new InvalidOperationException($"Configuration validation failed:\n{errors}");
+            }
+
+            return this;
+        }
+
+        /// <summary>
+        /// Builds and returns the configured MessageBusConfig.
+        /// </summary>
+        /// <returns>The configured MessageBusConfig instance</returns>
         /// <exception cref="InvalidOperationException">Thrown when configuration is invalid</exception>
         public MessageBusConfig Build()
         {
-            var config = new MessageBusConfig
-            {
-                AsyncSupport = _asyncSupport,
-                PerformanceMonitoring = _performanceMonitoring,
-                FilteringEnabled = _filteringEnabled,
-                RoutingEnabled = _routingEnabled,
-                HealthChecksEnabled = _healthChecksEnabled,
-                AlertsEnabled = _alertsEnabled,
-                MaxConcurrentHandlers = _maxConcurrentHandlers,
-                MaxQueueSize = _maxQueueSize,
-                HandlerTimeout = _handlerTimeout,
-                HealthCheckInterval = _healthCheckInterval,
-                MessageHistoryRetention = _messageHistoryRetention,
-                MaxRetryAttempts = _maxRetryAttempts,
-                RetryBaseDelay = _retryBaseDelay,
-                RetryBackoffMultiplier = _retryBackoffMultiplier,
-                InstanceName = _instanceName,
-                SerializationEnabled = _serializationEnabled,
-                CompressionEnabled = _compressionEnabled,
-                CompressionThreshold = _compressionThreshold,
-                DeadLetterQueueEnabled = _deadLetterQueueEnabled,
-                DeadLetterQueueMaxSize = _deadLetterQueueMaxSize
-            };
+            // Validate before building
+            Validate();
 
-            if (!config.IsValid())
-                throw new InvalidOperationException("Built configuration is invalid");
-
-            return config;
+            // Return a clone to prevent external modification
+            return _config.Clone();
         }
 
         /// <summary>
-        /// Creates a builder instance pre-configured for high performance scenarios.
+        /// Builds and returns the configured MessageBusConfig without validation.
+        /// Use this method only when you're certain the configuration is valid.
         /// </summary>
-        /// <returns>A MessageBusConfigBuilder configured for high performance</returns>
-        public static MessageBusConfigBuilder ForHighPerformance() => new MessageBusConfigBuilder()
-            .WithMaxConcurrentHandlers(500)
-            .WithMaxQueueSize(50000)
-            .WithHandlerTimeout(TimeSpan.FromSeconds(10))
-            .WithPerformanceMonitoring(true)
-            .WithCompression(false)
-            .WithSerialization(false);
+        /// <returns>The configured MessageBusConfig instance</returns>
+        public MessageBusConfig BuildUnsafe()
+        {
+            return _config.Clone();
+        }
+
+        #endregion
+
+        #region Implicit Conversion
 
         /// <summary>
-        /// Creates a builder instance pre-configured for reliability scenarios.
+        /// Implicit conversion from builder to configuration.
         /// </summary>
-        /// <returns>A MessageBusConfigBuilder configured for reliability</returns>
-        public static MessageBusConfigBuilder ForReliability() => new MessageBusConfigBuilder()
-            .WithRetryPolicy(5, TimeSpan.FromSeconds(1))
-            .WithDeadLetterQueue(true, 5000)
-            .WithSerialization(true)
-            .WithHealthCheckInterval(TimeSpan.FromSeconds(30))
-            .WithAlerts(true);
+        /// <param name="builder">The builder to convert</param>
+        /// <returns>The built configuration</returns>
+        public static implicit operator MessageBusConfig(MessageBusConfigBuilder builder)
+        {
+            return builder?.Build();
+        }
+
+        #endregion
+
+        #region Object Overrides
+
+        /// <summary>
+        /// Returns a string representation of the current configuration.
+        /// </summary>
+        /// <returns>Configuration summary string</returns>
+        public override string ToString()
+        {
+            return $"MessageBusConfigBuilder: {_config}";
+        }
+
+        #endregion
+    }
+
+    /// <summary>
+    /// Extension methods for MessageBusConfigBuilder to provide additional fluent API capabilities.
+    /// </summary>
+    public static class MessageBusConfigBuilderExtensions
+    {
+        /// <summary>
+        /// Configures the message bus for Unity-specific optimizations.
+        /// </summary>
+        /// <param name="builder">The configuration builder</param>
+        /// <param name="targetFrameRate">Target frame rate for Unity optimization</param>
+        /// <returns>The builder for chaining</returns>
+        public static MessageBusConfigBuilder ForUnity(this MessageBusConfigBuilder builder, int targetFrameRate = 60)
+        {
+            if (builder == null)
+                throw new ArgumentNullException(nameof(builder));
+
+            // Unity-specific optimizations
+            var updateInterval = TimeSpan.FromMilliseconds(1000.0 / targetFrameRate * 2); // 2 frames interval
+            
+            return builder
+                .WithStatisticsUpdateInterval(updateInterval)
+                .WithHealthCheckInterval(TimeSpan.FromSeconds(2))
+                .WithMaxConcurrentHandlers(Environment.ProcessorCount) // Conservative for Unity
+                .WithObjectPooling(true) // Important for Unity GC
+                .WithPreAllocateMemory(true) // Reduce GC pressure
+                .Configure(config =>
+                {
+                    // Unity-specific memory constraints
+                    config.MaxMemoryPressure = 50 * 1024 * 1024; // 50MB limit for mobile
+                });
+        }
+
+        /// <summary>
+        /// Configures the message bus for mobile device constraints.
+        /// </summary>
+        /// <param name="builder">The configuration builder</param>
+        /// <returns>The builder for chaining</returns>
+        public static MessageBusConfigBuilder ForMobile(this MessageBusConfigBuilder builder)
+        {
+            if (builder == null)
+                throw new ArgumentNullException(nameof(builder));
+
+            return builder
+                .WithMaxConcurrentHandlers(2) // Limited CPU cores
+                .WithMaxQueueSize(1000) // Limited memory
+                .WithMaxMemoryPressure(25 * 1024 * 1024) // 25MB limit
+                .WithObjectPooling(true) // Critical for mobile GC
+                .WithPreAllocateMemory(false) // Avoid large allocations
+                .WithStatisticsUpdateInterval(TimeSpan.FromSeconds(5)) // Reduce CPU usage
+                .WithHealthCheckInterval(TimeSpan.FromSeconds(10));
+        }
+
+        /// <summary>
+        /// Configures the message bus for server/desktop high-performance scenarios.
+        /// </summary>
+        /// <param name="builder">The configuration builder</param>
+        /// <returns>The builder for chaining</returns>
+        public static MessageBusConfigBuilder ForServer(this MessageBusConfigBuilder builder)
+        {
+            if (builder == null)
+                throw new ArgumentNullException(nameof(builder));
+
+            return builder
+                .WithMaxConcurrentHandlers(Environment.ProcessorCount * 4) // Utilize all CPU
+                .WithMaxQueueSize(100000) // Large queue for high throughput
+                .WithMaxMemoryPressure(500 * 1024 * 1024) // 500MB limit
+                .WithObjectPooling(true)
+                .WithPreAllocateMemory(true)
+                .WithStatisticsUpdateInterval(TimeSpan.FromSeconds(1)) // Frequent monitoring
+                .WithHealthCheckInterval(TimeSpan.FromSeconds(5))
+                .WithRetryPolicy(true, 5, TimeSpan.FromMilliseconds(100)) // Fast retry
+                .WithCircuitBreaker(true, 10, TimeSpan.FromSeconds(10)); // Aggressive circuit breaking
+        }
+
+        /// <summary>
+        /// Applies environment-specific configuration based on build settings.
+        /// </summary>
+        /// <param name="builder">The configuration builder</param>
+        /// <param name="environment">The target environment</param>
+        /// <returns>The builder for chaining</returns>
+        public static MessageBusConfigBuilder ForEnvironment(this MessageBusConfigBuilder builder, string environment)
+        {
+            if (builder == null)
+                throw new ArgumentNullException(nameof(builder));
+
+            return environment?.ToLowerInvariant() switch
+            {
+                "development" or "dev" => builder.ForDevelopment(),
+                "staging" or "test" => builder.ForReliability(),
+                "production" or "prod" => builder.ForHighPerformance(),
+                "mobile" => builder.ForMobile(),
+                "server" => builder.ForServer(),
+                _ => builder
+            };
+        }
     }
 }

@@ -1,6 +1,7 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading;
+using System.Threading.Tasks;
 using AhBearStudios.Core.HealthChecking.Models;
-using AhBearStudios.Core.Messaging.Configs;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Messaging.Publishers;
@@ -10,7 +11,8 @@ namespace AhBearStudios.Core.Messaging
 {
     /// <summary>
     /// Primary interface for the message bus service.
-    /// Provides high-level messaging operations with type safety and performance optimization.
+    /// Provides high-level messaging operations with type safety, performance optimization, and comprehensive monitoring.
+    /// Integrates with all required AhBearStudios Core systems for production readiness.
     /// </summary>
     public interface IMessageBusService : IDisposable
     {
@@ -22,6 +24,61 @@ namespace AhBearStudios.Core.Messaging
         /// <typeparam name="TMessage">The message type</typeparam>
         /// <param name="message">The message to publish</param>
         /// <exception cref="ArgumentNullException">Thrown when message is null</exception>
+        /// <exception cref="InvalidOperationException">Thrown when service is disposed</exception>
+        void PublishMessage<TMessage>(TMessage message) where TMessage : IMessage;
+
+        /// <summary>
+        /// Publishes a message asynchronously to all subscribers.
+        /// </summary>
+        /// <typeparam name="TMessage">The message type</typeparam>
+        /// <param name="message">The message to publish</param>
+        /// <param name="cancellationToken">Optional cancellation token</param>
+        /// <returns>Task representing the async operation</returns>
+        /// <exception cref="ArgumentNullException">Thrown when message is null</exception>
+        /// <exception cref="InvalidOperationException">Thrown when service is disposed</exception>
+        Task PublishMessageAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default) where TMessage : IMessage;
+
+        /// <summary>
+        /// Publishes multiple messages as a batch operation.
+        /// </summary>
+        /// <typeparam name="TMessage">The message type</typeparam>
+        /// <param name="messages">The messages to publish</param>
+        /// <exception cref="ArgumentNullException">Thrown when messages is null</exception>
+        /// <exception cref="InvalidOperationException">Thrown when service is disposed</exception>
+        void PublishBatch<TMessage>(TMessage[] messages) where TMessage : IMessage;
+
+        /// <summary>
+        /// Publishes multiple messages as a batch operation asynchronously.
+        /// </summary>
+        /// <typeparam name="TMessage">The message type</typeparam>
+        /// <param name="messages">The messages to publish</param>
+        /// <param name="cancellationToken">Optional cancellation token</param>
+        /// <returns>Task representing the async operation</returns>
+        /// <exception cref="ArgumentNullException">Thrown when messages is null</exception>
+        /// <exception cref="InvalidOperationException">Thrown when service is disposed</exception>
+        Task PublishBatchAsync<TMessage>(TMessage[] messages, CancellationToken cancellationToken = default) where TMessage : IMessage;
+
+        #endregion
+
+        #region Core Subscription Operations
+
+        /// <summary>
+        /// Subscribes to messages with a synchronous handler.
+        /// </summary>
+        /// <typeparam name="TMessage">The message type to subscribe to</typeparam>
+        /// <param name="handler">The message handler</param>
+        /// <returns>Disposable subscription handle</returns>
+        /// <exception cref="ArgumentNullException">Thrown when handler is null</exception>
+        /// <exception cref="InvalidOperationException">Thrown when service is disposed</exception>
+        IDisposable SubscribeToMessage<TMessage>(Action<TMessage> handler) where TMessage : IMessage;
+
+        /// <summary>
+        /// Subscribes to messages with an asynchronous handler.
+        /// </summary>
+        /// <typeparam name="TMessage">The message type to subscribe to</typeparam>
+        /// <param name="handler">The async message handler</param>
+        /// <returns>Disposable subscription handle</returns>
+        /// <exception cref="ArgumentNullException">Thrown when handler is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when service is disposed</exception>
         IDisposable SubscribeToMessageAsync<TMessage>(Func<TMessage, Task> handler) where TMessage : IMessage;
 
@@ -64,19 +121,19 @@ namespace AhBearStudios.Core.Messaging
         /// Subscribes to messages with an async conditional filter.
         /// </summary>
         /// <typeparam name="TMessage">The message type to subscribe to</typeparam>
-        /// <param name="filter">The async filter predicate</param>
+        /// <param name="filter">The filter predicate</param>
         /// <param name="handler">The async message handler</param>
         /// <returns>Disposable subscription handle</returns>
         /// <exception cref="ArgumentNullException">Thrown when filter or handler is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when service is disposed</exception>
-        IDisposable SubscribeWithFilterAsync<TMessage>(Func<TMessage, Task<bool>> filter, Func<TMessage, Task> handler) where TMessage : IMessage;
+        IDisposable SubscribeWithFilterAsync<TMessage>(Func<TMessage, bool> filter, Func<TMessage, Task> handler) where TMessage : IMessage;
 
         /// <summary>
-        /// Subscribes to messages with a minimum priority level.
+        /// Subscribes to messages with priority filtering.
         /// </summary>
         /// <typeparam name="TMessage">The message type to subscribe to</typeparam>
         /// <param name="handler">The message handler</param>
-        /// <param name="minPriority">Minimum priority level</param>
+        /// <param name="minPriority">Minimum message priority to process</param>
         /// <returns>Disposable subscription handle</returns>
         /// <exception cref="ArgumentNullException">Thrown when handler is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when service is disposed</exception>
@@ -89,24 +146,23 @@ namespace AhBearStudios.Core.Messaging
         /// <summary>
         /// Creates a message scope for automatic subscription cleanup.
         /// </summary>
-        /// <returns>Message scope for subscription management</returns>
+        /// <returns>Message scope for scoped subscription management</returns>
         /// <exception cref="InvalidOperationException">Thrown when service is disposed</exception>
         IMessageScope CreateScope();
 
         #endregion
 
-        #region Diagnostics and Monitoring
+        #region Diagnostics and Management
 
         /// <summary>
-        /// Gets comprehensive statistics for the message bus.
+        /// Gets comprehensive statistics about message bus performance and health.
         /// </summary>
         /// <returns>Current message bus statistics</returns>
         MessageBusStatistics GetStatistics();
 
         /// <summary>
-        /// Clears the message history and resets statistics.
+        /// Clears message history and resets statistics counters.
         /// </summary>
-        /// <exception cref="InvalidOperationException">Thrown when service is disposed</exception>
         void ClearMessageHistory();
 
         /// <summary>
@@ -115,53 +171,48 @@ namespace AhBearStudios.Core.Messaging
         /// <returns>Current health status</returns>
         HealthStatus GetHealthStatus();
 
+        /// <summary>
+        /// Forces a health check evaluation and returns the result.
+        /// </summary>
+        /// <param name="cancellationToken">Optional cancellation token</param>
+        /// <returns>Health check result</returns>
+        Task<HealthStatus> CheckHealthAsync(CancellationToken cancellationToken = default);
+
         #endregion
 
-        #region Service State
+        #region Circuit Breaker Operations
 
         /// <summary>
-        /// Gets whether the message bus service is currently operational.
+        /// Gets the current circuit breaker state for message type.
         /// </summary>
-        bool IsOperational { get; }
+        /// <typeparam name="TMessage">The message type</typeparam>
+        /// <returns>Circuit breaker state</returns>
+        CircuitBreakerState GetCircuitBreakerState<TMessage>() where TMessage : IMessage;
 
         /// <summary>
-        /// Gets the configuration used by this message bus instance.
+        /// Manually resets the circuit breaker for a message type.
         /// </summary>
-        MessageBusConfig Configuration { get; }
-
-        /// <summary>
-        /// Gets the unique identifier for this message bus instance.
-        /// </summary>
-        Guid InstanceId { get; }
+        /// <typeparam name="TMessage">The message type</typeparam>
+        void ResetCircuitBreaker<TMessage>() where TMessage : IMessage;
 
         #endregion
 
         #region Events
 
         /// <summary>
-        /// Event raised when a message is published through the bus.
-        /// </summary>
-        event EventHandler<MessageBusEventArgs> MessagePublished;
-
-        /// <summary>
-        /// Event raised when message publishing fails.
-        /// </summary>
-        event EventHandler<MessageBusErrorEventArgs> MessagePublishFailed;
-
-        /// <summary>
-        /// Event raised when a subscription is created.
-        /// </summary>
-        event EventHandler<SubscriptionEventArgs> SubscriptionCreated;
-
-        /// <summary>
-        /// Event raised when a subscription is disposed.
-        /// </summary>
-        event EventHandler<SubscriptionEventArgs> SubscriptionDisposed;
-
-        /// <summary>
         /// Event raised when the health status changes.
         /// </summary>
         event EventHandler<HealthStatusChangedEventArgs> HealthStatusChanged;
+
+        /// <summary>
+        /// Event raised when a message processing fails.
+        /// </summary>
+        event EventHandler<MessageProcessingFailedEventArgs> MessageProcessingFailed;
+
+        /// <summary>
+        /// Event raised when circuit breaker state changes.
+        /// </summary>
+        event EventHandler<CircuitBreakerStateChangedEventArgs> CircuitBreakerStateChanged;
 
         #endregion
     }

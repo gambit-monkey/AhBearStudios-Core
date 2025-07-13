@@ -174,7 +174,7 @@ namespace AhBearStudios.Core.Messaging
             {
                 _innerSubscription = innerSubscription ?? throw new ArgumentNullException(nameof(innerSubscription));
                 _scope = scope ?? throw new ArgumentNullException(nameof(scope));
-                _messageTypeName = messageTypeName ?? "Unknown";
+                _messageTypeName = messageTypeName ?? throw new ArgumentNullException(nameof(messageTypeName));
             }
 
             /// <summary>
@@ -187,17 +187,12 @@ namespace AhBearStudios.Core.Messaging
                 try
                 {
                     _innerSubscription?.Dispose();
-                    _scope?.RemoveSubscription(this);
-                    
-                    _scope?._logger?.LogInfo($"Scoped subscription for {_messageTypeName} disposed in scope {_scope.Id}");
+                    _scope.RemoveSubscription(this);
+                    _disposed = true;
                 }
                 catch (Exception ex)
                 {
-                    _scope?._logger?.LogException(ex, $"Error disposing scoped subscription for {_messageTypeName}");
-                }
-                finally
-                {
-                    _disposed = true;
+                    _scope._logger.LogException(ex, $"Error disposing scoped subscription for {_messageTypeName}");
                 }
             }
         }

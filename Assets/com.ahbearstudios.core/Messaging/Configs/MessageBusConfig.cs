@@ -1,164 +1,429 @@
-﻿using System;
-using Unity.Collections;
+﻿using System.Text;
+using AhBearStudios.Core.Messaging.Builders;
 
 namespace AhBearStudios.Core.Messaging.Configs
 {
     /// <summary>
-    /// Configuration settings for the message bus system.
-    /// Defines performance, reliability, and monitoring parameters.
+    /// Comprehensive configuration for MessageBusService with full production-ready settings.
+    /// Supports all enterprise features including circuit breakers, retry policies, and monitoring thresholds.
     /// </summary>
-    public sealed record MessageBusConfig
+    public sealed class MessageBusConfig
     {
-        /// <summary>
-        /// Gets whether async message handling is enabled.
-        /// </summary>
-        public bool AsyncSupport { get; init; } = true;
+        #region Core Configuration
 
         /// <summary>
-        /// Gets whether performance monitoring is enabled.
+        /// Gets or sets the instance name for this message bus.
         /// </summary>
-        public bool PerformanceMonitoring { get; init; } = true;
+        public string InstanceName { get; set; } = "DefaultMessageBus";
 
         /// <summary>
-        /// Gets whether message filtering capabilities are enabled.
+        /// Gets or sets whether async message handling is supported.
         /// </summary>
-        public bool FilteringEnabled { get; init; } = true;
+        public bool AsyncSupport { get; set; } = true;
 
         /// <summary>
-        /// Gets whether message routing is enabled.
+        /// Gets or sets the maximum number of concurrent message handlers.
         /// </summary>
-        public bool RoutingEnabled { get; init; } = true;
+        public int MaxConcurrentHandlers { get; set; } = Environment.ProcessorCount * 2;
 
         /// <summary>
-        /// Gets whether health checks are enabled for the message bus.
+        /// Gets or sets the maximum queue size before backpressure kicks in.
         /// </summary>
-        public bool HealthChecksEnabled { get; init; } = true;
+        public int MaxQueueSize { get; set; } = 10000;
 
         /// <summary>
-        /// Gets whether alerts should be raised for message bus issues.
+        /// Gets or sets the timeout for individual message handlers.
         /// </summary>
-        public bool AlertsEnabled { get; init; } = true;
+        public TimeSpan HandlerTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+        #endregion
+
+        #region Feature Toggles
 
         /// <summary>
-        /// Gets the maximum number of concurrent message handlers.
+        /// Gets or sets whether performance monitoring is enabled.
         /// </summary>
-        public int MaxConcurrentHandlers { get; init; } = 100;
+        public bool PerformanceMonitoring { get; set; } = true;
 
         /// <summary>
-        /// Gets the maximum message queue size before backpressure is applied.
+        /// Gets or sets whether health checks are enabled.
         /// </summary>
-        public int MaxQueueSize { get; init; } = 10000;
+        public bool HealthChecksEnabled { get; set; } = true;
 
         /// <summary>
-        /// Gets the timeout for message handler execution.
+        /// Gets or sets whether alerts are enabled.
         /// </summary>
-        public TimeSpan HandlerTimeout { get; init; } = TimeSpan.FromSeconds(30);
+        public bool AlertsEnabled { get; set; } = true;
 
         /// <summary>
-        /// Gets the interval for health check execution.
+        /// Gets or sets whether failed messages should be retried.
         /// </summary>
-        public TimeSpan HealthCheckInterval { get; init; } = TimeSpan.FromMinutes(1);
+        public bool RetryFailedMessages { get; set; } = true;
 
         /// <summary>
-        /// Gets the retention period for message history.
+        /// Gets or sets whether circuit breaker pattern is enabled.
         /// </summary>
-        public TimeSpan MessageHistoryRetention { get; init; } = TimeSpan.FromHours(24);
+        public bool UseCircuitBreaker { get; set; } = true;
 
         /// <summary>
-        /// Gets the maximum number of retry attempts for failed message handling.
+        /// Gets or sets whether object pooling is enabled for performance.
         /// </summary>
-        public int MaxRetryAttempts { get; init; } = 3;
+        public bool UseObjectPooling { get; set; } = true;
 
         /// <summary>
-        /// Gets the base delay for exponential backoff retry strategy.
+        /// Gets or sets whether to pre-allocate memory for better performance.
         /// </summary>
-        public TimeSpan RetryBaseDelay { get; init; } = TimeSpan.FromMilliseconds(100);
+        public bool PreAllocateMemory { get; set; } = false;
 
         /// <summary>
-        /// Gets the multiplier for exponential backoff retry strategy.
+        /// Gets or sets whether to warm up the thread pool on startup.
         /// </summary>
-        public double RetryBackoffMultiplier { get; init; } = 2.0;
+        public bool WarmUpThreadPool { get; set; } = true;
+
+        #endregion
+
+        #region Retry Configuration
 
         /// <summary>
-        /// Gets the name identifier for this message bus instance.
+        /// Gets or sets the maximum number of retry attempts for failed messages.
         /// </summary>
-        public FixedString64Bytes InstanceName { get; init; } = "MessageBus";
+        public int MaxRetryAttempts { get; set; } = 3;
 
         /// <summary>
-        /// Gets whether message serialization is enabled for persistence.
+        /// Gets or sets the initial delay between retry attempts.
         /// </summary>
-        public bool SerializationEnabled { get; init; } = false;
+        public TimeSpan RetryDelay { get; set; } = TimeSpan.FromSeconds(1);
 
         /// <summary>
-        /// Gets whether message compression is enabled.
+        /// Gets or sets the interval for processing the retry queue.
         /// </summary>
-        public bool CompressionEnabled { get; init; } = false;
+        public TimeSpan RetryInterval { get; set; } = TimeSpan.FromSeconds(5);
 
         /// <summary>
-        /// Gets the threshold in bytes above which messages should be compressed.
+        /// Gets or sets the maximum number of messages to retry in a single batch.
         /// </summary>
-        public int CompressionThreshold { get; init; } = 1024;
+        public int MaxRetryBatchSize { get; set; } = 100;
+
+        #endregion
+
+        #region Circuit Breaker Configuration
 
         /// <summary>
-        /// Gets whether dead letter queue functionality is enabled.
+        /// Gets or sets the circuit breaker configuration.
         /// </summary>
-        public bool DeadLetterQueueEnabled { get; init; } = true;
+        public CircuitBreakerConfig CircuitBreakerConfig { get; set; } = new CircuitBreakerConfig();
 
         /// <summary>
-        /// Gets the maximum number of messages to retain in the dead letter queue.
+        /// Gets or sets the interval for checking circuit breaker states.
         /// </summary>
-        public int DeadLetterQueueMaxSize { get; init; } = 1000;
+        public TimeSpan CircuitBreakerCheckInterval { get; set; } = TimeSpan.FromSeconds(10);
+
+        #endregion
+
+        #region Monitoring and Statistics
 
         /// <summary>
-        /// Validates that all configuration values are within acceptable ranges.
+        /// Gets or sets the interval for updating statistics.
         /// </summary>
-        /// <returns>True if configuration is valid, false otherwise</returns>
-        public bool IsValid()
+        public TimeSpan StatisticsUpdateInterval { get; set; } = TimeSpan.FromSeconds(10);
+
+        /// <summary>
+        /// Gets or sets the interval for performing health checks.
+        /// </summary>
+        public TimeSpan HealthCheckInterval { get; set; } = TimeSpan.FromSeconds(30);
+
+        /// <summary>
+        /// Gets or sets the warning threshold for error rate (0.0 to 1.0).
+        /// </summary>
+        public double WarningErrorRateThreshold { get; set; } = 0.05; // 5%
+
+        /// <summary>
+        /// Gets or sets the critical threshold for error rate (0.0 to 1.0).
+        /// </summary>
+        public double CriticalErrorRateThreshold { get; set; } = 0.10; // 10%
+
+        /// <summary>
+        /// Gets or sets the warning threshold for queue size.
+        /// </summary>
+        public int WarningQueueSizeThreshold { get; set; } = 1000;
+
+        /// <summary>
+        /// Gets or sets the critical threshold for queue size.
+        /// </summary>
+        public int CriticalQueueSizeThreshold { get; set; } = 5000;
+
+        /// <summary>
+        /// Gets or sets the warning threshold for message processing time.
+        /// </summary>
+        public TimeSpan WarningProcessingTimeThreshold { get; set; } = TimeSpan.FromSeconds(1);
+
+        /// <summary>
+        /// Gets or sets the critical threshold for message processing time.
+        /// </summary>
+        public TimeSpan CriticalProcessingTimeThreshold { get; set; } = TimeSpan.FromSeconds(5);
+
+        #endregion
+
+        #region Memory and Performance
+
+        /// <summary>
+        /// Gets the estimated memory requirement for this configuration.
+        /// </summary>
+        public long EstimatedMemoryRequirement
         {
-            return MaxConcurrentHandlers > 0 &&
-                   MaxQueueSize > 0 &&
-                   HandlerTimeout > TimeSpan.Zero &&
-                   HealthCheckInterval > TimeSpan.Zero &&
-                   MessageHistoryRetention > TimeSpan.Zero &&
-                   MaxRetryAttempts >= 0 &&
-                   RetryBaseDelay >= TimeSpan.Zero &&
-                   RetryBackoffMultiplier > 0 &&
-                   CompressionThreshold >= 0 &&
-                   DeadLetterQueueMaxSize >= 0;
+            get
+            {
+                // Rough estimation based on configuration
+                var baseMemory = 1024 * 1024; // 1MB base
+                var handlerMemory = MaxConcurrentHandlers * 64 * 1024; // 64KB per handler
+                var queueMemory = MaxQueueSize * 256; // 256 bytes per queued message estimate
+                
+                return baseMemory + handlerMemory + queueMemory;
+            }
         }
 
         /// <summary>
-        /// Creates a default configuration suitable for most scenarios.
+        /// Gets or sets the maximum memory pressure threshold (in bytes).
         /// </summary>
-        /// <returns>A MessageBusConfig with sensible defaults</returns>
-        public static MessageBusConfig Default => new();
+        public long MaxMemoryPressure { get; set; } = 100 * 1024 * 1024; // 100MB
+
+        #endregion
+
+        #region Predefined Configurations
 
         /// <summary>
-        /// Creates a high-performance configuration optimized for throughput.
+        /// Gets a high-performance configuration optimized for speed.
         /// </summary>
-        /// <returns>A MessageBusConfig optimized for high throughput scenarios</returns>
-        public static MessageBusConfig HighPerformance => new()
-        {
-            MaxConcurrentHandlers = 500,
-            MaxQueueSize = 50000,
-            HandlerTimeout = TimeSpan.FromSeconds(10),
-            PerformanceMonitoring = true,
-            CompressionEnabled = false,
-            SerializationEnabled = false
-        };
+        public static MessageBusConfig HighPerformance => new MessageBusConfigBuilder()
+            .WithInstanceName("HighPerformanceMessageBus")
+            .WithAsyncSupport(true)
+            .WithPerformanceMonitoring(true)
+            .WithHealthChecks(true)
+            .WithAlerts(false) // Disabled for maximum performance
+            .WithRetryPolicy(false) // Disabled for maximum performance
+            .WithCircuitBreaker(false) // Disabled for maximum performance
+            .WithObjectPooling(true)
+            .WithMaxConcurrentHandlers(Environment.ProcessorCount * 4)
+            .WithMaxQueueSize(50000)
+            .WithHandlerTimeout(TimeSpan.FromSeconds(5))
+            .WithStatisticsUpdateInterval(TimeSpan.FromSeconds(30))
+            .WithHealthCheckInterval(TimeSpan.FromMinutes(1))
+            .WithPreAllocateMemory(true)
+            .WithWarmUpThreadPool(true)
+            .Build();
 
         /// <summary>
-        /// Creates a reliable configuration optimized for durability.
+        /// Gets a reliable configuration optimized for error handling and monitoring.
         /// </summary>
-        /// <returns>A MessageBusConfig optimized for reliability scenarios</returns>
-        public static MessageBusConfig Reliable => new()
+        public static MessageBusConfig Reliable => new MessageBusConfigBuilder()
+            .WithInstanceName("ReliableMessageBus")
+            .WithAsyncSupport(true)
+            .WithPerformanceMonitoring(true)
+            .WithHealthChecks(true)
+            .WithAlerts(true)
+            .WithRetryPolicy(true, 5, TimeSpan.FromSeconds(2))
+            .WithCircuitBreaker(true)
+            .WithObjectPooling(true)
+            .WithMaxConcurrentHandlers(Environment.ProcessorCount)
+            .WithMaxQueueSize(10000)
+            .WithHandlerTimeout(TimeSpan.FromSeconds(60))
+            .WithStatisticsUpdateInterval(TimeSpan.FromSeconds(5))
+            .WithHealthCheckInterval(TimeSpan.FromSeconds(15))
+            .WithErrorRateThresholds(0.02, 0.05) // 2% warning, 5% critical
+            .WithQueueSizeThresholds(500, 2000) // 500 warning, 2000 critical
+            .WithProcessingTimeThresholds(TimeSpan.FromMilliseconds(500), TimeSpan.FromSeconds(2))
+            .Build();
+
+        /// <summary>
+        /// Gets a development configuration optimized for debugging and testing.
+        /// </summary>
+        public static MessageBusConfig Development => new MessageBusConfigBuilder()
+            .WithInstanceName("DevelopmentMessageBus")
+            .WithAsyncSupport(true)
+            .WithPerformanceMonitoring(true)
+            .WithHealthChecks(true)
+            .WithAlerts(true)
+            .WithRetryPolicy(true, 2, TimeSpan.FromMilliseconds(500))
+            .WithCircuitBreaker(true)
+            .WithObjectPooling(false) // Disabled for easier debugging
+            .WithMaxConcurrentHandlers(2)
+            .WithMaxQueueSize(1000)
+            .WithHandlerTimeout(TimeSpan.FromMinutes(5)) // Longer for debugging
+            .WithStatisticsUpdateInterval(TimeSpan.FromSeconds(1))
+            .WithHealthCheckInterval(TimeSpan.FromSeconds(5))
+            .WithErrorRateThresholds(0.10, 0.25) // More lenient thresholds
+            .WithQueueSizeThresholds(100, 500)
+            .WithProcessingTimeThresholds(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(30))
+            .Build();
+
+        #endregion
+
+        #region Validation
+
+        /// <summary>
+        /// Validates the configuration for correctness and completeness.
+        /// </summary>
+        /// <returns>True if the configuration is valid, false otherwise</returns>
+        public bool IsValid()
         {
-            MaxRetryAttempts = 5,
-            RetryBaseDelay = TimeSpan.FromSeconds(1),
-            DeadLetterQueueEnabled = true,
-            SerializationEnabled = true,
-            HealthCheckInterval = TimeSpan.FromSeconds(30),
-            AlertsEnabled = true
-        };
+            try
+            {
+                var errors = GetValidationErrors();
+                return string.IsNullOrEmpty(errors);
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Gets detailed validation error messages for invalid configuration.
+        /// </summary>
+        /// <returns>Validation error messages, or empty string if valid</returns>
+        public string GetValidationErrors()
+        {
+            var errors = new StringBuilder();
+
+            // Validate core configuration
+            if (string.IsNullOrWhiteSpace(InstanceName))
+                errors.AppendLine("InstanceName cannot be null or empty");
+
+            if (MaxConcurrentHandlers <= 0)
+                errors.AppendLine("MaxConcurrentHandlers must be greater than 0");
+
+            if (MaxQueueSize <= 0)
+                errors.AppendLine("MaxQueueSize must be greater than 0");
+
+            if (HandlerTimeout <= TimeSpan.Zero)
+                errors.AppendLine("HandlerTimeout must be greater than zero");
+
+            // Validate retry configuration
+            if (RetryFailedMessages)
+            {
+                if (MaxRetryAttempts <= 0)
+                    errors.AppendLine("MaxRetryAttempts must be greater than 0 when retry is enabled");
+
+                if (RetryDelay <= TimeSpan.Zero)
+                    errors.AppendLine("RetryDelay must be greater than zero when retry is enabled");
+
+                if (MaxRetryBatchSize <= 0)
+                    errors.AppendLine("MaxRetryBatchSize must be greater than 0 when retry is enabled");
+            }
+
+            // Validate circuit breaker configuration
+            if (UseCircuitBreaker && CircuitBreakerConfig != null)
+            {
+                if (!CircuitBreakerConfig.IsValid())
+                    errors.AppendLine("CircuitBreakerConfig is invalid");
+            }
+
+            // Validate monitoring intervals
+            if (StatisticsUpdateInterval <= TimeSpan.Zero)
+                errors.AppendLine("StatisticsUpdateInterval must be greater than zero");
+
+            if (HealthCheckInterval <= TimeSpan.Zero)
+                errors.AppendLine("HealthCheckInterval must be greater than zero");
+
+            // Validate thresholds
+            if (WarningErrorRateThreshold < 0 || WarningErrorRateThreshold > 1)
+                errors.AppendLine("WarningErrorRateThreshold must be between 0 and 1");
+
+            if (CriticalErrorRateThreshold < 0 || CriticalErrorRateThreshold > 1)
+                errors.AppendLine("CriticalErrorRateThreshold must be between 0 and 1");
+
+            if (CriticalErrorRateThreshold <= WarningErrorRateThreshold)
+                errors.AppendLine("CriticalErrorRateThreshold must be greater than WarningErrorRateThreshold");
+
+            if (WarningQueueSizeThreshold < 0)
+                errors.AppendLine("WarningQueueSizeThreshold must be non-negative");
+
+            if (CriticalQueueSizeThreshold <= WarningQueueSizeThreshold)
+                errors.AppendLine("CriticalQueueSizeThreshold must be greater than WarningQueueSizeThreshold");
+
+            if (WarningProcessingTimeThreshold <= TimeSpan.Zero)
+                errors.AppendLine("WarningProcessingTimeThreshold must be greater than zero");
+
+            if (CriticalProcessingTimeThreshold <= WarningProcessingTimeThreshold)
+                errors.AppendLine("CriticalProcessingTimeThreshold must be greater than WarningProcessingTimeThreshold");
+
+            // Validate memory settings
+            if (MaxMemoryPressure <= 0)
+                errors.AppendLine("MaxMemoryPressure must be greater than 0");
+
+            // Validate logical constraints
+            if (MaxConcurrentHandlers > MaxQueueSize)
+                errors.AppendLine("MaxConcurrentHandlers should not exceed MaxQueueSize for optimal performance");
+
+            return errors.ToString().Trim();
+        }
+
+        #endregion
+
+        #region Object Overrides
+
+        /// <summary>
+        /// Returns a string representation of the configuration.
+        /// </summary>
+        /// <returns>Configuration summary string</returns>
+        public override string ToString()
+        {
+            return $"MessageBusConfig[{InstanceName}]: " +
+                   $"Handlers={MaxConcurrentHandlers}, " +
+                   $"QueueSize={MaxQueueSize}, " +
+                   $"Async={AsyncSupport}, " +
+                   $"Monitoring={PerformanceMonitoring}, " +
+                   $"HealthChecks={HealthChecksEnabled}, " +
+                   $"Alerts={AlertsEnabled}, " +
+                   $"Retry={RetryFailedMessages}, " +
+                   $"CircuitBreaker={UseCircuitBreaker}, " +
+                   $"Pooling={UseObjectPooling}";
+        }
+
+        /// <summary>
+        /// Creates a deep copy of this configuration.
+        /// </summary>
+        /// <returns>Deep copy of the configuration</returns>
+        public MessageBusConfig Clone()
+        {
+            return new MessageBusConfig
+            {
+                InstanceName = InstanceName,
+                AsyncSupport = AsyncSupport,
+                MaxConcurrentHandlers = MaxConcurrentHandlers,
+                MaxQueueSize = MaxQueueSize,
+                HandlerTimeout = HandlerTimeout,
+                PerformanceMonitoring = PerformanceMonitoring,
+                HealthChecksEnabled = HealthChecksEnabled,
+                AlertsEnabled = AlertsEnabled,
+                RetryFailedMessages = RetryFailedMessages,
+                UseCircuitBreaker = UseCircuitBreaker,
+                UseObjectPooling = UseObjectPooling,
+                PreAllocateMemory = PreAllocateMemory,
+                WarmUpThreadPool = WarmUpThreadPool,
+                MaxRetryAttempts = MaxRetryAttempts,
+                RetryDelay = RetryDelay,
+                RetryInterval = RetryInterval,
+                MaxRetryBatchSize = MaxRetryBatchSize,
+                CircuitBreakerConfig = new CircuitBreakerConfig
+                {
+                    FailureThreshold = CircuitBreakerConfig.FailureThreshold,
+                    OpenTimeout = CircuitBreakerConfig.OpenTimeout,
+                    HalfOpenSuccessThreshold = CircuitBreakerConfig.HalfOpenSuccessThreshold
+                },
+                CircuitBreakerCheckInterval = CircuitBreakerCheckInterval,
+                StatisticsUpdateInterval = StatisticsUpdateInterval,
+                HealthCheckInterval = HealthCheckInterval,
+                WarningErrorRateThreshold = WarningErrorRateThreshold,
+                CriticalErrorRateThreshold = CriticalErrorRateThreshold,
+                WarningQueueSizeThreshold = WarningQueueSizeThreshold,
+                CriticalQueueSizeThreshold = CriticalQueueSizeThreshold,
+                WarningProcessingTimeThreshold = WarningProcessingTimeThreshold,
+                CriticalProcessingTimeThreshold = CriticalProcessingTimeThreshold,
+                MaxMemoryPressure = MaxMemoryPressure
+            };
+        }
+
+        #endregion
     }
 }
