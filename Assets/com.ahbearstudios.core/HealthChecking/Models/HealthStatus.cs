@@ -23,5 +23,20 @@ public enum HealthStatus
     /// <summary>
     /// The component is unhealthy.
     /// </summary>
-    Unhealthy = 3
+    Unhealthy = 3,
+
+    /// <summary>
+    /// The component has a warning status.
+    /// </summary>
+    Warning = 4,
+
+    /// <summary>
+    /// The component is in a critical state.
+    /// </summary>
+    Critical = 5,
+
+    /// <summary>
+    /// The component is offline.
+    /// </summary>
+    Offline = 6
 }

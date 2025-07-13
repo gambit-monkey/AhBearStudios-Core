@@ -1,5 +1,6 @@
 ﻿using System.Threading;
 using System.Threading.Tasks;
+using AhBearStudios.Core.HealthCheck.Models;
 using Unity.Collections;
 
 namespace AhBearStudios.Core.HealthChecking.Models;
