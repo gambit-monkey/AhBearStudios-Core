@@ -9,6 +9,7 @@ using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Logging.Services;
 using AhBearStudios.Unity.Logging.ScriptableObjects;
 using AhBearStudios.Unity.Logging.Targets;
+using LoggingConfig = AhBearStudios.Unity.Logging.ScriptableObjects.LoggingConfig;
 
 namespace AhBearStudios.Unity.Logging.Installers
 {
@@ -21,7 +22,7 @@ namespace AhBearStudios.Unity.Logging.Installers
     public class LoggingInstaller : MonoInstaller, IBootstrapInstaller
     {
         [Header("Logging Configuration")] [SerializeField]
-        private LoggingConfigAsset _loggingConfigAsset;
+        private LoggingConfig _loggingConfig;
 
         [SerializeField] private LogLevel _globalMinimumLevel = LogLevel.Info;
         [SerializeField] private bool _enableHighPerformanceMode = true;
@@ -386,7 +387,7 @@ namespace AhBearStudios.Unity.Logging.Installers
         private void RegisterConfiguration(ContainerBuilder builder)
         {
             var config = CreateLoggingConfig();
-            builder.Bind<LoggingConfig>().FromInstance(config);
+            builder.Bind<Core.Logging.Configs.LoggingConfig>().FromInstance(config);
 
             if (_verboseInitialization)
             {
@@ -501,7 +502,7 @@ namespace AhBearStudios.Unity.Logging.Installers
         {
             builder.Bind<ILoggingService>().FromMethod(provider =>
             {
-                var config = provider.Resolve<LoggingConfig>();
+                var config = provider.Resolve<Core.Logging.Configs.LoggingConfig>();
                 var formattingService = provider.Resolve<LogFormattingService>();
                 var batchingService = _enableBatching ? provider.Resolve<LogBatchingService>() : null;
 
@@ -552,10 +553,10 @@ namespace AhBearStudios.Unity.Logging.Installers
         /// <summary>
         /// Creates the logging configuration from inspector settings and ScriptableObject.
         /// </summary>
-        private LoggingConfig CreateLoggingConfig()
+        private Core.Logging.Configs.LoggingConfig CreateLoggingConfig()
         {
             // Start with ScriptableObject config if available
-            var baseConfig = _loggingConfigAsset?.Config ?? LoggingConfig.Default;
+            var baseConfig = _loggingConfig?.Config ?? Core.Logging.Configs.LoggingConfig.Default;
 
             // Override with inspector settings
             return baseConfig with
