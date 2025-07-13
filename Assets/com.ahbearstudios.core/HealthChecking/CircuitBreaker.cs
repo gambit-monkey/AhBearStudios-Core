@@ -6,7 +6,7 @@ using AhBearStudios.Core.HealthChecking.Models;
 using Unity.Collections;
 using AhBearStudios.Core.Logging;
 
-namespace AhBearStudios.Core.HealthCheckING
+namespace AhBearStudios.Core.HealthChecking
 {
     /// <summary>
     /// Production-ready circuit breaker implementation providing fault tolerance and system protection

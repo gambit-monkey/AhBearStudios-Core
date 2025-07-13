@@ -1,5 +1,4 @@
-﻿using AhBearStudios.Core.HealthCheck;
-using Unity.Collections;
+﻿using Unity.Collections;
 
 namespace AhBearStudios.Core.HealthChecking.Models;
 

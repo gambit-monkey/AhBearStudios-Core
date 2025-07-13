@@ -24,4 +24,9 @@ public sealed class HealthStatusChangedEventArgs : EventArgs
     /// Timestamp when the status changed
     /// </summary>
     public DateTime Timestamp { get; init; }
+
+    /// <summary>
+    /// Indicates the source responsible for the health status change.
+    /// </summary>
+    public string Source { get; init; }
 }

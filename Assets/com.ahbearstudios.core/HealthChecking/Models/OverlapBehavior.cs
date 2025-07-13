@@ -1,7 +1,7 @@
 ﻿namespace AhBearStudios.Core.HealthChecking.Models;
 
 /// <summary>
-/// Behavior when previous execution overlaps with scheduled time
+/// Allows multiple executions to run simultaneously when there is an overlap.
 /// </summary>
 public enum OverlapBehavior
 {
@@ -23,5 +23,10 @@ public enum OverlapBehavior
     /// <summary>
     /// Allow concurrent executions up to limit
     /// </summary>
-    Concurrent
+    Concurrent,
+
+    /// <summary>
+    /// Execute the overlapping tasks in parallel.
+    /// </summary>
+    Parallel
 }
