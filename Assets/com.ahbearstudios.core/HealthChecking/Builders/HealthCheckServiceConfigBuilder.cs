@@ -1,201 +1,443 @@
 ﻿using System.Collections.Generic;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.HealthChecking.Configs;
-using Unity.Collections;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Logging.Models;
+using Unity.Collections;
 
 namespace AhBearStudios.Core.HealthChecking.Builders
 {
     /// <summary>
-    /// Production-ready builder for HealthCheckServiceConfig with comprehensive configuration options
+    /// Builder pattern implementation for creating HealthCheckServiceConfig instances
+    /// with validation, preset configurations, and environment-specific settings
     /// </summary>
+    /// <remarks>
+    /// Provides a fluent interface for building health check service configurations
+    /// with comprehensive validation and support for different deployment environments
+    /// </remarks>
     public sealed class HealthCheckServiceConfigBuilder
     {
         private readonly ILoggingService _logger;
-        private readonly List<string> _validationErrors = new();
+        private bool _isBuilt;
+
+        #region Core Health Check Settings
         
-        // Core configuration properties
-        private TimeSpan _defaultCheckInterval = TimeSpan.FromSeconds(30);
-        private int _maxConcurrentChecks = 10;
+        private TimeSpan _automaticCheckInterval = TimeSpan.FromSeconds(30);
+        private int _maxConcurrentHealthChecks = 10;
         private TimeSpan _defaultTimeout = TimeSpan.FromSeconds(30);
         private bool _enableAutomaticChecks = true;
-        private bool _enableCircuitBreakers = true;
-        private bool _enableGracefulDegradation = true;
-        private int _maxHistoryPerCheck = 100;
+        private int _maxHistorySize = 100;
+        private int _maxRetries = 3;
+        private TimeSpan _retryDelay = TimeSpan.FromSeconds(1);
+
+        #endregion
+
+        #region Circuit Breaker Settings
         
-        // Alert configuration
-        private bool _enableHealthAlerts = true;
+        private bool _enableCircuitBreaker = true;
+        private CircuitBreakerConfig _defaultCircuitBreakerConfig = new();
         private bool _enableCircuitBreakerAlerts = true;
+        private int _defaultFailureThreshold = 5;
+        private TimeSpan _defaultCircuitBreakerTimeout = TimeSpan.FromSeconds(30);
+
+        #endregion
+
+        #region Graceful Degradation Settings
+        
+        private bool _enableGracefulDegradation = true;
+        private DegradationThresholds _degradationThresholds = new();
         private bool _enableDegradationAlerts = true;
+        private bool _enableAutomaticDegradation = true;
+
+        #endregion
+
+        #region Alert and Notification Settings
+        
+        private bool _enableHealthAlerts = true;
         private Dictionary<HealthStatus, AlertSeverity> _alertSeverities = new()
         {
-            { HealthStatus.Healthy, AlertSeverity.Low },
+            { HealthStatus.Healthy, AlertSeverity.Info },
+            { HealthStatus.Warning, AlertSeverity.Warning },
             { HealthStatus.Degraded, AlertSeverity.Warning },
             { HealthStatus.Unhealthy, AlertSeverity.Critical },
+            { HealthStatus.Critical, AlertSeverity.Critical },
+            { HealthStatus.Offline, AlertSeverity.Emergency },
             { HealthStatus.Unknown, AlertSeverity.Warning }
         };
         private HashSet<FixedString64Bytes> _alertTags = new() { "HealthCheck", "SystemMonitoring" };
+        private int _alertFailureThreshold = 3;
+
+        #endregion
+
+        #region Logging and Profiling Settings
         
-        // Threshold configurations
-        private HealthThresholds _healthThresholds = new();
-        private DegradationThresholds _degradationThresholds = new();
-        private CircuitBreakerConfig _defaultCircuitBreakerConfig = new();
-        
-        // Logging and profiling
         private bool _enableHealthCheckLogging = true;
         private LogLevel _healthCheckLogLevel = LogLevel.Info;
         private bool _enableProfiling = true;
         private int _slowHealthCheckThreshold = 1000;
+        private bool _enableDetailedLogging = false;
+
+        #endregion
+
+        #region Performance and Resource Settings
         
-        // Build state tracking
-        private bool _isBuilt = false;
-        private bool _isValidated = false;
+        private int _maxMemoryUsageMB = 50;
+        private TimeSpan _historyCleanupInterval = TimeSpan.FromMinutes(30);
+        private TimeSpan _maxHistoryAge = TimeSpan.FromHours(24);
+        private System.Threading.ThreadPriority _healthCheckThreadPriority = System.Threading.ThreadPriority.Normal;
+
+        #endregion
+
+        #region Health Status Thresholds
+        
+        private HealthThresholds _healthThresholds = new();
+        private double _unhealthyThreshold = 0.25;
+        private double _warningThreshold = 0.5;
+
+        #endregion
+
+        #region Advanced Settings
+        
+        private bool _enableDependencyValidation = true;
+        private bool _enableResultCaching = true;
+        private TimeSpan _resultCacheDuration = TimeSpan.FromSeconds(10);
+        private bool _enableExecutionTimeouts = true;
+        private bool _enableCorrelationIds = true;
+        private Dictionary<string, object> _defaultMetadata = new();
+
+        #endregion
 
         /// <summary>
-        /// Initializes a new instance of the HealthCheckServiceConfigBuilder class
+        /// Initializes a new instance of the HealthCheckServiceConfigBuilder
         /// </summary>
-        /// <param name="logger">Logging service for build operations</param>
+        /// <param name="logger">Logging service for builder operations</param>
         /// <exception cref="ArgumentNullException">Thrown when logger is null</exception>
         public HealthCheckServiceConfigBuilder(ILoggingService logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _isBuilt = false;
+            
             _logger.LogDebug("HealthCheckServiceConfigBuilder initialized");
         }
 
+        #region Core Health Check Configuration Methods
+
         /// <summary>
-        /// Sets the default interval between automatic health checks
+        /// Sets the automatic health check interval
         /// </summary>
-        /// <param name="interval">Check interval (must be positive)</param>
+        /// <param name="interval">Interval between automatic health checks</param>
         /// <returns>Builder instance for method chaining</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when interval is not positive</exception>
-        public HealthCheckServiceConfigBuilder WithDefaultCheckInterval(TimeSpan interval)
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when interval is invalid</exception>
+        public HealthCheckServiceConfigBuilder WithAutomaticCheckInterval(TimeSpan interval)
         {
             ThrowIfAlreadyBuilt();
             
             if (interval <= TimeSpan.Zero)
-                throw new ArgumentOutOfRangeException(nameof(interval), "Check interval must be positive");
+                throw new ArgumentOutOfRangeException(nameof(interval), "Interval must be greater than zero");
             
-            if (interval > TimeSpan.FromHours(24))
-                _logger.LogWarning($"Very long check interval specified: {interval}. Consider if this is intended.");
+            if (interval > TimeSpan.FromHours(1))
+                throw new ArgumentOutOfRangeException(nameof(interval), "Interval should not exceed 1 hour");
             
-            _defaultCheckInterval = interval;
-            _logger.LogDebug($"Set default check interval to {interval}");
+            _automaticCheckInterval = interval;
+            _logger.LogDebug($"Automatic check interval set to: {interval}");
             return this;
         }
 
         /// <summary>
         /// Sets the maximum number of concurrent health checks
         /// </summary>
-        /// <param name="maxConcurrent">Maximum concurrent checks (must be positive)</param>
+        /// <param name="maxConcurrent">Maximum concurrent health checks</param>
         /// <returns>Builder instance for method chaining</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when maxConcurrent is not positive</exception>
-        public HealthCheckServiceConfigBuilder WithMaxConcurrentChecks(int maxConcurrent)
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when value is invalid</exception>
+        public HealthCheckServiceConfigBuilder WithMaxConcurrentHealthChecks(int maxConcurrent)
         {
             ThrowIfAlreadyBuilt();
             
-            if (maxConcurrent <= 0)
-                throw new ArgumentOutOfRangeException(nameof(maxConcurrent), "Max concurrent checks must be positive");
+            if (maxConcurrent < 1)
+                throw new ArgumentOutOfRangeException(nameof(maxConcurrent), "Max concurrent checks must be at least 1");
             
             if (maxConcurrent > 100)
-                _logger.LogWarning($"Very high concurrent check limit: {maxConcurrent}. Monitor system resources.");
+                throw new ArgumentOutOfRangeException(nameof(maxConcurrent), "Max concurrent checks should not exceed 100");
             
-            _maxConcurrentChecks = maxConcurrent;
-            _logger.LogDebug($"Set max concurrent checks to {maxConcurrent}");
+            _maxConcurrentHealthChecks = maxConcurrent;
+            _logger.LogDebug($"Max concurrent health checks set to: {maxConcurrent}");
             return this;
         }
 
         /// <summary>
         /// Sets the default timeout for health checks
         /// </summary>
-        /// <param name="timeout">Default timeout (must be positive)</param>
+        /// <param name="timeout">Default health check timeout</param>
         /// <returns>Builder instance for method chaining</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when timeout is not positive</exception>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when timeout is invalid</exception>
         public HealthCheckServiceConfigBuilder WithDefaultTimeout(TimeSpan timeout)
         {
             ThrowIfAlreadyBuilt();
             
             if (timeout <= TimeSpan.Zero)
-                throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be positive");
+                throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be greater than zero");
             
-            if (timeout > TimeSpan.FromMinutes(10))
-                _logger.LogWarning($"Very long timeout specified: {timeout}. This may affect system responsiveness.");
+            if (timeout > TimeSpan.FromMinutes(5))
+                throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout should not exceed 5 minutes");
             
             _defaultTimeout = timeout;
-            _logger.LogDebug($"Set default timeout to {timeout}");
+            _logger.LogDebug($"Default timeout set to: {timeout}");
             return this;
         }
 
         /// <summary>
-        /// Enables or disables automatic health checks
+        /// Configures automatic health checks
         /// </summary>
         /// <param name="enabled">Whether to enable automatic checks</param>
         /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         public HealthCheckServiceConfigBuilder WithAutomaticChecks(bool enabled = true)
         {
             ThrowIfAlreadyBuilt();
-            
             _enableAutomaticChecks = enabled;
-            _logger.LogDebug($"Automatic checks {(enabled ? "enabled" : "disabled")}");
+            _logger.LogDebug($"Automatic checks enabled: {enabled}");
             return this;
         }
 
         /// <summary>
-        /// Enables or disables circuit breaker functionality
+        /// Sets the maximum history size for health check results
+        /// </summary>
+        /// <param name="maxHistory">Maximum number of results to keep in history</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when value is invalid</exception>
+        public HealthCheckServiceConfigBuilder WithMaxHistorySize(int maxHistory)
+        {
+            ThrowIfAlreadyBuilt();
+            
+            if (maxHistory < 10)
+                throw new ArgumentOutOfRangeException(nameof(maxHistory), "Max history size must be at least 10");
+            
+            if (maxHistory > 10000)
+                throw new ArgumentOutOfRangeException(nameof(maxHistory), "Max history size should not exceed 10000");
+            
+            _maxHistorySize = maxHistory;
+            _logger.LogDebug($"Max history size set to: {maxHistory}");
+            return this;
+        }
+
+        /// <summary>
+        /// Configures retry settings for failed health checks
+        /// </summary>
+        /// <param name="maxRetries">Maximum number of retries</param>
+        /// <param name="retryDelay">Delay between retries</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when values are invalid</exception>
+        public HealthCheckServiceConfigBuilder WithRetrySettings(int maxRetries, TimeSpan retryDelay)
+        {
+            ThrowIfAlreadyBuilt();
+            
+            if (maxRetries < 0)
+                throw new ArgumentOutOfRangeException(nameof(maxRetries), "Max retries must be non-negative");
+            
+            if (maxRetries > 10)
+                throw new ArgumentOutOfRangeException(nameof(maxRetries), "Max retries should not exceed 10");
+            
+            if (retryDelay < TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(retryDelay), "Retry delay must be non-negative");
+            
+            if (retryDelay > TimeSpan.FromMinutes(1))
+                throw new ArgumentOutOfRangeException(nameof(retryDelay), "Retry delay should not exceed 1 minute");
+            
+            _maxRetries = maxRetries;
+            _retryDelay = retryDelay;
+            _logger.LogDebug($"Retry settings configured: {maxRetries} retries with {retryDelay} delay");
+            return this;
+        }
+
+        #endregion
+
+        #region Circuit Breaker Configuration Methods
+
+        /// <summary>
+        /// Configures circuit breaker functionality
         /// </summary>
         /// <param name="enabled">Whether to enable circuit breakers</param>
         /// <returns>Builder instance for method chaining</returns>
-        public HealthCheckServiceConfigBuilder WithCircuitBreakers(bool enabled = true)
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        public HealthCheckServiceConfigBuilder WithCircuitBreaker(bool enabled = true)
         {
             ThrowIfAlreadyBuilt();
-            
-            _enableCircuitBreakers = enabled;
-            _logger.LogDebug($"Circuit breakers {(enabled ? "enabled" : "disabled")}");
+            _enableCircuitBreaker = enabled;
+            _logger.LogDebug($"Circuit breaker enabled: {enabled}");
             return this;
         }
 
         /// <summary>
-        /// Enables or disables graceful degradation
+        /// Sets the default circuit breaker configuration
+        /// </summary>
+        /// <param name="config">Circuit breaker configuration</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
+        public HealthCheckServiceConfigBuilder WithDefaultCircuitBreakerConfig(CircuitBreakerConfig config)
+        {
+            ThrowIfAlreadyBuilt();
+            
+            if (config == null)
+                throw new ArgumentNullException(nameof(config));
+            
+            var validationErrors = config.Validate();
+            if (validationErrors.Count > 0)
+            {
+                throw new ArgumentException($"Invalid circuit breaker configuration: {string.Join(", ", validationErrors)}");
+            }
+            
+            _defaultCircuitBreakerConfig = config;
+            _logger.LogDebug("Default circuit breaker config set");
+            return this;
+        }
+
+        /// <summary>
+        /// Configures circuit breaker alerts
+        /// </summary>
+        /// <param name="enabled">Whether to enable circuit breaker alerts</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        public HealthCheckServiceConfigBuilder WithCircuitBreakerAlerts(bool enabled = true)
+        {
+            ThrowIfAlreadyBuilt();
+            _enableCircuitBreakerAlerts = enabled;
+            _logger.LogDebug($"Circuit breaker alerts enabled: {enabled}");
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the default failure threshold for circuit breakers
+        /// </summary>
+        /// <param name="threshold">Failure threshold</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is invalid</exception>
+        public HealthCheckServiceConfigBuilder WithDefaultFailureThreshold(int threshold)
+        {
+            ThrowIfAlreadyBuilt();
+            
+            if (threshold < 1)
+                throw new ArgumentOutOfRangeException(nameof(threshold), "Failure threshold must be at least 1");
+            
+            if (threshold > 100)
+                throw new ArgumentOutOfRangeException(nameof(threshold), "Failure threshold should not exceed 100");
+            
+            _defaultFailureThreshold = threshold;
+            _logger.LogDebug($"Default failure threshold set to: {threshold}");
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the default circuit breaker timeout
+        /// </summary>
+        /// <param name="timeout">Circuit breaker timeout</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when timeout is invalid</exception>
+        public HealthCheckServiceConfigBuilder WithDefaultCircuitBreakerTimeout(TimeSpan timeout)
+        {
+            ThrowIfAlreadyBuilt();
+            
+            if (timeout <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout must be greater than zero");
+            
+            if (timeout > TimeSpan.FromMinutes(10))
+                throw new ArgumentOutOfRangeException(nameof(timeout), "Timeout should not exceed 10 minutes");
+            
+            _defaultCircuitBreakerTimeout = timeout;
+            _logger.LogDebug($"Default circuit breaker timeout set to: {timeout}");
+            return this;
+        }
+
+        #endregion
+
+        #region Graceful Degradation Configuration Methods
+
+        /// <summary>
+        /// Configures graceful degradation functionality
         /// </summary>
         /// <param name="enabled">Whether to enable graceful degradation</param>
         /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         public HealthCheckServiceConfigBuilder WithGracefulDegradation(bool enabled = true)
         {
             ThrowIfAlreadyBuilt();
-            
             _enableGracefulDegradation = enabled;
-            _logger.LogDebug($"Graceful degradation {(enabled ? "enabled" : "disabled")}");
+            _logger.LogDebug($"Graceful degradation enabled: {enabled}");
             return this;
         }
 
         /// <summary>
-        /// Sets the maximum history to keep per health check
+        /// Sets degradation thresholds
         /// </summary>
-        /// <param name="maxHistory">Maximum history entries (must be non-negative)</param>
+        /// <param name="thresholds">Degradation thresholds configuration</param>
         /// <returns>Builder instance for method chaining</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when maxHistory is negative</exception>
-        public HealthCheckServiceConfigBuilder WithMaxHistoryPerCheck(int maxHistory)
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentNullException">Thrown when thresholds is null</exception>
+        public HealthCheckServiceConfigBuilder WithDegradationThresholds(DegradationThresholds thresholds)
         {
             ThrowIfAlreadyBuilt();
             
-            if (maxHistory < 0)
-                throw new ArgumentOutOfRangeException(nameof(maxHistory), "Max history must be non-negative");
+            if (thresholds == null)
+                throw new ArgumentNullException(nameof(thresholds));
             
-            if (maxHistory > 10000)
-                _logger.LogWarning($"Very large history size: {maxHistory}. This may impact memory usage.");
+            var validationErrors = thresholds.Validate();
+            if (validationErrors.Count > 0)
+            {
+                throw new ArgumentException($"Invalid degradation thresholds: {string.Join(", ", validationErrors)}");
+            }
             
-            _maxHistoryPerCheck = maxHistory;
-            _logger.LogDebug($"Set max history per check to {maxHistory}");
+            _degradationThresholds = thresholds;
+            _logger.LogDebug("Degradation thresholds set");
             return this;
         }
 
         /// <summary>
-        /// Configures health status alerting
+        /// Configures degradation alerts
+        /// </summary>
+        /// <param name="enabled">Whether to enable degradation alerts</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        public HealthCheckServiceConfigBuilder WithDegradationAlerts(bool enabled = true)
+        {
+            ThrowIfAlreadyBuilt();
+            _enableDegradationAlerts = enabled;
+            _logger.LogDebug($"Degradation alerts enabled: {enabled}");
+            return this;
+        }
+
+        /// <summary>
+        /// Configures automatic degradation
+        /// </summary>
+        /// <param name="enabled">Whether to enable automatic degradation</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        public HealthCheckServiceConfigBuilder WithAutomaticDegradation(bool enabled = true)
+        {
+            ThrowIfAlreadyBuilt();
+            _enableAutomaticDegradation = enabled;
+            _logger.LogDebug($"Automatic degradation enabled: {enabled}");
+            return this;
+        }
+
+        #endregion
+
+        #region Alert and Notification Configuration Methods
+
+        /// <summary>
+        /// Configures health alerts
         /// </summary>
         /// <param name="enabled">Whether to enable health alerts</param>
-        /// <param name="severities">Custom alert severities for health statuses</param>
+        /// <param name="severities">Custom alert severities for different health statuses</param>
         /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         public HealthCheckServiceConfigBuilder WithHealthAlerts(
             bool enabled = true,
             Dictionary<HealthStatus, AlertSeverity> severities = null)
@@ -210,43 +452,16 @@ namespace AhBearStudios.Core.HealthChecking.Builders
                 _alertSeverities = new Dictionary<HealthStatus, AlertSeverity>(severities);
             }
             
-            _logger.LogDebug($"Health alerts {(enabled ? "enabled" : "disabled")}");
+            _logger.LogDebug($"Health alerts enabled: {enabled}");
             return this;
         }
 
         /// <summary>
-        /// Configures circuit breaker alerting
+        /// Sets alert tags for health check alerts
         /// </summary>
-        /// <param name="enabled">Whether to enable circuit breaker alerts</param>
+        /// <param name="tags">Alert tags to set</param>
         /// <returns>Builder instance for method chaining</returns>
-        public HealthCheckServiceConfigBuilder WithCircuitBreakerAlerts(bool enabled = true)
-        {
-            ThrowIfAlreadyBuilt();
-            
-            _enableCircuitBreakerAlerts = enabled;
-            _logger.LogDebug($"Circuit breaker alerts {(enabled ? "enabled" : "disabled")}");
-            return this;
-        }
-
-        /// <summary>
-        /// Configures degradation alerting
-        /// </summary>
-        /// <param name="enabled">Whether to enable degradation alerts</param>
-        /// <returns>Builder instance for method chaining</returns>
-        public HealthCheckServiceConfigBuilder WithDegradationAlerts(bool enabled = true)
-        {
-            ThrowIfAlreadyBuilt();
-            
-            _enableDegradationAlerts = enabled;
-            _logger.LogDebug($"Degradation alerts {(enabled ? "enabled" : "disabled")}");
-            return this;
-        }
-
-        /// <summary>
-        /// Sets custom alert tags
-        /// </summary>
-        /// <param name="tags">Tags to apply to alerts</param>
-        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentNullException">Thrown when tags is null</exception>
         public HealthCheckServiceConfigBuilder WithAlertTags(params FixedString64Bytes[] tags)
         {
@@ -256,15 +471,16 @@ namespace AhBearStudios.Core.HealthChecking.Builders
                 throw new ArgumentNullException(nameof(tags));
             
             _alertTags = new HashSet<FixedString64Bytes>(tags);
-            _logger.LogDebug($"Set {tags.Length} alert tags");
+            _logger.LogDebug($"Alert tags set: {string.Join(", ", tags)}");
             return this;
         }
 
         /// <summary>
         /// Adds alert tags to existing tags
         /// </summary>
-        /// <param name="tags">Tags to add</param>
+        /// <param name="tags">Alert tags to add</param>
         /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentNullException">Thrown when tags is null</exception>
         public HealthCheckServiceConfigBuilder AddAlertTags(params FixedString64Bytes[] tags)
         {
@@ -278,15 +494,154 @@ namespace AhBearStudios.Core.HealthChecking.Builders
                 _alertTags.Add(tag);
             }
             
-            _logger.LogDebug($"Added {tags.Length} alert tags");
+            _logger.LogDebug($"Alert tags added: {string.Join(", ", tags)}");
             return this;
         }
 
         /// <summary>
-        /// Sets health thresholds configuration
+        /// Sets the alert failure threshold
+        /// </summary>
+        /// <param name="threshold">Number of consecutive failures before triggering alert</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is invalid</exception>
+        public HealthCheckServiceConfigBuilder WithAlertFailureThreshold(int threshold)
+        {
+            ThrowIfAlreadyBuilt();
+            
+            if (threshold < 1)
+                throw new ArgumentOutOfRangeException(nameof(threshold), "Alert failure threshold must be at least 1");
+            
+            if (threshold > 10)
+                throw new ArgumentOutOfRangeException(nameof(threshold), "Alert failure threshold should not exceed 10");
+            
+            _alertFailureThreshold = threshold;
+            _logger.LogDebug($"Alert failure threshold set to: {threshold}");
+            return this;
+        }
+
+        #endregion
+
+        #region Logging and Profiling Configuration Methods
+
+        /// <summary>
+        /// Configures health check logging
+        /// </summary>
+        /// <param name="enabled">Whether to enable health check logging</param>
+        /// <param name="logLevel">Log level for health check operations</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        public HealthCheckServiceConfigBuilder WithHealthCheckLogging(bool enabled = true, LogLevel logLevel = LogLevel.Info)
+        {
+            ThrowIfAlreadyBuilt();
+            
+            _enableHealthCheckLogging = enabled;
+            _healthCheckLogLevel = logLevel;
+            _logger.LogDebug($"Health check logging enabled: {enabled}, level: {logLevel}");
+            return this;
+        }
+
+        /// <summary>
+        /// Configures performance profiling
+        /// </summary>
+        /// <param name="enabled">Whether to enable profiling</param>
+        /// <param name="slowThreshold">Threshold for slow health check logging (milliseconds)</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when slowThreshold is invalid</exception>
+        public HealthCheckServiceConfigBuilder WithProfiling(bool enabled = true, int slowThreshold = 1000)
+        {
+            ThrowIfAlreadyBuilt();
+            
+            if (slowThreshold < 100)
+                throw new ArgumentOutOfRangeException(nameof(slowThreshold), "Slow threshold must be at least 100ms");
+            
+            if (slowThreshold > 60000)
+                throw new ArgumentOutOfRangeException(nameof(slowThreshold), "Slow threshold should not exceed 60 seconds");
+            
+            _enableProfiling = enabled;
+            _slowHealthCheckThreshold = slowThreshold;
+            _logger.LogDebug($"Profiling enabled: {enabled}, slow threshold: {slowThreshold}ms");
+            return this;
+        }
+
+        /// <summary>
+        /// Configures detailed logging
+        /// </summary>
+        /// <param name="enabled">Whether to enable detailed logging</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        public HealthCheckServiceConfigBuilder WithDetailedLogging(bool enabled = true)
+        {
+            ThrowIfAlreadyBuilt();
+            _enableDetailedLogging = enabled;
+            _logger.LogDebug($"Detailed logging enabled: {enabled}");
+            return this;
+        }
+
+        #endregion
+
+        #region Performance and Resource Configuration Methods
+
+        /// <summary>
+        /// Configures memory and cleanup settings
+        /// </summary>
+        /// <param name="maxMemoryUsageMB">Maximum memory usage in MB</param>
+        /// <param name="historyCleanupInterval">How often to clean up history</param>
+        /// <param name="maxHistoryAge">Maximum age of history to keep</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when values are invalid</exception>
+        public HealthCheckServiceConfigBuilder WithMemorySettings(
+            int maxMemoryUsageMB,
+            TimeSpan historyCleanupInterval,
+            TimeSpan maxHistoryAge)
+        {
+            ThrowIfAlreadyBuilt();
+            
+            if (maxMemoryUsageMB < 10)
+                throw new ArgumentOutOfRangeException(nameof(maxMemoryUsageMB), "Max memory usage must be at least 10MB");
+            
+            if (maxMemoryUsageMB > 1000)
+                throw new ArgumentOutOfRangeException(nameof(maxMemoryUsageMB), "Max memory usage should not exceed 1000MB");
+            
+            if (historyCleanupInterval <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(historyCleanupInterval), "History cleanup interval must be greater than zero");
+            
+            if (maxHistoryAge <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(maxHistoryAge), "Max history age must be greater than zero");
+            
+            _maxMemoryUsageMB = maxMemoryUsageMB;
+            _historyCleanupInterval = historyCleanupInterval;
+            _maxHistoryAge = maxHistoryAge;
+            _logger.LogDebug($"Memory settings configured: {maxMemoryUsageMB}MB, cleanup: {historyCleanupInterval}, age: {maxHistoryAge}");
+            return this;
+        }
+
+        /// <summary>
+        /// Sets the thread priority for health check execution
+        /// </summary>
+        /// <param name="priority">Thread priority</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        public HealthCheckServiceConfigBuilder WithThreadPriority(System.Threading.ThreadPriority priority)
+        {
+            ThrowIfAlreadyBuilt();
+            _healthCheckThreadPriority = priority;
+            _logger.LogDebug($"Thread priority set to: {priority}");
+            return this;
+        }
+
+        #endregion
+
+        #region Health Status Threshold Configuration Methods
+
+        /// <summary>
+        /// Sets health thresholds
         /// </summary>
         /// <param name="thresholds">Health thresholds configuration</param>
         /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentNullException">Thrown when thresholds is null</exception>
         public HealthCheckServiceConfigBuilder WithHealthThresholds(HealthThresholds thresholds)
         {
@@ -298,182 +653,409 @@ namespace AhBearStudios.Core.HealthChecking.Builders
             var validationErrors = thresholds.Validate();
             if (validationErrors.Count > 0)
             {
-                var errorMessage = $"Invalid health thresholds: {string.Join(", ", validationErrors)}";
-                _logger.LogError(errorMessage);
-                throw new ArgumentException(errorMessage, nameof(thresholds));
+                throw new ArgumentException($"Invalid health thresholds: {string.Join(", ", validationErrors)}");
             }
             
             _healthThresholds = thresholds;
-            _logger.LogDebug("Set custom health thresholds");
+            _logger.LogDebug("Health thresholds set");
             return this;
         }
 
         /// <summary>
-        /// Sets degradation thresholds configuration
+        /// Sets the unhealthy threshold
         /// </summary>
-        /// <param name="thresholds">Degradation thresholds configuration</param>
+        /// <param name="threshold">Percentage of unhealthy checks that triggers overall unhealthy status</param>
         /// <returns>Builder instance for method chaining</returns>
-        /// <exception cref="ArgumentNullException">Thrown when thresholds is null</exception>
-        public HealthCheckServiceConfigBuilder WithDegradationThresholds(DegradationThresholds thresholds)
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is invalid</exception>
+        public HealthCheckServiceConfigBuilder WithUnhealthyThreshold(double threshold)
         {
             ThrowIfAlreadyBuilt();
             
-            if (thresholds == null)
-                throw new ArgumentNullException(nameof(thresholds));
+            if (threshold < 0.0 || threshold > 1.0)
+                throw new ArgumentOutOfRangeException(nameof(threshold), "Unhealthy threshold must be between 0.0 and 1.0");
             
-            var validationErrors = thresholds.Validate();
-            if (validationErrors.Count > 0)
-            {
-                var errorMessage = $"Invalid degradation thresholds: {string.Join(", ", validationErrors)}";
-                _logger.LogError(errorMessage);
-                throw new ArgumentException(errorMessage, nameof(thresholds));
-            }
-            
-            _degradationThresholds = thresholds;
-            _logger.LogDebug("Set custom degradation thresholds");
+            _unhealthyThreshold = threshold;
+            _logger.LogDebug($"Unhealthy threshold set to: {threshold}");
             return this;
         }
 
         /// <summary>
-        /// Sets default circuit breaker configuration
+        /// Sets the warning threshold
         /// </summary>
-        /// <param name="config">Default circuit breaker configuration</param>
+        /// <param name="threshold">Percentage of warning checks that triggers overall warning status</param>
         /// <returns>Builder instance for method chaining</returns>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
-        public HealthCheckServiceConfigBuilder WithDefaultCircuitBreakerConfig(CircuitBreakerConfig config)
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is invalid</exception>
+        public HealthCheckServiceConfigBuilder WithWarningThreshold(double threshold)
         {
             ThrowIfAlreadyBuilt();
             
-            if (config == null)
-                throw new ArgumentNullException(nameof(config));
+            if (threshold < 0.0 || threshold > 1.0)
+                throw new ArgumentOutOfRangeException(nameof(threshold), "Warning threshold must be between 0.0 and 1.0");
             
-            var validationErrors = config.Validate();
-            if (validationErrors.Count > 0)
-            {
-                var errorMessage = $"Invalid circuit breaker config: {string.Join(", ", validationErrors)}";
-                _logger.LogError(errorMessage);
-                throw new ArgumentException(errorMessage, nameof(config));
-            }
-            
-            _defaultCircuitBreakerConfig = config;
-            _logger.LogDebug("Set custom default circuit breaker configuration");
+            _warningThreshold = threshold;
+            _logger.LogDebug($"Warning threshold set to: {threshold}");
+            return this;
+        }
+
+        #endregion
+
+        #region Advanced Configuration Methods
+
+        /// <summary>
+        /// Configures dependency validation
+        /// </summary>
+        /// <param name="enabled">Whether to enable dependency validation</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        public HealthCheckServiceConfigBuilder WithDependencyValidation(bool enabled = true)
+        {
+            ThrowIfAlreadyBuilt();
+            _enableDependencyValidation = enabled;
+            _logger.LogDebug($"Dependency validation enabled: {enabled}");
             return this;
         }
 
         /// <summary>
-        /// Configures health check logging
+        /// Configures result caching
         /// </summary>
-        /// <param name="enabled">Whether to enable health check logging</param>
-        /// <param name="logLevel">Log level for health check operations</param>
+        /// <param name="enabled">Whether to enable result caching</param>
+        /// <param name="cacheDuration">How long to cache results</param>
         /// <returns>Builder instance for method chaining</returns>
-        public HealthCheckServiceConfigBuilder WithHealthCheckLogging(bool enabled = true, LogLevel logLevel = LogLevel.Info)
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when cacheDuration is invalid</exception>
+        public HealthCheckServiceConfigBuilder WithResultCaching(bool enabled, TimeSpan cacheDuration)
         {
             ThrowIfAlreadyBuilt();
             
-            if (!Enum.IsDefined(typeof(LogLevel), logLevel))
-                throw new ArgumentException($"Invalid log level: {logLevel}", nameof(logLevel));
+            if (cacheDuration <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(cacheDuration), "Cache duration must be greater than zero");
             
-            _enableHealthCheckLogging = enabled;
-            _healthCheckLogLevel = logLevel;
-            _logger.LogDebug($"Health check logging {(enabled ? "enabled" : "disabled")} at level {logLevel}");
+            if (cacheDuration > TimeSpan.FromMinutes(5))
+                throw new ArgumentOutOfRangeException(nameof(cacheDuration), "Cache duration should not exceed 5 minutes");
+            
+            _enableResultCaching = enabled;
+            _resultCacheDuration = cacheDuration;
+            _logger.LogDebug($"Result caching enabled: {enabled}, duration: {cacheDuration}");
             return this;
         }
 
         /// <summary>
-        /// Configures performance profiling
+        /// Configures execution timeouts
         /// </summary>
-        /// <param name="enabled">Whether to enable profiling</param>
-        /// <param name="slowThreshold">Threshold for slow health checks in milliseconds</param>
+        /// <param name="enabled">Whether to enable execution timeouts</param>
         /// <returns>Builder instance for method chaining</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when slowThreshold is negative</exception>
-        public HealthCheckServiceConfigBuilder WithProfiling(bool enabled = true, int slowThreshold = 1000)
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        public HealthCheckServiceConfigBuilder WithExecutionTimeouts(bool enabled = true)
+        {
+            ThrowIfAlreadyBuilt();
+            _enableExecutionTimeouts = enabled;
+            _logger.LogDebug($"Execution timeouts enabled: {enabled}");
+            return this;
+        }
+
+        /// <summary>
+        /// Configures correlation IDs
+        /// </summary>
+        /// <param name="enabled">Whether to enable correlation IDs</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        public HealthCheckServiceConfigBuilder WithCorrelationIds(bool enabled = true)
+        {
+            ThrowIfAlreadyBuilt();
+            _enableCorrelationIds = enabled;
+            _logger.LogDebug($"Correlation IDs enabled: {enabled}");
+            return this;
+        }
+
+        /// <summary>
+        /// Sets default metadata for all health check results
+        /// </summary>
+        /// <param name="metadata">Default metadata dictionary</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentNullException">Thrown when metadata is null</exception>
+        public HealthCheckServiceConfigBuilder WithDefaultMetadata(Dictionary<string, object> metadata)
         {
             ThrowIfAlreadyBuilt();
             
-            if (slowThreshold < 0)
-                throw new ArgumentOutOfRangeException(nameof(slowThreshold), "Slow threshold must be non-negative");
+            if (metadata == null)
+                throw new ArgumentNullException(nameof(metadata));
             
-            _enableProfiling = enabled;
-            _slowHealthCheckThreshold = slowThreshold;
-            _logger.LogDebug($"Profiling {(enabled ? "enabled" : "disabled")} with slow threshold {slowThreshold}ms");
+            _defaultMetadata = new Dictionary<string, object>(metadata);
+            _logger.LogDebug($"Default metadata set with {metadata.Count} entries");
             return this;
         }
 
         /// <summary>
-        /// Applies a preset configuration for the specified environment
+        /// Adds a single metadata entry
+        /// </summary>
+        /// <param name="key">Metadata key</param>
+        /// <param name="value">Metadata value</param>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        /// <exception cref="ArgumentNullException">Thrown when key is null</exception>
+        public HealthCheckServiceConfigBuilder AddMetadata(string key, object value)
+        {
+            ThrowIfAlreadyBuilt();
+            
+            if (string.IsNullOrWhiteSpace(key))
+                throw new ArgumentNullException(nameof(key));
+            
+            _defaultMetadata[key] = value;
+            _logger.LogDebug($"Metadata added: {key} = {value}");
+            return this;
+        }
+
+        #endregion
+
+        #region Environment and Preset Configuration Methods
+
+        /// <summary>
+        /// Configures the builder for a specific environment
         /// </summary>
         /// <param name="environment">Target environment</param>
         /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         public HealthCheckServiceConfigBuilder ForEnvironment(HealthCheckEnvironment environment)
         {
             ThrowIfAlreadyBuilt();
             
-            switch (environment)
+            return environment switch
             {
-                case HealthCheckEnvironment.Development:
-                    return ApplyDevelopmentPreset();
-                
-                case HealthCheckEnvironment.Testing:
-                    return ApplyTestingPreset();
-                
-                case HealthCheckEnvironment.Staging:
-                    return ApplyStagingPreset();
-                
-                case HealthCheckEnvironment.Production:
-                    return ApplyProductionPreset();
-                
-                default:
-                    throw new ArgumentException($"Unknown environment: {environment}", nameof(environment));
-            }
+                HealthCheckEnvironment.Development => ApplyDevelopmentPreset(),
+                HealthCheckEnvironment.Testing => ApplyTestingPreset(),
+                HealthCheckEnvironment.Staging => ApplyStagingPreset(),
+                HealthCheckEnvironment.Production => ApplyProductionPreset(),
+                _ => throw new ArgumentException($"Unknown environment: {environment}")
+            };
         }
 
         /// <summary>
-        /// Validates the current configuration without building
+        /// Applies development environment preset
         /// </summary>
-        /// <returns>List of validation errors, empty if valid</returns>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        public HealthCheckServiceConfigBuilder ApplyDevelopmentPreset()
+        {
+            ThrowIfAlreadyBuilt();
+            
+            _automaticCheckInterval = TimeSpan.FromSeconds(10);
+            _maxConcurrentHealthChecks = 5;
+            _defaultTimeout = TimeSpan.FromSeconds(10);
+            _enableAutomaticChecks = true;
+            _enableCircuitBreaker = true;
+            _enableGracefulDegradation = false;
+            _maxHistorySize = 50;
+            _maxRetries = 1;
+            _retryDelay = TimeSpan.FromSeconds(1);
+            _enableHealthCheckLogging = true;
+            _healthCheckLogLevel = LogLevel.Debug;
+            _enableProfiling = true;
+            _slowHealthCheckThreshold = 500;
+            _enableDetailedLogging = true;
+            _enableResultCaching = false;
+            _resultCacheDuration = TimeSpan.FromSeconds(5);
+            _maxMemoryUsageMB = 20;
+            _historyCleanupInterval = TimeSpan.FromMinutes(10);
+            _maxHistoryAge = TimeSpan.FromHours(2);
+            
+            _logger.LogDebug("Development preset applied");
+            return this;
+        }
+
+        /// <summary>
+        /// Applies testing environment preset
+        /// </summary>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        public HealthCheckServiceConfigBuilder ApplyTestingPreset()
+        {
+            ThrowIfAlreadyBuilt();
+            
+            _automaticCheckInterval = TimeSpan.FromSeconds(1);
+            _maxConcurrentHealthChecks = 1;
+            _defaultTimeout = TimeSpan.FromSeconds(5);
+            _enableAutomaticChecks = false;
+            _enableCircuitBreaker = false;
+            _enableGracefulDegradation = false;
+            _maxHistorySize = 10;
+            _maxRetries = 0;
+            _retryDelay = TimeSpan.FromMilliseconds(100);
+            _enableHealthAlerts = false;
+            _enableCircuitBreakerAlerts = false;
+            _enableDegradationAlerts = false;
+            _enableHealthCheckLogging = false;
+            _enableProfiling = false;
+            _enableDetailedLogging = false;
+            _enableResultCaching = false;
+            _resultCacheDuration = TimeSpan.FromSeconds(1);
+            _maxMemoryUsageMB = 5;
+            _historyCleanupInterval = TimeSpan.FromMinutes(1);
+            _maxHistoryAge = TimeSpan.FromMinutes(10);
+            _enableDependencyValidation = false;
+            _enableExecutionTimeouts = false;
+            _enableCorrelationIds = false;
+            
+            _logger.LogDebug("Testing preset applied");
+            return this;
+        }
+
+        /// <summary>
+        /// Applies staging environment preset
+        /// </summary>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        public HealthCheckServiceConfigBuilder ApplyStagingPreset()
+        {
+            ThrowIfAlreadyBuilt();
+            
+            _automaticCheckInterval = TimeSpan.FromSeconds(30);
+            _maxConcurrentHealthChecks = 15;
+            _defaultTimeout = TimeSpan.FromSeconds(25);
+            _enableAutomaticChecks = true;
+            _enableCircuitBreaker = true;
+            _enableGracefulDegradation = true;
+            _maxHistorySize = 200;
+            _maxRetries = 2;
+            _retryDelay = TimeSpan.FromSeconds(1);
+            _enableHealthCheckLogging = true;
+            _healthCheckLogLevel = LogLevel.Info;
+            _enableProfiling = true;
+            _slowHealthCheckThreshold = 1500;
+            _enableDetailedLogging = true;
+            _enableResultCaching = true;
+            _resultCacheDuration = TimeSpan.FromSeconds(15);
+            _maxMemoryUsageMB = 75;
+            _historyCleanupInterval = TimeSpan.FromMinutes(20);
+            _maxHistoryAge = TimeSpan.FromHours(12);
+            _enableDependencyValidation = true;
+            _enableExecutionTimeouts = true;
+            _enableCorrelationIds = true;
+            
+            _logger.LogDebug("Staging preset applied");
+            return this;
+        }
+
+        /// <summary>
+        /// Applies production environment preset
+        /// </summary>
+        /// <returns>Builder instance for method chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+        public HealthCheckServiceConfigBuilder ApplyProductionPreset()
+        {
+            ThrowIfAlreadyBuilt();
+            
+            _automaticCheckInterval = TimeSpan.FromMinutes(1);
+            _maxConcurrentHealthChecks = 20;
+            _defaultTimeout = TimeSpan.FromSeconds(30);
+            _enableAutomaticChecks = true;
+            _enableCircuitBreaker = true;
+            _enableGracefulDegradation = true;
+            _maxHistorySize = 500;
+            _maxRetries = 3;
+            _retryDelay = TimeSpan.FromSeconds(2);
+            _enableHealthCheckLogging = true;
+            _healthCheckLogLevel = LogLevel.Info;
+            _enableProfiling = true;
+            _slowHealthCheckThreshold = 2000;
+            _enableDetailedLogging = false;
+            _enableResultCaching = true;
+            _resultCacheDuration = TimeSpan.FromSeconds(30);
+            _maxMemoryUsageMB = 100;
+            _historyCleanupInterval = TimeSpan.FromMinutes(30);
+            _maxHistoryAge = TimeSpan.FromHours(24);
+            _enableDependencyValidation = true;
+            _enableExecutionTimeouts = true;
+            _enableCorrelationIds = true;
+            
+            _logger.LogDebug("Production preset applied");
+            return this;
+        }
+
+        #endregion
+
+        #region Validation and Build Methods
+
+        /// <summary>
+        /// Validates the current configuration
+        /// </summary>
+        /// <returns>List of validation errors</returns>
         public List<string> Validate()
         {
-            if (_isValidated)
-                return new List<string>(_validationErrors);
+            var errors = new List<string>();
             
-            _validationErrors.Clear();
+            // Core settings validation
+            if (_automaticCheckInterval <= TimeSpan.Zero)
+                errors.Add("AutomaticCheckInterval must be greater than zero");
             
-            // Validate basic configuration
-            if (_defaultCheckInterval <= TimeSpan.Zero)
-                _validationErrors.Add("Default check interval must be positive");
-            
-            if (_maxConcurrentChecks <= 0)
-                _validationErrors.Add("Max concurrent checks must be positive");
+            if (_maxConcurrentHealthChecks <= 0)
+                errors.Add("MaxConcurrentHealthChecks must be greater than zero");
             
             if (_defaultTimeout <= TimeSpan.Zero)
-                _validationErrors.Add("Default timeout must be positive");
+                errors.Add("DefaultTimeout must be greater than zero");
             
-            if (_maxHistoryPerCheck < 0)
-                _validationErrors.Add("Max history per check must be non-negative");
+            if (_maxHistorySize < 0)
+                errors.Add("MaxHistorySize must be non-negative");
             
             if (_slowHealthCheckThreshold < 0)
-                _validationErrors.Add("Slow health check threshold must be non-negative");
+                errors.Add("SlowHealthCheckThreshold must be non-negative");
             
-            // Validate nested configurations
-            _validationErrors.AddRange(_healthThresholds.Validate());
-            _validationErrors.AddRange(_degradationThresholds.Validate());
-            _validationErrors.AddRange(_defaultCircuitBreakerConfig.Validate());
+            if (_maxRetries < 0)
+                errors.Add("MaxRetries must be non-negative");
             
-            // Validate alert severities
-            ValidateAlertSeverities(_alertSeverities);
+            if (_retryDelay < TimeSpan.Zero)
+                errors.Add("RetryDelay must be non-negative");
             
-            _isValidated = true;
-            
-            if (_validationErrors.Count > 0)
+            // Circuit breaker validation
+            if (_enableCircuitBreaker)
             {
-                _logger.LogWarning($"Configuration validation found {_validationErrors.Count} errors");
-            }
-            else
-            {
-                _logger.LogDebug("Configuration validation passed");
+                if (_defaultFailureThreshold <= 0)
+                    errors.Add("DefaultFailureThreshold must be greater than zero");
+                
+                if (_defaultCircuitBreakerTimeout <= TimeSpan.Zero)
+                    errors.Add("DefaultCircuitBreakerTimeout must be greater than zero");
+                
+                var cbErrors = _defaultCircuitBreakerConfig.Validate();
+                errors.AddRange(cbErrors);
             }
             
-            return new List<string>(_validationErrors);
+            // Degradation validation
+            if (_enableGracefulDegradation)
+            {
+                var degradationErrors = _degradationThresholds.Validate();
+                errors.AddRange(degradationErrors);
+            }
+            
+            // Performance validation
+            if (_maxMemoryUsageMB <= 0)
+                errors.Add("MaxMemoryUsageMB must be greater than zero");
+            
+            if (_historyCleanupInterval <= TimeSpan.Zero)
+                errors.Add("HistoryCleanupInterval must be greater than zero");
+            
+            if (_maxHistoryAge <= TimeSpan.Zero)
+                errors.Add("MaxHistoryAge must be greater than zero");
+            
+            // Threshold validation
+            if (_unhealthyThreshold < 0.0 || _unhealthyThreshold > 1.0)
+                errors.Add("UnhealthyThreshold must be between 0.0 and 1.0");
+            
+            if (_warningThreshold < 0.0 || _warningThreshold > 1.0)
+                errors.Add("WarningThreshold must be between 0.0 and 1.0");
+            
+            if (_resultCacheDuration <= TimeSpan.Zero)
+                errors.Add("ResultCacheDuration must be greater than zero");
+            
+            var healthThresholdErrors = _healthThresholds.Validate();
+            errors.AddRange(healthThresholdErrors);
+            
+            // Alert validation
+            if (_alertFailureThreshold < 1)
+                errors.Add("AlertFailureThreshold must be at least 1");
+            
+            return errors;
         }
 
         /// <summary>
@@ -496,25 +1078,44 @@ namespace AhBearStudios.Core.HealthChecking.Builders
             
             var config = new HealthCheckServiceConfig
             {
-                DefaultCheckInterval = _defaultCheckInterval,
-                MaxConcurrentChecks = _maxConcurrentChecks,
+                AutomaticCheckInterval = _automaticCheckInterval,
+                MaxConcurrentHealthChecks = _maxConcurrentHealthChecks,
                 DefaultTimeout = _defaultTimeout,
                 EnableAutomaticChecks = _enableAutomaticChecks,
-                EnableCircuitBreakers = _enableCircuitBreakers,
-                EnableGracefulDegradation = _enableGracefulDegradation,
-                MaxHistoryPerCheck = _maxHistoryPerCheck,
-                EnableHealthAlerts = _enableHealthAlerts,
-                EnableCircuitBreakerAlerts = _enableCircuitBreakerAlerts,
-                EnableDegradationAlerts = _enableDegradationAlerts,
-                HealthThresholds = _healthThresholds,
-                DegradationThresholds = _degradationThresholds,
+                MaxHistorySize = _maxHistorySize,
+                MaxRetries = _maxRetries,
+                RetryDelay = _retryDelay,
+                EnableCircuitBreaker = _enableCircuitBreaker,
                 DefaultCircuitBreakerConfig = _defaultCircuitBreakerConfig,
+                EnableCircuitBreakerAlerts = _enableCircuitBreakerAlerts,
+                DefaultFailureThreshold = _defaultFailureThreshold,
+                DefaultCircuitBreakerTimeout = _defaultCircuitBreakerTimeout,
+                EnableGracefulDegradation = _enableGracefulDegradation,
+                DegradationThresholds = _degradationThresholds,
+                EnableDegradationAlerts = _enableDegradationAlerts,
+                EnableAutomaticDegradation = _enableAutomaticDegradation,
+                EnableHealthAlerts = _enableHealthAlerts,
                 AlertSeverities = new Dictionary<HealthStatus, AlertSeverity>(_alertSeverities),
                 AlertTags = new HashSet<FixedString64Bytes>(_alertTags),
+                AlertFailureThreshold = _alertFailureThreshold,
                 EnableHealthCheckLogging = _enableHealthCheckLogging,
                 HealthCheckLogLevel = _healthCheckLogLevel,
                 EnableProfiling = _enableProfiling,
-                SlowHealthCheckThreshold = _slowHealthCheckThreshold
+                SlowHealthCheckThreshold = _slowHealthCheckThreshold,
+                EnableDetailedLogging = _enableDetailedLogging,
+                MaxMemoryUsageMB = _maxMemoryUsageMB,
+                HistoryCleanupInterval = _historyCleanupInterval,
+                MaxHistoryAge = _maxHistoryAge,
+                HealthCheckThreadPriority = _healthCheckThreadPriority,
+                HealthThresholds = _healthThresholds,
+                UnhealthyThreshold = _unhealthyThreshold,
+                WarningThreshold = _warningThreshold,
+                EnableDependencyValidation = _enableDependencyValidation,
+                EnableResultCaching = _enableResultCaching,
+                ResultCacheDuration = _resultCacheDuration,
+                EnableExecutionTimeouts = _enableExecutionTimeouts,
+                EnableCorrelationIds = _enableCorrelationIds,
+                DefaultMetadata = new Dictionary<string, object>(_defaultMetadata)
             };
             
             _isBuilt = true;
@@ -524,160 +1125,121 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         }
 
         /// <summary>
-        /// Resets the builder to allow building a new configuration
+        /// Resets the builder to its initial state
         /// </summary>
         /// <returns>Builder instance for method chaining</returns>
         public HealthCheckServiceConfigBuilder Reset()
         {
             _isBuilt = false;
-            _isValidated = false;
-            _validationErrors.Clear();
-            _logger.LogDebug("Builder reset for new configuration");
-            return this;
-        }
-
-        #region Private Methods
-
-        /// <summary>
-        /// Applies development environment preset
-        /// </summary>
-        /// <returns>Builder instance</returns>
-        private HealthCheckServiceConfigBuilder ApplyDevelopmentPreset()
-        {
-            _defaultCheckInterval = TimeSpan.FromSeconds(10);
-            _maxConcurrentChecks = 5;
-            _defaultTimeout = TimeSpan.FromSeconds(10);
-            _enableAutomaticChecks = true;
-            _enableCircuitBreakers = true;
-            _enableGracefulDegradation = false;
-            _maxHistoryPerCheck = 50;
-            _enableHealthCheckLogging = true;
-            _healthCheckLogLevel = LogLevel.Debug;
-            _enableProfiling = true;
-            _slowHealthCheckThreshold = 500;
             
-            _logger.LogInfo("Applied development environment preset");
-            return this;
-        }
-
-        /// <summary>
-        /// Applies testing environment preset
-        /// </summary>
-        /// <returns>Builder instance</returns>
-        private HealthCheckServiceConfigBuilder ApplyTestingPreset()
-        {
-            _defaultCheckInterval = TimeSpan.FromSeconds(1);
-            _maxConcurrentChecks = 1;
-            _defaultTimeout = TimeSpan.FromSeconds(5);
-            _enableAutomaticChecks = false;
-            _enableCircuitBreakers = false;
-            _enableGracefulDegradation = false;
-            _maxHistoryPerCheck = 10;
-            _enableHealthAlerts = false;
-            _enableCircuitBreakerAlerts = false;
-            _enableDegradationAlerts = false;
-            _enableHealthCheckLogging = false;
-            _enableProfiling = false;
-            
-            _logger.LogInfo("Applied testing environment preset");
-            return this;
-        }
-
-        /// <summary>
-        /// Applies staging environment preset
-        /// </summary>
-        /// <returns>Builder instance</returns>
-        private HealthCheckServiceConfigBuilder ApplyStagingPreset()
-        {
-            _defaultCheckInterval = TimeSpan.FromSeconds(30);
-            _maxConcurrentChecks = 15;
-            _defaultTimeout = TimeSpan.FromSeconds(20);
-            _enableAutomaticChecks = true;
-            _enableCircuitBreakers = true;
-            _enableGracefulDegradation = true;
-            _maxHistoryPerCheck = 150;
-            _enableHealthCheckLogging = true;
-            _healthCheckLogLevel = LogLevel.Info;
-            _enableProfiling = true;
-            _slowHealthCheckThreshold = 1500;
-            
-            _logger.LogInfo("Applied staging environment preset");
-            return this;
-        }
-
-        /// <summary>
-        /// Applies production environment preset
-        /// </summary>
-        /// <returns>Builder instance</returns>
-        private HealthCheckServiceConfigBuilder ApplyProductionPreset()
-        {
-            _defaultCheckInterval = TimeSpan.FromMinutes(1);
-            _maxConcurrentChecks = 20;
+            // Reset all fields to their default values
+            _automaticCheckInterval = TimeSpan.FromSeconds(30);
+            _maxConcurrentHealthChecks = 10;
             _defaultTimeout = TimeSpan.FromSeconds(30);
             _enableAutomaticChecks = true;
-            _enableCircuitBreakers = true;
+            _maxHistorySize = 100;
+            _maxRetries = 3;
+            _retryDelay = TimeSpan.FromSeconds(1);
+            _enableCircuitBreaker = true;
+            _defaultCircuitBreakerConfig = new CircuitBreakerConfig();
+            _enableCircuitBreakerAlerts = true;
+            _defaultFailureThreshold = 5;
+            _defaultCircuitBreakerTimeout = TimeSpan.FromSeconds(30);
             _enableGracefulDegradation = true;
-            _maxHistoryPerCheck = 200;
+            _degradationThresholds = new DegradationThresholds();
+            _enableDegradationAlerts = true;
+            _enableAutomaticDegradation = true;
+            _enableHealthAlerts = true;
+            _alertSeverities = new Dictionary<HealthStatus, AlertSeverity>
+            {
+                { HealthStatus.Healthy, AlertSeverity.Info },
+                { HealthStatus.Warning, AlertSeverity.Warning },
+                { HealthStatus.Degraded, AlertSeverity.Warning },
+                { HealthStatus.Unhealthy, AlertSeverity.Critical },
+                { HealthStatus.Critical, AlertSeverity.Critical },
+                { HealthStatus.Offline, AlertSeverity.Emergency },
+                { HealthStatus.Unknown, AlertSeverity.Warning }
+            };
+            _alertTags = new HashSet<FixedString64Bytes> { "HealthCheck", "SystemMonitoring" };
+            _alertFailureThreshold = 3;
             _enableHealthCheckLogging = true;
             _healthCheckLogLevel = LogLevel.Info;
             _enableProfiling = true;
-            _slowHealthCheckThreshold = 2000;
+            _slowHealthCheckThreshold = 1000;
+            _enableDetailedLogging = false;
+            _maxMemoryUsageMB = 50;
+            _historyCleanupInterval = TimeSpan.FromMinutes(30);
+            _maxHistoryAge = TimeSpan.FromHours(24);
+            _healthCheckThreadPriority = System.Threading.ThreadPriority.Normal;
+            _healthThresholds = new HealthThresholds();
+            _unhealthyThreshold = 0.25;
+            _warningThreshold = 0.5;
+            _enableDependencyValidation = true;
+            _enableResultCaching = true;
+            _resultCacheDuration = TimeSpan.FromSeconds(10);
+            _enableExecutionTimeouts = true;
+            _enableCorrelationIds = true;
+            _defaultMetadata = new Dictionary<string, object>();
             
-            _logger.LogInfo("Applied production environment preset");
+            _logger.LogDebug("Builder reset to initial state");
             return this;
         }
+
+        #endregion
+
+        #region Private Helper Methods
 
         /// <summary>
         /// Validates alert severities dictionary
         /// </summary>
         /// <param name="severities">Alert severities to validate</param>
+        /// <exception cref="ArgumentException">Thrown when severities are invalid</exception>
         private void ValidateAlertSeverities(Dictionary<HealthStatus, AlertSeverity> severities)
         {
-            foreach (var kvp in severities)
+            foreach (var severity in severities.Values)
             {
-                if (!Enum.IsDefined(typeof(HealthStatus), kvp.Key))
-                    _validationErrors.Add($"Invalid health status in alert severities: {kvp.Key}");
-                
-                if (!Enum.IsDefined(typeof(AlertSeverity), kvp.Value))
-                    _validationErrors.Add($"Invalid alert severity: {kvp.Value}");
+                if (!Enum.IsDefined(typeof(AlertSeverity), severity))
+                {
+                    throw new ArgumentException($"Invalid alert severity: {severity}");
+                }
             }
         }
 
         /// <summary>
-        /// Throws exception if configuration has already been built
+        /// Throws an exception if the builder has already been built
         /// </summary>
-        /// <exception cref="InvalidOperationException">Thrown when already built</exception>
+        /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         private void ThrowIfAlreadyBuilt()
         {
             if (_isBuilt)
-                throw new InvalidOperationException("Cannot modify configuration after it has been built. Use Reset() or create a new builder.");
+                throw new InvalidOperationException("Cannot modify builder after Build() has been called. Create a new builder instance.");
         }
 
         #endregion
     }
 
     /// <summary>
-    /// Environment types for health check configuration presets
+    /// Enumeration of health check environments
     /// </summary>
     public enum HealthCheckEnvironment
     {
         /// <summary>
-        /// Development environment with verbose logging and relaxed thresholds
+        /// Development environment
         /// </summary>
         Development,
-
+        
         /// <summary>
-        /// Testing environment with minimal features for fast test execution
+        /// Testing environment
         /// </summary>
         Testing,
-
+        
         /// <summary>
-        /// Staging environment that mirrors production with some relaxed settings
+        /// Staging environment
         /// </summary>
         Staging,
-
+        
         /// <summary>
-        /// Production environment with optimal performance and monitoring
+        /// Production environment
         /// </summary>
         Production
     }
