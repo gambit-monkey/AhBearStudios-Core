@@ -1,17 +1,19 @@
 ﻿using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Alerting;
-using AhBearStudios.Core.HealthChecking;
+using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Logging.Configs;
+using AhBearStudios.Core.Profiling.Models;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
 using Serilog.Formatting.Json;
 using Unity.Profiling;
 using ILogger = Serilog.ILogger;
+using Logger = Serilog.Core.Logger;
 
 namespace AhBearStudios.Core.Logging.Targets
 {
