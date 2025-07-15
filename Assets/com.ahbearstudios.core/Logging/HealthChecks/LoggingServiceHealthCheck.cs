@@ -117,6 +117,8 @@ namespace AhBearStudios.Core.Logging.HealthChecks
                 {
                     healthData["HighPerformanceMode"] = config.HighPerformanceMode;
                     healthData["BatchingEnabled"] = config.BatchingEnabled;
+                    healthData["BurstCompatibility"] = config.BurstCompatibility;
+                    healthData["StructuredLogging"] = config.StructuredLogging;
                     healthData["GlobalMinimumLevel"] = config.GlobalMinimumLevel.ToString();
                     
                     // Validate configuration
@@ -267,7 +269,8 @@ namespace AhBearStudios.Core.Logging.HealthChecks
                 }
                 
                 // Check if high-performance mode is delivering expected performance
-                if (_loggingService.HighPerformanceMode)
+                var serviceConfig = _loggingService.Configuration;
+                if (serviceConfig?.HighPerformanceMode == true)
                 {
                     healthData["HighPerformanceModeActive"] = true;
                     // In high-performance mode, we expect very low allocation
@@ -278,7 +281,7 @@ namespace AhBearStudios.Core.Logging.HealthChecks
                 }
                 
                 // Check batch processing status
-                if (_loggingService.BatchingEnabled)
+                if (serviceConfig?.BatchingEnabled == true)
                 {
                     healthData["BatchingActive"] = true;
                     // Additional batching-specific metrics could be added here

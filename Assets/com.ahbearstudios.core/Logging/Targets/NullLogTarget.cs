@@ -15,12 +15,12 @@ namespace AhBearStudios.Core.Logging.Targets
         public bool IsHealthy => true;
         public IReadOnlyList<string> Channels { get; }
 
-        public NullLogTarget(LogTargetConfig config)
+        public NullLogTarget(ILogTargetConfig config)
         {
             Name = config.Name;
             MinimumLevel = config.MinimumLevel;
             IsEnabled = config.IsEnabled;
-            Channels = config.Channels.AsReadOnly();
+            Channels = config.Channels;
         }
 
         public void Write(in LogMessage logMessage) { }

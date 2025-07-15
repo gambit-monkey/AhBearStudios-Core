@@ -19,12 +19,12 @@ namespace AhBearStudios.Core.Logging.Targets
         public bool IsHealthy => !_disposed;
         public IReadOnlyList<string> Channels { get; }
 
-        public MemoryLogTarget(LogTargetConfig config)
+        public MemoryLogTarget(ILogTargetConfig config)
         {
             Name = config.Name;
             MinimumLevel = config.MinimumLevel;
             IsEnabled = config.IsEnabled;
-            Channels = config.Channels.AsReadOnly();
+            Channels = config.Channels;
         }
 
         public void Write(in LogMessage logMessage)

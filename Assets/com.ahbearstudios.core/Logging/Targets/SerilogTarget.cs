@@ -3,34 +3,56 @@ using System.Threading;
 using System.Threading.Tasks;
 using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Models;
+using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Alerting;
+using AhBearStudios.Core.HealthChecking;
 using Serilog;
 using Serilog.Core;
 using Serilog.Events;
 using Serilog.Formatting.Json;
+using Unity.Profiling;
+using ILogger = Serilog.ILogger;
 
 namespace AhBearStudios.Core.Logging.Targets
 {
     /// <summary>
-    /// Production-ready Serilog log target for enterprise-grade logging.
-    /// Provides structured logging, multiple sinks, and advanced configuration options.
-    /// Follows AhBearStudios Core Architecture patterns with full error handling and health monitoring.
+    /// Unity game-optimized Serilog log target with performance-first design.
+    /// Provides structured logging with frame budget awareness and game-specific optimizations.
+    /// Follows AhBearStudios Unity game development guidelines with lightweight error handling.
     /// </summary>
     public sealed class SerilogTarget : ILogTarget
     {
-        private readonly LogTargetConfig _config;
+        private readonly ILogTargetConfig _config;
+        private readonly IProfilerService _profiler;
+        private readonly IAlertService _alertService;
         private readonly object _loggerLock = new object();
         private readonly Timer _healthCheckTimer;
         private readonly SemaphoreSlim _asyncWriteSemaphore;
         
+        // Unity Profiler markers for frame budget monitoring
+        private readonly ProfilerMarker _writeMarker = new ProfilerMarker("SerilogTarget.Write");
+        private readonly ProfilerMarker _batchWriteMarker = new ProfilerMarker("SerilogTarget.WriteBatch");
+        private readonly ProfilerMarker _healthCheckMarker = new ProfilerMarker("SerilogTarget.HealthCheck");
+        
+        // Core system profiling tags
+        private static readonly ProfilerTag WriteTag = new ProfilerTag("SerilogTarget.Write");
+        private static readonly ProfilerTag BatchWriteTag = new ProfilerTag("SerilogTarget.WriteBatch");
+        private static readonly ProfilerTag HealthCheckTag = new ProfilerTag("SerilogTarget.HealthCheck");
+        
         private ILogger _serilogLogger;
-        private bool _disposed = false;
+        private volatile bool _disposed = false;
         private long _messagesWritten = 0;
         private long _messagesDropped = 0;
         private long _errorsEncountered = 0;
         private DateTime _lastWriteTime = DateTime.MinValue;
         private DateTime _lastHealthCheck = DateTime.MinValue;
-        private bool _isHealthy = true;
+        private volatile bool _isHealthy = true;
         private Exception _lastError = null;
+        
+        // Performance monitoring thresholds
+        private const double ERROR_RATE_THRESHOLD = 0.1; // 10% error rate
+        private const double FRAME_BUDGET_THRESHOLD_MS = 0.5; // 0.5ms per write operation
+        private const int ALERT_SUPPRESSION_INTERVAL_MINUTES = 5;
 
         /// <summary>
         /// Gets the name of this log target.
@@ -88,20 +110,24 @@ namespace AhBearStudios.Core.Logging.Targets
         public int MaxConcurrentAsyncOperations { get; }
 
         /// <summary>
-        /// Initializes a new instance of the SerilogTarget.
+        /// Initializes a new instance of the SerilogTarget with full core system integration.
         /// </summary>
         /// <param name="config">The configuration for this target</param>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
-        public SerilogTarget(LogTargetConfig config)
+        /// <param name="profiler">The profiler service for performance monitoring</param>
+        /// <param name="alertService">The alert service for critical notifications</param>
+        /// <exception cref="ArgumentNullException">Thrown when required parameters are null</exception>
+        public SerilogTarget(ILogTargetConfig config, IProfilerService profiler, IAlertService alertService)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
+            _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+            _alertService = alertService ?? throw new ArgumentNullException(nameof(alertService));
             
             Name = _config.Name;
             MinimumLevel = _config.MinimumLevel;
             IsEnabled = _config.IsEnabled;
-            Channels = _config.Channels?.AsReadOnly() ?? new List<string>().AsReadOnly();
+            Channels = _config.Channels;
             UseAsyncWrite = _config.UseAsyncWrite;
-            MaxConcurrentAsyncOperations = GetConfigProperty("MaxConcurrentAsyncOperations", 10);
+            MaxConcurrentAsyncOperations = _config.MaxConcurrentAsyncOperations;
 
             // Initialize async semaphore for write operations
             if (UseAsyncWrite)
@@ -109,12 +135,15 @@ namespace AhBearStudios.Core.Logging.Targets
                 _asyncWriteSemaphore = new SemaphoreSlim(MaxConcurrentAsyncOperations, MaxConcurrentAsyncOperations);
             }
 
+            // Register performance metric alerts with profiler service
+            RegisterPerformanceAlerts();
+
             // Initialize Serilog logger
             InitializeSerilogLogger();
 
-            // Start health check timer
-            _healthCheckTimer = new Timer(PerformPeriodicHealthCheck, null, 
-                TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
+            // Start health check timer - using configured interval
+            var healthCheckInterval = TimeSpan.FromSeconds(_config.HealthCheckIntervalSeconds);
+            _healthCheckTimer = new Timer(PerformPeriodicHealthCheck, null, healthCheckInterval, healthCheckInterval);
 
             _lastHealthCheck = DateTime.UtcNow;
         }
@@ -123,14 +152,17 @@ namespace AhBearStudios.Core.Logging.Targets
         /// Initializes a new instance with a pre-configured Serilog logger.
         /// </summary>
         /// <param name="config">The target configuration</param>
+        /// <param name="profiler">The profiler service for performance monitoring</param>
+        /// <param name="alertService">The alert service for critical notifications</param>
         /// <param name="serilogLogger">The pre-configured Serilog logger</param>
-        public SerilogTarget(LogTargetConfig config, ILogger serilogLogger) : this(config)
+        public SerilogTarget(ILogTargetConfig config, IProfilerService profiler, IAlertService alertService, ILogger serilogLogger) 
+            : this(config, profiler, alertService)
         {
             _serilogLogger = serilogLogger ?? throw new ArgumentNullException(nameof(serilogLogger));
         }
 
         /// <summary>
-        /// Writes a log message to Serilog.
+        /// Writes a log message to Serilog with full performance monitoring and alerting.
         /// </summary>
         /// <param name="logMessage">The log message to write</param>
         public void Write(in LogMessage logMessage)
@@ -141,29 +173,42 @@ namespace AhBearStudios.Core.Logging.Targets
                 return;
             }
 
-            try
+            // Unity Profiler integration for frame budget monitoring
+            using (_writeMarker.Auto())
             {
-                if (UseAsyncWrite)
+                // Core profiling system integration
+                using var profilerSession = _profiler.BeginScope(WriteTag);
+                
+                try
                 {
-                    _ = WriteAsync(logMessage);
+                    if (UseAsyncWrite)
+                    {
+                        _ = WriteAsync(logMessage);
+                    }
+                    else
+                    {
+                        WriteInternal(logMessage);
+                    }
+
+                    Interlocked.Increment(ref _messagesWritten);
+                    _lastWriteTime = DateTime.UtcNow;
+
+                    // Check for performance threshold violations
+                    CheckPerformanceThresholds(profilerSession);
                 }
-                else
+                catch (Exception ex)
                 {
-                    WriteInternal(logMessage);
+                    Interlocked.Increment(ref _errorsEncountered);
+                    Interlocked.Increment(ref _messagesDropped);
+                    _lastError = ex;
+                    _isHealthy = false;
+
+                    // Alert on critical logging failures
+                    TriggerErrorAlert(ex, "SerilogTarget write failed");
+
+                    // Fallback logging to prevent infinite loops
+                    System.Diagnostics.Debug.WriteLine($"SerilogTarget write failed: {ex.Message}");
                 }
-
-                Interlocked.Increment(ref _messagesWritten);
-                _lastWriteTime = DateTime.UtcNow;
-            }
-            catch (Exception ex)
-            {
-                Interlocked.Increment(ref _errorsEncountered);
-                Interlocked.Increment(ref _messagesDropped);
-                _lastError = ex;
-                _isHealthy = false;
-
-                // Fallback logging to prevent infinite loops
-                System.Diagnostics.Debug.WriteLine($"SerilogTarget write failed: {ex.Message}");
             }
         }
 
@@ -248,70 +293,83 @@ namespace AhBearStudios.Core.Logging.Targets
         }
 
         /// <summary>
-        /// Performs a health check on this target.
+        /// Performs a health check on this target with performance monitoring.
         /// </summary>
         /// <returns>True if the target is healthy, false otherwise</returns>
         public bool PerformHealthCheck()
         {
-            try
+            using (_healthCheckMarker.Auto())
             {
-                if (_disposed)
-                    return false;
-
-                // Check if logger is still functional
-                lock (_loggerLock)
-                {
-                    if (_serilogLogger == null)
-                    {
-                        _isHealthy = false;
-                        return false;
-                    }
-                }
-
-                // Check error rate
-                var totalMessages = _messagesWritten + _messagesDropped;
-                if (totalMessages > 100) // Only check after processing some messages
-                {
-                    var errorRate = (double)_errorsEncountered / totalMessages;
-                    if (errorRate > 0.1) // 10% error rate threshold
-                    {
-                        _isHealthy = false;
-                        return false;
-                    }
-                }
-
-                // Check if we've written recently (if we should have)
-                var timeSinceLastWrite = DateTime.UtcNow - _lastWriteTime;
-                if (_messagesWritten > 0 && timeSinceLastWrite > TimeSpan.FromMinutes(30))
-                {
-                    // This might indicate a problem, but not necessarily unhealthy
-                    // Could just mean no recent log activity
-                }
-
-                // Perform a test write
+                using var profilerSession = _profiler.BeginScope(HealthCheckTag);
+                
                 try
                 {
-                    var testMessage = LogMessage.Create(LogLevel.Debug, "HealthCheck", 
-                        $"Serilog health check - {DateTime.UtcNow:HH:mm:ss}");
+                    if (_disposed)
+                        return false;
+
+                    // Check if logger is still functional
+                    lock (_loggerLock)
+                    {
+                        if (_serilogLogger == null)
+                        {
+                            _isHealthy = false;
+                            TriggerErrorAlert(new InvalidOperationException("Serilog logger is null"), "SerilogTarget health check failed");
+                            return false;
+                        }
+                    }
+
+                    // Check error rate using configured threshold
+                    var totalMessages = _messagesWritten + _messagesDropped;
+                    if (totalMessages > 100) // Only check after processing some messages
+                    {
+                        var errorRate = (double)_errorsEncountered / totalMessages;
+                        if (errorRate > _config.ErrorRateThreshold)
+                        {
+                            _isHealthy = false;
+                            TriggerErrorAlert(new InvalidOperationException($"Error rate too high: {errorRate:P1}"), "SerilogTarget error rate exceeded threshold");
+                            return false;
+                        }
+                    }
+
+                    // Check if we've written recently (if we should have)
+                    var timeSinceLastWrite = DateTime.UtcNow - _lastWriteTime;
+                    if (_messagesWritten > 0 && timeSinceLastWrite > TimeSpan.FromMinutes(30))
+                    {
+                        // This might indicate a problem, but not necessarily unhealthy
+                        // Could just mean no recent log activity
+                    }
+
+                    // Perform a test write
+                    try
+                    {
+                        var testMessage = LogMessage.Create(LogLevel.Debug, "HealthCheck", 
+                            $"Serilog health check - {DateTime.UtcNow:HH:mm:ss}");
+                        
+                        WriteInternal(testMessage);
+                        _isHealthy = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        _lastError = ex;
+                        _isHealthy = false;
+                        TriggerErrorAlert(ex, "SerilogTarget health check test write failed");
+                        return false;
+                    }
+
+                    _lastHealthCheck = DateTime.UtcNow;
                     
-                    WriteInternal(testMessage);
-                    _isHealthy = true;
+                    // Check health check performance
+                    CheckPerformanceThresholds(profilerSession);
+                    
+                    return _isHealthy;
                 }
                 catch (Exception ex)
                 {
                     _lastError = ex;
                     _isHealthy = false;
+                    TriggerErrorAlert(ex, "SerilogTarget health check failed");
                     return false;
                 }
-
-                _lastHealthCheck = DateTime.UtcNow;
-                return _isHealthy;
-            }
-            catch (Exception ex)
-            {
-                _lastError = ex;
-                _isHealthy = false;
-                return false;
             }
         }
 
@@ -683,6 +741,81 @@ namespace AhBearStudios.Core.Logging.Targets
                 }
             }
             return defaultValue;
+        }
+
+        /// <summary>
+        /// Registers performance metric alerts with the profiler service.
+        /// </summary>
+        private void RegisterPerformanceAlerts()
+        {
+            if (_config.EnablePerformanceMetrics)
+            {
+                _profiler.RegisterMetricAlert(WriteTag, _config.FrameBudgetThresholdMs);
+                _profiler.RegisterMetricAlert(BatchWriteTag, _config.FrameBudgetThresholdMs * 10); // Batch operations get 10x threshold
+                _profiler.RegisterMetricAlert(HealthCheckTag, _config.FrameBudgetThresholdMs * 2); // Health checks get 2x threshold
+            }
+        }
+
+        /// <summary>
+        /// Checks for performance threshold violations and triggers alerts if needed.
+        /// </summary>
+        /// <param name="profilerSession">The profiler session to check</param>
+        private void CheckPerformanceThresholds(IProfilerSession profilerSession)
+        {
+            if (!_config.EnablePerformanceMetrics) return;
+
+            var metrics = profilerSession.GetMetrics();
+            if (metrics.TryGetValue("ElapsedMilliseconds", out var elapsedMs))
+            {
+                var elapsed = Convert.ToDouble(elapsedMs);
+                if (elapsed > _config.FrameBudgetThresholdMs)
+                {
+                    TriggerPerformanceAlert($"SerilogTarget write exceeded frame budget: {elapsed:F2}ms > {_config.FrameBudgetThresholdMs:F2}ms");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Triggers an error alert through the alerting system.
+        /// </summary>
+        /// <param name="exception">The exception that occurred</param>
+        /// <param name="message">Additional context message</param>
+        private void TriggerErrorAlert(Exception exception, string message)
+        {
+            try
+            {
+                _alertService.RaiseAlert(
+                    message: $"{message}: {exception.Message}",
+                    severity: AlertSeverity.Critical,
+                    source: "SerilogTarget",
+                    tag: "LoggingFailure"
+                );
+            }
+            catch
+            {
+                // Ignore alerting failures to prevent infinite loops
+            }
+        }
+
+        /// <summary>
+        /// Triggers a performance alert through the alerting system.
+        /// </summary>
+        /// <param name="message">The performance alert message</param>
+        private void TriggerPerformanceAlert(string message)
+        {
+            try
+            {
+                _alertService.RaiseAlert(
+                    message: message,
+                    severity: AlertSeverity.Warning,
+                    source: "SerilogTarget",
+                    tag: "PerformanceIssue"
+                );
+            }
+            catch
+            {
+                // Ignore alerting failures to prevent infinite loops
+            }
         }
 
         /// <summary>

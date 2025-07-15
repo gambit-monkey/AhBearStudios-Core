@@ -12,7 +12,7 @@ namespace AhBearStudios.Unity.Logging.Targets
     /// </summary>
     public sealed class UnityConsoleLogTarget : ILogTarget
     {
-        private readonly LogTargetConfig _config;
+        private readonly ILogTargetConfig _config;
         private readonly StringBuilder _stringBuilder;
         private readonly object _lock = new object();
         private readonly Dictionary<LogLevel, Color> _colorMapping;
@@ -72,14 +72,14 @@ namespace AhBearStudios.Unity.Logging.Targets
         /// </summary>
         /// <param name="config">The target configuration</param>
         /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
-        public UnityConsoleLogTarget(LogTargetConfig config)
+        public UnityConsoleLogTarget(ILogTargetConfig config)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             
             Name = _config.Name;
             MinimumLevel = _config.MinimumLevel;
             IsEnabled = _config.IsEnabled;
-            Channels = _config.Channels?.AsReadOnly() ?? new List<string>().AsReadOnly();
+            Channels = _config.Channels;
 
             _stringBuilder = new StringBuilder(1024);
             

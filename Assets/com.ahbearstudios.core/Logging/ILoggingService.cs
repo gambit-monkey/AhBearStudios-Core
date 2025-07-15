@@ -11,6 +11,18 @@ namespace AhBearStudios.Core.Logging
     /// </summary>
     public interface ILoggingService
     {
+        // Configuration and runtime state properties
+        /// <summary>
+        /// Gets the current configuration of the logging service.
+        /// </summary>
+        LoggingConfig Configuration { get; }
+
+        /// <summary>
+        /// Gets whether the logging service is enabled.
+        /// </summary>
+        bool IsEnabled { get; }
+
+        // Core logging methods
         /// <summary>
         /// Logs a debug message with optional structured data.
         /// </summary>
@@ -116,6 +128,47 @@ namespace AhBearStudios.Core.Logging
         /// <param name="sourceContext">The source context (typically class name)</param>
         void LogCritical(string message, string correlationId, string sourceContext = null);
 
+        // Generic structured logging methods for burst compatibility
+        /// <summary>
+        /// Logs a debug message with structured data using generic type constraints for burst compatibility.
+        /// </summary>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <param name="message">The message to log</param>
+        /// <param name="data">The structured data to log</param>
+        void LogDebug<T>(string message, T data) where T : unmanaged;
+
+        /// <summary>
+        /// Logs an informational message with structured data using generic type constraints for burst compatibility.
+        /// </summary>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <param name="message">The message to log</param>
+        /// <param name="data">The structured data to log</param>
+        void LogInfo<T>(string message, T data) where T : unmanaged;
+
+        /// <summary>
+        /// Logs a warning message with structured data using generic type constraints for burst compatibility.
+        /// </summary>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <param name="message">The message to log</param>
+        /// <param name="data">The structured data to log</param>
+        void LogWarning<T>(string message, T data) where T : unmanaged;
+
+        /// <summary>
+        /// Logs an error message with structured data using generic type constraints for burst compatibility.
+        /// </summary>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <param name="message">The message to log</param>
+        /// <param name="data">The structured data to log</param>
+        void LogError<T>(string message, T data) where T : unmanaged;
+
+        /// <summary>
+        /// Logs a critical message with structured data using generic type constraints for burst compatibility.
+        /// </summary>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <param name="message">The message to log</param>
+        /// <param name="data">The structured data to log</param>
+        void LogCritical<T>(string message, T data) where T : unmanaged;
+
         /// <summary>
         /// Logs an exception with context information.
         /// </summary>
@@ -145,6 +198,14 @@ namespace AhBearStudios.Core.Logging
         void Log(LogLevel level, string channel, string message, Exception exception = null, 
                 string correlationId = null, IReadOnlyDictionary<string, object> properties = null, 
                 string sourceContext = null);
+
+        /// <summary>
+        /// Logs a message to a specific channel with the specified level (documented design method).
+        /// </summary>
+        /// <param name="channel">The channel name</param>
+        /// <param name="level">The log level</param>
+        /// <param name="message">The message to log</param>
+        void LogToChannel(string channel, LogLevel level, string message);
 
         /// <summary>
         /// Registers a log target with the service.
@@ -238,5 +299,71 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         /// <returns>A dictionary containing health status for each target</returns>
         IReadOnlyDictionary<string, bool> GetHealthStatus();
+
+        // Channel management methods (documented design)
+        /// <summary>
+        /// Registers a log channel with the service.
+        /// </summary>
+        /// <param name="channel">The log channel to register</param>
+        /// <exception cref="ArgumentNullException">Thrown when channel is null</exception>
+        void RegisterChannel(ILogChannel channel);
+
+        /// <summary>
+        /// Unregisters a log channel from the service.
+        /// </summary>
+        /// <param name="channelName">The name of the channel to unregister</param>
+        /// <returns>True if the channel was unregistered, false if it was not found</returns>
+        bool UnregisterChannel(string channelName);
+
+        /// <summary>
+        /// Gets all registered log channels.
+        /// </summary>
+        /// <returns>A read-only list of registered channels</returns>
+        IReadOnlyList<ILogChannel> GetRegisteredChannels();
+
+        /// <summary>
+        /// Gets a registered log channel by name.
+        /// </summary>
+        /// <param name="channelName">The name of the channel to retrieve</param>
+        /// <returns>The log channel if found, null otherwise</returns>
+        ILogChannel GetChannel(string channelName);
+
+        /// <summary>
+        /// Determines whether a log channel is registered.
+        /// </summary>
+        /// <param name="channelName">The name of the channel to check</param>
+        /// <returns>True if the channel is registered, false otherwise</returns>
+        bool HasChannel(string channelName);
+
+        // Scoped logging methods (documented design)
+        /// <summary>
+        /// Begins a new logging scope with the specified name.
+        /// </summary>
+        /// <param name="scopeName">The name of the scope</param>
+        /// <returns>A disposable log scope</returns>
+        ILogScope BeginScope(string scopeName);
+
+        /// <summary>
+        /// Begins a new logging scope with the specified name and correlation ID.
+        /// </summary>
+        /// <param name="scopeName">The name of the scope</param>
+        /// <param name="correlationId">The correlation ID for the scope</param>
+        /// <returns>A disposable log scope</returns>
+        ILogScope BeginScope(string scopeName, string correlationId);
+
+        /// <summary>
+        /// Begins a new logging scope with the specified name and properties.
+        /// </summary>
+        /// <param name="scopeName">The name of the scope</param>
+        /// <param name="properties">Properties to associate with the scope</param>
+        /// <returns>A disposable log scope</returns>
+        ILogScope BeginScope(string scopeName, IReadOnlyDictionary<string, object> properties);
+
+        // Statistics method (documented design)
+        /// <summary>
+        /// Gets performance statistics for the logging service.
+        /// </summary>
+        /// <returns>Performance statistics</returns>
+        LoggingStatistics GetStatistics();
     }
 }

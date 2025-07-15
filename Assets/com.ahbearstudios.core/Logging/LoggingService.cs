@@ -11,6 +11,11 @@ using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Logging.Targets;
 using AhBearStudios.Core.Logging.Services;
 using AhBearStudios.Core.Logging.HealthChecks;
+using AhBearStudios.Core.HealthChecking;
+using AhBearStudios.Core.HealthChecking.Models;
+using AhBearStudios.Core.Alerting;
+using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Profiling;
 
 namespace AhBearStudios.Core.Logging
 {
@@ -23,6 +28,7 @@ namespace AhBearStudios.Core.Logging
     {
         private readonly LoggingConfig _config;
         private readonly ConcurrentDictionary<string, ILogTarget> _targets;
+        private readonly ConcurrentDictionary<string, ILogChannel> _channels;
         private readonly LogFormattingService _formattingService;
         private readonly LogBatchingService _batchingService;
         private readonly IHealthCheckService _healthCheckService;
@@ -69,6 +75,7 @@ namespace AhBearStudios.Core.Logging
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _targets = new ConcurrentDictionary<string, ILogTarget>();
+            _channels = new ConcurrentDictionary<string, ILogChannel>();
             _formattingService = formattingService;
             _batchingService = batchingService;
             _healthCheckService = healthCheckService;
@@ -865,6 +872,240 @@ namespace AhBearStudios.Core.Logging
             }
         }
         
+        // Generic structured logging methods implementation
+        /// <summary>
+        /// Logs a debug message with structured data using generic type constraints for burst compatibility.
+        /// </summary>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <param name="message">The message to log</param>
+        /// <param name="data">The structured data to log</param>
+        public void LogDebug<T>(string message, T data) where T : unmanaged
+        {
+            if (ShouldLog(LogLevel.Debug))
+            {
+                var properties = ConvertUnmanagedToProperties(data);
+                LogInternal(LogLevel.Debug, "Default", message, null, null, properties);
+            }
+        }
+
+        /// <summary>
+        /// Logs an informational message with structured data using generic type constraints for burst compatibility.
+        /// </summary>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <param name="message">The message to log</param>
+        /// <param name="data">The structured data to log</param>
+        public void LogInfo<T>(string message, T data) where T : unmanaged
+        {
+            if (ShouldLog(LogLevel.Info))
+            {
+                var properties = ConvertUnmanagedToProperties(data);
+                LogInternal(LogLevel.Info, "Default", message, null, null, properties);
+            }
+        }
+
+        /// <summary>
+        /// Logs a warning message with structured data using generic type constraints for burst compatibility.
+        /// </summary>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <param name="message">The message to log</param>
+        /// <param name="data">The structured data to log</param>
+        public void LogWarning<T>(string message, T data) where T : unmanaged
+        {
+            if (ShouldLog(LogLevel.Warning))
+            {
+                var properties = ConvertUnmanagedToProperties(data);
+                LogInternal(LogLevel.Warning, "Default", message, null, null, properties);
+            }
+        }
+
+        /// <summary>
+        /// Logs an error message with structured data using generic type constraints for burst compatibility.
+        /// </summary>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <param name="message">The message to log</param>
+        /// <param name="data">The structured data to log</param>
+        public void LogError<T>(string message, T data) where T : unmanaged
+        {
+            if (ShouldLog(LogLevel.Error))
+            {
+                var properties = ConvertUnmanagedToProperties(data);
+                LogInternal(LogLevel.Error, "Default", message, null, null, properties);
+                TriggerErrorAlert(message, null);
+            }
+        }
+
+        /// <summary>
+        /// Logs a critical message with structured data using generic type constraints for burst compatibility.
+        /// </summary>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <param name="message">The message to log</param>
+        /// <param name="data">The structured data to log</param>
+        public void LogCritical<T>(string message, T data) where T : unmanaged
+        {
+            if (ShouldLog(LogLevel.Critical))
+            {
+                var properties = ConvertUnmanagedToProperties(data);
+                LogInternal(LogLevel.Critical, "Default", message, null, null, properties);
+                TriggerCriticalAlert(message, null);
+            }
+        }
+
+        /// <summary>
+        /// Logs a message to a specific channel with the specified level (documented design method).
+        /// </summary>
+        /// <param name="channel">The channel name</param>
+        /// <param name="level">The log level</param>
+        /// <param name="message">The message to log</param>
+        public void LogToChannel(string channel, LogLevel level, string message)
+        {
+            if (ShouldLog(level))
+            {
+                LogInternal(level, channel ?? "Default", message);
+            }
+        }
+
+        // Channel management methods implementation
+        /// <summary>
+        /// Registers a log channel with the service.
+        /// </summary>
+        /// <param name="channel">The log channel to register</param>
+        /// <exception cref="ArgumentNullException">Thrown when channel is null</exception>
+        public void RegisterChannel(ILogChannel channel)
+        {
+            if (channel == null)
+                throw new ArgumentNullException(nameof(channel));
+
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(LoggingService));
+
+            if (_channels.TryAdd(channel.Name, channel))
+            {
+                LogInfo($"Registered log channel: {channel.Name}", "Logging.Registration", "LoggingService");
+            }
+            else
+            {
+                LogWarning($"Channel with name '{channel.Name}' is already registered", "Logging.Registration", "LoggingService");
+            }
+        }
+
+        /// <summary>
+        /// Unregisters a log channel from the service.
+        /// </summary>
+        /// <param name="channelName">The name of the channel to unregister</param>
+        /// <returns>True if the channel was unregistered, false if it was not found</returns>
+        public bool UnregisterChannel(string channelName)
+        {
+            if (string.IsNullOrEmpty(channelName) || _disposed)
+                return false;
+
+            if (_channels.TryRemove(channelName, out var channel))
+            {
+                LogInfo($"Unregistered log channel: {channelName}", "Logging.Registration", "LoggingService");
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Gets all registered log channels.
+        /// </summary>
+        /// <returns>A read-only list of registered channels</returns>
+        public IReadOnlyList<ILogChannel> GetRegisteredChannels()
+        {
+            return _channels.Values.ToList().AsReadOnly();
+        }
+
+        /// <summary>
+        /// Gets a registered log channel by name.
+        /// </summary>
+        /// <param name="channelName">The name of the channel to retrieve</param>
+        /// <returns>The log channel if found, null otherwise</returns>
+        public ILogChannel GetChannel(string channelName)
+        {
+            if (string.IsNullOrEmpty(channelName))
+                return null;
+
+            _channels.TryGetValue(channelName, out var channel);
+            return channel;
+        }
+
+        /// <summary>
+        /// Determines whether a log channel is registered.
+        /// </summary>
+        /// <param name="channelName">The name of the channel to check</param>
+        /// <returns>True if the channel is registered, false otherwise</returns>
+        public bool HasChannel(string channelName)
+        {
+            if (string.IsNullOrEmpty(channelName))
+                return false;
+
+            return _channels.ContainsKey(channelName);
+        }
+
+        // Scoped logging methods implementation
+        /// <summary>
+        /// Begins a new logging scope with the specified name.
+        /// </summary>
+        /// <param name="scopeName">The name of the scope</param>
+        /// <returns>A disposable log scope</returns>
+        public ILogScope BeginScope(string scopeName)
+        {
+            return new LogScope(this, scopeName);
+        }
+
+        /// <summary>
+        /// Begins a new logging scope with the specified name and correlation ID.
+        /// </summary>
+        /// <param name="scopeName">The name of the scope</param>
+        /// <param name="correlationId">The correlation ID for the scope</param>
+        /// <returns>A disposable log scope</returns>
+        public ILogScope BeginScope(string scopeName, string correlationId)
+        {
+            return new LogScope(this, scopeName, correlationId);
+        }
+
+        /// <summary>
+        /// Begins a new logging scope with the specified name and properties.
+        /// </summary>
+        /// <param name="scopeName">The name of the scope</param>
+        /// <param name="properties">Properties to associate with the scope</param>
+        /// <returns>A disposable log scope</returns>
+        public ILogScope BeginScope(string scopeName, IReadOnlyDictionary<string, object> properties)
+        {
+            return new LogScope(this, scopeName, null, properties);
+        }
+
+        /// <summary>
+        /// Converts unmanaged data to properties dictionary for structured logging.
+        /// </summary>
+        /// <typeparam name="T">The unmanaged type</typeparam>
+        /// <param name="data">The data to convert</param>
+        /// <returns>Properties dictionary</returns>
+        private IReadOnlyDictionary<string, object> ConvertUnmanagedToProperties<T>(T data) where T : unmanaged
+        {
+            var properties = new Dictionary<string, object>();
+            
+            // Use reflection to get fields and properties of the unmanaged type
+            var type = typeof(T);
+            var fields = type.GetFields();
+            
+            foreach (var field in fields)
+            {
+                try
+                {
+                    var value = field.GetValue(data);
+                    properties[field.Name] = value;
+                }
+                catch (Exception ex)
+                {
+                    properties[field.Name] = $"Error reading field: {ex.Message}";
+                }
+            }
+            
+            return properties;
+        }
+
         /// <summary>
         /// Disposes the logging service and all registered targets.
         /// </summary>
