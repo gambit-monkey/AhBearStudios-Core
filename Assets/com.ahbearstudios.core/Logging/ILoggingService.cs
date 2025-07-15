@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Logging.Targets;
 

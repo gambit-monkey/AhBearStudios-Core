@@ -12,7 +12,6 @@ using AhBearStudios.Core.Logging.Targets;
 using AhBearStudios.Core.Logging.Services;
 using AhBearStudios.Core.Logging.HealthChecks;
 using AhBearStudios.Core.HealthChecking;
-using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Profiling;

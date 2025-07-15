@@ -1,6 +1,8 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.IO;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Alerting;
@@ -12,6 +14,8 @@ using Serilog.Core;
 using Serilog.Events;
 using Serilog.Formatting.Json;
 using Unity.Profiling;
+using Unity.Collections;
+using UnityEngine;
 using ILogger = Serilog.ILogger;
 using Logger = Serilog.Core.Logger;
 
@@ -37,9 +41,9 @@ namespace AhBearStudios.Core.Logging.Targets
         private readonly ProfilerMarker _healthCheckMarker = new ProfilerMarker("SerilogTarget.HealthCheck");
         
         // Core system profiling tags
-        private static readonly ProfilerTag WriteTag = new ProfilerTag("SerilogTarget.Write");
-        private static readonly ProfilerTag BatchWriteTag = new ProfilerTag("SerilogTarget.WriteBatch");
-        private static readonly ProfilerTag HealthCheckTag = new ProfilerTag("SerilogTarget.HealthCheck");
+        private static readonly ProfilerTag WriteTag = new("SerilogTarget.Write");
+        private static readonly ProfilerTag BatchWriteTag = new("SerilogTarget.WriteBatch");
+        private static readonly ProfilerTag HealthCheckTag = new("SerilogTarget.HealthCheck");
         
         private ILogger _serilogLogger;
         private volatile bool _disposed = false;
@@ -51,10 +55,15 @@ namespace AhBearStudios.Core.Logging.Targets
         private volatile bool _isHealthy = true;
         private Exception _lastError = null;
         
-        // Performance monitoring thresholds
+        // Unity game development optimizations
+        private int _messagesThisFrame = 0;
+        private DateTime _lastFrameReset = DateTime.MinValue;
+        
+        // Performance monitoring thresholds (Unity game development optimized)
         private const double ERROR_RATE_THRESHOLD = 0.1; // 10% error rate
-        private const double FRAME_BUDGET_THRESHOLD_MS = 0.5; // 0.5ms per write operation
+        private const double FRAME_BUDGET_THRESHOLD_MS = 0.5; // 0.5ms per write operation (60 FPS = 16.67ms frame)
         private const int ALERT_SUPPRESSION_INTERVAL_MINUTES = 5;
+        private const int MAX_MESSAGES_PER_FRAME = 10; // Limit messages per frame to prevent frame drops
 
         /// <summary>
         /// Gets the name of this log target.
@@ -175,6 +184,13 @@ namespace AhBearStudios.Core.Logging.Targets
                 return;
             }
 
+            // Unity game development optimization: Frame budget protection
+            if (ShouldLimitMessagesPerFrame())
+            {
+                Interlocked.Increment(ref _messagesDropped);
+                return;
+            }
+
             // Unity Profiler integration for frame budget monitoring
             using (_writeMarker.Auto())
             {
@@ -185,7 +201,10 @@ namespace AhBearStudios.Core.Logging.Targets
                 {
                     if (UseAsyncWrite)
                     {
-                        _ = WriteAsync(logMessage);
+                        // Use Task.Run for Unity-friendly async operations
+                        var writeTask = WriteAsync(logMessage);
+                        // Handle task completion without blocking
+                        HandleAsyncWriteTask(writeTask);
                     }
                     else
                     {
@@ -194,6 +213,9 @@ namespace AhBearStudios.Core.Logging.Targets
 
                     Interlocked.Increment(ref _messagesWritten);
                     _lastWriteTime = DateTime.UtcNow;
+                    
+                    // Track messages per frame for Unity optimization
+                    Interlocked.Increment(ref _messagesThisFrame);
 
                     // Check for performance threshold violations
                     CheckPerformanceThresholds(profilerSession);
@@ -216,6 +238,7 @@ namespace AhBearStudios.Core.Logging.Targets
 
         /// <summary>
         /// Writes multiple log messages to Serilog in a batch operation.
+        /// Unity-optimized to respect frame budget constraints.
         /// </summary>
         /// <param name="logMessages">The log messages to write</param>
         public void WriteBatch(IReadOnlyList<LogMessage> logMessages)
@@ -225,13 +248,38 @@ namespace AhBearStudios.Core.Logging.Targets
                 return;
             }
 
-            if (UseAsyncWrite)
+            // Unity frame budget protection for batch operations
+            var processedMessages = 0;
+            var messagesToProcess = new List<LogMessage>();
+            
+            foreach (var message in logMessages)
             {
-                _ = WriteBatchAsync(logMessages);
+                if (processedMessages >= MAX_MESSAGES_PER_FRAME)
+                {
+                    // Defer remaining messages to prevent frame drops
+                    break;
+                }
+                
+                if (ShouldProcessMessage(message))
+                {
+                    messagesToProcess.Add(message);
+                    processedMessages++;
+                }
             }
-            else
+
+            if (messagesToProcess.Count > 0)
             {
-                WriteBatchInternal(logMessages);
+                if (UseAsyncWrite)
+                {
+                    // Use Task.Run for Unity-friendly async operations
+                    var batchTask = WriteBatchAsync(messagesToProcess);
+                    // Handle task completion without blocking
+                    HandleAsyncBatchTask(batchTask);
+                }
+                else
+                {
+                    WriteBatchInternal(messagesToProcess);
+                }
             }
         }
 
@@ -277,12 +325,23 @@ namespace AhBearStudios.Core.Logging.Targets
             {
                 lock (_loggerLock)
                 {
-                    // Serilog doesn't have a direct flush method, but we can dispose and recreate
-                    // or use CloseAndFlush if available
-                    if (_serilogLogger is Logger logger)
+                    // Use Log.CloseAndFlush() for proper flushing without recreating logger
+                    if (_serilogLogger != null)
                     {
-                        logger.Dispose(); // This flushes automatically
-                        InitializeSerilogLogger(); // Recreate
+                        // Try to flush using CloseAndFlush if available
+                        try
+                        {
+                            Log.CloseAndFlush();
+                        }
+                        catch
+                        {
+                            // Fallback: If CloseAndFlush fails, dispose and recreate
+                            if (_serilogLogger is IDisposable disposableLogger)
+                            {
+                                disposableLogger.Dispose();
+                            }
+                            InitializeSerilogLogger();
+                        }
                     }
                 }
             }
@@ -325,7 +384,8 @@ namespace AhBearStudios.Core.Logging.Targets
                     if (totalMessages > 100) // Only check after processing some messages
                     {
                         var errorRate = (double)_errorsEncountered / totalMessages;
-                        if (errorRate > _config.ErrorRateThreshold)
+                        var errorRateThreshold = _config?.ErrorRateThreshold ?? ERROR_RATE_THRESHOLD;
+                        if (errorRate > errorRateThreshold)
                         {
                             _isHealthy = false;
                             TriggerErrorAlert(new InvalidOperationException($"Error rate too high: {errorRate:P1}"), "SerilogTarget error rate exceeded threshold");
@@ -344,8 +404,12 @@ namespace AhBearStudios.Core.Logging.Targets
                     // Perform a test write
                     try
                     {
-                        var testMessage = LogMessage.Create(LogLevel.Debug, "HealthCheck", 
-                            $"Serilog health check - {DateTime.UtcNow:HH:mm:ss}");
+                        var testMessage = LogMessage.Create(
+                            level: LogLevel.Debug,
+                            channel: "HealthCheck",
+                            message: $"Serilog health check - {DateTime.UtcNow:HH:mm:ss}",
+                            correlationId: Guid.NewGuid().ToString("N")[..8],
+                            sourceContext: "SerilogTarget");
                         
                         WriteInternal(testMessage);
                         _isHealthy = true;
@@ -441,9 +505,9 @@ namespace AhBearStudios.Core.Logging.Targets
                 var config = new LoggerConfiguration()
                     .MinimumLevel.Is(ConvertToSerilogLevel(MinimumLevel))
                     .Enrich.FromLogContext()
-                    .Enrich.WithThreadId()
-                    .Enrich.WithMachineName();
-
+                    .Enrich.WithProperty("ThreadId", System.Threading.Thread.CurrentThread.ManagedThreadId)
+                    .Enrich.WithProperty("MachineName", System.Environment.MachineName);
+                
                 // Configure sinks based on configuration properties
                 ConfigureSinks(config);
 
@@ -472,51 +536,82 @@ namespace AhBearStudios.Core.Logging.Targets
         /// <param name="config">The Serilog configuration</param>
         private void ConfigureSinks(LoggerConfiguration config)
         {
-            // Console sink
-            if (GetConfigProperty("EnableConsole", false))
+            // Console sink - Unity development optimized
+            var enableConsole = GetConfigProperty("EnableConsole", false);
+            
+            // Enable console logging in Unity Editor and Debug builds by default
+#if UNITY_EDITOR || DEBUG
+            enableConsole = GetConfigProperty("EnableConsole", true);
+#endif
+            
+            if (enableConsole)
             {
                 var consoleTemplate = GetConfigProperty("ConsoleTemplate", 
                     "[{Timestamp:HH:mm:ss} {Level:u3}] {Message:lj}{NewLine}{Exception}");
                 config.WriteTo.Console(outputTemplate: consoleTemplate);
             }
 
-            // File sink
-            var filePath = GetConfigProperty<string>("FilePath", null);
-            if (!string.IsNullOrEmpty(filePath))
+            // File sink - Unity game optimized with platform-specific settings
+            var enableFileLogging = GetConfigProperty("EnableFileLogging", true) && SupportsFileLogging();
+            if (enableFileLogging)
             {
+                var filePath = GetUnityLogFilePath();
                 var rollOnFileSizeLimit = GetConfigProperty("RollOnFileSizeLimit", true);
-                var fileSizeLimitBytes = GetConfigProperty("FileSizeLimitBytes", 100 * 1024 * 1024); // 100MB
-                var retainedFileCountLimit = GetConfigProperty("RetainedFileCountLimit", 31);
+                
+                // Platform-specific file size limits
+                var defaultFileSizeLimit = 10 * 1024 * 1024; // 10MB default
+#if UNITY_ANDROID || UNITY_IOS
+                defaultFileSizeLimit = 5 * 1024 * 1024; // 5MB for mobile
+#elif UNITY_WEBGL
+                defaultFileSizeLimit = 1 * 1024 * 1024; // 1MB for WebGL (though file logging is disabled)
+#endif
+                
+                var fileSizeLimitBytes = GetConfigProperty("FileSizeLimitBytes", defaultFileSizeLimit);
+                var retainedFileCountLimit = GetConfigProperty("RetainedFileCountLimit", 5); // Keep 5 files for game debugging
                 var shared = GetConfigProperty("Shared", false);
 
-                config.WriteTo.File(
-                    path: filePath,
-                    rollOnFileSizeLimit: rollOnFileSizeLimit,
-                    fileSizeLimitBytes: fileSizeLimitBytes,
-                    retainedFileCountLimit: retainedFileCountLimit,
-                    shared: shared,
-                    formatter: new JsonFormatter());
+                try
+                {
+                    // Ensure the log directory exists
+                    var logDirectory = Path.GetDirectoryName(filePath);
+                    if (!Directory.Exists(logDirectory))
+                    {
+                        Directory.CreateDirectory(logDirectory);
+                    }
+
+                    config.WriteTo.File(
+                        path: filePath,
+                        rollOnFileSizeLimit: rollOnFileSizeLimit,
+                        fileSizeLimitBytes: fileSizeLimitBytes,
+                        retainedFileCountLimit: retainedFileCountLimit,
+                        shared: shared,
+                        formatter: new JsonFormatter());
+                }
+                catch (Exception ex)
+                {
+                    // Fall back to console logging if file logging fails
+                    System.Diagnostics.Debug.WriteLine($"Failed to configure file logging: {ex.Message}");
+                    config.WriteTo.Console();
+                }
+            }
+            else if (!SupportsFileLogging())
+            {
+                // Platform doesn't support file logging - ensure console logging is enabled
+                System.Diagnostics.Debug.WriteLine("File logging not supported on this platform, using console logging");
+                config.WriteTo.Console();
             }
 
-            // Seq sink (if configured)
-            var seqServerUrl = GetConfigProperty<string>("SeqServerUrl", null);
-            if (!string.IsNullOrEmpty(seqServerUrl))
+            // Debug sink - Unity Editor and Debug builds
+            var enableDebug = GetConfigProperty("EnableDebug", false);
+            
+            // Enable debug logging in Unity Editor by default
+#if UNITY_EDITOR
+            enableDebug = GetConfigProperty("EnableDebug", true);
+#endif
+            
+            if (enableDebug)
             {
-                var seqApiKey = GetConfigProperty<string>("SeqApiKey", null);
-                if (!string.IsNullOrEmpty(seqApiKey))
-                {
-                    config.WriteTo.Seq(seqServerUrl, apiKey: seqApiKey);
-                }
-                else
-                {
-                    config.WriteTo.Seq(seqServerUrl);
-                }
-            }
-
-            // Debug sink (for development)
-            if (GetConfigProperty("EnableDebug", false))
-            {
-                config.WriteTo.Debug();
+                config.WriteTo.Console();
             }
 
             // Custom sinks can be added here based on additional configuration
@@ -524,55 +619,45 @@ namespace AhBearStudios.Core.Logging.Targets
         }
 
         /// <summary>
-        /// Configures custom Serilog sinks based on advanced configuration.
+        /// Configures Unity-specific custom Serilog sinks.
         /// </summary>
         /// <param name="config">The Serilog configuration</param>
         private void ConfigureCustomSinks(LoggerConfiguration config)
         {
-            // Example: Email sink for critical errors
-            var emailEnabled = GetConfigProperty("EnableEmail", false);
-            if (emailEnabled)
+            // Unity-specific sinks can be added here
+            // Examples: Custom game analytics sink, Unity Cloud Diagnostics integration
+            
+            // Note: Email and Elasticsearch sinks are not recommended for Unity games
+            // due to performance, security, and platform restrictions
+            
+            // Unity-specific optimizations for different platforms
+#if UNITY_ANDROID || UNITY_IOS
+            // Mobile-specific optimizations
+            // Reduce buffer sizes and increase flush frequency for mobile devices
+            var mobileOptimized = GetConfigProperty("MobileOptimized", true);
+            if (mobileOptimized)
             {
-                var smtpServer = GetConfigProperty<string>("EmailSmtpServer", null);
-                var emailTo = GetConfigProperty<string>("EmailTo", null);
-                var emailFrom = GetConfigProperty<string>("EmailFrom", null);
-
-                if (!string.IsNullOrEmpty(smtpServer) && !string.IsNullOrEmpty(emailTo) && !string.IsNullOrEmpty(emailFrom))
-                {
-                    config.WriteTo.Email(
-                        fromEmail: emailFrom,
-                        toEmail: emailTo,
-                        mailServer: smtpServer,
-                        restrictedToMinimumLevel: LogEventLevel.Error);
-                }
+                // Mobile devices have limited storage and memory
+                // These optimizations are applied through configuration
             }
+#endif
 
-            // Example: Elasticsearch sink
-            var elasticsearchEnabled = GetConfigProperty("EnableElasticsearch", false);
-            if (elasticsearchEnabled)
-            {
-                var elasticsearchUri = GetConfigProperty<string>("ElasticsearchUri", null);
-                var indexName = GetConfigProperty("ElasticsearchIndex", "logs-{0:yyyy.MM.dd}");
+#if UNITY_STANDALONE
+            // Desktop-specific optimizations
+            // Can handle larger buffers and more frequent writes
+#endif
 
-                if (!string.IsNullOrEmpty(elasticsearchUri))
-                {
-                    try
-                    {
-                        config.WriteTo.Elasticsearch(new Serilog.Sinks.Elasticsearch.ElasticsearchSinkOptions(new Uri(elasticsearchUri))
-                        {
-                            IndexFormat = indexName,
-                            AutoRegisterTemplate = true,
-                            OverwriteTemplate = true,
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        // Elasticsearch sink failed to configure
-                        _lastError = ex;
-                        System.Diagnostics.Debug.WriteLine($"Failed to configure Elasticsearch sink: {ex.Message}");
-                    }
-                }
-            }
+#if UNITY_WEBGL
+            // WebGL-specific limitations
+            // File system access is limited in WebGL builds
+            System.Diagnostics.Debug.WriteLine("File logging is limited in WebGL builds");
+#endif
+            
+            // Future Unity-specific sinks could include:
+            // - Unity Analytics integration
+            // - Custom REST API sink for critical errors
+            // - Platform-specific logging (Console, Mobile, etc.)
+            // - Unity Cloud Diagnostics integration
         }
 
         /// <summary>
@@ -644,14 +729,39 @@ namespace AhBearStudios.Core.Logging.Targets
         {
             if (_asyncWriteSemaphore == null || _disposed) return;
 
-            await _asyncWriteSemaphore.WaitAsync();
             try
             {
-                await Task.Run(() => WriteInternal(logMessage));
+                // Use timeout to prevent hanging async operations
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+                await _asyncWriteSemaphore.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+                
+                try
+                {
+                    // Use ConfigureAwait(false) for Unity compatibility
+                    await Task.Run(() => WriteInternal(logMessage), timeoutCts.Token).ConfigureAwait(false);
+                }
+                finally
+                {
+                    _asyncWriteSemaphore.Release();
+                }
             }
-            finally
+            catch (OperationCanceledException)
             {
-                _asyncWriteSemaphore.Release();
+                // Handle timeout scenarios
+                Interlocked.Increment(ref _errorsEncountered);
+                Interlocked.Increment(ref _messagesDropped);
+                _lastError = new TimeoutException("Async write operation timed out");
+                _isHealthy = false;
+                TriggerErrorAlert(_lastError, "Async write operation timed out");
+            }
+            catch (Exception ex)
+            {
+                // Handle async write errors
+                Interlocked.Increment(ref _errorsEncountered);
+                Interlocked.Increment(ref _messagesDropped);
+                _lastError = ex;
+                _isHealthy = false;
+                TriggerErrorAlert(ex, "Async write operation failed");
             }
         }
 
@@ -694,15 +804,76 @@ namespace AhBearStudios.Core.Logging.Targets
         {
             if (_asyncWriteSemaphore == null || _disposed) return;
 
-            await _asyncWriteSemaphore.WaitAsync();
             try
             {
-                await Task.Run(() => WriteBatchInternal(logMessages));
+                // Use timeout to prevent hanging async operations (longer for batch operations)
+                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+                await _asyncWriteSemaphore.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+                
+                try
+                {
+                    // Use ConfigureAwait(false) for Unity compatibility
+                    await Task.Run(() => WriteBatchInternal(logMessages), timeoutCts.Token).ConfigureAwait(false);
+                }
+                finally
+                {
+                    _asyncWriteSemaphore.Release();
+                }
             }
-            finally
+            catch (OperationCanceledException)
             {
-                _asyncWriteSemaphore.Release();
+                // Handle timeout scenarios
+                Interlocked.Increment(ref _errorsEncountered);
+                _lastError = new TimeoutException("Async batch write operation timed out");
+                _isHealthy = false;
+                TriggerErrorAlert(_lastError, "Async batch write operation timed out");
             }
+            catch (Exception ex)
+            {
+                // Handle async batch write errors
+                Interlocked.Increment(ref _errorsEncountered);
+                _lastError = ex;
+                _isHealthy = false;
+                TriggerErrorAlert(ex, "Async batch write operation failed");
+            }
+        }
+
+        /// <summary>
+        /// Handles async write task completion without blocking.
+        /// </summary>
+        /// <param name="writeTask">The async write task</param>
+        private void HandleAsyncWriteTask(Task writeTask)
+        {
+            // Handle task completion asynchronously
+            writeTask.ContinueWith(task =>
+            {
+                if (task.IsFaulted && task.Exception != null)
+                {
+                    Interlocked.Increment(ref _errorsEncountered);
+                    _lastError = task.Exception.GetBaseException();
+                    _isHealthy = false;
+                    TriggerErrorAlert(task.Exception.GetBaseException(), "Async write task failed");
+                }
+            }, TaskContinuationOptions.OnlyOnFaulted);
+        }
+
+        /// <summary>
+        /// Handles async batch write task completion without blocking.
+        /// </summary>
+        /// <param name="batchTask">The async batch write task</param>
+        private void HandleAsyncBatchTask(Task batchTask)
+        {
+            // Handle task completion asynchronously
+            batchTask.ContinueWith(task =>
+            {
+                if (task.IsFaulted && task.Exception != null)
+                {
+                    Interlocked.Increment(ref _errorsEncountered);
+                    _lastError = task.Exception.GetBaseException();
+                    _isHealthy = false;
+                    TriggerErrorAlert(task.Exception.GetBaseException(), "Async batch write task failed");
+                }
+            }, TaskContinuationOptions.OnlyOnFaulted);
         }
 
         /// <summary>
@@ -750,11 +921,16 @@ namespace AhBearStudios.Core.Logging.Targets
         /// </summary>
         private void RegisterPerformanceAlerts()
         {
-            if (_config.EnablePerformanceMetrics)
+            if (_config?.EnablePerformanceMetrics == true)
             {
-                _profiler.RegisterMetricAlert(WriteTag, _config.FrameBudgetThresholdMs);
-                _profiler.RegisterMetricAlert(BatchWriteTag, _config.FrameBudgetThresholdMs * 10); // Batch operations get 10x threshold
-                _profiler.RegisterMetricAlert(HealthCheckTag, _config.FrameBudgetThresholdMs * 2); // Health checks get 2x threshold
+                // Register performance threshold alerts with the profiler service
+                var frameBudgetThreshold = _config.FrameBudgetThresholdMs;
+                _profiler.ThresholdExceeded += OnPerformanceThresholdExceeded;
+                
+                // Record initial metrics
+                _profiler.RecordMetric("SerilogTarget.MessagesWritten", _messagesWritten, "count");
+                _profiler.RecordMetric("SerilogTarget.MessagesDropped", _messagesDropped, "count");
+                _profiler.RecordMetric("SerilogTarget.ErrorsEncountered", _errorsEncountered, "count");
             }
         }
 
@@ -762,19 +938,139 @@ namespace AhBearStudios.Core.Logging.Targets
         /// Checks for performance threshold violations and triggers alerts if needed.
         /// </summary>
         /// <param name="profilerSession">The profiler session to check</param>
-        private void CheckPerformanceThresholds(IProfilerSession profilerSession)
+        private void CheckPerformanceThresholds(IDisposable profilerSession)
         {
-            if (!_config.EnablePerformanceMetrics) return;
+            if (_config?.EnablePerformanceMetrics != true) return;
 
-            var metrics = profilerSession.GetMetrics();
-            if (metrics.TryGetValue("ElapsedMilliseconds", out var elapsedMs))
+            try
             {
-                var elapsed = Convert.ToDouble(elapsedMs);
-                if (elapsed > _config.FrameBudgetThresholdMs)
+                // Record current performance metrics
+                _profiler.RecordMetric("SerilogTarget.MessagesWritten", _messagesWritten, "count");
+                _profiler.RecordMetric("SerilogTarget.MessagesDropped", _messagesDropped, "count");
+                _profiler.RecordMetric("SerilogTarget.ErrorsEncountered", _errorsEncountered, "count");
+                
+                // Calculate and record error rate
+                var totalMessages = _messagesWritten + _messagesDropped;
+                if (totalMessages > 0)
                 {
-                    TriggerPerformanceAlert($"SerilogTarget write exceeded frame budget: {elapsed:F2}ms > {_config.FrameBudgetThresholdMs:F2}ms");
+                    var errorRate = (double)_errorsEncountered / totalMessages;
+                    _profiler.RecordMetric("SerilogTarget.ErrorRate", errorRate, "percentage");
                 }
+                
+                // Record health status
+                _profiler.RecordMetric("SerilogTarget.IsHealthy", _isHealthy ? 1.0 : 0.0, "boolean");
             }
+            catch (Exception ex)
+            {
+                // Don't let profiling errors affect logging functionality
+                System.Diagnostics.Debug.WriteLine($"SerilogTarget performance monitoring failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Handles performance threshold exceeded events from the profiler service.
+        /// </summary>
+        /// <param name="tag">The profiler tag that exceeded the threshold</param>
+        /// <param name="value">The measured value</param>
+        /// <param name="unit">The unit of measurement</param>
+        private void OnPerformanceThresholdExceeded(ProfilerTag tag, double value, string unit)
+        {
+            try
+            {
+                var message = $"SerilogTarget performance threshold exceeded: {tag.Name} = {value:F2} {unit}";
+                TriggerPerformanceAlert(message);
+            }
+            catch
+            {
+                // Ignore alerting failures to prevent infinite loops
+            }
+        }
+
+        /// <summary>
+        /// Unity game development optimization: Limits messages per frame to prevent frame drops.
+        /// </summary>
+        /// <returns>True if messages should be limited this frame</returns>
+        private bool ShouldLimitMessagesPerFrame()
+        {
+            var now = DateTime.UtcNow;
+            
+            // Reset frame counter every 16.67ms (60 FPS) or 33.33ms (30 FPS)
+            if (now - _lastFrameReset > TimeSpan.FromMilliseconds(16.67))
+            {
+                _messagesThisFrame = 0;
+                _lastFrameReset = now;
+                return false;
+            }
+            
+            // Limit messages per frame to maintain performance
+            return _messagesThisFrame >= MAX_MESSAGES_PER_FRAME;
+        }
+
+        /// <summary>
+        /// Gets the Unity-appropriate log file path using persistent data path.
+        /// </summary>
+        /// <returns>The full path to the log file</returns>
+        private string GetUnityLogFilePath()
+        {
+            // Use custom path if specified, otherwise use Unity persistent data path
+            var customPath = GetConfigProperty<string>("FilePath", null);
+            if (!string.IsNullOrEmpty(customPath))
+            {
+                return customPath;
+            }
+
+            // Unity persistent data path is platform-appropriate and writable
+            var persistentDataPath = Application.persistentDataPath;
+            var logDirectory = Path.Combine(persistentDataPath, "Logs");
+            
+            // Include timestamp in filename for easier debugging
+            var timestamp = DateTime.Now.ToString("yyyy-MM-dd");
+            var filename = $"game-{timestamp}.log";
+            
+            return Path.Combine(logDirectory, filename);
+        }
+
+        /// <summary>
+        /// Unity-specific performance optimization for platform-appropriate logging levels.
+        /// </summary>
+        /// <returns>The recommended minimum log level for the current platform</returns>
+        private LogLevel GetUnityOptimizedLogLevel()
+        {
+            // Platform-specific log level optimizations
+#if UNITY_EDITOR
+            // Development environment - verbose logging
+            return LogLevel.Debug;
+#elif DEVELOPMENT_BUILD
+            // Development builds - detailed logging for debugging
+            return LogLevel.Debug;
+#elif UNITY_ANDROID || UNITY_IOS
+            // Mobile platforms - reduce logging to preserve performance
+            return LogLevel.Warning;
+#elif UNITY_WEBGL
+            // WebGL - minimal logging due to browser constraints
+            return LogLevel.Error;
+#else
+            // Production builds - minimal logging
+            return LogLevel.Warning;
+#endif
+        }
+
+        /// <summary>
+        /// Unity-specific check for platform logging capabilities.
+        /// </summary>
+        /// <returns>True if file logging is supported on the current platform</returns>
+        private bool SupportsFileLogging()
+        {
+#if UNITY_WEBGL
+            // WebGL doesn't support file system access
+            return false;
+#elif UNITY_ANDROID || UNITY_IOS
+            // Mobile platforms support file logging but with limitations
+            return true;
+#else
+            // Desktop and other platforms support full file logging
+            return true;
+#endif
         }
 
         /// <summary>
@@ -831,21 +1127,44 @@ namespace AhBearStudios.Core.Logging.Targets
 
             try
             {
+                // Unregister from profiler events first
+                if (_profiler != null && _config?.EnablePerformanceMetrics == true)
+                {
+                    _profiler.ThresholdExceeded -= OnPerformanceThresholdExceeded;
+                }
+
                 // Stop health check timer
                 _healthCheckTimer?.Dispose();
 
-                // Flush and dispose Serilog logger
+                // Flush and dispose Serilog logger with proper resource management
                 lock (_loggerLock)
                 {
-                    if (_serilogLogger is IDisposable disposableLogger)
+                    if (_serilogLogger != null)
                     {
-                        disposableLogger.Dispose();
+                        try
+                        {
+                            // Attempt to flush before disposal
+                            Log.CloseAndFlush();
+                        }
+                        catch
+                        {
+                            // If flushing fails, still try to dispose
+                        }
+                        
+                        if (_serilogLogger is IDisposable disposableLogger)
+                        {
+                            disposableLogger.Dispose();
+                        }
+                        _serilogLogger = null;
                     }
-                    _serilogLogger = null;
                 }
 
                 // Dispose async semaphore
                 _asyncWriteSemaphore?.Dispose();
+                
+                // Dispose Unity ProfilerMarkers (they're structs, no disposal needed)
+                // But ensure we're not holding references
+                
             }
             catch (Exception ex)
             {

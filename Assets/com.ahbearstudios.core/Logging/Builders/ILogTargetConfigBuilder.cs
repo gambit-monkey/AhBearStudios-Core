@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Profiling;
