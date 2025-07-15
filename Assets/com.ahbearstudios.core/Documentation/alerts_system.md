@@ -82,31 +82,31 @@ The primary interface for all alerting operations.
 public interface IAlertService
 {
     // Core alerting
-    void RaiseAlert(string message, AlertSeverity severity, string source, string tag = null);
+    void RaiseAlert(string message, AlertSeverity severity, FixedString64Bytes source, FixedString32Bytes tag = default);
     void RaiseAlert(Alert alert);
     Task RaiseAlertAsync(Alert alert, CancellationToken cancellationToken = default);
     
     // Severity management
     void SetMinimumSeverity(AlertSeverity minimumSeverity);
-    void SetMinimumSeverity(string source, AlertSeverity minimumSeverity);
-    AlertSeverity GetMinimumSeverity(string source = null);
+    void SetMinimumSeverity(FixedString64Bytes source, AlertSeverity minimumSeverity);
+    AlertSeverity GetMinimumSeverity(FixedString64Bytes source = default);
     
     // Channel management
     void RegisterChannel(IAlertChannel channel);
-    void UnregisterChannel(string channelName);
+    void UnregisterChannel(FixedString64Bytes channelName);
     IReadOnlyList<IAlertChannel> GetRegisteredChannels();
     
     // Filtering and suppression
     void AddFilter(IAlertFilter filter);
-    void RemoveFilter(string filterName);
+    void RemoveFilter(FixedString64Bytes filterName);
     void AddSuppressionRule(AlertRule rule);
-    void RemoveSuppressionRule(string ruleName);
+    void RemoveSuppressionRule(FixedString64Bytes ruleName);
     
     // Alert management
     IEnumerable<Alert> GetActiveAlerts();
     IEnumerable<Alert> GetAlertHistory(TimeSpan period);
-    void AcknowledgeAlert(string alertId);
-    void ResolveAlert(string alertId);
+    void AcknowledgeAlert(FixedString64Bytes alertId);
+    void ResolveAlert(FixedString64Bytes alertId);
     
     // Statistics
     AlertStatistics GetStatistics();
@@ -125,7 +125,7 @@ Interface for alert output destinations.
 ```csharp
 public interface IAlertChannel : IDisposable
 {
-    string Name { get; }
+    FixedString64Bytes Name { get; }
     bool IsEnabled { get; set; }
     AlertSeverity MinimumSeverity { get; set; }
     ChannelConfiguration Configuration { get; }
@@ -154,7 +154,7 @@ Interface for alert filtering and suppression.
 ```csharp
 public interface IAlertFilter
 {
-    string Name { get; }
+    FixedString64Bytes Name { get; }
     int Priority { get; }
     bool IsEnabled { get; set; }
     
@@ -181,25 +181,29 @@ Interface for alert rules and conditions.
 ```csharp
 public interface IAlertRule
 {
-    string Name { get; }
+    FixedString64Bytes Name { get; }
     bool IsEnabled { get; set; }
+    int Priority { get; }
     
     // Rule evaluation
     bool Matches(Alert alert);
     AlertAction GetAction(Alert alert);
     
     // Configuration
-    RuleConfiguration Configuration { get; }
-    void Configure(RuleConfiguration configuration);
+    void Configure(Dictionary<string, object> settings);
+    
+    // Statistics
+    RuleStatistics GetStatistics();
 }
 
 public enum AlertAction
 {
-    Allow,
+    None,
     Suppress,
     Escalate,
     Aggregate,
-    Redirect
+    Forward,
+    Transform
 }
 ```
 
@@ -210,39 +214,38 @@ public enum AlertAction
 ```csharp
 var config = new AlertConfigBuilder()
     .WithMinimumSeverity(AlertSeverity.Warning)
+    .WithSuppression(enabled: true, windowMinutes: 5)
+    .WithAsyncProcessing(enabled: true, maxConcurrency: 50)
+    .WithHistory(enabled: true, retentionHours: 24)
     .WithChannel<LogAlertChannel>()
     .WithChannel<ConsoleAlertChannel>()
-    .WithSuppression(enabled: true, windowSize: TimeSpan.FromMinutes(5))
-    .WithHistory(retention: TimeSpan.FromHours(24))
     .Build();
 ```
 
-### Advanced Configuration
+### Advanced Configuration with Filters and Rules
 
 ```csharp
 var config = new AlertConfigBuilder()
     .WithMinimumSeverity(AlertSeverity.Info)
+    .WithSuppression(enabled: true, windowMinutes: 5)
+    .WithAsyncProcessing(enabled: true, maxConcurrency: 100)
+    .WithHistory(enabled: true, retentionHours: 48)
+    .WithAggregation(enabled: true, windowMinutes: 2, maxSize: 50)
     .WithChannels(builder => builder
         .AddChannel<LogAlertChannel>(cfg => cfg
-            .WithMinimumSeverity(AlertSeverity.Info)
-            .WithFormat("[{Timestamp:HH:mm:ss}] {Severity}: {Message}"))
+            .WithMinimumSeverity(AlertSeverity.Info))
         .AddChannel<ConsoleAlertChannel>(cfg => cfg
-            .WithMinimumSeverity(AlertSeverity.Warning)
-            .WithColors(enabled: true))
-        .AddChannel<EmailAlertChannel>(cfg => cfg
-            .WithMinimumSeverity(AlertSeverity.Critical)
-            .WithRecipients("admin@ahbearstudios.com", "ops@ahbearstudios.com")
-            .WithBatching(enabled: true, batchSize: 10, flushInterval: TimeSpan.FromMinutes(5)))
+            .WithMinimumSeverity(AlertSeverity.Warning))
         .AddChannel<NetworkAlertChannel>(cfg => cfg
-            .WithEndpoint("https://alerts.ahbearstudios.com/webhook")
-            .WithRetry(maxAttempts: 3, backoff: TimeSpan.FromSeconds(30))))
+            .WithMinimumSeverity(AlertSeverity.Critical)
+            .WithEndpoint("https://alerts.ahbearstudios.com/api/alerts")))
     .WithFilters(builder => builder
         .AddFilter<RateLimitFilter>(cfg => cfg
-            .WithLimit(10, TimeSpan.FromMinutes(1))) // Max 10 alerts per minute
+            .WithMaxAlertsPerMinute(20)
+            .WithBurstThreshold(5))
         .AddFilter<DuplicateFilter>(cfg => cfg
-            .WithWindow(TimeSpan.FromMinutes(5))) // Suppress duplicates within 5 minutes
-        .AddFilter<SeverityFilter>(cfg => cfg
-            .WithBusinessHours(AlertSeverity.Warning)
+            .WithWindowMinutes(5)
+            .AddBusinessHours(AlertSeverity.Warning)
             .WithAfterHours(AlertSeverity.Critical)))
     .WithRules(builder => builder
         .AddRule("CriticalErrorEscalation", rule => rule
@@ -290,7 +293,7 @@ public class AlertConfigAsset : ScriptableObject
 }
 
 [Serializable]
-public class ChannelConfig
+public record ChannelConfig
 {
     public string channelType;
     public AlertSeverity minimumSeverity;
@@ -308,11 +311,13 @@ public class DatabaseService
 {
     private readonly IAlertService _alerts;
     private readonly ILoggingService _logger;
+    private readonly FixedString64Bytes _correlationId;
     
     public DatabaseService(IAlertService alerts, ILoggingService logger)
     {
-        _alerts = alerts;
-        _logger = logger;
+        _alerts = alerts ?? throw new ArgumentNullException(nameof(alerts));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _correlationId = $"DatabaseService_{Guid.NewGuid():N}"[..32];
     }
     
     public async Task<User> GetUserAsync(int userId)
@@ -331,7 +336,7 @@ public class DatabaseService
                 "DatabaseConnectivity"
             );
             
-            _logger.LogError("Database connection failed", ex);
+            _logger.LogException(ex, $"[{_correlationId}] Database connection failed for user {userId}");
             throw;
         }
         catch (DatabaseTimeoutException ex)
@@ -344,7 +349,7 @@ public class DatabaseService
                 "Performance"
             );
             
-            _logger.LogWarning($"Database timeout for user {userId}");
+            _logger.LogWarning($"[{_correlationId}] Database timeout for user {userId}");
             throw;
         }
     }
@@ -357,17 +362,36 @@ public class DatabaseService
 public class PerformanceMonitor
 {
     private readonly IAlertService _alerts;
+    private readonly IProfilerService _profiler;
+    private readonly FixedString64Bytes _correlationId;
+    
+    public PerformanceMonitor(IAlertService alerts, IProfilerService profiler)
+    {
+        _alerts = alerts ?? throw new ArgumentNullException(nameof(alerts));
+        _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+        _correlationId = $"PerfMonitor_{Guid.NewGuid():N}"[..32];
+    }
     
     public void CheckSystemPerformance(SystemMetrics metrics)
     {
-        // CPU usage alert
-        if (metrics.CpuUsage > 90.0)
+        using var scope = _profiler.BeginScope("PerformanceMonitor.CheckSystemPerformance");
+        
+        // CPU usage alert with modern C# pattern matching
+        var cpuAlertSeverity = metrics.CpuUsage switch
+        {
+            > 95.0 => AlertSeverity.Critical,
+            > 90.0 => AlertSeverity.Warning,
+            > 80.0 => AlertSeverity.Info,
+            _ => (AlertSeverity?)null
+        };
+        
+        if (cpuAlertSeverity.HasValue)
         {
             var alert = new Alert
             {
-                Id = Guid.NewGuid().ToString(),
-                Message = $"High CPU usage detected: {metrics.CpuUsage:F1}%",
-                Severity = AlertSeverity.Critical,
+                Id = Guid.NewGuid(),
+                Message = $"CPU usage: {metrics.CpuUsage:F1}%",
+                Severity = cpuAlertSeverity.Value,
                 Source = "PerformanceMonitor",
                 Tag = "CPU",
                 Timestamp = DateTime.UtcNow,
@@ -377,7 +401,8 @@ public class PerformanceMonitor
                     {
                         ["CpuUsage"] = metrics.CpuUsage,
                         ["MemoryUsage"] = metrics.MemoryUsage,
-                        ["ProcessCount"] = metrics.ProcessCount
+                        ["ActiveThreads"] = metrics.ActiveThreads,
+                        ["CorrelationId"] = _correlationId.ToString()
                     }
                 }
             };
@@ -385,12 +410,17 @@ public class PerformanceMonitor
             _alerts.RaiseAlert(alert);
         }
         
-        // Memory usage alert
+        // Memory usage with switch expression
         if (metrics.MemoryUsage > 85.0)
         {
             _alerts.RaiseAlert(
-                $"High memory usage: {metrics.MemoryUsage:F1}% ({metrics.MemoryUsedMB:F0}MB used)",
-                AlertSeverity.Warning,
+                $"High memory usage: {metrics.MemoryUsage:F1}%",
+                metrics.MemoryUsage switch
+                {
+                    > 95.0 => AlertSeverity.Critical,
+                    > 90.0 => AlertSeverity.Warning,
+                    _ => AlertSeverity.Info
+                },
                 "PerformanceMonitor",
                 "Memory"
             );
@@ -399,443 +429,19 @@ public class PerformanceMonitor
 }
 ```
 
-### Custom Alert Channels
-
-```csharp
-public class SlackAlertChannel : IAlertChannel
-{
-    public string Name => "Slack";
-    public bool IsEnabled { get; set; } = true;
-    public AlertSeverity MinimumSeverity { get; set; } = AlertSeverity.Warning;
-    public ChannelConfiguration Configuration { get; private set; }
-    
-    private readonly HttpClient _httpClient;
-    private readonly string _webhookUrl;
-    private readonly ILoggingService _logger;
-    
-    public SlackAlertChannel(string webhookUrl, ILoggingService logger)
-    {
-        _webhookUrl = webhookUrl;
-        _logger = logger;
-        _httpClient = new HttpClient();
-    }
-    
-    public async Task SendAlertAsync(Alert alert, CancellationToken cancellationToken = default)
-    {
-        if (!CanSendAlert(alert))
-            return;
-            
-        try
-        {
-            var slackMessage = new
-            {
-                text = $"🚨 {alert.Severity} Alert",
-                attachments = new[]
-                {
-                    new
-                    {
-                        color = GetColorForSeverity(alert.Severity),
-                        fields = new[]
-                        {
-                            new { title = "Message", value = alert.Message, @short = false },
-                            new { title = "Source", value = alert.Source, @short = true },
-                            new { title = "Tag", value = alert.Tag ?? "None", @short = true },
-                            new { title = "Time", value = alert.Timestamp.ToString("yyyy-MM-dd HH:mm:ss UTC"), @short = true }
-                        }
-                    }
-                }
-            };
-            
-            var json = JsonSerializer.Serialize(slackMessage);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            
-            var response = await _httpClient.PostAsync(_webhookUrl, content, cancellationToken);
-            response.EnsureSuccessStatusCode();
-            
-            AlertSent?.Invoke(this, new ChannelEventArgs(alert, true));
-            _logger.LogDebug($"Slack alert sent successfully: {alert.Id}");
-        }
-        catch (Exception ex)
-        {
-            SendFailed?.Invoke(this, new ChannelEventArgs(alert, false, ex));
-            _logger.LogError($"Failed to send Slack alert: {ex.Message}");
-            throw;
-        }
-    }
-    
-    public bool CanSendAlert(Alert alert)
-    {
-        return IsEnabled && 
-               !string.IsNullOrEmpty(_webhookUrl) && 
-               alert.Severity >= MinimumSeverity;
-    }
-    
-    public ChannelStatus GetStatus()
-    {
-        return new ChannelStatus
-        {
-            IsHealthy = !string.IsNullOrEmpty(_webhookUrl),
-            LastSuccessTime = DateTime.UtcNow, // Track this properly
-            ErrorCount = 0 // Track this properly
-        };
-    }
-    
-    public async Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var testMessage = new { text = "🧪 Alert system test message" };
-            var json = JsonSerializer.Serialize(testMessage);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
-            
-            var response = await _httpClient.PostAsync(_webhookUrl, content, cancellationToken);
-            return response.IsSuccessStatusCode;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-    
-    private string GetColorForSeverity(AlertSeverity severity)
-    {
-        return severity switch
-        {
-            AlertSeverity.Info => "#36a64f",      // Green
-            AlertSeverity.Warning => "#ffcc00",   // Yellow
-            AlertSeverity.Critical => "#ff0000",  // Red
-            AlertSeverity.Emergency => "#8b0000", // Dark Red
-            _ => "#cccccc"                         // Gray
-        };
-    }
-    
-    public void Configure(ChannelConfiguration configuration)
-    {
-        Configuration = configuration;
-        // Apply configuration settings
-    }
-    
-    public event EventHandler<ChannelEventArgs> AlertSent;
-    public event EventHandler<ChannelEventArgs> SendFailed;
-    
-    public void Dispose()
-    {
-        _httpClient?.Dispose();
-    }
-}
-```
-
-### Alert Filtering and Suppression
-
-```csharp
-public class BusinessHoursFilter : IAlertFilter
-{
-    public string Name => "BusinessHours";
-    public int Priority => 100;
-    public bool IsEnabled { get; set; } = true;
-    
-    private readonly TimeZoneInfo _timeZone;
-    private AlertSeverity _businessHoursMinimum = AlertSeverity.Warning;
-    private AlertSeverity _afterHoursMinimum = AlertSeverity.Critical;
-    
-    public BusinessHoursFilter(TimeZoneInfo timeZone = null)
-    {
-        _timeZone = timeZone ?? TimeZoneInfo.Local;
-    }
-    
-    public FilterResult ShouldProcess(Alert alert)
-    {
-        if (!IsEnabled)
-            return FilterResult.Allow;
-            
-        var localTime = TimeZoneInfo.ConvertTimeFromUtc(alert.Timestamp, _timeZone);
-        var isBusinessHours = IsBusinessHours(localTime);
-        
-        var minimumSeverity = isBusinessHours ? _businessHoursMinimum : _afterHoursMinimum;
-        
-        if (alert.Severity < minimumSeverity)
-        {
-            return FilterResult.Suppress;
-        }
-        
-        return FilterResult.Allow;
-    }
-    
-    private bool IsBusinessHours(DateTime localTime)
-    {
-        // Monday to Friday, 9 AM to 6 PM
-        return localTime.DayOfWeek >= DayOfWeek.Monday &&
-               localTime.DayOfWeek <= DayOfWeek.Friday &&
-               localTime.Hour >= 9 &&
-               localTime.Hour < 18;
-    }
-    
-    public void Configure(Dictionary<string, object> settings)
-    {
-        if (settings.TryGetValue("BusinessHoursMinimum", out var bhMin))
-            _businessHoursMinimum = (AlertSeverity)bhMin;
-            
-        if (settings.TryGetValue("AfterHoursMinimum", out var ahMin))
-            _afterHoursMinimum = (AlertSeverity)ahMin;
-    }
-    
-    public FilterStatistics GetStatistics()
-    {
-        return new FilterStatistics
-        {
-            FilterName = Name,
-            TotalProcessed = 0, // Track this
-            TotalSuppressed = 0, // Track this
-            TotalAllowed = 0    // Track this
-        };
-    }
-}
-```
-
-### Alert Aggregation
-
-```csharp
-public class AlertAggregationService
-{
-    private readonly IAlertService _alerts;
-    private readonly Dictionary<string, AlertGroup> _activeGroups = new();
-    private readonly Timer _flushTimer;
-    
-    public AlertAggregationService(IAlertService alerts)
-    {
-        _alerts = alerts;
-        _flushTimer = new Timer(FlushAggregatedAlerts, null, 
-                              TimeSpan.FromMinutes(1), TimeSpan.FromMinutes(1));
-    }
-    
-    public void ProcessAlert(Alert alert)
-    {
-        var groupKey = GetGroupKey(alert);
-        
-        if (!_activeGroups.TryGetValue(groupKey, out var group))
-        {
-            group = new AlertGroup
-            {
-                Key = groupKey,
-                FirstAlert = alert,
-                Count = 0,
-                LastUpdate = DateTime.UtcNow
-            };
-            _activeGroups[groupKey] = group;
-        }
-        
-        group.Count++;
-        group.LastAlert = alert;
-        group.LastUpdate = DateTime.UtcNow;
-        
-        // If group exceeds threshold, flush immediately
-        if (group.Count >= 10)
-        {
-            FlushGroup(group);
-            _activeGroups.Remove(groupKey);
-        }
-    }
-    
-    private string GetGroupKey(Alert alert)
-    {
-        // Group by source and tag
-        return $"{alert.Source}:{alert.Tag ?? "default"}";
-    }
-    
-    private void FlushAggregatedAlerts(object state)
-    {
-        var groupsToFlush = _activeGroups.Values
-            .Where(g => DateTime.UtcNow - g.LastUpdate > TimeSpan.FromMinutes(5))
-            .ToList();
-            
-        foreach (var group in groupsToFlush)
-        {
-            FlushGroup(group);
-            _activeGroups.Remove(group.Key);
-        }
-    }
-    
-    private void FlushGroup(AlertGroup group)
-    {
-        if (group.Count == 1)
-        {
-            // Single alert, send as-is
-            _alerts.RaiseAlert(group.FirstAlert);
-        }
-        else
-        {
-            // Multiple alerts, send aggregated
-            var aggregatedAlert = new Alert
-            {
-                Id = Guid.NewGuid().ToString(),
-                Message = $"Aggregated {group.Count} alerts from {group.FirstAlert.Source}",
-                Severity = group.LastAlert.Severity,
-                Source = group.FirstAlert.Source,
-                Tag = "Aggregated",
-                Timestamp = group.LastUpdate,
-                Context = new AlertContext
-                {
-                    Properties = new Dictionary<string, object>
-                    {
-                        ["AggregatedCount"] = group.Count,
-                        ["FirstAlertTime"] = group.FirstAlert.Timestamp,
-                        ["LastAlertTime"] = group.LastAlert.Timestamp,
-                        ["OriginalSource"] = group.FirstAlert.Source,
-                        ["OriginalTag"] = group.FirstAlert.Tag
-                    }
-                }
-            };
-            
-            _alerts.RaiseAlert(aggregatedAlert);
-        }
-    }
-}
-
-public class AlertGroup
-{
-    public string Key { get; set; }
-    public Alert FirstAlert { get; set; }
-    public Alert LastAlert { get; set; }
-    public int Count { get; set; }
-    public DateTime LastUpdate { get; set; }
-}
-```
-
-## 🎯 Advanced Features
-
-### Alert Escalation
-
-```csharp
-public class AlertEscalationService
-{
-    private readonly IAlertService _alerts;
-    private readonly Dictionary<string, EscalationRule> _rules = new();
-    private readonly Dictionary<string, EscalationState> _activeEscalations = new();
-    
-    public void AddEscalationRule(EscalationRule rule)
-    {
-        _rules[rule.Name] = rule;
-    }
-    
-    public void ProcessAlert(Alert alert)
-    {
-        var applicableRules = _rules.Values
-            .Where(rule => rule.Condition(alert))
-            .OrderBy(rule => rule.Priority);
-            
-        foreach (var rule in applicableRules)
-        {
-            StartEscalation(alert, rule);
-        }
-    }
-    
-    private void StartEscalation(Alert alert, EscalationRule rule)
-    {
-        var escalationKey = $"{alert.Source}:{alert.Tag}:{rule.Name}";
-        
-        if (_activeEscalations.ContainsKey(escalationKey))
-            return; // Already escalating
-            
-        var escalation = new EscalationState
-        {
-            OriginalAlert = alert,
-            Rule = rule,
-            StartTime = DateTime.UtcNow,
-            Level = 0
-        };
-        
-        _activeEscalations[escalationKey] = escalation;
-        
-        // Schedule first escalation
-        Task.Delay(rule.InitialDelay).ContinueWith(_ => ProcessEscalation(escalationKey));
-    }
-    
-    private void ProcessEscalation(string escalationKey)
-    {
-        if (!_activeEscalations.TryGetValue(escalationKey, out var escalation))
-            return;
-            
-        escalation.Level++;
-        
-        var escalatedAlert = new Alert
-        {
-            Id = Guid.NewGuid().ToString(),
-            Message = $"ESCALATED (Level {escalation.Level}): {escalation.OriginalAlert.Message}",
-            Severity = EscalateSeverity(escalation.OriginalAlert.Severity),
-            Source = escalation.OriginalAlert.Source,
-            Tag = $"Escalated:{escalation.OriginalAlert.Tag}",
-            Timestamp = DateTime.UtcNow,
-            Context = new AlertContext
-            {
-                Properties = new Dictionary<string, object>
-                {
-                    ["OriginalAlertId"] = escalation.OriginalAlert.Id,
-                    ["EscalationLevel"] = escalation.Level,
-                    ["EscalationStartTime"] = escalation.StartTime,
-                    ["EscalationRule"] = escalation.Rule.Name
-                }
-            }
-        };
-        
-        _alerts.RaiseAlert(escalatedAlert);
-        
-        // Schedule next escalation if not at max level
-        if (escalation.Level < escalation.Rule.MaxLevel)
-        {
-            Task.Delay(escalation.Rule.EscalationInterval)
-                .ContinueWith(_ => ProcessEscalation(escalationKey));
-        }
-        else
-        {
-            _activeEscalations.Remove(escalationKey);
-        }
-    }
-    
-    private AlertSeverity EscalateSeverity(AlertSeverity original)
-    {
-        return original switch
-        {
-            AlertSeverity.Info => AlertSeverity.Warning,
-            AlertSeverity.Warning => AlertSeverity.Critical,
-            AlertSeverity.Critical => AlertSeverity.Emergency,
-            AlertSeverity.Emergency => AlertSeverity.Emergency,
-            _ => original
-        };
-    }
-}
-
-public class EscalationRule
-{
-    public string Name { get; set; }
-    public int Priority { get; set; }
-    public Func<Alert, bool> Condition { get; set; }
-    public TimeSpan InitialDelay { get; set; }
-    public TimeSpan EscalationInterval { get; set; }
-    public int MaxLevel { get; set; }
-}
-
-public class EscalationState
-{
-    public Alert OriginalAlert { get; set; }
-    public EscalationRule Rule { get; set; }
-    public DateTime StartTime { get; set; }
-    public int Level { get; set; }
-}
-```
-
 ### Alert Templates and Formatting
 
 ```csharp
 public class AlertTemplateService
 {
-    private readonly Dictionary<string, AlertTemplate> _templates = new();
+    private readonly Dictionary<FixedString64Bytes, AlertTemplate> _templates = new();
     
-    public void RegisterTemplate(string name, AlertTemplate template)
+    public void RegisterTemplate(FixedString64Bytes name, AlertTemplate template)
     {
-        _templates[name] = template;
+        _templates[name] = template ?? throw new ArgumentNullException(nameof(template));
     }
     
-    public Alert CreateFromTemplate(string templateName, Dictionary<string, object> parameters)
+    public Alert CreateFromTemplate(FixedString64Bytes templateName, Dictionary<string, object> parameters)
     {
         if (!_templates.TryGetValue(templateName, out var template))
             throw new ArgumentException($"Template '{templateName}' not found");
@@ -844,14 +450,14 @@ public class AlertTemplateService
     }
 }
 
-public class AlertTemplate
+public record AlertTemplate
 {
-    public string Name { get; set; }
-    public string MessageTemplate { get; set; }
-    public AlertSeverity DefaultSeverity { get; set; }
-    public string DefaultSource { get; set; }
-    public string DefaultTag { get; set; }
-    public Dictionary<string, object> DefaultContext { get; set; }
+    public FixedString64Bytes Name { get; init; }
+    public string MessageTemplate { get; init; }
+    public AlertSeverity DefaultSeverity { get; init; }
+    public FixedString64Bytes DefaultSource { get; init; }
+    public FixedString32Bytes DefaultTag { get; init; }
+    public Dictionary<string, object> DefaultContext { get; init; } = new();
     
     public Alert CreateAlert(Dictionary<string, object> parameters)
     {
@@ -859,11 +465,11 @@ public class AlertTemplate
         
         return new Alert
         {
-            Id = Guid.NewGuid().ToString(),
+            Id = Guid.NewGuid(),
             Message = message,
             Severity = GetParameter<AlertSeverity>(parameters, "Severity", DefaultSeverity),
-            Source = GetParameter<string>(parameters, "Source", DefaultSource),
-            Tag = GetParameter<string>(parameters, "Tag", DefaultTag),
+            Source = GetParameter<FixedString64Bytes>(parameters, "Source", DefaultSource),
+            Tag = GetParameter<FixedString32Bytes>(parameters, "Tag", DefaultTag),
             Timestamp = DateTime.UtcNow,
             Context = new AlertContext
             {
@@ -872,39 +478,39 @@ public class AlertTemplate
         };
     }
     
-    private string FormatMessage(string template, Dictionary<string, object> parameters)
+    private static string FormatMessage(string template, Dictionary<string, object> parameters)
     {
         var result = template;
-        foreach (var param in parameters)
+        foreach (var (key, value) in parameters)
         {
-            result = result.Replace($"{{{param.Key}}}", param.Value?.ToString() ?? "");
+            result = result.Replace($"{{{key}}}", value?.ToString() ?? "");
         }
         return result;
     }
     
-    private T GetParameter<T>(Dictionary<string, object> parameters, string key, T defaultValue)
+    private static T GetParameter<T>(Dictionary<string, object> parameters, string key, T defaultValue)
     {
         return parameters.TryGetValue(key, out var value) && value is T typedValue 
             ? typedValue 
             : defaultValue;
     }
     
-    private Dictionary<string, object> MergeContext(
+    private static Dictionary<string, object> MergeContext(
         Dictionary<string, object> defaultContext, 
         Dictionary<string, object> parameters)
     {
         var merged = new Dictionary<string, object>(defaultContext ?? new Dictionary<string, object>());
         
-        foreach (var param in parameters)
+        foreach (var (key, value) in parameters)
         {
-            merged[param.Key] = param.Value;
+            merged[key] = value;
         }
         
         return merged;
     }
 }
 
-// Usage example
+// Usage example with modern C# features
 public void SetupAlertTemplates(AlertTemplateService templateService)
 {
     templateService.RegisterTemplate("DatabaseError", new AlertTemplate
@@ -932,6 +538,552 @@ public void SetupAlertTemplates(AlertTemplateService templateService)
 }
 ```
 
+## 📦 Installation
+
+### 1. Package Installation
+
+```csharp
+// In Package Manager, add:
+"com.ahbearstudios.core.alerts": "2.0.0"
+```
+
+### 2. Reflex Bootstrap Installation
+
+```csharp
+/// <summary>
+/// Reflex installer for the Alert System following AhBearStudios Core Development Guidelines.
+/// Provides comprehensive alert management with performance monitoring and health checks.
+/// </summary>
+public class AlertsInstaller : IBootstrapInstaller
+{
+    public string InstallerName => "AlertsInstaller";
+    public int Priority => 200; // After Logging (100) and Messaging (150)
+    public bool IsEnabled => true;
+    public Type[] Dependencies => new[] { typeof(LoggingInstaller), typeof(MessagingInstaller) };
+
+    public bool ValidateInstaller()
+    {
+        // Validate required dependencies
+        if (!Container.HasBinding<ILoggingService>())
+        {
+            Debug.LogError("AlertsInstaller: ILoggingService not registered");
+            return false;
+        }
+
+        if (!Container.HasBinding<IMessageBusService>())
+        {
+            Debug.LogError("AlertsInstaller: IMessageBusService not registered");
+            return false;
+        }
+
+        return true;
+    }
+
+    public void PreInstall()
+    {
+        Debug.Log("AlertsInstaller: Beginning pre-installation validation");
+    }
+
+    public void Install(ContainerBuilder builder)
+    {
+        // Configure alerts with builder pattern
+        var config = new AlertConfigBuilder()
+            .WithMinimumSeverity(AlertSeverity.Warning)
+            .WithSuppression(enabled: true, windowMinutes: 5)
+            .WithAsyncProcessing(enabled: true, maxConcurrency: 50)
+            .WithHistory(enabled: true, retentionHours: 24)
+            .WithChannel<LogAlertChannel>()
+            .WithChannel<ConsoleAlertChannel>()
+            .Build();
+
+        // Bind configuration
+        builder.Bind<AlertConfig>().FromInstance(config);
+        
+        // Bind core services using Reflex patterns
+        builder.Bind<IAlertService>().To<AlertService>().AsSingle();
+        builder.Bind<IAlertFactory>().To<AlertFactory>().AsSingle();
+        builder.Bind<AlertTemplateService>().To<AlertTemplateService>().AsSingle();
+        
+        // Bind specialized services
+        builder.Bind<AlertDispatchService>().To<AlertDispatchService>().AsSingle();
+        builder.Bind<AlertSuppressionService>().To<AlertSuppressionService>().AsSingle();
+        builder.Bind<AlertAggregationService>().To<AlertAggregationService>().AsSingle();
+        builder.Bind<AlertHistoryService>().To<AlertHistoryService>().AsSingle();
+        
+        // Bind health check
+        builder.Bind<AlertServiceHealthCheck>().To<AlertServiceHealthCheck>().AsSingle();
+        
+        // Bind default channels
+        builder.Bind<LogAlertChannel>().To<LogAlertChannel>().AsSingle();
+        builder.Bind<ConsoleAlertChannel>().To<ConsoleAlertChannel>().AsSingle();
+        
+        // Bind default filters
+        builder.Bind<RateLimitFilter>().To<RateLimitFilter>().AsSingle();
+        builder.Bind<DuplicateFilter>().To<DuplicateFilter>().AsSingle();
+        builder.Bind<SeverityFilter>().To<SeverityFilter>().AsSingle();
+    }
+
+    public void PostInstall()
+    {
+        try
+        {
+            // Register health checks
+            var healthService = Container.Resolve<IHealthCheckService>();
+            var alertHealthCheck = Container.Resolve<AlertServiceHealthCheck>();
+            healthService.RegisterHealthCheck(alertHealthCheck);
+
+            // Initialize alert templates
+            var templateService = Container.Resolve<AlertTemplateService>();
+            SetupDefaultAlertTemplates(templateService);
+
+            Debug.Log("AlertsInstaller: Post-installation completed successfully");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"AlertsInstaller: Post-installation failed: {ex.Message}");
+            throw;
+        }
+    }
+
+    private static void SetupDefaultAlertTemplates(AlertTemplateService templateService)
+    {
+        // System error template
+        templateService.RegisterTemplate("SystemError", new AlertTemplate
+        {
+            Name = "SystemError",
+            MessageTemplate = "System error in {SystemName}: {ErrorMessage}",
+            DefaultSeverity = AlertSeverity.Critical,
+            DefaultSource = "SystemMonitor",
+            DefaultTag = "SystemError"
+        });
+
+        // Performance warning template
+        templateService.RegisterTemplate("PerformanceWarning", new AlertTemplate
+        {
+            Name = "PerformanceWarning",
+            MessageTemplate = "Performance issue: {MetricName} = {Value} {Unit} (threshold: {Threshold})",
+            DefaultSeverity = AlertSeverity.Warning,
+            DefaultSource = "PerformanceMonitor", 
+            DefaultTag = "Performance"
+        });
+
+        // Resource exhaustion template
+        templateService.RegisterTemplate("ResourceExhaustion", new AlertTemplate
+        {
+            Name = "ResourceExhaustion",
+            MessageTemplate = "Resource exhaustion detected: {ResourceType} usage at {Usage}%",
+            DefaultSeverity = AlertSeverity.Critical,
+            DefaultSource = "ResourceMonitor",
+            DefaultTag = "Resource"
+        });
+    }
+}
+```
+
+### 3. Usage in Services with Modern C# Patterns
+
+```csharp
+/// <summary>
+/// Example service demonstrating proper Alert System integration with modern C# patterns.
+/// Follows AhBearStudios Core Development Guidelines with comprehensive error handling.
+/// </summary>
+public class ExampleService
+{
+    private readonly IAlertService _alerts;
+    private readonly ILoggingService _logger;
+    private readonly IProfilerService _profiler;
+    private readonly FixedString64Bytes _correlationId;
+    
+    /// <summary>
+    /// Initializes the example service with required dependencies.
+    /// </summary>
+    /// <param name="alerts">Alert service for system notifications</param>
+    /// <param name="logger">Logging service for operation tracking</param>
+    /// <param name="profiler">Profiler service for performance monitoring</param>
+    /// <exception cref="ArgumentNullException">Thrown when any required dependency is null</exception>
+    public ExampleService(IAlertService alerts, ILoggingService logger, IProfilerService profiler)
+    {
+        _alerts = alerts ?? throw new ArgumentNullException(nameof(alerts));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
+        _correlationId = $"ExampleService_{Guid.NewGuid():N}"[..32];
+    }
+    
+    /// <summary>
+    /// Processes data with comprehensive error handling and alerting.
+    /// </summary>
+    /// <param name="data">Data to process</param>
+    /// <returns>Processed result</returns>
+    /// <exception cref="ArgumentException">Thrown when data is invalid</exception>
+    /// <exception cref="ProcessingException">Thrown when processing fails</exception>
+    public async Task<ProcessingResult> ProcessDataAsync(string data)
+    {
+        using var scope = _profiler.BeginScope("ExampleService.ProcessDataAsync");
+        
+        try
+        {
+            // Input validation with pattern matching
+            var validationResult = data switch
+            {
+                null => ValidationResult.Null,
+                "" => ValidationResult.Empty,
+                { Length: > 1000 } => ValidationResult.TooLarge,
+                _ => ValidationResult.Valid
+            };
+
+            if (validationResult != ValidationResult.Valid)
+            {
+                var severity = validationResult switch
+                {
+                    ValidationResult.Null => AlertSeverity.Warning,
+                    ValidationResult.Empty => AlertSeverity.Warning,
+                    ValidationResult.TooLarge => AlertSeverity.Critical,
+                    _ => AlertSeverity.Info
+                };
+
+                _alerts.RaiseAlert(
+                    $"Data validation failed: {validationResult}",
+                    severity,
+                    "ExampleService",
+                    "DataValidation"
+                );
+
+                _logger.LogWarning($"[{_correlationId}] Data validation failed: {validationResult}");
+                throw new ArgumentException($"Invalid data: {validationResult}");
+            }
+            
+            // Process data with timeout and monitoring
+            var result = await ProcessWithTimeoutAsync(data);
+            
+            _logger.LogInfo($"[{_correlationId}] Data processed successfully");
+            return result;
+        }
+        catch (TimeoutException ex)
+        {
+            _alerts.RaiseAlert(
+                $"Data processing timeout: {ex.Message}",
+                AlertSeverity.Warning,
+                "ExampleService",
+                "Timeout"
+            );
+            
+            _logger.LogException(ex, $"[{_correlationId}] Processing timeout");
+            throw new ProcessingException("Processing timed out", ex);
+        }
+        catch (Exception ex) when (!(ex is ArgumentException))
+        {
+            _alerts.RaiseAlert(
+                $"Data processing failed: {ex.Message}",
+                AlertSeverity.Critical,
+                "ExampleService",
+                "ProcessingError"
+            );
+            
+            _logger.LogException(ex, $"[{_correlationId}] Processing failed");
+            throw new ProcessingException("Processing failed", ex);
+        }
+    }
+
+    private async Task<ProcessingResult> ProcessWithTimeoutAsync(string data)
+    {
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        
+        try
+        {
+            // Simulate processing work
+            await Task.Delay(100, cts.Token);
+            return new ProcessingResult { Success = true, Data = data.ToUpperInvariant() };
+        }
+        catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+        {
+            throw new TimeoutException("Processing operation timed out");
+        }
+    }
+}
+
+public enum ValidationResult
+{
+    Valid,
+    Null,
+    Empty,
+    TooLarge
+}
+
+public record ProcessingResult
+{
+    public bool Success { get; init; }
+    public string Data { get; init; }
+}
+
+public class ProcessingException : Exception
+{
+    public ProcessingException(string message) : base(message) { }
+    public ProcessingException(string message, Exception innerException) : base(message, innerException) { }
+}
+```
+
+## 🏥 Health Monitoring
+
+### Health Check Implementation
+
+```csharp
+/// <summary>
+/// Health check implementation for the Alert System.
+/// Monitors alert processing performance, channel health, and system capacity.
+/// </summary>
+public class AlertServiceHealthCheck : IHealthCheck
+{
+    private readonly IAlertService _alertService;
+    private readonly ILoggingService _logger;
+    private readonly FixedString64Bytes _correlationId;
+    
+    public FixedString64Bytes Name => "AlertService";
+    public string Description => "Monitors alert system health and performance";
+    public HealthCheckCategory Category => HealthCheckCategory.System;
+    public TimeSpan Timeout => TimeSpan.FromSeconds(10);
+    public HealthCheckConfiguration Configuration { get; private set; }
+    public IEnumerable<FixedString64Bytes> Dependencies => Array.Empty<FixedString64Bytes>();
+    
+    /// <summary>
+    /// Initializes the health check with required dependencies.
+    /// </summary>
+    /// <param name="alertService">Alert service to monitor</param>
+    /// <param name="logger">Logging service for health check operations</param>
+    /// <exception cref="ArgumentNullException">Thrown when any required dependency is null</exception>
+    public AlertServiceHealthCheck(IAlertService alertService, ILoggingService logger)
+    {
+        _alertService = alertService ?? throw new ArgumentNullException(nameof(alertService));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _correlationId = $"AlertHealthCheck_{Guid.NewGuid():N}"[..32];
+        
+        Configuration = new HealthCheckConfiguration
+        {
+            Timeout = Timeout,
+            Interval = TimeSpan.FromMinutes(1),
+            IsEnabled = true
+        };
+    }
+    
+    /// <summary>
+    /// Performs health check assessment of the alert system.
+    /// </summary>
+    /// <param name="cancellationToken">Cancellation token for the operation</param>
+    /// <returns>Health check result with detailed status information</returns>
+    public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        
+        try
+        {
+            _logger.LogInfo($"[{_correlationId}] Starting alert service health check");
+            
+            var stats = _alertService.GetStatistics();
+            var channels = _alertService.GetRegisteredChannels();
+            
+            var data = new Dictionary<string, object>
+            {
+                ["AlertsProcessed"] = stats.TotalAlertsProcessed,
+                ["AlertsFailed"] = stats.TotalAlertsFailed,
+                ["ActiveChannels"] = channels.Count(c => c.IsEnabled),
+                ["TotalChannels"] = channels.Count,
+                ["AverageProcessingTime"] = stats.AverageProcessingTime.TotalMilliseconds,
+                ["QueueSize"] = stats.CurrentQueueSize,
+                ["SuppressionRate"] = stats.SuppressionRate,
+                ["CorrelationId"] = _correlationId.ToString()
+            };
+            
+            // Check error rates using modern C# patterns
+            var healthStatus = stats.ErrorRate switch
+            {
+                > 0.5 => HealthStatus.Unhealthy,
+                > 0.1 => HealthStatus.Degraded,
+                _ => HealthStatus.Healthy
+            };
+            
+            var message = healthStatus switch
+            {
+                HealthStatus.Unhealthy => $"High error rate: {stats.ErrorRate:P}",
+                HealthStatus.Degraded => $"Elevated error rate: {stats.ErrorRate:P}",
+                _ => "Alert system operating normally"
+            };
+            
+            // Check queue size
+            if (stats.CurrentQueueSize > 1000 && healthStatus == HealthStatus.Healthy)
+            {
+                healthStatus = HealthStatus.Degraded;
+                message = $"High queue size: {stats.CurrentQueueSize}";
+            }
+            
+            // Check channel health
+            var unhealthyChannels = channels.Where(c => c.GetStatus() != ChannelStatus.Healthy).ToList();
+            if (unhealthyChannels.Any() && healthStatus == HealthStatus.Healthy)
+            {
+                healthStatus = HealthStatus.Degraded;
+                message = $"Unhealthy channels: {string.Join(", ", unhealthyChannels.Select(c => c.Name))}";
+            }
+            
+            var result = new HealthCheckResult
+            {
+                Name = Name.ToString(),
+                Status = healthStatus,
+                Message = message,
+                Description = Description,
+                Duration = stopwatch.Elapsed,
+                Timestamp = DateTime.UtcNow,
+                Data = data
+            };
+            
+            _logger.LogInfo($"[{_correlationId}] Alert service health check completed: {healthStatus}");
+            return result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogException(ex, $"[{_correlationId}] Alert service health check failed");
+            
+            return new HealthCheckResult
+            {
+                Name = Name.ToString(),
+                Status = HealthStatus.Unhealthy,
+                Message = $"Health check failed: {ex.Message}",
+                Description = Description,
+                Duration = stopwatch.Elapsed,
+                Timestamp = DateTime.UtcNow,
+                Exception = ex
+            };
+        }
+    }
+    
+    public void Configure(HealthCheckConfiguration configuration)
+    {
+        Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+    }
+    
+    public Dictionary<string, object> GetMetadata()
+    {
+        return new Dictionary<string, object>
+        {
+            ["ServiceType"] = _alertService.GetType().Name,
+            ["SupportedOperations"] = new[] { "RaiseAlert", "ChannelManagement", "FilterManagement" },
+            ["HealthCheckEnabled"] = true,
+            ["MonitoringCapabilities"] = new[] { "ErrorRate", "QueueSize", "ChannelHealth", "ProcessingTime" }
+        };
+    }
+}
+```
+
+### Statistics and Metrics
+
+```csharp
+/// <summary>
+/// Comprehensive statistics for alert system performance monitoring.
+/// Provides detailed metrics for system health assessment and performance optimization.
+/// </summary>
+public sealed record AlertStatistics
+{
+    /// <summary>
+    /// Gets the total number of alerts processed since last reset.
+    /// </summary>
+    public long TotalAlertsProcessed { get; init; }
+    
+    /// <summary>
+    /// Gets the total number of alerts that failed processing.
+    /// </summary>
+    public long TotalAlertsFailed { get; init; }
+    
+    /// <summary>
+    /// Gets the total number of alerts suppressed by filters.
+    /// </summary>
+    public long TotalAlertsSuppressed { get; init; }
+    
+    /// <summary>
+    /// Gets the current queue size of pending alerts.
+    /// </summary>
+    public int CurrentQueueSize { get; init; }
+    
+    /// <summary>
+    /// Gets the maximum queue size reached since last reset.
+    /// </summary>
+    public int MaxQueueSize { get; init; }
+    
+    /// <summary>
+    /// Gets the average alert processing time.
+    /// </summary>
+    public TimeSpan AverageProcessingTime { get; init; }
+    
+    /// <summary>
+    /// Gets the timestamp when statistics were last reset.
+    /// </summary>
+    public DateTime LastStatsReset { get; init; }
+    
+    /// <summary>
+    /// Gets the current error rate (0.0 to 1.0).
+    /// </summary>
+    public double ErrorRate => TotalAlertsProcessed > 0 ? 
+        (double)TotalAlertsFailed / TotalAlertsProcessed : 0;
+    
+    /// <summary>
+    /// Gets the current suppression rate (0.0 to 1.0).
+    /// </summary>
+    public double SuppressionRate => (TotalAlertsProcessed + TotalAlertsSuppressed) > 0 ?
+        (double)TotalAlertsSuppressed / (TotalAlertsProcessed + TotalAlertsSuppressed) : 0;
+    
+    /// <summary>
+    /// Gets statistics per alert severity level.
+    /// </summary>
+    public Dictionary<AlertSeverity, SeverityStatistics> SeverityStatistics { get; init; } = new();
+    
+    /// <summary>
+    /// Gets statistics per alert channel.
+    /// </summary>
+    public Dictionary<FixedString64Bytes, ChannelStatistics> ChannelStatistics { get; init; } = new();
+    
+    /// <summary>
+    /// Gets statistics per alert source system.
+    /// </summary>
+    public Dictionary<FixedString64Bytes, SourceStatistics> SourceStatistics { get; init; } = new();
+}
+
+/// <summary>
+/// Statistics for a specific alert severity level.
+/// </summary>
+public sealed record SeverityStatistics
+{
+    public AlertSeverity Severity { get; init; }
+    public long Count { get; init; }
+    public long Failed { get; init; }
+    public long Suppressed { get; init; }
+    public TimeSpan AverageProcessingTime { get; init; }
+    public DateTime LastAlert { get; init; }
+}
+
+/// <summary>
+/// Statistics for a specific alert channel.
+/// </summary>
+public sealed record ChannelStatistics
+{
+    public FixedString64Bytes ChannelName { get; init; }
+    public long AlertsSent { get; init; }
+    public long AlertsFailed { get; init; }
+    public TimeSpan AverageSendTime { get; init; }
+    public ChannelStatus CurrentStatus { get; init; }
+    public DateTime LastActivity { get; init; }
+}
+
+/// <summary>
+/// Statistics for a specific alert source system.
+/// </summary>
+public sealed record SourceStatistics
+{
+    public FixedString64Bytes Source { get; init; }
+    public long TotalAlerts { get; init; }
+    public long CriticalAlerts { get; init; }
+    public long WarningAlerts { get; init; }
+    public long InfoAlerts { get; init; }
+    public DateTime LastAlert { get; init; }
+    public double AlertRate { get; init; } // Alerts per minute
+}
+```
+
 ## 📊 Performance Characteristics
 
 ### Alert Processing Performance
@@ -947,269 +1099,232 @@ public void SetupAlertTemplates(AlertTemplateService templateService)
 ### Channel Performance
 
 - **Log Channel**: ~10μs per alert, minimal memory
-- **Console Channel**: ~50μs per alert, minimal memory
+- **Console Channel**: ~50μs per alert, minimal memory  
 - **Network Channel**: ~2-50ms per alert (network dependent)
 - **Email Channel**: ~100-500ms per alert (SMTP dependent)
 
 ### Memory Usage
 
-- **Per Alert**: 240 bytes base + message content
-- **Channel Buffer**: Configurable, default 1000 alerts
-- **Filter State**: Minimal, ~48 bytes per active filter
-- **History Storage**: Configurable retention with automatic cleanup
+- **Base Service**: ~2MB initialization, 50KB operational
+- **Per Alert**: 240 bytes average (varies by context size)
+- **Channel Buffer**: 1KB per active channel
+- **History Storage**: ~500 bytes per stored alert
+- **Filter Cache**: 10KB per 1000 rules
 
-## 🏥 Health Monitoring
+### Scalability Characteristics
 
-### Health Check Implementation
+- **Horizontal**: Supports distributed alerting via message bus
+- **Vertical**: Linear scaling up to 50K alerts/sec per instance
+- **Memory**: O(1) for processing, O(n) for history retention
+- **Network**: Async channel dispatch prevents blocking
 
-```csharp
-public class AlertServiceHealthCheck : IHealthCheck
-{
-    private readonly IAlertService _alerts;
-    
-    public string Name => "Alerts";
-    
-    public async Task<HealthCheckResult> CheckHealthAsync(
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            var stats = _alerts.GetStatistics();
-            var channels = _alerts.GetRegisteredChannels();
-            
-            var data = new Dictionary<string, object>
-            {
-                ["TotalAlertsRaised"] = stats.TotalAlertsRaised,
-                ["ActiveAlerts"] = stats.ActiveAlerts,
-                ["ChannelCount"] = channels.Count,
-                ["HealthyChannels"] = channels.Count(c => c.GetStatus().IsHealthy),
-                ["ProcessingRate"] = stats.ProcessingRate,
-                ["FilteredAlerts"] = stats.FilteredAlerts
-            };
-            
-            // Check channel health
-            var unhealthyChannels = channels.Where(c => !c.GetStatus().IsHealthy).ToList();
-            if (unhealthyChannels.Any())
-            {
-                var channelNames = string.Join(", ", unhealthyChannels.Select(c => c.Name));
-                return HealthCheckResult.Degraded(
-                    $"Unhealthy alert channels: {channelNames}", data);
-            }
-            
-            // Check processing rate
-            if (stats.ProcessingRate < 0.95) // 95% success rate
-            {
-                return HealthCheckResult.Degraded(
-                    $"Low alert processing rate: {stats.ProcessingRate:P}", data);
-            }
-            
-            // Check alert backlog
-            if (stats.ActiveAlerts > 100)
-            {
-                return HealthCheckResult.Degraded(
-                    $"High alert backlog: {stats.ActiveAlerts}", data);
-            }
-            
-            return HealthCheckResult.Healthy("Alert system operating normally", data);
-        }
-        catch (Exception ex)
-        {
-            return HealthCheckResult.Unhealthy(
-                $"Alert health check failed: {ex.Message}");
-        }
-    }
-}
-```
+## 🔧 Advanced Features
 
-### Statistics and Metrics
+### Circuit Breaker Integration
 
 ```csharp
-public class AlertStatistics
+public class CircuitBreakerAlertChannel : IAlertChannel
 {
-    public long TotalAlertsRaised { get; init; }
-    public long TotalAlertsProcessed { get; init; }
-    public long FilteredAlerts { get; init; }
-    public int ActiveAlerts { get; init; }
-    public double ProcessingRate => TotalAlertsRaised > 0 
-        ? (double)TotalAlertsProcessed / TotalAlertsRaised 
-        : 1.0;
-    public TimeSpan AverageProcessingTime { get; init; }
-    public Dictionary<AlertSeverity, long> AlertsBySeverity { get; init; }
-    public Dictionary<string, long> AlertsBySource { get; init; }
-    public Dictionary<string, ChannelStatistics> ChannelStatistics { get; init; }
-    public DateTime LastAlertTime { get; init; }
-}
-
-public class ChannelStatistics
-{
-    public string ChannelName { get; init; }
-    public long AlertsSent { get; init; }
-    public long AlertsFailed { get; init; }
-    public double SuccessRate => (AlertsSent + AlertsFailed) > 0 
-        ? (double)AlertsSent / (AlertsSent + AlertsFailed) 
-        : 1.0;
-    public TimeSpan AverageSendTime { get; init; }
-    public DateTime LastSuccessTime { get; init; }
-    public DateTime LastFailureTime { get; init; }
-}
-```
-
-## 🧪 Testing
-
-### Unit Testing
-
-```csharp
-[Test]
-public void AlertService_RaiseAlert_CallsAllEnabledChannels()
-{
-    // Arrange
-    var mockChannel1 = new Mock<IAlertChannel>();
-    var mockChannel2 = new Mock<IAlertChannel>();
-    
-    mockChannel1.Setup(c => c.IsEnabled).Returns(true);
-    mockChannel1.Setup(c => c.CanSendAlert(It.IsAny<Alert>())).Returns(true);
-    mockChannel2.Setup(c => c.IsEnabled).Returns(false);
-    
-    var alertService = new AlertService(_mockLogger.Object, _mockMessaging.Object);
-    alertService.RegisterChannel(mockChannel1.Object);
-    alertService.RegisterChannel(mockChannel2.Object);
-    
-    var alert = new Alert
-    {
-        Message = "Test alert",
-        Severity = AlertSeverity.Warning,
-        Source = "TestSource"
-    };
-    
-    // Act
-    alertService.RaiseAlert(alert);
-    
-    // Assert
-    mockChannel1.Verify(c => c.SendAlertAsync(alert, It.IsAny<CancellationToken>()), Times.Once);
-    mockChannel2.Verify(c => c.SendAlertAsync(It.IsAny<Alert>(), It.IsAny<CancellationToken>()), Times.Never);
-}
-
-[Test]
-public void AlertFilter_SeverityFilter_SuppressesLowSeverityAlerts()
-{
-    // Arrange
-    var filter = new SeverityFilter { MinimumSeverity = AlertSeverity.Warning };
-    
-    var infoAlert = new Alert { Severity = AlertSeverity.Info };
-    var warningAlert = new Alert { Severity = AlertSeverity.Warning };
-    var criticalAlert = new Alert { Severity = AlertSeverity.Critical };
-    
-    // Act & Assert
-    Assert.That(filter.ShouldProcess(infoAlert), Is.EqualTo(FilterResult.Suppress));
-    Assert.That(filter.ShouldProcess(warningAlert), Is.EqualTo(FilterResult.Allow));
-    Assert.That(filter.ShouldProcess(criticalAlert), Is.EqualTo(FilterResult.Allow));
-}
-```
-
-### Integration Testing
-
-```csharp
-[Test]
-public async Task AlertService_WithRealChannels_ProcessesAlertsCorrectly()
-{
-    // Arrange
-    var container = CreateTestContainer();
-    var alertService = container.Resolve<IAlertService>();
-    var logChannel = new LogAlertChannel(_mockLogger.Object);
-    
-    alertService.RegisterChannel(logChannel);
-    
-    var alert = new Alert
-    {
-        Message = "Integration test alert",
-        Severity = AlertSeverity.Warning,
-        Source = "TestService"
-    };
-    
-    // Act
-    await alertService.RaiseAlertAsync(alert);
-    
-    // Assert
-    var stats = alertService.GetStatistics();
-    Assert.That(stats.TotalAlertsRaised, Is.EqualTo(1));
-    Assert.That(stats.TotalAlertsProcessed, Is.EqualTo(1));
-}
-```
-
-## 🚀 Getting Started
-
-### 1. Installation
-
-```csharp
-// In Package Manager, add:
-"com.ahbearstudios.core.alerts": "2.0.0"
-```
-
-### 2. Basic Setup
-
-```csharp
-public class AlertsInstaller : MonoInstaller
-{
-    public override void InstallBindings()
-    {
-        // Configure alerts
-        var config = new AlertConfigBuilder()
-            .WithMinimumSeverity(AlertSeverity.Warning)
-            .WithChannel<LogAlertChannel>()
-            .WithChannel<ConsoleAlertChannel>()
-            .WithSuppression(enabled: true)
-            .Build();
-            
-        Container.Bind<AlertConfig>().FromInstance(config);
-        Container.Bind<IAlertService>().To<AlertService>().AsSingle();
-    }
-}
-```
-
-### 3. Usage in Services
-
-```csharp
-public class ExampleService
-{
-    private readonly IAlertService _alerts;
+    private readonly IAlertChannel _innerChannel;
+    private readonly CircuitBreaker _circuitBreaker;
     private readonly ILoggingService _logger;
     
-    public ExampleService(IAlertService alerts, ILoggingService logger)
+    public CircuitBreakerAlertChannel(
+        IAlertChannel innerChannel, 
+        ILoggingService logger,
+        CircuitBreakerConfig config)
     {
-        _alerts = alerts;
-        _logger = logger;
+        _innerChannel = innerChannel ?? throw new ArgumentNullException(nameof(innerChannel));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _circuitBreaker = new CircuitBreaker(config);
     }
     
-    public void ProcessData(string data)
+    public async Task SendAlertAsync(Alert alert, CancellationToken cancellationToken = default)
     {
         try
         {
-            if (string.IsNullOrEmpty(data))
+            await _circuitBreaker.ExecuteAsync(async () =>
             {
-                _alerts.RaiseAlert(
-                    "Received null or empty data for processing",
-                    AlertSeverity.Warning,
-                    "ExampleService",
-                    "DataValidation"
-                );
-                return;
-            }
-            
-            // Process data...
+                await _innerChannel.SendAlertAsync(alert, cancellationToken);
+            }, cancellationToken);
         }
-        catch (Exception ex)
+        catch (CircuitBreakerOpenException)
         {
-            _alerts.RaiseAlert(
-                $"Data processing failed: {ex.Message}",
-                AlertSeverity.Critical,
-                "ExampleService",
-                "ProcessingError"
-            );
-            
-            _logger.LogError("Data processing failed", ex);
-            throw;
+            _logger.LogWarning($"Circuit breaker open for channel {Name}, alert dropped");
+            // Could queue for retry or use fallback channel
         }
     }
+    
+    public FixedString64Bytes Name => _innerChannel.Name;
+    public bool IsEnabled { get => _innerChannel.IsEnabled; set => _innerChannel.IsEnabled = value; }
+    public AlertSeverity MinimumSeverity { get => _innerChannel.MinimumSeverity; set => _innerChannel.MinimumSeverity = value; }
+    public ChannelConfiguration Configuration => _innerChannel.Configuration;
+    
+    public bool CanSendAlert(Alert alert) => 
+        _circuitBreaker.State == CircuitBreakerState.Closed && _innerChannel.CanSendAlert(alert);
+    
+    public ChannelStatus GetStatus() => _circuitBreaker.State switch
+    {
+        CircuitBreakerState.Open => ChannelStatus.Unhealthy,
+        CircuitBreakerState.HalfOpen => ChannelStatus.Degraded,
+        _ => _innerChannel.GetStatus()
+    };
+    
+    public Task<bool> TestConnectionAsync(CancellationToken cancellationToken = default) =>
+        _innerChannel.TestConnectionAsync(cancellationToken);
+    
+    public void Configure(ChannelConfiguration configuration) =>
+        _innerChannel.Configure(configuration);
+    
+    public void Dispose()
+    {
+        _innerChannel?.Dispose();
+        _circuitBreaker?.Dispose();
+    }
+    
+    public event EventHandler<ChannelEventArgs> AlertSent
+    {
+        add => _innerChannel.AlertSent += value;
+        remove => _innerChannel.AlertSent -= value;
+    }
+    
+    public event EventHandler<ChannelEventArgs> SendFailed
+    {
+        add => _innerChannel.SendFailed += value;
+        remove => _innerChannel.SendFailed -= value;
+    }
+}
+```
+
+### Custom Filter Implementation
+
+```csharp
+/// <summary>
+/// Business hours filter that applies different severity thresholds based on time.
+/// Implements smart filtering for operational efficiency.
+/// </summary>
+public class BusinessHoursFilter : IAlertFilter
+{
+    private readonly ILoggingService _logger;
+    private readonly TimeZoneInfo _timeZone;
+    private BusinessHoursConfig _config;
+    
+    public FixedString64Bytes Name => "BusinessHoursFilter";
+    public int Priority => 100;
+    public bool IsEnabled { get; set; } = true;
+    
+    public BusinessHoursFilter(ILoggingService logger)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _timeZone = TimeZoneInfo.Local;
+        _config = BusinessHoursConfig.Default;
+    }
+    
+    public FilterResult ShouldProcess(Alert alert)
+    {
+        if (!IsEnabled) return FilterResult.Allow;
+        
+        var currentTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timeZone);
+        var isBusinessHours = IsBusinessHours(currentTime);
+        
+        var requiredSeverity = isBusinessHours 
+            ? _config.BusinessHoursSeverity 
+            : _config.AfterHoursSeverity;
+        
+        var result = alert.Severity >= requiredSeverity 
+            ? FilterResult.Allow 
+            : FilterResult.Suppress;
+        
+        if (result == FilterResult.Suppress)
+        {
+            _logger.LogInfo($"Alert suppressed by BusinessHoursFilter: {alert.Id} " +
+                          $"(severity: {alert.Severity}, required: {requiredSeverity}, " +
+                          $"business hours: {isBusinessHours})");
+        }
+        
+        return result;
+    }
+    
+    public void Configure(Dictionary<string, object> settings)
+    {
+        if (settings.TryGetValue("BusinessHoursSeverity", out var bhSeverity) && 
+            bhSeverity is AlertSeverity businessSeverity)
+        {
+            _config = _config with { BusinessHoursSeverity = businessSeverity };
+        }
+        
+        if (settings.TryGetValue("AfterHoursSeverity", out var ahSeverity) && 
+            ahSeverity is AlertSeverity afterSeverity)
+        {
+            _config = _config with { AfterHoursSeverity = afterSeverity };
+        }
+        
+        if (settings.TryGetValue("StartHour", out var startHour) && startHour is int start)
+        {
+            _config = _config with { StartHour = start };
+        }
+        
+        if (settings.TryGetValue("EndHour", out var endHour) && endHour is int end)
+        {
+            _config = _config with { EndHour = end };
+        }
+    }
+    
+    public FilterStatistics GetStatistics()
+    {
+        return new FilterStatistics
+        {
+            FilterName = Name,
+            ProcessedCount = _processedCount,
+            SuppressedCount = _suppressedCount,
+            AllowedCount = _allowedCount,
+            LastActivity = _lastActivity
+        };
+    }
+    
+    private bool IsBusinessHours(DateTime currentTime)
+    {
+        return currentTime.DayOfWeek switch
+        {
+            DayOfWeek.Saturday or DayOfWeek.Sunday => false,
+            _ => currentTime.Hour >= _config.StartHour && currentTime.Hour < _config.EndHour
+        };
+    }
+    
+    private long _processedCount;
+    private long _suppressedCount;
+    private long _allowedCount;
+    private DateTime _lastActivity;
+}
+
+/// <summary>
+/// Configuration for business hours filtering.
+/// </summary>
+public sealed record BusinessHoursConfig
+{
+    public AlertSeverity BusinessHoursSeverity { get; init; } = AlertSeverity.Info;
+    public AlertSeverity AfterHoursSeverity { get; init; } = AlertSeverity.Warning;
+    public int StartHour { get; init; } = 9;  // 9 AM
+    public int EndHour { get; init; } = 17;   // 5 PM
+    
+    public static BusinessHoursConfig Default => new();
+}
+
+/// <summary>
+/// Statistics for alert filter performance monitoring.
+/// </summary>
+public sealed record FilterStatistics
+{
+    public FixedString64Bytes FilterName { get; init; }
+    public long ProcessedCount { get; init; }
+    public long SuppressedCount { get; init; }
+    public long AllowedCount { get; init; }
+    public long ModifiedCount { get; init; }
+    public DateTime LastActivity { get; init; }
+    public TimeSpan AverageProcessingTime { get; init; }
+    
+    public double SuppressionRate => ProcessedCount > 0 ? 
+        (double)SuppressedCount / ProcessedCount : 0;
 }
 ```
 
@@ -1220,6 +1335,8 @@ public class ExampleService
 - [Alert Filtering Best Practices](ALERTS_FILTERING.md)
 - [Integration Guide](ALERTS_INTEGRATION.md)
 - [Troubleshooting Guide](ALERTS_TROUBLESHOOTING.md)
+- [Performance Optimization Guide](ALERTS_PERFORMANCE.md)
+- [Security Considerations](ALERTS_SECURITY.md)
 
 ## 🤝 Contributing
 
@@ -1227,8 +1344,9 @@ See our [Contributing Guidelines](../../CONTRIBUTING.md) for information on how 
 
 ## 📄 Dependencies
 
-- **Direct**: Logging, Messaging
-- **Dependents**: HealthCheck
+- **Direct**: Logging, Messaging, HealthCheck
+- **Dependents**: All systems requiring alert capabilities
+- **Optional**: Profiling (for performance monitoring), Pooling (for high-throughput scenarios)
 
 ---
 
