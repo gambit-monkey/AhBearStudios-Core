@@ -17,6 +17,7 @@ namespace AhBearStudios.Core.Logging.Factories
     public sealed class LoggingServiceFactory : ILoggingServiceFactory
     {
         private readonly ILogTargetFactory _targetFactory;
+        private readonly ILogFormatterFactory _formatterFactory;
         private readonly LogFormattingService _formattingService;
         private readonly LogBatchingService _batchingService;
 
@@ -24,15 +25,18 @@ namespace AhBearStudios.Core.Logging.Factories
         /// Initializes a new instance of the LoggingServiceFactory.
         /// </summary>
         /// <param name="targetFactory">Factory for creating log targets</param>
+        /// <param name="formatterFactory">Factory for creating log formatters (optional)</param>
         /// <param name="formattingService">Service for formatting log messages (optional)</param>
         /// <param name="batchingService">Service for batching log operations (optional)</param>
         /// <exception cref="ArgumentNullException">Thrown when targetFactory is null</exception>
         public LoggingServiceFactory(
             ILogTargetFactory targetFactory,
+            ILogFormatterFactory formatterFactory = null,
             LogFormattingService formattingService = null,
             LogBatchingService batchingService = null)
         {
             _targetFactory = targetFactory ?? throw new ArgumentNullException(nameof(targetFactory));
+            _formatterFactory = formatterFactory;
             _formattingService = formattingService;
             _batchingService = batchingService;
         }

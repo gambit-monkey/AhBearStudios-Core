@@ -770,7 +770,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
         private DateTime ParseCronExpression(string cronExpression, DateTime now)
         {
             // Simplified cron parsing - in production, use a proper library like Quartz.NET
-            // Format: "minute hour day month dayofweek"
+            // LogFormat: "minute hour day month dayofweek"
             var parts = cronExpression.Split(' ');
             if (parts.Length != 5)
                 throw new ArgumentException("Invalid cron expression format");

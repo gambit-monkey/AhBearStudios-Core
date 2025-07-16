@@ -1,8 +1,8 @@
 ﻿namespace AhBearStudios.Core.Logging.Models
 {
     /// <summary>
-    /// Defines the severity levels for log messages.
-    /// Higher values indicate more severe issues.
+    /// Represents detailed tracing information within the application.
+    /// This level is typically used for high-volume and fine-grained diagnostic messages.
     /// </summary>
     public enum LogLevel
     {
@@ -29,6 +29,12 @@
         /// <summary>
         /// Critical failures that may cause the application to terminate.
         /// </summary>
-        Critical = 4
+        Critical = 4,
+
+        /// <summary>
+        /// Provides the most detailed and verbose logging level, used for tracing the exact flow and operations of the application.
+        /// Typically helpful for diagnosing complex issues by capturing extensive diagnostic information.
+        /// </summary>
+        Trace = 5
     }
 }

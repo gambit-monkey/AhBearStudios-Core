@@ -2721,9 +2721,9 @@
             <param name="formatProvider">Supplies culture-specific formatting information, or null.</param>
             <exception cref="T:System.ArgumentNullException">When <paramref name="outputTemplate"/> is <code>null</code></exception>
         </member>
-        <member name="M:Serilog.Formatting.Display.MessageTemplateTextFormatter.Format(Serilog.Events.LogEvent,System.IO.TextWriter)">
+        <member name="M:Serilog.Formatting.Display.MessageTemplateTextFormatter.LogFormat(Serilog.Events.LogEvent,System.IO.TextWriter)">
             <summary>
-            Format the log event into the output.
+            LogFormat the log event into the output.
             </summary>
             <param name="logEvent">The event to format.</param>
             <param name="output">The output.</param>
@@ -2786,9 +2786,9 @@
             Formats log events in a textual representation.
             </summary>
         </member>
-        <member name="M:Serilog.Formatting.ITextFormatter.Format(Serilog.Events.LogEvent,System.IO.TextWriter)">
+        <member name="M:Serilog.Formatting.ITextFormatter.LogFormat(Serilog.Events.LogEvent,System.IO.TextWriter)">
             <summary>
-            Format the log event into the output.
+            LogFormat the log event into the output.
             </summary>
             <param name="logEvent">The event to format.</param>
             <param name="output">The output.</param>
@@ -2811,9 +2811,9 @@
             property named RenderedMessage.</param>
             <param name="formatProvider">Supplies culture-specific formatting information, or null.</param>
         </member>
-        <member name="M:Serilog.Formatting.Json.JsonFormatter.Format(Serilog.Events.LogEvent,System.IO.TextWriter)">
+        <member name="M:Serilog.Formatting.Json.JsonFormatter.LogFormat(Serilog.Events.LogEvent,System.IO.TextWriter)">
             <summary>
-            Format the log event into the output.
+            LogFormat the log event into the output.
             </summary>
             <param name="logEvent">The event to format.</param>
             <param name="output">The output.</param>
@@ -2834,9 +2834,9 @@
             in the resulting JSON. If null, no type tag field will be written. The default is
             "_typeTag".</param>
         </member>
-        <member name="M:Serilog.Formatting.Json.JsonValueFormatter.Format(Serilog.Events.LogEventPropertyValue,System.IO.TextWriter)">
+        <member name="M:Serilog.Formatting.Json.JsonValueFormatter.LogFormat(Serilog.Events.LogEventPropertyValue,System.IO.TextWriter)">
             <summary>
-            Format <paramref name="value"/> as JSON to <paramref name="output"/>.
+            LogFormat <paramref name="value"/> as JSON to <paramref name="output"/>.
             </summary>
             <param name="value">The value to format</param>
             <param name="output">The output</param>
@@ -4826,9 +4826,9 @@
             Destructuring strategy applied to the property.
             </summary>
         </member>
-        <member name="P:Serilog.Parsing.PropertyToken.Format">
+        <member name="P:Serilog.Parsing.PropertyToken.LogFormat">
             <summary>
-            Format applied to the property.
+            LogFormat applied to the property.
             </summary>
         </member>
         <member name="P:Serilog.Parsing.PropertyToken.Alignment">
@@ -4933,7 +4933,7 @@
             The text of the token.
             </summary>
         </member>
-        <member name="M:Serilog.Rendering.Casing.Format(System.String,System.String)">
+        <member name="M:Serilog.Rendering.Casing.LogFormat(System.String,System.String)">
             <summary>
             Apply upper or lower casing to <paramref name="value"/> when <paramref name="format"/> is provided.
             Returns <paramref name="value"/> when no or invalid format provided

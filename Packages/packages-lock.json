@@ -7,13 +7,6 @@
       "dependencies": {},
       "hash": "5ebaa0405ddaa67856d938d1a1d86bf064f6f963"
     },
-    "com.cysharp.messagepipe.vcontainer": {
-      "version": "https://github.com/Cysharp/MessagePipe.git?path=src/MessagePipe.Unity/Assets/Plugins/MessagePipe.VContainer",
-      "depth": 0,
-      "source": "git",
-      "dependencies": {},
-      "hash": "5ebaa0405ddaa67856d938d1a1d86bf064f6f963"
-    },
     "com.cysharp.unitask": {
       "version": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask",
       "depth": 0,
@@ -33,7 +26,7 @@
       "depth": 0,
       "source": "git",
       "dependencies": {},
-      "hash": "2085c30b43f619f784428040b34a6ad2cb84ced9"
+      "hash": "45224fe2eff941a7435b77417784556004602476"
     },
     "com.unity.burst": {
       "version": "1.8.23",
@@ -118,6 +111,13 @@
     "com.unity.nuget.mono-cecil": {
       "version": "1.11.4",
       "depth": 3,
+      "source": "registry",
+      "dependencies": {},
+      "url": "https://packages.unity.com"
+    },
+    "com.unity.nuget.newtonsoft-json": {
+      "version": "3.2.1",
+      "depth": 0,
       "source": "registry",
       "dependencies": {},
       "url": "https://packages.unity.com"
@@ -275,13 +275,6 @@
       "source": "registry",
       "dependencies": {},
       "url": "https://registry.npmjs.org"
-    },
-    "jp.hadashikick.vcontainer": {
-      "version": "https://github.com/hadashiA/VContainer.git?path=VContainer/Assets/VContainer",
-      "depth": 0,
-      "source": "git",
-      "dependencies": {},
-      "hash": "63205c68cd231fb74ef17360df09acabf451e62b"
     },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",

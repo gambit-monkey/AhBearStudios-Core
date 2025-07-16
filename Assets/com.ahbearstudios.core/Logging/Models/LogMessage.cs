@@ -1,7 +1,9 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Burst;
 using AhBearStudios.Core.Messaging.Messages;
+using AhBearStudios.Core.Messaging.Models;
 
 namespace AhBearStudios.Core.Logging.Models
 {
@@ -45,6 +47,16 @@ namespace AhBearStudios.Core.Logging.Models
         public readonly FixedString128Bytes CorrelationId;
 
         /// <summary>
+        /// Gets the source system or component that created this message.
+        /// </summary>
+        public readonly FixedString64Bytes Source;
+
+        /// <summary>
+        /// Gets the priority level for message processing.
+        /// </summary>
+        public readonly MessagePriority Priority;
+
+        /// <summary>
         /// Gets the source context (typically the class name) where the message originated.
         /// </summary>
         public readonly FixedString128Bytes SourceContext;
@@ -79,6 +91,21 @@ namespace AhBearStudios.Core.Logging.Models
         /// </summary>
         public ushort TypeCode => MessageTypeCodes.LogMessage;
 
+        /// <summary>
+        /// Gets the source system for IMessage interface compatibility.
+        /// </summary>
+        FixedString64Bytes IMessage.Source => Source;
+
+        /// <summary>
+        /// Gets the priority level for IMessage interface compatibility.
+        /// </summary>
+        MessagePriority IMessage.Priority => Priority;
+
+        /// <summary>
+        /// Gets the correlation ID as Guid for IMessage interface compatibility.
+        /// </summary>
+        Guid IMessage.CorrelationId => ParseCorrelationIdAsGuid();
+
         // Non-Burst compatible fields for rich data (managed separately)
         private readonly Exception _exception;
         private readonly IReadOnlyDictionary<string, object> _properties;
@@ -109,6 +136,8 @@ namespace AhBearStudios.Core.Logging.Models
         /// <param name="message">The log message text</param>
         /// <param name="correlationId">The correlation ID</param>
         /// <param name="sourceContext">The source context</param>
+        /// <param name="source">The source system or component</param>
+        /// <param name="priority">The message priority level</param>
         /// <param name="threadId">The thread ID</param>
         /// <param name="exception">The associated exception</param>
         /// <param name="properties">Additional structured properties</param>
@@ -120,6 +149,8 @@ namespace AhBearStudios.Core.Logging.Models
             FixedString512Bytes message,
             FixedString128Bytes correlationId = default,
             FixedString128Bytes sourceContext = default,
+            FixedString64Bytes source = default,
+            MessagePriority priority = MessagePriority.Normal,
             int threadId = 0,
             Exception exception = null,
             IReadOnlyDictionary<string, object> properties = null)
@@ -131,6 +162,8 @@ namespace AhBearStudios.Core.Logging.Models
             Message = message;
             CorrelationId = correlationId;
             SourceContext = sourceContext;
+            Source = source.IsEmpty ? new FixedString64Bytes("LoggingSystem") : source;
+            Priority = priority;
             ThreadId = threadId == 0 ? Environment.CurrentManagedThreadId : threadId;
             HasException = exception != null;
             HasProperties = properties != null && properties.Count > 0;
@@ -148,6 +181,8 @@ namespace AhBearStudios.Core.Logging.Models
         /// <param name="correlationId">The correlation ID</param>
         /// <param name="properties">Additional contextual properties</param>
         /// <param name="sourceContext">The source context</param>
+        /// <param name="source">The source system or component</param>
+        /// <param name="priority">The message priority level</param>
         /// <param name="threadId">The thread ID</param>
         /// <returns>A new LogMessage instance</returns>
         [BurstCompile]
@@ -159,6 +194,8 @@ namespace AhBearStudios.Core.Logging.Models
             string correlationId = null,
             IReadOnlyDictionary<string, object> properties = null,
             string sourceContext = null,
+            string source = null,
+            MessagePriority priority = MessagePriority.Normal,
             int threadId = 0)
         {
             return new LogMessage(
@@ -169,6 +206,8 @@ namespace AhBearStudios.Core.Logging.Models
                 message: new FixedString512Bytes(message ?? string.Empty),
                 correlationId: new FixedString128Bytes(correlationId ?? string.Empty),
                 sourceContext: new FixedString128Bytes(sourceContext ?? string.Empty),
+                source: new FixedString64Bytes(source ?? "LoggingSystem"),
+                priority: priority,
                 threadId: threadId == 0 ? Environment.CurrentManagedThreadId : threadId,
                 exception: exception,
                 properties: properties);
@@ -182,6 +221,8 @@ namespace AhBearStudios.Core.Logging.Models
         /// <param name="message">The log message as FixedString</param>
         /// <param name="correlationId">The correlation ID as FixedString</param>
         /// <param name="sourceContext">The source context as FixedString</param>
+        /// <param name="source">The source system as FixedString</param>
+        /// <param name="priority">The message priority level</param>
         /// <param name="threadId">The thread ID</param>
         /// <returns>A new Burst-compatible LogMessage instance</returns>
         [BurstCompile]
@@ -191,6 +232,8 @@ namespace AhBearStudios.Core.Logging.Models
             FixedString512Bytes message,
             FixedString128Bytes correlationId = default,
             FixedString128Bytes sourceContext = default,
+            FixedString64Bytes source = default,
+            MessagePriority priority = MessagePriority.Normal,
             int threadId = 0)
         {
             return new LogMessage(
@@ -201,6 +244,8 @@ namespace AhBearStudios.Core.Logging.Models
                 message: message,
                 correlationId: correlationId,
                 sourceContext: sourceContext,
+                source: source.IsEmpty ? new FixedString64Bytes("LoggingSystem") : source,
+                priority: priority,
                 threadId: threadId == 0 ? Environment.CurrentManagedThreadId : threadId,
                 exception: null,
                 properties: null);
@@ -249,13 +294,14 @@ namespace AhBearStudios.Core.Logging.Models
         /// Converts native strings to managed strings for interop scenarios.
         /// </summary>
         /// <returns>A tuple containing the managed string representations</returns>
-        public (string channel, string message, string correlationId, string sourceContext) ToManagedStrings()
+        public (string channel, string message, string correlationId, string sourceContext, string source) ToManagedStrings()
         {
             return (
                 Channel.ToString(),
                 Message.ToString(),
                 CorrelationId.ToString(),
-                SourceContext.ToString()
+                SourceContext.ToString(),
+                Source.ToString()
             );
         }
 
@@ -278,9 +324,9 @@ namespace AhBearStudios.Core.Logging.Models
         [BurstCompile]
         public int GetNativeSize()
         {
-            return 16 + 8 + sizeof(LogLevel) + // Guid (16 bytes) + DateTime (8 bytes) + LogLevel
+            return 16 + 8 + sizeof(LogLevel) + sizeof(MessagePriority) + // Guid (16 bytes) + DateTime (8 bytes) + LogLevel + MessagePriority
                    Channel.Length + Message.Length + 
-                   CorrelationId.Length + SourceContext.Length + 
+                   CorrelationId.Length + SourceContext.Length + Source.Length +
                    sizeof(int) + sizeof(bool) + sizeof(bool);
         }
 
@@ -291,6 +337,57 @@ namespace AhBearStudios.Core.Logging.Models
         {
             // Native strings are stack-allocated, no disposal needed
             // Managed properties are handled by GC
+        }
+
+        /// <summary>
+        /// Parses the correlation ID as a Guid for IMessage interface compatibility.
+        /// </summary>
+        /// <returns>The correlation ID as a Guid, or Guid.Empty if parsing fails</returns>
+        private Guid ParseCorrelationIdAsGuid()
+        {
+            var correlationIdString = CorrelationId.ToString();
+            return Guid.TryParse(correlationIdString, out var guid) ? guid : Guid.Empty;
+        }
+
+        /// <summary>
+        /// Creates a LogMessage with a Guid correlation ID for better IMessage compatibility.
+        /// </summary>
+        /// <param name="level">The log level</param>
+        /// <param name="channel">The channel name</param>
+        /// <param name="message">The log message text</param>
+        /// <param name="correlationId">The correlation ID as Guid</param>
+        /// <param name="source">The source system or component</param>
+        /// <param name="priority">The message priority level</param>
+        /// <param name="exception">The associated exception, if any</param>
+        /// <param name="properties">Additional contextual properties</param>
+        /// <param name="sourceContext">The source context</param>
+        /// <param name="threadId">The thread ID</param>
+        /// <returns>A new LogMessage instance</returns>
+        public static LogMessage CreateWithGuidCorrelation(
+            LogLevel level,
+            string channel,
+            string message,
+            Guid correlationId = default,
+            string source = null,
+            MessagePriority priority = MessagePriority.Normal,
+            Exception exception = null,
+            IReadOnlyDictionary<string, object> properties = null,
+            string sourceContext = null,
+            int threadId = 0)
+        {
+            return new LogMessage(
+                id: Guid.NewGuid(),
+                timestamp: DateTime.UtcNow,
+                level: level,
+                channel: new FixedString64Bytes(channel ?? "Default"),
+                message: new FixedString512Bytes(message ?? string.Empty),
+                correlationId: new FixedString128Bytes(correlationId.ToString()),
+                sourceContext: new FixedString128Bytes(sourceContext ?? string.Empty),
+                source: new FixedString64Bytes(source ?? "LoggingSystem"),
+                priority: priority,
+                threadId: threadId == 0 ? Environment.CurrentManagedThreadId : threadId,
+                exception: exception,
+                properties: properties);
         }
 
         /// <summary>

@@ -414,6 +414,7 @@ namespace AhBearStudios.Unity.Logging.Installers
         private void RegisterFactories(ContainerBuilder builder)
         {
             builder.Bind<ILogTargetFactory>().To<LogTargetFactory>().AsSingle();
+            builder.Bind<ILogFormatterFactory>().To<LogFormatterFactory>().AsSingle();
             builder.Bind<ILoggingServiceFactory>().To<LoggingServiceFactory>().AsSingle();
 
             if (_verboseInitialization)
