@@ -1,9 +1,11 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using AhBearStudios.Core.Logging.Models;
+using Unity.Collections;
 
 namespace AhBearStudios.Core.Logging.Services
 {
@@ -12,7 +14,7 @@ namespace AhBearStudios.Core.Logging.Services
     /// Provides efficient string formatting with minimal allocations and structured logging support.
     /// Supports template-based formatting with placeholder replacement and custom formatters.
     /// </summary>
-    public sealed class LogFormattingService
+    public sealed class LogFormattingService : ILogFormattingService
     {
         private readonly Dictionary<string, ILogFormatter> _customFormatters;
         private readonly StringBuilder _stringBuilder;
@@ -178,12 +180,12 @@ namespace AhBearStudios.Core.Logging.Services
                 ["@thread"] = logMessage.ThreadId
             };
 
-            if (!string.IsNullOrEmpty(logMessage.CorrelationId))
+            if (!string.IsNullOrEmpty(logMessage.CorrelationId.ToString()))
             {
                 structured["@correlationId"] = logMessage.CorrelationId;
             }
 
-            if (!string.IsNullOrEmpty(logMessage.SourceContext))
+            if (!string.IsNullOrEmpty(logMessage.SourceContext.ToString()))
             {
                 structured["@sourceContext"] = logMessage.SourceContext;
             }
@@ -298,10 +300,10 @@ namespace AhBearStudios.Core.Logging.Services
                 // Replace standard placeholders
                 ReplacePlaceholder(_stringBuilder, "Timestamp", FormatTimestamp(logMessage.Timestamp));
                 ReplacePlaceholder(_stringBuilder, "Level", logMessage.Level.ToString());
-                ReplacePlaceholder(_stringBuilder, "Channel", logMessage.Channel);
-                ReplacePlaceholder(_stringBuilder, "Message", logMessage.Message);
-                ReplacePlaceholder(_stringBuilder, "CorrelationId", logMessage.CorrelationId);
-                ReplacePlaceholder(_stringBuilder, "SourceContext", logMessage.SourceContext);
+                ReplacePlaceholder(_stringBuilder, "Channel", logMessage.Channel.ToString());
+                ReplacePlaceholder(_stringBuilder, "Message", logMessage.Message.ToString());
+                ReplacePlaceholder(_stringBuilder, "CorrelationId", logMessage.CorrelationId.ToString());
+                ReplacePlaceholder(_stringBuilder, "SourceContext", logMessage.SourceContext.ToString());
                 ReplacePlaceholder(_stringBuilder, "ThreadId", logMessage.ThreadId.ToString());
 
                 // Replace exception placeholder if present
@@ -467,9 +469,11 @@ namespace AhBearStudios.Core.Logging.Services
 
         public string Format(in LogMessage logMessage)
         {
-            return logMessage.Message.Length > _maxLength 
-                ? logMessage.Message.Substring(0, _maxLength) + "..." 
-                : logMessage.Message;
+            // Create a local copy to avoid the struct member access restriction
+            var message = logMessage.Message.ToString();
+            return message.Length > _maxLength 
+                ? message.Substring(0, _maxLength) + "..." 
+                : message;
         }
     }
 
@@ -523,7 +527,7 @@ namespace AhBearStudios.Core.Logging.Services
 
         private static string CreateCacheKey(in LogMessage logMessage, string format)
         {
-            return $"{logMessage.Level}|{logMessage.Channel}|{logMessage.Message}|{format}";
+            return $"{logMessage.Level}|{logMessage.Channel.ToString()}|{logMessage.Message.ToString()}|{format}";
         }
     }
 
@@ -535,7 +539,7 @@ namespace AhBearStudios.Core.Logging.Services
         private volatile int _formattingRequests = 0;
         private volatile int _cacheHits = 0;
         private volatile int _formattingErrors = 0;
-        private volatile long _totalFormattingTicks = 0;
+        private long _totalFormattingTicks = 0;
         private readonly DateTime _startTime = DateTime.UtcNow;
 
         /// <summary>

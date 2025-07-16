@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using AhBearStudios.Core.Logging.Services;
 
 namespace AhBearStudios.Core.Logging.Models
 {
@@ -11,6 +12,7 @@ namespace AhBearStudios.Core.Logging.Models
     public sealed class LogScope : ILogScope
     {
         private readonly ILoggingService _loggingService;
+        private readonly LogContextService _contextService;
         private readonly Dictionary<string, object> _properties;
         private volatile bool _disposed;
         private static readonly ThreadLocal<LogScope> _currentScope = new ThreadLocal<LogScope>();
@@ -89,6 +91,35 @@ namespace AhBearStudios.Core.Logging.Models
         }
 
         /// <summary>
+        /// Initializes a new instance of the LogScope with a context service.
+        /// </summary>
+        /// <param name="contextService">The context service to use for context management</param>
+        /// <param name="context">The log context for the scope</param>
+        internal LogScope(
+            LogContextService contextService,
+            LogContext context)
+        {
+            _contextService = contextService ?? throw new ArgumentNullException(nameof(contextService));
+            ScopeName = context.Operation ?? "Unknown";
+            ScopeId = Guid.NewGuid().ToString("N")[..8]; // Short scope ID
+            CorrelationId = context.CorrelationId ?? Guid.NewGuid().ToString("N");
+            CreatedAt = context.CreatedAt;
+            Parent = _currentScope.Value;
+            
+            _properties = new Dictionary<string, object>();
+            if (context.Properties != null)
+            {
+                foreach (var kvp in context.Properties)
+                {
+                    _properties[kvp.Key] = kvp.Value;
+                }
+            }
+
+            // Set this as the current scope for the thread
+            _currentScope.Value = this;
+        }
+
+        /// <summary>
         /// Adds a property to this scope.
         /// </summary>
         /// <param name="key">The property key</param>
@@ -127,7 +158,11 @@ namespace AhBearStudios.Core.Logging.Models
         public void LogDebug(string message)
         {
             if (_disposed) return;
-            _loggingService.LogDebug(message, CorrelationId, ScopeName);
+            if (_loggingService != null)
+            {
+                _loggingService.LogDebug(message, CorrelationId, ScopeName);
+            }
+            // If using context service only, logging would be handled by the main logging service
         }
 
         /// <summary>
@@ -137,7 +172,11 @@ namespace AhBearStudios.Core.Logging.Models
         public void LogInfo(string message)
         {
             if (_disposed) return;
-            _loggingService.LogInfo(message, CorrelationId, ScopeName);
+            if (_loggingService != null)
+            {
+                _loggingService.LogInfo(message, CorrelationId, ScopeName);
+            }
+            // If using context service only, logging would be handled by the main logging service
         }
 
         /// <summary>
@@ -147,7 +186,11 @@ namespace AhBearStudios.Core.Logging.Models
         public void LogWarning(string message)
         {
             if (_disposed) return;
-            _loggingService.LogWarning(message, CorrelationId, ScopeName);
+            if (_loggingService != null)
+            {
+                _loggingService.LogWarning(message, CorrelationId, ScopeName);
+            }
+            // If using context service only, logging would be handled by the main logging service
         }
 
         /// <summary>
@@ -157,7 +200,11 @@ namespace AhBearStudios.Core.Logging.Models
         public void LogError(string message)
         {
             if (_disposed) return;
-            _loggingService.LogError(message, CorrelationId, ScopeName);
+            if (_loggingService != null)
+            {
+                _loggingService.LogError(message, CorrelationId, ScopeName);
+            }
+            // If using context service only, logging would be handled by the main logging service
         }
 
         /// <summary>
@@ -167,7 +214,11 @@ namespace AhBearStudios.Core.Logging.Models
         public void LogCritical(string message)
         {
             if (_disposed) return;
-            _loggingService.LogCritical(message, CorrelationId, ScopeName);
+            if (_loggingService != null)
+            {
+                _loggingService.LogCritical(message, CorrelationId, ScopeName);
+            }
+            // If using context service only, logging would be handled by the main logging service
         }
 
         /// <summary>
@@ -178,7 +229,11 @@ namespace AhBearStudios.Core.Logging.Models
         public void LogException(Exception exception, string message = null)
         {
             if (_disposed) return;
-            _loggingService.LogException(exception, message, CorrelationId, ScopeName);
+            if (_loggingService != null)
+            {
+                _loggingService.LogException(exception, message, CorrelationId, ScopeName);
+            }
+            // If using context service only, logging would be handled by the main logging service
         }
 
         /// <summary>
@@ -198,7 +253,15 @@ namespace AhBearStudios.Core.Logging.Models
                     ["Duration"] = duration.TotalMilliseconds
                 };
 
-                _loggingService.LogDebug($"Scope '{ScopeName}' completed", scopeProperties);
+                if (_loggingService != null)
+                {
+                    _loggingService.LogDebug($"Scope '{ScopeName}' completed", scopeProperties);
+                }
+                else if (_contextService != null)
+                {
+                    // For context-only scopes, pop the context
+                    _contextService.PopContext();
+                }
             }
             catch
             {

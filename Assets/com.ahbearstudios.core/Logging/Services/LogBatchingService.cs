@@ -16,9 +16,9 @@ namespace AhBearStudios.Core.Logging.Services
     /// Implements zero-allocation logging with Burst compilation compatibility.
     /// Provides efficient batching and asynchronous processing for optimal performance.
     /// </summary>
-    public sealed class LogBatchingService : IDisposable
+    public sealed class LogBatchingService : ILogBatchingService
     {
-        // Native collections for high-performance scenarios
+        // Native collections for high-performance scenarios using Unity.Collections v2
         private NativeQueue<LogMessage> _messageQueue;
         private NativeList<LogMessage> _batchBuffer;
         private NativeList<LogMessage> _processingBuffer;
@@ -110,7 +110,7 @@ namespace AhBearStudios.Core.Logging.Services
             HighPerformanceMode = highPerformanceMode;
             BurstCompatibility = burstCompatibility;
 
-            // Initialize native collections
+            // Initialize native collections using Unity.Collections v2
             _messageQueue = new NativeQueue<LogMessage>(Allocator.Persistent);
             _batchBuffer = new NativeList<LogMessage>(maxQueueSize, Allocator.Persistent);
             _processingBuffer = new NativeList<LogMessage>(maxQueueSize, Allocator.Persistent);
@@ -128,7 +128,7 @@ namespace AhBearStudios.Core.Logging.Services
         }
 
         /// <summary>
-        /// Enqueues a log message for batch processing using native collections.
+        /// Enqueues a log message for batch processing using Unity.Collections v2.
         /// </summary>
         /// <param name="logMessage">The log message to enqueue</param>
         /// <returns>True if the message was enqueued successfully, false if the queue is full</returns>
@@ -153,6 +153,7 @@ namespace AhBearStudios.Core.Logging.Services
                 ForceFlush();
             }
 
+            // Direct enqueue of LogMessage (now Unity.Collections v2 compatible)
             _messageQueue.Enqueue(logMessage);
             Metrics.IncrementEnqueuedMessages();
             return true;
@@ -180,7 +181,7 @@ namespace AhBearStudios.Core.Logging.Services
         }
 
         /// <summary>
-        /// Enqueues messages from a native array for Burst compatibility.
+        /// Enqueues messages from a native array for Burst compatibility using Unity.Collections v2.
         /// </summary>
         /// <param name="logMessages">The native array of log messages</param>
         /// <returns>The number of messages successfully enqueued</returns>
@@ -200,6 +201,44 @@ namespace AhBearStudios.Core.Logging.Services
 
             return enqueuedCount;
         }
+
+        /// <summary>
+        /// Enqueues messages from a native array of NativeLogMessage for optimal Burst compatibility.
+        /// </summary>
+        /// <param name="nativeLogMessages">The native array of native log messages</param>
+        /// <returns>The number of messages successfully enqueued</returns>
+        [BurstCompile]
+        public int EnqueueNativeMessages(NativeArray<NativeLogMessage> nativeLogMessages)
+        {
+            if (_disposed || !nativeLogMessages.IsCreated) return 0;
+
+            int enqueuedCount = 0;
+            for (int i = 0; i < nativeLogMessages.Length; i++)
+            {
+                if (EnqueueNativeMessage(nativeLogMessages[i]))
+                {
+                    enqueuedCount++;
+                }
+            }
+
+            return enqueuedCount;
+        }
+
+        /// <summary>
+        /// Enqueues a native log message directly for optimal performance.
+        /// </summary>
+        /// <param name="nativeLogMessage">The native log message to enqueue</param>
+        /// <returns>True if the message was enqueued successfully, false if the queue is full</returns>
+        [BurstCompile]
+        public bool EnqueueNativeMessage(in NativeLogMessage nativeLogMessage)
+        {
+            if (_disposed || !_messageQueue.IsCreated) return false;
+
+            // Convert NativeLogMessage to LogMessage for compatibility
+            var logMessage = nativeLogMessage.ToLogMessage();
+            return EnqueueMessage(logMessage);
+        }
+
 
         /// <summary>
         /// Forces an immediate flush of all queued messages.
@@ -387,7 +426,7 @@ namespace AhBearStudios.Core.Logging.Services
         }
 
         /// <summary>
-        /// Processes messages using Unity's job system for Burst compatibility.
+        /// Processes messages using Unity's job system for Burst compatibility with Unity.Collections v2.
         /// </summary>
         private void ProcessWithJobSystem()
         {
@@ -418,7 +457,7 @@ namespace AhBearStudios.Core.Logging.Services
         }
 
         /// <summary>
-        /// Processes messages directly without job system.
+        /// Processes messages directly without job system using Unity.Collections v2.
         /// </summary>
         private void ProcessDirectly()
         {
@@ -433,7 +472,7 @@ namespace AhBearStudios.Core.Logging.Services
                     
                     for (int i = 0; i < _processingBuffer.Length; i++)
                     {
-                        var message = _processingBuffer[i];
+                        var message = _processingBuffer[i]; // Direct use of LogMessage
                         if (target.ShouldProcessMessage(message))
                         {
                             targetMessages.Add(message);
@@ -462,7 +501,7 @@ namespace AhBearStudios.Core.Logging.Services
         }
 
         /// <summary>
-        /// Processes filtered messages from job system.
+        /// Processes filtered messages from job system using Unity.Collections v2.
         /// </summary>
         /// <param name="filteredMessages">The filtered messages to process</param>
         private void ProcessFilteredMessages(NativeList<LogMessage> filteredMessages)
@@ -470,7 +509,7 @@ namespace AhBearStudios.Core.Logging.Services
             var messageList = new List<LogMessage>();
             for (int i = 0; i < filteredMessages.Length; i++)
             {
-                messageList.Add(filteredMessages[i]);
+                messageList.Add(filteredMessages[i]); // Direct use of LogMessage
             }
 
             foreach (var target in _targets)
@@ -494,7 +533,7 @@ namespace AhBearStudios.Core.Logging.Services
         /// Raises the BatchProcessed event.
         /// </summary>
         /// <param name="args">The event arguments</param>
-        protected virtual void OnBatchProcessed(BatchProcessedEventArgs args)
+        private void OnBatchProcessed(BatchProcessedEventArgs args)
         {
             BatchProcessed?.Invoke(this, args);
         }
@@ -503,7 +542,7 @@ namespace AhBearStudios.Core.Logging.Services
         /// Raises the QueueCapacityReached event.
         /// </summary>
         /// <param name="args">The event arguments</param>
-        protected virtual void OnQueueCapacityReached(QueueCapacityEventArgs args)
+        private void OnQueueCapacityReached(QueueCapacityEventArgs args)
         {
             QueueCapacityReached?.Invoke(this, args);
         }
@@ -567,7 +606,7 @@ namespace AhBearStudios.Core.Logging.Services
     }
 
     /// <summary>
-    /// Burst-compatible job for filtering log messages.
+    /// Burst-compatible job for filtering log messages using Unity.Collections v2.
     /// </summary>
     [BurstCompile]
     public struct MessageFilterJob : IJob
@@ -602,7 +641,7 @@ namespace AhBearStudios.Core.Logging.Services
         private volatile int _droppedMessages = 0;
         private volatile int _processedBatches = 0;
         private volatile int _targetErrors = 0;
-        private volatile long _totalProcessingTicks = 0;
+        private long _totalProcessingTicks = 0;
         private readonly DateTime _startTime = DateTime.UtcNow;
 
         /// <summary>
