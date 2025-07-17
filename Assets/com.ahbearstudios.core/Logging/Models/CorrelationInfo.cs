@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Burst;
+using AhBearStudios.Core.Logging.Services;
 
 namespace AhBearStudios.Core.Logging.Models
 {
@@ -258,6 +259,192 @@ namespace AhBearStudios.Core.Logging.Models
                 serviceName: new FixedString64Bytes(serviceName ?? "LoggingSystem"),
                 depth: depth,
                 properties: properties);
+        }
+
+        /// <summary>
+        /// Creates a CorrelationInfo for a request operation.
+        /// </summary>
+        /// <param name="requestId">The request identifier</param>
+        /// <param name="operation">The operation name</param>
+        /// <param name="userId">Optional user identifier</param>
+        /// <param name="sessionId">Optional session identifier</param>
+        /// <param name="serviceName">Optional service name</param>
+        /// <returns>A new CorrelationInfo instance optimized for request tracking</returns>
+        public static CorrelationInfo ForRequest(
+            string requestId,
+            string operation,
+            string userId = null,
+            string sessionId = null,
+            string serviceName = null)
+        {
+            var correlationId = new FixedString128Bytes(requestId);
+            var spanId = new FixedString64Bytes(Guid.NewGuid().ToString("N")[..16]);
+            var traceId = new FixedString64Bytes(requestId[..16]);
+
+            var requestProperties = new Dictionary<string, object>
+            {
+                ["CorrelationType"] = "Request",
+                ["RequestStartTime"] = DateTime.UtcNow
+            };
+
+            return new CorrelationInfo(
+                correlationId: correlationId,
+                spanId: spanId,
+                traceId: traceId,
+                operation: new FixedString128Bytes(operation),
+                userId: new FixedString64Bytes(userId ?? string.Empty),
+                sessionId: new FixedString64Bytes(sessionId ?? string.Empty),
+                requestId: new FixedString64Bytes(requestId),
+                serviceName: new FixedString64Bytes(serviceName ?? "LoggingSystem"),
+                properties: requestProperties);
+        }
+
+        /// <summary>
+        /// Creates a CorrelationInfo for a scope operation.
+        /// </summary>
+        /// <param name="scopeId">The scope identifier</param>
+        /// <param name="operation">The operation name</param>
+        /// <param name="parentCorrelationId">Optional parent correlation ID</param>
+        /// <param name="serviceName">Optional service name</param>
+        /// <returns>A new CorrelationInfo instance optimized for scope tracking</returns>
+        public static CorrelationInfo ForScope(
+            string scopeId,
+            string operation,
+            string parentCorrelationId = null,
+            string serviceName = null)
+        {
+            var correlationId = new FixedString128Bytes(scopeId);
+            var spanId = new FixedString64Bytes(Guid.NewGuid().ToString("N")[..16]);
+            var traceId = new FixedString64Bytes(scopeId[..16]);
+
+            var scopeProperties = new Dictionary<string, object>
+            {
+                ["CorrelationType"] = "Scope",
+                ["ScopeStartTime"] = DateTime.UtcNow,
+                ["ScopeId"] = scopeId
+            };
+
+            return new CorrelationInfo(
+                correlationId: correlationId,
+                parentCorrelationId: new FixedString128Bytes(parentCorrelationId ?? string.Empty),
+                rootCorrelationId: string.IsNullOrEmpty(parentCorrelationId) ? correlationId : new FixedString128Bytes(parentCorrelationId),
+                spanId: spanId,
+                traceId: traceId,
+                operation: new FixedString128Bytes(operation),
+                serviceName: new FixedString64Bytes(serviceName ?? "LoggingSystem"),
+                depth: string.IsNullOrEmpty(parentCorrelationId) ? 0 : 1,
+                properties: scopeProperties);
+        }
+
+        /// <summary>
+        /// Creates a CorrelationInfo for a background operation.
+        /// </summary>
+        /// <param name="operation">The background operation name</param>
+        /// <param name="serviceName">Optional service name</param>
+        /// <param name="properties">Additional contextual properties</param>
+        /// <returns>A new CorrelationInfo instance optimized for background operations</returns>
+        public static CorrelationInfo ForBackground(
+            string operation,
+            string serviceName = null,
+            IReadOnlyDictionary<string, object> properties = null)
+        {
+            var correlationId = new FixedString128Bytes(Guid.NewGuid().ToString("N"));
+            var spanId = new FixedString64Bytes(Guid.NewGuid().ToString("N")[..16]);
+            var traceId = new FixedString64Bytes(Guid.NewGuid().ToString("N")[..16]);
+
+            var backgroundProperties = new Dictionary<string, object>
+            {
+                ["CorrelationType"] = "Background",
+                ["BackgroundStartTime"] = DateTime.UtcNow,
+                ["ThreadId"] = System.Threading.Thread.CurrentThread.ManagedThreadId
+            };
+
+            if (properties != null)
+            {
+                foreach (var kvp in properties)
+                {
+                    backgroundProperties[kvp.Key] = kvp.Value;
+                }
+            }
+
+            return new CorrelationInfo(
+                correlationId: correlationId,
+                spanId: spanId,
+                traceId: traceId,
+                operation: new FixedString128Bytes(operation),
+                serviceName: new FixedString64Bytes(serviceName ?? "LoggingSystem"),
+                properties: backgroundProperties);
+        }
+
+        /// <summary>
+        /// Creates a CorrelationInfo for a health check operation.
+        /// </summary>
+        /// <param name="healthCheckName">The health check name</param>
+        /// <param name="serviceName">Optional service name</param>
+        /// <returns>A new CorrelationInfo instance optimized for health check operations</returns>
+        public static CorrelationInfo ForHealthCheck(
+            string healthCheckName,
+            string serviceName = null)
+        {
+            var correlationId = new FixedString128Bytes(Guid.NewGuid().ToString("N"));
+            var spanId = new FixedString64Bytes(Guid.NewGuid().ToString("N")[..16]);
+            var traceId = new FixedString64Bytes(Guid.NewGuid().ToString("N")[..16]);
+
+            var healthCheckProperties = new Dictionary<string, object>
+            {
+                ["CorrelationType"] = "HealthCheck",
+                ["HealthCheckStartTime"] = DateTime.UtcNow,
+                ["HealthCheckName"] = healthCheckName
+            };
+
+            return new CorrelationInfo(
+                correlationId: correlationId,
+                spanId: spanId,
+                traceId: traceId,
+                operation: new FixedString128Bytes(healthCheckName),
+                serviceName: new FixedString64Bytes(serviceName ?? "LoggingSystem"),
+                properties: healthCheckProperties);
+        }
+
+        /// <summary>
+        /// Generates a new correlation ID for general use.
+        /// </summary>
+        /// <returns>A new CorrelationInfo instance with generated IDs</returns>
+        public static CorrelationInfo Generate()
+        {
+            return Create();
+        }
+
+        /// <summary>
+        /// Creates a CorrelationInfo from a LogScope instance.
+        /// </summary>
+        /// <param name="scope">The LogScope to create correlation info from</param>
+        /// <returns>A new CorrelationInfo instance based on the scope</returns>
+        public static CorrelationInfo FromScope(ILogScope scope)
+        {
+            if (scope == null)
+                throw new ArgumentNullException(nameof(scope));
+
+            var correlationId = new FixedString128Bytes(scope.CorrelationId.ToString());
+            var spanId = new FixedString64Bytes(Guid.NewGuid().ToString("N")[..16]);
+            var traceId = new FixedString64Bytes(scope.CorrelationId.ToString()[..16]);
+
+            var scopeProperties = new Dictionary<string, object>
+            {
+                ["CorrelationType"] = "Scope",
+                ["ScopeStartTime"] = DateTime.UtcNow,
+                ["ScopeName"] = scope.Name.ToString(),
+                ["ScopeSourceContext"] = scope.SourceContext,
+                ["ScopeElapsed"] = scope.Elapsed.TotalMilliseconds
+            };
+
+            return new CorrelationInfo(
+                correlationId: correlationId,
+                spanId: spanId,
+                traceId: traceId,
+                operation: new FixedString128Bytes(scope.Name.ToString()),
+                serviceName: new FixedString64Bytes("LoggingSystem"),
+                properties: scopeProperties);
         }
 
         /// <summary>

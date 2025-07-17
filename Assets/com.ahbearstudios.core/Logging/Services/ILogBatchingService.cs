@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Unity.Collections;
@@ -89,14 +88,14 @@ namespace AhBearStudios.Core.Logging.Services
         /// </summary>
         /// <param name="nativeLogMessages">The native array of native log messages</param>
         /// <returns>The number of messages successfully enqueued</returns>
-        int EnqueueNativeMessages(NativeArray<NativeLogMessage> nativeLogMessages);
+        int EnqueueNativeMessages(NativeArray<LogMessage> nativeLogMessages);
 
         /// <summary>
         /// Enqueues a native log message directly for optimal performance.
         /// </summary>
         /// <param name="nativeLogMessage">The native log message to enqueue</param>
         /// <returns>True if the message was enqueued successfully, false if the queue is full</returns>
-        bool EnqueueNativeMessage(in NativeLogMessage nativeLogMessage);
+        bool EnqueueNativeMessage(in LogMessage nativeLogMessage);
 
         /// <summary>
         /// Forces an immediate flush of all queued messages.

@@ -113,7 +113,7 @@ namespace AhBearStudios.Core.Logging.HealthChecks
                 ["LastExecutionTime"] = _lastCheckTime != DateTime.MinValue ? _lastCheckTime : null,
                 ["IsCacheValid"] = IsCacheValid(),
                 ["LoggingServiceEnabled"] = _loggingService.IsEnabled,
-                ["LoggingServiceTargetCount"] = _loggingService.GetRegisteredTargets().Count,
+                ["LoggingServiceTargetCount"] = _loggingService.GetTargets().Count,
                 ["LoggingServiceHighPerformanceMode"] = serviceConfig?.HighPerformanceMode ?? false,
                 ["LoggingServiceBatchingEnabled"] = serviceConfig?.BatchingEnabled ?? false,
                 ["SupportsRuntimeConfiguration"] = true,
@@ -185,7 +185,7 @@ namespace AhBearStudios.Core.Logging.HealthChecks
                 }
 
                 // 2. Check registered targets
-                var targets = _loggingService.GetRegisteredTargets();
+                var targets = _loggingService.GetTargets();
                 healthData["TargetCount"] = targets.Count;
 
                 if (targets.Count == 0)
@@ -345,12 +345,12 @@ namespace AhBearStudios.Core.Logging.HealthChecks
                 
                 // Perform a test log operation
                 var testMessage = $"Health check test - {DateTime.UtcNow:HH:mm:ss.fff}";
-                var testCorrelationId = Guid.NewGuid().ToString("N")[..8];
+                var testCorrelationId = new FixedString64Bytes(Guid.NewGuid().ToString("N")[..8]);
                 
                 _loggingService.LogDebug(testMessage, testCorrelationId, "HealthCheck");
                 
                 // Force flush to ensure the message is processed
-                _loggingService.Flush();
+                await _loggingService.FlushAsync(testCorrelationId).ConfigureAwait(false);
                 
                 var testDuration = DateTime.UtcNow - testStartTime;
                 healthData["TestLogDuration"] = testDuration.TotalMilliseconds;
@@ -499,6 +499,118 @@ namespace AhBearStudios.Core.Logging.HealthChecks
             {
                 return DateTime.UtcNow - _lastCheckTime < _cacheTimeout;
             }
+        }
+
+        /// <summary>
+        /// Creates a new LoggingServiceHealthCheck instance with default configuration.
+        /// </summary>
+        /// <param name="loggingService">The logging service to monitor</param>
+        /// <returns>A new LoggingServiceHealthCheck instance</returns>
+        public static LoggingServiceHealthCheck Create(ILoggingService loggingService)
+        {
+            return new LoggingServiceHealthCheck(loggingService);
+        }
+
+        /// <summary>
+        /// Creates a new LoggingServiceHealthCheck instance optimized for critical system monitoring.
+        /// </summary>
+        /// <param name="loggingService">The logging service to monitor</param>
+        /// <param name="healthCheckName">Optional custom name for the health check</param>
+        /// <returns>A new LoggingServiceHealthCheck instance with critical system configuration</returns>
+        public static LoggingServiceHealthCheck ForCriticalSystem(ILoggingService loggingService, string healthCheckName = null)
+        {
+            var healthCheck = new LoggingServiceHealthCheck(loggingService);
+            
+            var criticalConfig = HealthCheckConfiguration.ForCriticalSystem(
+                new FixedString64Bytes(healthCheckName ?? "CriticalLogging"),
+                "Critical Logging Service Health Check",
+                "Monitors critical logging system performance with strict thresholds");
+            
+            healthCheck.Configure(criticalConfig);
+            return healthCheck;
+        }
+
+        /// <summary>
+        /// Creates a new LoggingServiceHealthCheck instance optimized for performance monitoring.
+        /// </summary>
+        /// <param name="loggingService">The logging service to monitor</param>
+        /// <param name="performanceThresholds">Optional performance thresholds configuration</param>
+        /// <returns>A new LoggingServiceHealthCheck instance with performance monitoring configuration</returns>
+        public static LoggingServiceHealthCheck ForPerformanceMonitoring(
+            ILoggingService loggingService,
+            Dictionary<string, object> performanceThresholds = null)
+        {
+            var healthCheck = new LoggingServiceHealthCheck(loggingService);
+            
+            var performanceConfig = HealthCheckConfiguration.ForPerformanceMonitoring(
+                new FixedString64Bytes("PerformanceLogging"),
+                "Performance Logging Service Health Check",
+                "Monitors logging system performance metrics and resource utilization");
+            
+            if (performanceThresholds != null)
+            {
+                foreach (var threshold in performanceThresholds)
+                {
+                    performanceConfig = performanceConfig.WithMetadata(threshold.Key, threshold.Value);
+                }
+            }
+            
+            healthCheck.Configure(performanceConfig);
+            return healthCheck;
+        }
+
+        /// <summary>
+        /// Creates a new LoggingServiceHealthCheck instance with custom configuration.
+        /// </summary>
+        /// <param name="loggingService">The logging service to monitor</param>
+        /// <param name="configuration">The health check configuration to use</param>
+        /// <returns>A new LoggingServiceHealthCheck instance with the specified configuration</returns>
+        public static LoggingServiceHealthCheck WithConfiguration(
+            ILoggingService loggingService,
+            HealthCheckConfiguration configuration)
+        {
+            if (configuration == null)
+                throw new ArgumentNullException(nameof(configuration));
+            
+            var healthCheck = new LoggingServiceHealthCheck(loggingService);
+            healthCheck.Configure(configuration);
+            return healthCheck;
+        }
+
+        /// <summary>
+        /// Creates a new LoggingServiceHealthCheck instance for development environments.
+        /// </summary>
+        /// <param name="loggingService">The logging service to monitor</param>
+        /// <returns>A new LoggingServiceHealthCheck instance with relaxed thresholds for development</returns>
+        public static LoggingServiceHealthCheck ForDevelopment(ILoggingService loggingService)
+        {
+            var healthCheck = new LoggingServiceHealthCheck(loggingService);
+            
+            var developmentConfig = HealthCheckConfiguration.ForDevelopment(
+                new FixedString64Bytes("DevelopmentLogging"),
+                "Development Logging Service Health Check",
+                "Monitors logging system in development environment with relaxed thresholds");
+            
+            healthCheck.Configure(developmentConfig);
+            return healthCheck;
+        }
+
+        /// <summary>
+        /// Creates a new LoggingServiceHealthCheck instance for testing environments.
+        /// </summary>
+        /// <param name="loggingService">The logging service to monitor</param>
+        /// <returns>A new LoggingServiceHealthCheck instance optimized for testing scenarios</returns>
+        public static LoggingServiceHealthCheck ForTesting(ILoggingService loggingService)
+        {
+            var healthCheck = new LoggingServiceHealthCheck(loggingService);
+            
+            var testingConfig = HealthCheckConfiguration.ForDevelopment(
+                new FixedString64Bytes("TestingLogging"),
+                "Testing Logging Service Health Check",
+                "Monitors logging system during testing with appropriate thresholds");
+            
+            healthCheck.Configure(testingConfig);
+            return healthCheck;
         }
     }
 }

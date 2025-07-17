@@ -1,16 +1,20 @@
 ﻿using System.Collections.Generic;
+using System.Threading.Tasks;
+using Unity.Collections;
 using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Logging.Targets;
+using AhBearStudios.Core.Logging.Filters;
 
 namespace AhBearStudios.Core.Logging
 {
     /// <summary>
-    /// Primary interface for the logging service.
-    /// Provides centralized logging with multiple targets and advanced features.
+    /// Primary logging service interface providing centralized logging
+    /// with correlation tracking and comprehensive system integration.
     /// Follows the AhBearStudios Core Architecture foundation system pattern.
+    /// Designed for Unity game development with Job System and Burst compatibility.
     /// </summary>
-    public interface ILoggingService
+    public interface ILoggingService : IDisposable
     {
         // Configuration and runtime state properties
         /// <summary>
@@ -23,304 +27,235 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         bool IsEnabled { get; }
 
-        // Core logging methods
+        // Core logging methods with Unity.Collections v2 correlation tracking
         /// <summary>
-        /// Logs a debug message with optional structured data.
+        /// Logs a debug message with correlation tracking.
         /// </summary>
         /// <param name="message">The message to log</param>
-        void LogDebug(string message);
-
-        /// <summary>
-        /// Logs a debug message with structured properties.
-        /// </summary>
-        /// <param name="message">The message to log</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <param name="sourceContext">Source context (typically class name)</param>
         /// <param name="properties">Additional structured properties</param>
-        void LogDebug(string message, IReadOnlyDictionary<string, object> properties);
+        void LogDebug(string message, FixedString64Bytes correlationId = default, 
+            string sourceContext = null, IReadOnlyDictionary<string, object> properties = null);
 
         /// <summary>
-        /// Logs a debug message with correlation ID and source context.
+        /// Logs an informational message with correlation tracking.
         /// </summary>
         /// <param name="message">The message to log</param>
-        /// <param name="correlationId">The correlation ID for tracking</param>
-        /// <param name="sourceContext">The source context (typically class name)</param>
-        void LogDebug(string message, string correlationId, string sourceContext = null);
-
-        /// <summary>
-        /// Logs an informational message.
-        /// </summary>
-        /// <param name="message">The message to log</param>
-        void LogInfo(string message);
-
-        /// <summary>
-        /// Logs an informational message with structured properties.
-        /// </summary>
-        /// <param name="message">The message to log</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <param name="sourceContext">Source context (typically class name)</param>
         /// <param name="properties">Additional structured properties</param>
-        void LogInfo(string message, IReadOnlyDictionary<string, object> properties);
+        void LogInfo(string message, FixedString64Bytes correlationId = default, 
+            string sourceContext = null, IReadOnlyDictionary<string, object> properties = null);
 
         /// <summary>
-        /// Logs an informational message with correlation ID and source context.
+        /// Logs a warning message with correlation tracking.
         /// </summary>
         /// <param name="message">The message to log</param>
-        /// <param name="correlationId">The correlation ID for tracking</param>
-        /// <param name="sourceContext">The source context (typically class name)</param>
-        void LogInfo(string message, string correlationId, string sourceContext = null);
-
-        /// <summary>
-        /// Logs a warning message.
-        /// </summary>
-        /// <param name="message">The message to log</param>
-        void LogWarning(string message);
-
-        /// <summary>
-        /// Logs a warning message with structured properties.
-        /// </summary>
-        /// <param name="message">The message to log</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <param name="sourceContext">Source context (typically class name)</param>
         /// <param name="properties">Additional structured properties</param>
-        void LogWarning(string message, IReadOnlyDictionary<string, object> properties);
+        void LogWarning(string message, FixedString64Bytes correlationId = default, 
+            string sourceContext = null, IReadOnlyDictionary<string, object> properties = null);
 
         /// <summary>
-        /// Logs a warning message with correlation ID and source context.
+        /// Logs an error message with correlation tracking.
         /// </summary>
         /// <param name="message">The message to log</param>
-        /// <param name="correlationId">The correlation ID for tracking</param>
-        /// <param name="sourceContext">The source context (typically class name)</param>
-        void LogWarning(string message, string correlationId, string sourceContext = null);
-
-        /// <summary>
-        /// Logs an error message.
-        /// </summary>
-        /// <param name="message">The message to log</param>
-        void LogError(string message);
-
-        /// <summary>
-        /// Logs an error message with structured properties.
-        /// </summary>
-        /// <param name="message">The message to log</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <param name="sourceContext">Source context (typically class name)</param>
         /// <param name="properties">Additional structured properties</param>
-        void LogError(string message, IReadOnlyDictionary<string, object> properties);
+        void LogError(string message, FixedString64Bytes correlationId = default, 
+            string sourceContext = null, IReadOnlyDictionary<string, object> properties = null);
 
         /// <summary>
-        /// Logs an error message with correlation ID and source context.
+        /// Logs a critical message with correlation tracking and automatic alerting.
         /// </summary>
         /// <param name="message">The message to log</param>
-        /// <param name="correlationId">The correlation ID for tracking</param>
-        /// <param name="sourceContext">The source context (typically class name)</param>
-        void LogError(string message, string correlationId, string sourceContext = null);
-
-        /// <summary>
-        /// Logs a critical message.
-        /// </summary>
-        /// <param name="message">The message to log</param>
-        void LogCritical(string message);
-
-        /// <summary>
-        /// Logs a critical message with structured properties.
-        /// </summary>
-        /// <param name="message">The message to log</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <param name="sourceContext">Source context (typically class name)</param>
         /// <param name="properties">Additional structured properties</param>
-        void LogCritical(string message, IReadOnlyDictionary<string, object> properties);
+        void LogCritical(string message, FixedString64Bytes correlationId = default, 
+            string sourceContext = null, IReadOnlyDictionary<string, object> properties = null);
 
+        // Unity Job System and Burst-compatible logging methods
         /// <summary>
-        /// Logs a critical message with correlation ID and source context.
+        /// Logs a debug message with structured data using generic type constraints for Burst compatibility.
+        /// Designed for use within Unity Job System contexts.
         /// </summary>
-        /// <param name="message">The message to log</param>
-        /// <param name="correlationId">The correlation ID for tracking</param>
-        /// <param name="sourceContext">The source context (typically class name)</param>
-        void LogCritical(string message, string correlationId, string sourceContext = null);
-
-        // Generic structured logging methods for burst compatibility
-        /// <summary>
-        /// Logs a debug message with structured data using generic type constraints for burst compatibility.
-        /// </summary>
-        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for Burst compatibility)</typeparam>
         /// <param name="message">The message to log</param>
         /// <param name="data">The structured data to log</param>
-        void LogDebug<T>(string message, T data) where T : unmanaged;
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        void LogDebug<T>(string message, T data, FixedString64Bytes correlationId = default) where T : unmanaged;
 
         /// <summary>
-        /// Logs an informational message with structured data using generic type constraints for burst compatibility.
+        /// Logs an informational message with structured data using generic type constraints for Burst compatibility.
+        /// Designed for use within Unity Job System contexts.
         /// </summary>
-        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for Burst compatibility)</typeparam>
         /// <param name="message">The message to log</param>
         /// <param name="data">The structured data to log</param>
-        void LogInfo<T>(string message, T data) where T : unmanaged;
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        void LogInfo<T>(string message, T data, FixedString64Bytes correlationId = default) where T : unmanaged;
 
         /// <summary>
-        /// Logs a warning message with structured data using generic type constraints for burst compatibility.
+        /// Logs a warning message with structured data using generic type constraints for Burst compatibility.
+        /// Designed for use within Unity Job System contexts.
         /// </summary>
-        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for Burst compatibility)</typeparam>
         /// <param name="message">The message to log</param>
         /// <param name="data">The structured data to log</param>
-        void LogWarning<T>(string message, T data) where T : unmanaged;
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        void LogWarning<T>(string message, T data, FixedString64Bytes correlationId = default) where T : unmanaged;
 
         /// <summary>
-        /// Logs an error message with structured data using generic type constraints for burst compatibility.
+        /// Logs an error message with structured data using generic type constraints for Burst compatibility.
+        /// Designed for use within Unity Job System contexts.
         /// </summary>
-        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for Burst compatibility)</typeparam>
         /// <param name="message">The message to log</param>
         /// <param name="data">The structured data to log</param>
-        void LogError<T>(string message, T data) where T : unmanaged;
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        void LogError<T>(string message, T data, FixedString64Bytes correlationId = default) where T : unmanaged;
 
         /// <summary>
-        /// Logs a critical message with structured data using generic type constraints for burst compatibility.
+        /// Logs a critical message with structured data using generic type constraints for Burst compatibility.
+        /// Designed for use within Unity Job System contexts.
         /// </summary>
-        /// <typeparam name="T">The type of structured data (must be unmanaged for burst compatibility)</typeparam>
+        /// <typeparam name="T">The type of structured data (must be unmanaged for Burst compatibility)</typeparam>
         /// <param name="message">The message to log</param>
         /// <param name="data">The structured data to log</param>
-        void LogCritical<T>(string message, T data) where T : unmanaged;
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        void LogCritical<T>(string message, T data, FixedString64Bytes correlationId = default) where T : unmanaged;
 
         /// <summary>
-        /// Logs an exception with context information.
+        /// Logs an exception with context and correlation tracking.
         /// </summary>
+        /// <param name="message">Context message for the exception</param>
         /// <param name="exception">The exception to log</param>
-        /// <param name="context">Additional context information</param>
-        void LogException(Exception exception, string context);
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <param name="sourceContext">Source context (typically class name)</param>
+        /// <param name="properties">Additional structured properties</param>
+        void LogException(string message, Exception exception, FixedString64Bytes correlationId = default, 
+            string sourceContext = null, IReadOnlyDictionary<string, object> properties = null);
 
         /// <summary>
-        /// Logs an exception with context and correlation ID.
-        /// </summary>
-        /// <param name="exception">The exception to log</param>
-        /// <param name="context">Additional context information</param>
-        /// <param name="correlationId">The correlation ID for tracking</param>
-        /// <param name="sourceContext">The source context (typically class name)</param>
-        void LogException(Exception exception, string context, string correlationId, string sourceContext = null);
-
-        /// <summary>
-        /// Logs a message with the specified level and channel.
+        /// Logs a message with the specified level and full context.
         /// </summary>
         /// <param name="level">The log level</param>
-        /// <param name="channel">The channel name</param>
         /// <param name="message">The message to log</param>
-        /// <param name="exception">The associated exception, if any</param>
-        /// <param name="correlationId">The correlation ID</param>
-        /// <param name="properties">Additional structured properties</param>
-        /// <param name="sourceContext">The source context</param>
-        void Log(LogLevel level, string channel, string message, Exception exception = null, 
-                string correlationId = null, IReadOnlyDictionary<string, object> properties = null, 
-                string sourceContext = null);
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <param name="sourceContext">Source context</param>
+        /// <param name="exception">Associated exception (optional)</param>
+        /// <param name="properties">Structured properties</param>
+        /// <param name="channel">Specific channel for the log</param>
+        void Log(LogLevel level, string message, FixedString64Bytes correlationId = default, 
+            string sourceContext = null, Exception exception = null, 
+            IReadOnlyDictionary<string, object> properties = null, string channel = null);
 
+        // Hierarchical logging scopes with correlation tracking
         /// <summary>
-        /// Logs a message to a specific channel with the specified level (documented design method).
+        /// Begins a logging scope for hierarchical context tracking.
         /// </summary>
-        /// <param name="channel">The channel name</param>
-        /// <param name="level">The log level</param>
-        /// <param name="message">The message to log</param>
-        void LogToChannel(string channel, LogLevel level, string message);
+        /// <param name="scopeName">Name of the scope</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <param name="sourceContext">Source context</param>
+        /// <returns>Disposable logging scope</returns>
+        ILogScope BeginScope(string scopeName, FixedString64Bytes correlationId = default, 
+            string sourceContext = null);
 
+        // Target management with correlation tracking
         /// <summary>
         /// Registers a log target with the service.
         /// </summary>
         /// <param name="target">The log target to register</param>
-        /// <exception cref="ArgumentNullException">Thrown when target is null</exception>
-        void RegisterTarget(ILogTarget target);
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        void RegisterTarget(ILogTarget target, FixedString64Bytes correlationId = default);
 
         /// <summary>
         /// Unregisters a log target from the service.
         /// </summary>
-        /// <param name="target">The log target to unregister</param>
-        /// <returns>True if the target was unregistered, false if it was not found</returns>
-        bool UnregisterTarget(ILogTarget target);
-
-        /// <summary>
-        /// Unregisters a log target by name.
-        /// </summary>
-        /// <param name="targetName">The name of the target to unregister</param>
-        /// <returns>True if the target was unregistered, false if it was not found</returns>
-        bool UnregisterTarget(string targetName);
+        /// <param name="targetName">Name of the target to unregister</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>True if target was unregistered</returns>
+        bool UnregisterTarget(string targetName, FixedString64Bytes correlationId = default);
 
         /// <summary>
         /// Gets all registered log targets.
         /// </summary>
-        /// <returns>A read-only list of registered targets</returns>
-        IReadOnlyList<ILogTarget> GetRegisteredTargets();
+        /// <returns>Collection of registered targets</returns>
+        IReadOnlyCollection<ILogTarget> GetTargets();
 
         /// <summary>
-        /// Gets a registered log target by name.
+        /// Sets the minimum log level for filtering.
         /// </summary>
-        /// <param name="targetName">The name of the target to retrieve</param>
-        /// <returns>The log target if found, null otherwise</returns>
-        ILogTarget GetTarget(string targetName);
+        /// <param name="level">Minimum log level</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        void SetMinimumLevel(LogLevel level, FixedString64Bytes correlationId = default);
 
         /// <summary>
-        /// Determines whether a log target is registered.
+        /// Adds a log filter for advanced filtering.
         /// </summary>
-        /// <param name="targetName">The name of the target to check</param>
-        /// <returns>True if the target is registered, false otherwise</returns>
-        bool HasTarget(string targetName);
+        /// <param name="filter">Log filter to add</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        void AddFilter(ILogFilter filter, FixedString64Bytes correlationId = default);
 
         /// <summary>
-        /// Sets the minimum log level for all targets.
+        /// Removes a log filter.
         /// </summary>
-        /// <param name="minimumLevel">The minimum log level</param>
-        void SetMinimumLevel(LogLevel minimumLevel);
+        /// <param name="filterName">Name of filter to remove</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>True if filter was removed</returns>
+        bool RemoveFilter(string filterName, FixedString64Bytes correlationId = default);
 
         /// <summary>
-        /// Sets the minimum log level for a specific target.
+        /// Gets current logging statistics for monitoring.
         /// </summary>
-        /// <param name="targetName">The name of the target</param>
-        /// <param name="minimumLevel">The minimum log level</param>
-        /// <returns>True if the target was found and updated, false otherwise</returns>
-        bool SetMinimumLevel(string targetName, LogLevel minimumLevel);
+        /// <returns>Current logging statistics</returns>
+        LoggingStatistics GetStatistics();
 
         /// <summary>
-        /// Enables or disables all log targets.
+        /// Flushes all buffered log entries to targets.
         /// </summary>
-        /// <param name="enabled">True to enable all targets, false to disable</param>
-        void SetEnabled(bool enabled);
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>Task representing the flush operation</returns>
+        Task FlushAsync(FixedString64Bytes correlationId = default);
 
         /// <summary>
-        /// Enables or disables a specific log target.
+        /// Validates logging configuration and targets.
         /// </summary>
-        /// <param name="targetName">The name of the target</param>
-        /// <param name="enabled">True to enable the target, false to disable</param>
-        /// <returns>True if the target was found and updated, false otherwise</returns>
-        bool SetEnabled(string targetName, bool enabled);
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>Validation result</returns>
+        ValidationResult ValidateConfiguration(FixedString64Bytes correlationId = default);
 
         /// <summary>
-        /// Forces all log targets to flush their buffers.
+        /// Clears internal caches and performs maintenance.
         /// </summary>
-        void Flush();
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        void PerformMaintenance(FixedString64Bytes correlationId = default);
 
-        /// <summary>
-        /// Forces a specific log target to flush its buffer.
-        /// </summary>
-        /// <param name="targetName">The name of the target to flush</param>
-        /// <returns>True if the target was found and flushed, false otherwise</returns>
-        bool Flush(string targetName);
-
-        /// <summary>
-        /// Performs a health check on all registered targets.
-        /// </summary>
-        /// <returns>True if all targets are healthy, false if any target is unhealthy</returns>
-        bool PerformHealthCheck();
-
-        /// <summary>
-        /// Gets health status information for all registered targets.
-        /// </summary>
-        /// <returns>A dictionary containing health status for each target</returns>
-        IReadOnlyDictionary<string, bool> GetHealthStatus();
-
-        // Channel management methods (documented design)
+        // Channel management methods
         /// <summary>
         /// Registers a log channel with the service.
         /// </summary>
         /// <param name="channel">The log channel to register</param>
-        /// <exception cref="ArgumentNullException">Thrown when channel is null</exception>
-        void RegisterChannel(ILogChannel channel);
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        void RegisterChannel(ILogChannel channel, FixedString64Bytes correlationId = default);
 
         /// <summary>
         /// Unregisters a log channel from the service.
         /// </summary>
         /// <param name="channelName">The name of the channel to unregister</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
         /// <returns>True if the channel was unregistered, false if it was not found</returns>
-        bool UnregisterChannel(string channelName);
+        bool UnregisterChannel(string channelName, FixedString64Bytes correlationId = default);
 
         /// <summary>
         /// Gets all registered log channels.
         /// </summary>
-        /// <returns>A read-only list of registered channels</returns>
-        IReadOnlyList<ILogChannel> GetRegisteredChannels();
+        /// <returns>A read-only collection of registered channels</returns>
+        IReadOnlyCollection<ILogChannel> GetChannels();
 
         /// <summary>
         /// Gets a registered log channel by name.
@@ -335,36 +270,5 @@ namespace AhBearStudios.Core.Logging
         /// <param name="channelName">The name of the channel to check</param>
         /// <returns>True if the channel is registered, false otherwise</returns>
         bool HasChannel(string channelName);
-
-        // Scoped logging methods (documented design)
-        /// <summary>
-        /// Begins a new logging scope with the specified name.
-        /// </summary>
-        /// <param name="scopeName">The name of the scope</param>
-        /// <returns>A disposable log scope</returns>
-        ILogScope BeginScope(string scopeName);
-
-        /// <summary>
-        /// Begins a new logging scope with the specified name and correlation ID.
-        /// </summary>
-        /// <param name="scopeName">The name of the scope</param>
-        /// <param name="correlationId">The correlation ID for the scope</param>
-        /// <returns>A disposable log scope</returns>
-        ILogScope BeginScope(string scopeName, string correlationId);
-
-        /// <summary>
-        /// Begins a new logging scope with the specified name and properties.
-        /// </summary>
-        /// <param name="scopeName">The name of the scope</param>
-        /// <param name="properties">Properties to associate with the scope</param>
-        /// <returns>A disposable log scope</returns>
-        ILogScope BeginScope(string scopeName, IReadOnlyDictionary<string, object> properties);
-
-        // Statistics method (documented design)
-        /// <summary>
-        /// Gets performance statistics for the logging service.
-        /// </summary>
-        /// <returns>Performance statistics</returns>
-        LoggingStatistics GetStatistics();
     }
 }

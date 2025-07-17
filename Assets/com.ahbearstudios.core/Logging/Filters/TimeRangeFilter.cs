@@ -78,7 +78,10 @@ namespace AhBearStudios.Core.Logging.Filters
             
             _includeMode = includeMode;
             _timeZone = timeZone ?? TimeZoneInfo.Utc;
-            _statistics = new FilterStatistics();
+            var description = _timeRanges.Count > 0 
+                ? $"Ranges: {_timeRanges.Count} configured"
+                : "No ranges configured";
+            _statistics = FilterStatistics.ForCustom("TimeRange", description);
             
             _settings = new Dictionary<FixedString32Bytes, object>
             {

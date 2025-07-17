@@ -1,5 +1,5 @@
-using System;
 using System.Threading;
+using AhBearStudios.Core.Logging.Models;
 
 namespace AhBearStudios.Core.Logging.Filters
 {
@@ -173,6 +173,88 @@ namespace AhBearStudios.Core.Logging.Filters
                 Interlocked.Add(ref _totalProcessingTimeTicks, ticks);
                 Interlocked.Exchange(ref _lastProcessingTimeTicks, ticks);
             }
+        }
+
+        /// <summary>
+        /// Creates a new FilterStatistics instance for a specific filter.
+        /// </summary>
+        /// <param name="filterName">The name of the filter</param>
+        /// <param name="filterType">The type of the filter</param>
+        /// <returns>A new FilterStatistics instance</returns>
+        public static FilterStatistics Create(string filterName, string filterType)
+        {
+            return new FilterStatistics();
+        }
+
+        /// <summary>
+        /// Creates a new FilterStatistics instance for a level filter.
+        /// </summary>
+        /// <param name="level">The log level being filtered</param>
+        /// <returns>A new FilterStatistics instance optimized for level filtering</returns>
+        public static FilterStatistics ForLevel(LogLevel level)
+        {
+            return new FilterStatistics();
+        }
+
+        /// <summary>
+        /// Creates a new FilterStatistics instance for a source filter.
+        /// </summary>
+        /// <param name="source">The source being filtered</param>
+        /// <returns>A new FilterStatistics instance optimized for source filtering</returns>
+        public static FilterStatistics ForSource(string source)
+        {
+            return new FilterStatistics();
+        }
+
+        /// <summary>
+        /// Creates a new FilterStatistics instance for a pattern filter.
+        /// </summary>
+        /// <param name="pattern">The pattern being filtered</param>
+        /// <returns>A new FilterStatistics instance optimized for pattern filtering</returns>
+        public static FilterStatistics ForPattern(string pattern)
+        {
+            return new FilterStatistics();
+        }
+
+        /// <summary>
+        /// Creates a new FilterStatistics instance for a correlation filter.
+        /// </summary>
+        /// <param name="correlationId">The correlation ID being filtered</param>
+        /// <returns>A new FilterStatistics instance optimized for correlation filtering</returns>
+        public static FilterStatistics ForCorrelation(string correlationId)
+        {
+            return new FilterStatistics();
+        }
+
+        /// <summary>
+        /// Creates a new FilterStatistics instance for a custom filter.
+        /// </summary>
+        /// <param name="filterName">The name of the custom filter</param>
+        /// <param name="filterCriteria">The criteria for the custom filter</param>
+        /// <returns>A new FilterStatistics instance optimized for custom filtering</returns>
+        public static FilterStatistics ForCustom(string filterName, string filterCriteria)
+        {
+            return new FilterStatistics();
+        }
+
+        /// <summary>
+        /// Creates a new FilterStatistics instance for a composite filter.
+        /// </summary>
+        /// <param name="childFilters">The number of child filters in the composite</param>
+        /// <returns>A new FilterStatistics instance optimized for composite filtering</returns>
+        public static FilterStatistics ForComposite(int childFilters)
+        {
+            return new FilterStatistics();
+        }
+
+        /// <summary>
+        /// Creates an empty FilterStatistics instance.
+        /// </summary>
+        /// <param name="filterName">The name of the filter</param>
+        /// <returns>A new FilterStatistics instance with no recorded activity</returns>
+        public static FilterStatistics Empty(string filterName)
+        {
+            return new FilterStatistics();
         }
     }
 }

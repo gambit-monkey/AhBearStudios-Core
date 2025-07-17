@@ -154,6 +154,197 @@ namespace AhBearStudios.Core.Logging.Models
         }
 
         /// <summary>
+        /// Creates a new log context with the specified correlation ID.
+        /// </summary>
+        /// <param name="correlationId">The correlation ID</param>
+        /// <param name="operation">The operation name</param>
+        /// <param name="sourceContext">The source context</param>
+        /// <param name="properties">Additional contextual properties</param>
+        /// <returns>A new LogContext instance</returns>
+        public static LogContext Create(
+            string correlationId,
+            string operation,
+            string sourceContext = null,
+            IReadOnlyDictionary<string, object> properties = null)
+        {
+            return new LogContext(
+                correlationId: correlationId,
+                sourceContext: sourceContext,
+                operation: operation,
+                properties: properties);
+        }
+
+        /// <summary>
+        /// Creates a new log context for a specific scope operation.
+        /// </summary>
+        /// <param name="operation">The operation name</param>
+        /// <param name="correlationId">The correlation ID</param>
+        /// <param name="properties">Additional contextual properties</param>
+        /// <returns>A new LogContext instance optimized for scope operations</returns>
+        public static LogContext ForScope(
+            string operation,
+            string correlationId,
+            IReadOnlyDictionary<string, object> properties = null)
+        {
+            var scopeProperties = new Dictionary<string, object>
+            {
+                ["ContextType"] = "Scope",
+                ["ScopeOperation"] = operation,
+                ["ScopeStartTime"] = DateTime.UtcNow
+            };
+
+            if (properties != null)
+            {
+                foreach (var kvp in properties)
+                {
+                    scopeProperties[kvp.Key] = kvp.Value;
+                }
+            }
+
+            return new LogContext(
+                correlationId: correlationId,
+                sourceContext: "LogScope",
+                operation: operation,
+                properties: scopeProperties);
+        }
+
+        /// <summary>
+        /// Creates a new log context for a request operation.
+        /// </summary>
+        /// <param name="requestId">The request identifier</param>
+        /// <param name="operation">The operation name</param>
+        /// <param name="userId">Optional user identifier</param>
+        /// <param name="sessionId">Optional session identifier</param>
+        /// <returns>A new LogContext instance optimized for request tracking</returns>
+        public static LogContext ForRequest(
+            string requestId,
+            string operation,
+            string userId = null,
+            string sessionId = null)
+        {
+            var requestProperties = new Dictionary<string, object>
+            {
+                ["ContextType"] = "Request",
+                ["RequestStartTime"] = DateTime.UtcNow
+            };
+
+            if (!string.IsNullOrEmpty(userId))
+            {
+                requestProperties["UserId"] = userId;
+            }
+
+            if (!string.IsNullOrEmpty(sessionId))
+            {
+                requestProperties["SessionId"] = sessionId;
+            }
+
+            return new LogContext(
+                correlationId: requestId,
+                sourceContext: "Request",
+                operation: operation,
+                properties: requestProperties,
+                userId: userId,
+                sessionId: sessionId,
+                requestId: requestId);
+        }
+
+        /// <summary>
+        /// Creates a new log context for background operations.
+        /// </summary>
+        /// <param name="operation">The background operation name</param>
+        /// <param name="correlationId">Optional correlation ID</param>
+        /// <param name="properties">Additional contextual properties</param>
+        /// <returns>A new LogContext instance optimized for background operations</returns>
+        public static LogContext ForBackground(
+            string operation,
+            string correlationId = null,
+            IReadOnlyDictionary<string, object> properties = null)
+        {
+            var backgroundProperties = new Dictionary<string, object>
+            {
+                ["ContextType"] = "Background",
+                ["BackgroundOperation"] = operation,
+                ["BackgroundStartTime"] = DateTime.UtcNow,
+                ["ThreadId"] = Thread.CurrentThread.ManagedThreadId
+            };
+
+            if (properties != null)
+            {
+                foreach (var kvp in properties)
+                {
+                    backgroundProperties[kvp.Key] = kvp.Value;
+                }
+            }
+
+            return new LogContext(
+                correlationId: correlationId ?? Guid.NewGuid().ToString("N")[..8],
+                sourceContext: "Background",
+                operation: operation,
+                properties: backgroundProperties);
+        }
+
+        /// <summary>
+        /// Creates a new log context for service operations.
+        /// </summary>
+        /// <param name="serviceName">The service name</param>
+        /// <param name="operation">The operation name</param>
+        /// <param name="correlationId">Optional correlation ID</param>
+        /// <param name="properties">Additional contextual properties</param>
+        /// <returns>A new LogContext instance optimized for service operations</returns>
+        public static LogContext ForService(
+            string serviceName,
+            string operation,
+            string correlationId = null,
+            IReadOnlyDictionary<string, object> properties = null)
+        {
+            var serviceProperties = new Dictionary<string, object>
+            {
+                ["ContextType"] = "Service",
+                ["ServiceName"] = serviceName,
+                ["ServiceOperation"] = operation,
+                ["ServiceStartTime"] = DateTime.UtcNow
+            };
+
+            if (properties != null)
+            {
+                foreach (var kvp in properties)
+                {
+                    serviceProperties[kvp.Key] = kvp.Value;
+                }
+            }
+
+            return new LogContext(
+                correlationId: correlationId ?? Guid.NewGuid().ToString("N")[..8],
+                sourceContext: serviceName,
+                operation: operation,
+                properties: serviceProperties);
+        }
+
+        /// <summary>
+        /// Creates a new log context for health check operations.
+        /// </summary>
+        /// <param name="healthCheckName">The health check name</param>
+        /// <param name="correlationId">Optional correlation ID</param>
+        /// <returns>A new LogContext instance optimized for health check operations</returns>
+        public static LogContext ForHealthCheck(
+            string healthCheckName,
+            string correlationId = null)
+        {
+            var healthCheckProperties = new Dictionary<string, object>
+            {
+                ["ContextType"] = "HealthCheck",
+                ["HealthCheckName"] = healthCheckName,
+                ["HealthCheckStartTime"] = DateTime.UtcNow
+            };
+
+            return new LogContext(
+                correlationId: correlationId ?? Guid.NewGuid().ToString("N")[..8],
+                sourceContext: "HealthCheck",
+                operation: healthCheckName,
+                properties: healthCheckProperties);
+        }
+
+        /// <summary>
         /// Creates a new log context from a method call, automatically capturing the caller information.
         /// </summary>
         /// <param name="operation">The operation name</param>

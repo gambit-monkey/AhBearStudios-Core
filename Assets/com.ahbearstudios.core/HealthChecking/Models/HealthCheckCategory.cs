@@ -14,6 +14,16 @@ public enum HealthCheckCategory
     /// Database connectivity and performance checks
     /// </summary>
     Database,
+    
+    /// <summary>
+    /// Development Logging Service Health Check
+    /// </summary>
+    Development,
+    
+    /// <summary>
+    /// Testing Logging Service Health Check
+    /// </summary>
+    Testing,
 
     /// <summary>
     /// Network connectivity and latency checks

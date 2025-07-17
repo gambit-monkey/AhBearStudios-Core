@@ -68,7 +68,7 @@ namespace AhBearStudios.Core.Logging.Filters
             _minimumLevel = minimumLevel;
             _maximumLevel = maximumLevel;
             _includeMode = includeMode;
-            _statistics = new FilterStatistics();
+            _statistics = FilterStatistics.ForLevel(minimumLevel);
             _settings = new Dictionary<FixedString32Bytes, object>
             {
                 ["MinimumLevel"] = minimumLevel,

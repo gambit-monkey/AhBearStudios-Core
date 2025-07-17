@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.Collections;
 
 namespace AhBearStudios.Core.Logging.Models
 {
@@ -10,54 +11,67 @@ namespace AhBearStudios.Core.Logging.Models
     public interface ILogScope : IDisposable
     {
         /// <summary>
-        /// Gets the unique identifier for this scope.
+        /// Scope name for identification.
         /// </summary>
-        string ScopeId { get; }
+        FixedString64Bytes Name { get; }
 
         /// <summary>
-        /// Gets the name of this scope.
+        /// Correlation ID for this scope.
         /// </summary>
-        string ScopeName { get; }
+        FixedString64Bytes CorrelationId { get; }
 
         /// <summary>
-        /// Gets the correlation ID associated with this scope.
+        /// Source context for this scope.
         /// </summary>
-        string CorrelationId { get; }
+        string SourceContext { get; }
 
         /// <summary>
-        /// Gets the timestamp when this scope was created.
+        /// Elapsed time since scope creation.
         /// </summary>
-        DateTime CreatedAt { get; }
+        TimeSpan Elapsed { get; }
 
         /// <summary>
-        /// Gets the properties associated with this scope.
-        /// </summary>
-        IReadOnlyDictionary<string, object> Properties { get; }
-
-        /// <summary>
-        /// Gets the parent scope, if any.
-        /// </summary>
-        ILogScope Parent { get; }
-
-        /// <summary>
-        /// Gets whether this scope is still active.
+        /// Whether the scope is currently active.
         /// </summary>
         bool IsActive { get; }
 
         /// <summary>
-        /// Adds a property to this scope.
+        /// Parent scope (if any).
         /// </summary>
-        /// <param name="key">The property key</param>
-        /// <param name="value">The property value</param>
-        /// <returns>This scope for method chaining</returns>
-        ILogScope WithProperty(string key, object value);
+        ILogScope Parent { get; }
 
         /// <summary>
-        /// Sets the correlation ID for this scope.
+        /// Child scopes created within this scope.
         /// </summary>
-        /// <param name="correlationId">The correlation ID</param>
-        /// <returns>This scope for method chaining</returns>
-        ILogScope WithCorrelationId(string correlationId);
+        IReadOnlyCollection<ILogScope> Children { get; }
+
+        /// <summary>
+        /// Creates a child scope within this scope.
+        /// </summary>
+        /// <param name="childName">Name of the child scope</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>Child logging scope</returns>
+        ILogScope BeginChild(string childName, FixedString64Bytes correlationId = default);
+
+        /// <summary>
+        /// Adds a property to this scope's context.
+        /// </summary>
+        /// <param name="key">Property key</param>
+        /// <param name="value">Property value</param>
+        void SetProperty(string key, object value);
+
+        /// <summary>
+        /// Gets a property from this scope's context.
+        /// </summary>
+        /// <param name="key">Property key</param>
+        /// <returns>Property value or null if not found</returns>
+        object GetProperty(string key);
+
+        /// <summary>
+        /// Gets all properties in this scope's context.
+        /// </summary>
+        /// <returns>Read-only dictionary of properties</returns>
+        IReadOnlyDictionary<string, object> GetAllProperties();
 
         /// <summary>
         /// Logs a debug message within this scope.

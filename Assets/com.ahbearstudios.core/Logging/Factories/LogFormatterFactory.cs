@@ -70,7 +70,7 @@ namespace AhBearStudios.Core.Logging.Factories
             }
             catch (Exception ex)
             {
-                _loggingService?.LogException(ex, $"Failed to create log formatter '{config.Name}' of type '{config.FormatterType}'");
+                _loggingService?.LogException($"Failed to create log formatter '{config.Name}' of type '{config.FormatterType}'", ex);
                 throw new InvalidOperationException($"Failed to create log formatter '{config.Name}' of type '{config.FormatterType}'", ex);
             }
         }
@@ -102,7 +102,7 @@ namespace AhBearStudios.Core.Logging.Factories
             }
             catch (Exception ex)
             {
-                _loggingService?.LogException(ex, $"Failed to create log formatter of type '{formatterType}'");
+                _loggingService?.LogException($"Failed to create log formatter of type '{formatterType}'", ex);
                 throw new InvalidOperationException($"Failed to create log formatter of type '{formatterType}'", ex);
             }
         }
@@ -138,7 +138,7 @@ namespace AhBearStudios.Core.Logging.Factories
                 }
                 catch (Exception ex)
                 {
-                    _loggingService?.LogException(ex, $"Failed to create formatter from config: {config?.Name ?? "Unknown"}");
+                    _loggingService?.LogException($"Failed to create formatter from config: {config?.Name ?? "Unknown"}", ex);
                     
                     // Continue creating other formatters even if one fails
                     // This provides graceful degradation
@@ -165,7 +165,7 @@ namespace AhBearStudios.Core.Logging.Factories
                 }
                 catch (Exception ex)
                 {
-                    _loggingService?.LogException(ex, $"Failed to create formatter of type: {formatterType}");
+                    _loggingService?.LogException($"Failed to create formatter of type: {formatterType}", ex);
                     
                     // Continue creating other formatters even if one fails
                     // This provides graceful degradation

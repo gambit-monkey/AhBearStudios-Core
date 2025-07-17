@@ -208,7 +208,7 @@ namespace AhBearStudios.Core.Logging.Services
         /// <param name="nativeLogMessages">The native array of native log messages</param>
         /// <returns>The number of messages successfully enqueued</returns>
         [BurstCompile]
-        public int EnqueueNativeMessages(NativeArray<NativeLogMessage> nativeLogMessages)
+        public int EnqueueNativeMessages(NativeArray<LogMessage> nativeLogMessages)
         {
             if (_disposed || !nativeLogMessages.IsCreated) return 0;
 
@@ -230,12 +230,12 @@ namespace AhBearStudios.Core.Logging.Services
         /// <param name="nativeLogMessage">The native log message to enqueue</param>
         /// <returns>True if the message was enqueued successfully, false if the queue is full</returns>
         [BurstCompile]
-        public bool EnqueueNativeMessage(in NativeLogMessage nativeLogMessage)
+        public bool EnqueueNativeMessage(in LogMessage nativeLogMessage)
         {
             if (_disposed || !_messageQueue.IsCreated) return false;
 
             // Convert NativeLogMessage to LogMessage for compatibility
-            var logMessage = nativeLogMessage.ToLogMessage();
+            var logMessage = nativeLogMessage;
             return EnqueueMessage(logMessage);
         }
 

@@ -112,7 +112,7 @@ namespace AhBearStudios.Core.Logging.Filters
             _caseSensitive = caseSensitive;
             _useRegex = useRegex;
             _allowEmptyCorrelationIds = allowEmptyCorrelationIds;
-            _statistics = new FilterStatistics();
+            _statistics = FilterStatistics.ForCorrelation(correlationIdPatterns.FirstOrDefault());
             
             _settings = new Dictionary<FixedString32Bytes, object>
             {

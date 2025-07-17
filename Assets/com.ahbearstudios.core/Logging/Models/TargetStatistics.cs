@@ -382,6 +382,207 @@ namespace AhBearStudios.Core.Logging.Models
         }
 
         /// <summary>
+        /// Creates a new TargetStatistics instance for a specific target.
+        /// </summary>
+        /// <param name="targetName">The target name</param>
+        /// <param name="targetType">The target type</param>
+        /// <param name="messagesProcessed">Number of messages processed</param>
+        /// <param name="messagesWritten">Number of messages written successfully</param>
+        /// <param name="messagesFailed">Number of messages that failed</param>
+        /// <returns>A new TargetStatistics instance</returns>
+        public static TargetStatistics Create(
+            string targetName,
+            string targetType,
+            long messagesProcessed = 0,
+            long messagesWritten = 0,
+            long messagesFailed = 0)
+        {
+            var successRate = messagesProcessed > 0 ? (double)messagesWritten / messagesProcessed : 1.0;
+            var errorRate = messagesProcessed > 0 ? (double)messagesFailed / messagesProcessed : 0.0;
+
+            return new TargetStatistics(
+                targetName: targetName,
+                targetType: targetType,
+                messagesProcessed: messagesProcessed,
+                messagesWritten: messagesWritten,
+                messagesFailed: messagesFailed,
+                successRate: successRate,
+                errorRate: errorRate);
+        }
+
+        /// <summary>
+        /// Creates a new TargetStatistics instance for a file target.
+        /// </summary>
+        /// <param name="fileName">The file name</param>
+        /// <param name="bytesWritten">Number of bytes written</param>
+        /// <param name="flushOperations">Number of flush operations</param>
+        /// <returns>A new TargetStatistics instance optimized for file targets</returns>
+        public static TargetStatistics ForFile(
+            string fileName,
+            long bytesWritten = 0,
+            long flushOperations = 0)
+        {
+            var fileProperties = new Dictionary<string, object>
+            {
+                ["TargetType"] = "File",
+                ["FileName"] = fileName,
+                ["FileSize"] = bytesWritten
+            };
+
+            return new TargetStatistics(
+                targetName: fileName,
+                targetType: "File",
+                bytesWritten: bytesWritten,
+                flushOperations: flushOperations,
+                customMetrics: fileProperties);
+        }
+
+        /// <summary>
+        /// Creates a new TargetStatistics instance for a memory target.
+        /// </summary>
+        /// <param name="capacity">The memory capacity</param>
+        /// <param name="currentMemoryUsage">Current memory usage</param>
+        /// <param name="peakMemoryUsage">Peak memory usage</param>
+        /// <returns>A new TargetStatistics instance optimized for memory targets</returns>
+        public static TargetStatistics ForMemory(
+            int capacity,
+            long currentMemoryUsage = 0,
+            long peakMemoryUsage = 0)
+        {
+            var memoryProperties = new Dictionary<string, object>
+            {
+                ["TargetType"] = "Memory",
+                ["Capacity"] = capacity,
+                ["MemoryPressure"] = currentMemoryUsage / (double)capacity
+            };
+
+            return new TargetStatistics(
+                targetName: "Memory",
+                targetType: "Memory",
+                queueCapacity: capacity,
+                currentMemoryUsageBytes: currentMemoryUsage,
+                peakMemoryUsageBytes: peakMemoryUsage,
+                queueUtilization: capacity > 0 ? currentMemoryUsage / (double)capacity : 0.0,
+                customMetrics: memoryProperties);
+        }
+
+        /// <summary>
+        /// Creates a new TargetStatistics instance for a console target.
+        /// </summary>
+        /// <param name="messagesWritten">Number of messages written to console</param>
+        /// <param name="averageProcessingTime">Average processing time in milliseconds</param>
+        /// <returns>A new TargetStatistics instance optimized for console targets</returns>
+        public static TargetStatistics ForConsole(
+            long messagesWritten = 0,
+            double averageProcessingTime = 0.0)
+        {
+            var consoleProperties = new Dictionary<string, object>
+            {
+                ["TargetType"] = "Console",
+                ["ConsoleOutput"] = "StandardOut",
+                ["Buffered"] = false
+            };
+
+            return new TargetStatistics(
+                targetName: "Console",
+                targetType: "Console",
+                messagesProcessed: messagesWritten,
+                messagesWritten: messagesWritten,
+                averageProcessingTimeMs: averageProcessingTime,
+                successRate: 1.0,
+                errorRate: 0.0,
+                customMetrics: consoleProperties);
+        }
+
+        /// <summary>
+        /// Creates a new TargetStatistics instance for a null target.
+        /// </summary>
+        /// <param name="messagesProcessed">Number of messages processed</param>
+        /// <returns>A new TargetStatistics instance optimized for null targets</returns>
+        public static TargetStatistics ForNull(long messagesProcessed = 0)
+        {
+            var nullProperties = new Dictionary<string, object>
+            {
+                ["TargetType"] = "Null",
+                ["Discarded"] = true,
+                ["NoIO"] = true
+            };
+
+            return new TargetStatistics(
+                targetName: "Null",
+                targetType: "Null",
+                messagesProcessed: messagesProcessed,
+                messagesWritten: messagesProcessed,
+                averageProcessingTimeMs: 0.0,
+                successRate: 1.0,
+                errorRate: 0.0,
+                customMetrics: nullProperties);
+        }
+
+        /// <summary>
+        /// Creates a new TargetStatistics instance for a network target.
+        /// </summary>
+        /// <param name="endpoint">The network endpoint</param>
+        /// <param name="bytesWritten">Number of bytes sent</param>
+        /// <param name="retryAttempts">Number of retry attempts</param>
+        /// <param name="averageProcessingTime">Average processing time in milliseconds</param>
+        /// <returns>A new TargetStatistics instance optimized for network targets</returns>
+        public static TargetStatistics ForNetwork(
+            string endpoint,
+            long bytesWritten = 0,
+            long retryAttempts = 0,
+            double averageProcessingTime = 0.0)
+        {
+            var networkProperties = new Dictionary<string, object>
+            {
+                ["TargetType"] = "Network",
+                ["Endpoint"] = endpoint,
+                ["Protocol"] = "TCP",
+                ["Retries"] = retryAttempts
+            };
+
+            return new TargetStatistics(
+                targetName: endpoint,
+                targetType: "Network",
+                bytesWritten: bytesWritten,
+                retryAttempts: retryAttempts,
+                averageProcessingTimeMs: averageProcessingTime,
+                customMetrics: networkProperties);
+        }
+
+        /// <summary>
+        /// Creates a new TargetStatistics instance for a database target.
+        /// </summary>
+        /// <param name="connectionString">The database connection string (masked)</param>
+        /// <param name="messagesWritten">Number of messages written to database</param>
+        /// <param name="averageProcessingTime">Average processing time in milliseconds</param>
+        /// <param name="retryAttempts">Number of retry attempts</param>
+        /// <returns>A new TargetStatistics instance optimized for database targets</returns>
+        public static TargetStatistics ForDatabase(
+            string connectionString,
+            long messagesWritten = 0,
+            double averageProcessingTime = 0.0,
+            long retryAttempts = 0)
+        {
+            var databaseProperties = new Dictionary<string, object>
+            {
+                ["TargetType"] = "Database",
+                ["ConnectionString"] = connectionString,
+                ["Transactional"] = true,
+                ["Retries"] = retryAttempts
+            };
+
+            return new TargetStatistics(
+                targetName: "Database",
+                targetType: "Database",
+                messagesProcessed: messagesWritten,
+                messagesWritten: messagesWritten,
+                averageProcessingTimeMs: averageProcessingTime,
+                retryAttempts: retryAttempts,
+                customMetrics: databaseProperties);
+        }
+
+        /// <summary>
         /// Gets the queue utilization percentage as a formatted string.
         /// </summary>
         /// <returns>Queue utilization as a percentage string</returns>

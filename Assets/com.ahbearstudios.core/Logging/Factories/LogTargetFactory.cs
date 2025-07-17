@@ -55,7 +55,7 @@ namespace AhBearStudios.Core.Logging.Factories
             }
             catch (Exception ex)
             {
-                _loggingService?.LogException(ex, $"Failed to create log target '{config.Name}' of type '{config.TargetType}'");
+                _loggingService?.LogException($"Failed to create log target '{config.Name}' of type '{config.TargetType}'", ex);
                 throw new InvalidOperationException($"Failed to create log target '{config.Name}' of type '{config.TargetType}'", ex);
             }
         }
@@ -77,7 +77,7 @@ namespace AhBearStudios.Core.Logging.Factories
                 }
                 catch (Exception ex)
                 {
-                    _loggingService?.LogException(ex, $"Failed to create target from config: {config?.Name ?? "Unknown"}");
+                    _loggingService?.LogException($"Failed to create target from config: {config?.Name ?? "Unknown"}", ex);
                     
                     // Continue creating other targets even if one fails
                     // This provides graceful degradation

@@ -90,7 +90,7 @@ namespace AhBearStudios.Core.Logging.Filters
             _caseSensitive = caseSensitive;
             _useRegex = useRegex;
             _useWildcards = useWildcards;
-            _statistics = new FilterStatistics();
+            _statistics = FilterStatistics.ForPattern(name ?? "PatternFilter");
             
             _settings = new Dictionary<FixedString32Bytes, object>
             {

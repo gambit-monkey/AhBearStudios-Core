@@ -30,5 +30,26 @@
         /// Type code for alert messages.
         /// </summary>
         public const ushort Alert = 1004;
+        
+        // Logging System Message Type Codes (1100-1199)
+        /// <summary>
+        /// Type code for log target error messages.
+        /// </summary>
+        public const ushort LogTargetError = 1100;
+        
+        /// <summary>
+        /// Type code for log scope completed messages.
+        /// </summary>
+        public const ushort LogScopeCompleted = 1101;
+        
+        /// <summary>
+        /// Type code for logging system health messages.
+        /// </summary>
+        public const ushort LoggingSystemHealth = 1102;
+        
+        /// <summary>
+        /// Type code for log configuration changed messages.
+        /// </summary>
+        public const ushort LogConfigurationChanged = 1103;
     }
 }

@@ -80,7 +80,7 @@ namespace AhBearStudios.Core.Logging.Filters
             
             _samplingRate = Math.Max(0.0, Math.Min(1.0, samplingRate));
             _strategy = strategy;
-            _statistics = new FilterStatistics();
+            _statistics = FilterStatistics.ForCustom("Sampling", $"Sample: {_samplingRate:P1}");
             _random = new Random();
             
             _settings = new Dictionary<FixedString32Bytes, object>

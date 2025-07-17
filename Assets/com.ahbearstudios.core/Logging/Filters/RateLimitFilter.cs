@@ -89,7 +89,8 @@ namespace AhBearStudios.Core.Logging.Filters
             _rateLimit = Math.Max(0, rateLimit);
             _rateLimitWindow = Math.Max(1, rateLimitWindow);
             _strategy = strategy;
-            _statistics = new FilterStatistics();
+            var eventsPerSecond = _rateLimitWindow > 0 ? (double)_rateLimit / _rateLimitWindow : 0; 
+            _statistics = FilterStatistics.ForCustom("RateLimit", $"Rate: {eventsPerSecond:F1}/sec"); 
             
             _settings = new Dictionary<FixedString32Bytes, object>
             {

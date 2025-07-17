@@ -101,7 +101,7 @@ namespace AhBearStudios.Core.Logging.Filters
             _caseSensitive = caseSensitive;
             _useRegex = useRegex;
             _hierarchicalMatch = hierarchicalMatch;
-            _statistics = new FilterStatistics();
+            _statistics = FilterStatistics.ForSource(_sources.FirstOrDefault());
             
             _settings = new Dictionary<FixedString32Bytes, object>
             {

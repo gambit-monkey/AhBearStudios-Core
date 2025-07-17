@@ -31,44 +31,91 @@ AhBearStudios.Core.Logging/
 ├── LoggingService.cs                     # Service implementation
 ├── Configs/
 │   ├── LoggingConfig.cs                  # Logging configuration record
-│   ├── TargetConfig.cs                   # Target-specific settings record
+│   ├── ILogTargetConfig.cs               # Target configuration interface
+│   ├── LogTargetConfig.cs                # Target-specific settings record
+│   ├── LogChannelConfig.cs               # Channel configuration record
 │   ├── FilterConfig.cs                   # Filtering configuration record
-│   └── FormatterConfig.cs               # Output formatter configuration
+│   └── FormatterConfig.cs                # Output formatter configuration
 ├── Builders/
-│   ├── ILoggingConfigBuilder.cs          # Configuration builder interface
-│   └── LoggingConfigBuilder.cs           # Builder implementation
+│   ├── ILogConfigBuilder.cs              # Main configuration builder interface
+│   ├── LogConfigBuilder.cs               # Main builder implementation
+│   ├── ILogTargetConfigBuilder.cs        # Target configuration builder interface
+│   ├── LogTargetConfigBuilder.cs         # Target builder implementation
+│   ├── FilterConfigBuilder.cs            # Filter builder implementation
+│   └── FormatterConfigBuilder.cs         # Formatter builder implementation
 ├── Factories/
+│   ├── ILoggingServiceFactory.cs         # Service factory interface
+│   ├── LoggingServiceFactory.cs          # Service factory implementation
 │   ├── ILogTargetFactory.cs              # Target creation interface
 │   ├── LogTargetFactory.cs               # Target factory implementation
-│   └── FormatterFactory.cs               # Formatter factory implementation
+│   ├── ILogFormatterFactory.cs           # Formatter creation interface
+│   ├── LogFormatterFactory.cs            # Formatter factory implementation
+│   ├── ILogFilterFactory.cs              # Filter creation interface
+│   └── LogFilterFactory.cs               # Filter factory implementation
 ├── Services/
 │   ├── LogContextService.cs              # Context management service
 │   ├── LogFilterService.cs               # Log filtering service
 │   ├── LogBufferService.cs               # Buffering and batching service
-│   └── LogCorrelationService.cs          # Correlation ID management
+│   ├── LogCorrelationService.cs          # Correlation ID management
+│   ├── ILogCorrelationService.cs         # Correlation service interface
+│   ├── ILogBatchingService.cs            # Batching service interface
+│   ├── LogBatchingService.cs             # Batching service implementation
+│   ├── ILogFormattingService.cs          # Formatting service interface
+│   └── LogFormattingService.cs           # Formatting service implementation
 ├── Targets/
 │   ├── ILogTarget.cs                     # Log target interface
 │   ├── ConsoleLogTarget.cs               # Console output target
 │   ├── FileLogTarget.cs                  # File output target
-│   ├── DatabaseLogTarget.cs              # Database output target
-│   ├── RemoteLogTarget.cs                # Remote service target
-│   └── UnityLogTarget.cs                 # Unity console integration
+│   ├── MemoryLogTarget.cs                # In-memory log storage target
+│   ├── SerilogTarget.cs                  # Serilog integration target
+│   └── NullLogTarget.cs                  # Null target for testing
 ├── Formatters/
 │   ├── ILogFormatter.cs                  # Log formatter interface
-│   ├── JsonLogFormatter.cs               # JSON output formatter
+│   ├── JsonFormatter.cs                  # JSON output formatter
 │   ├── PlainTextFormatter.cs             # Plain text formatter
-│   └── StructuredFormatter.cs            # Structured data formatter
+│   ├── StructuredFormatter.cs            # Structured data formatter
+│   ├── BinaryFormatter.cs                # Binary format for efficiency
+│   ├── CefFormatter.cs                   # Common Event Format
+│   ├── CsvFormatter.cs                   # CSV format for data analysis
+│   ├── GelfFormatter.cs                  # Graylog Extended Log Format
+│   ├── KeyValueFormatter.cs              # Key-value pair format
+│   ├── MessagePackFormatter.cs           # MessagePack binary format
+│   ├── ProtobufFormatter.cs              # Protocol Buffers format
+│   ├── SyslogFormatter.cs                # Syslog RFC format
+│   └── XmlFormatter.cs                   # XML format for enterprise
 ├── Models/
 │   ├── LogEntry.cs                       # Log entry record
 │   ├── LogContext.cs                     # Logging context record
 │   ├── LogLevel.cs                       # Log level enumeration
-│   ├── LogStatistics.cs                  # Logging statistics record
-│   └── CorrelationInfo.cs                # Correlation tracking record
+│   ├── LogMessage.cs                     # Log message model
+│   ├── LogScope.cs                       # Scope implementation
+│   ├── ILogScope.cs                      # Scope interface
+│   ├── LoggingStatistics.cs              # Logging statistics record
+│   ├── TargetStatistics.cs               # Target-specific statistics
+│   ├── CorrelationInfo.cs                # Correlation tracking record
+│   ├── ILogChannel.cs                    # Channel interface
+│   ├── LogChannel.cs                     # Channel implementation
+│   ├── LogFormat.cs                      # Format enumeration
+│   ├── LogTemplate.cs                    # Message templates
+│   ├── LogTargetDefaults.cs              # Default target configurations
+│   ├── LoggingScenario.cs                # Scenario configurations
+│   ├── PerformanceProfile.cs             # Performance profiling data
+│   └── ValidationResult.cs               # Configuration validation results
 ├── Filters/
 │   ├── ILogFilter.cs                     # Log filter interface
 │   ├── LevelFilter.cs                    # Level-based filtering
 │   ├── SourceFilter.cs                   # Source-based filtering
-│   └── CorrelationFilter.cs              # Correlation-based filtering
+│   ├── CorrelationFilter.cs              # Correlation-based filtering
+│   ├── PatternFilter.cs                  # Pattern/regex filtering
+│   ├── RateLimitFilter.cs                # Rate limiting filter
+│   ├── SamplingFilter.cs                 # Statistical sampling filter
+│   ├── TimeRangeFilter.cs                # Time-based filtering
+│   └── FilterStatistics.cs               # Filter performance stats
+├── Messages/
+│   ├── LogConfigurationChangedMessage.cs  # Configuration change events
+│   ├── LogScopeCompletedMessage.cs        # Scope completion events
+│   ├── LogTargetErrorMessage.cs           # Target error notifications
+│   └── LoggingSystemHealthMessage.cs      # Health status messages
 └── HealthChecks/
     └── LoggingServiceHealthCheck.cs      # Health monitoring
 
@@ -76,10 +123,10 @@ AhBearStudios.Unity.Logging/
 ├── Installers/
 │   └── LoggingInstaller.cs               # Reflex bootstrap installer
 ├── Targets/
-│   ├── UnityConsoleTarget.cs             # Unity console output
-│   └── UnityFileTarget.cs                # Unity persistent file logging
-└── ScriptableObjects/
-    └── LoggingConfigAsset.cs             # Unity configuration asset
+│   └── UnityConsoleLogTarget.cs          # Unity console output
+├── Configs/
+│   └── LoggingConfig.cs                  # Unity-specific configuration
+└── UnityLoggingBehaviour.cs              # Unity MonoBehaviour integration
 ```
 ## 🔌 Key Interfaces
 
@@ -88,16 +135,35 @@ AhBearStudios.Unity.Logging/
 The primary interface for all logging operations with comprehensive correlation tracking.
 
 ```csharp
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using Unity.Collections;
-using AhBearStudios.Core.HealthCheck;
-using AhBearStudios.Core.Alerts;
+using AhBearStudios.Core.Logging.Configs;
+using AhBearStudios.Core.Logging.Models;
+using AhBearStudios.Core.Logging.Targets;
+using AhBearStudios.Core.Logging.Filters;
 
 /// <summary>
 /// Primary logging service interface providing centralized logging
 /// with correlation tracking and comprehensive system integration.
+/// Follows the AhBearStudios Core Architecture foundation system pattern.
+/// Designed for Unity game development with Job System and Burst compatibility.
 /// </summary>
 public interface ILoggingService : IDisposable
 {
+    // Configuration and runtime state properties
+    /// <summary>
+    /// Gets the current configuration of the logging service.
+    /// </summary>
+    LoggingConfig Configuration { get; }
+
+    /// <summary>
+    /// Gets whether the logging service is enabled.
+    /// </summary>
+    bool IsEnabled { get; }
+
+    // Core logging methods with Unity.Collections v2 correlation tracking
     /// <summary>
     /// Logs a debug message with correlation tracking.
     /// </summary>
@@ -111,68 +177,72 @@ public interface ILoggingService : IDisposable
     /// <summary>
     /// Logs an informational message with correlation tracking.
     /// </summary>
-    /// <param name="message">The message to log</param>
-    /// <param name="correlationId">Correlation ID for tracking</param>
-    /// <param name="sourceContext">Source context (typically class name)</param>
-    /// <param name="properties">Additional structured properties</param>
     void LogInfo(string message, FixedString64Bytes correlationId = default, 
         string sourceContext = null, IReadOnlyDictionary<string, object> properties = null);
 
     /// <summary>
     /// Logs a warning message with correlation tracking.
     /// </summary>
-    /// <param name="message">The message to log</param>
-    /// <param name="correlationId">Correlation ID for tracking</param>
-    /// <param name="sourceContext">Source context (typically class name)</param>
-    /// <param name="properties">Additional structured properties</param>
     void LogWarning(string message, FixedString64Bytes correlationId = default, 
         string sourceContext = null, IReadOnlyDictionary<string, object> properties = null);
 
     /// <summary>
     /// Logs an error message with correlation tracking.
     /// </summary>
-    /// <param name="message">The message to log</param>
-    /// <param name="correlationId">Correlation ID for tracking</param>
-    /// <param name="sourceContext">Source context (typically class name)</param>
-    /// <param name="properties">Additional structured properties</param>
     void LogError(string message, FixedString64Bytes correlationId = default, 
         string sourceContext = null, IReadOnlyDictionary<string, object> properties = null);
 
     /// <summary>
     /// Logs a critical message with correlation tracking and automatic alerting.
     /// </summary>
-    /// <param name="message">The message to log</param>
-    /// <param name="correlationId">Correlation ID for tracking</param>
-    /// <param name="sourceContext">Source context (typically class name)</param>
-    /// <param name="properties">Additional structured properties</param>
     void LogCritical(string message, FixedString64Bytes correlationId = default, 
         string sourceContext = null, IReadOnlyDictionary<string, object> properties = null);
+
+    // Unity Job System and Burst-compatible logging methods
+    /// <summary>
+    /// Logs a debug message with structured data using generic type constraints for Burst compatibility.
+    /// Designed for use within Unity Job System contexts.
+    /// </summary>
+    /// <typeparam name="T">The type of structured data (must be unmanaged for Burst compatibility)</typeparam>
+    /// <param name="message">The message to log</param>
+    /// <param name="data">The structured data to log</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    void LogDebug<T>(string message, T data, FixedString64Bytes correlationId = default) where T : unmanaged;
+
+    /// <summary>
+    /// Logs an informational message with structured data for Burst compatibility.
+    /// </summary>
+    void LogInfo<T>(string message, T data, FixedString64Bytes correlationId = default) where T : unmanaged;
+
+    /// <summary>
+    /// Logs a warning message with structured data for Burst compatibility.
+    /// </summary>
+    void LogWarning<T>(string message, T data, FixedString64Bytes correlationId = default) where T : unmanaged;
+
+    /// <summary>
+    /// Logs an error message with structured data for Burst compatibility.
+    /// </summary>
+    void LogError<T>(string message, T data, FixedString64Bytes correlationId = default) where T : unmanaged;
+
+    /// <summary>
+    /// Logs a critical message with structured data for Burst compatibility.
+    /// </summary>
+    void LogCritical<T>(string message, T data, FixedString64Bytes correlationId = default) where T : unmanaged;
 
     /// <summary>
     /// Logs an exception with context and correlation tracking.
     /// </summary>
-    /// <param name="message">Context message for the exception</param>
-    /// <param name="exception">The exception to log</param>
-    /// <param name="correlationId">Correlation ID for tracking</param>
-    /// <param name="sourceContext">Source context (typically class name)</param>
-    /// <param name="properties">Additional structured properties</param>
     void LogException(string message, Exception exception, FixedString64Bytes correlationId = default, 
         string sourceContext = null, IReadOnlyDictionary<string, object> properties = null);
 
     /// <summary>
     /// Logs a message with the specified level and full context.
     /// </summary>
-    /// <param name="level">The log level</param>
-    /// <param name="message">The message to log</param>
-    /// <param name="correlationId">Correlation ID for tracking</param>
-    /// <param name="sourceContext">Source context</param>
-    /// <param name="exception">Associated exception (optional)</param>
-    /// <param name="properties">Structured properties</param>
-    /// <param name="channel">Specific channel for the log</param>
     void Log(LogLevel level, string message, FixedString64Bytes correlationId = default, 
         string sourceContext = null, Exception exception = null, 
         IReadOnlyDictionary<string, object> properties = null, string channel = null);
 
+    // Hierarchical logging scopes with correlation tracking
     /// <summary>
     /// Begins a logging scope for hierarchical context tracking.
     /// </summary>
@@ -180,166 +250,175 @@ public interface ILoggingService : IDisposable
     /// <param name="correlationId">Correlation ID for tracking</param>
     /// <param name="sourceContext">Source context</param>
     /// <returns>Disposable logging scope</returns>
-    ILoggingScope BeginScope(string scopeName, FixedString64Bytes correlationId = default, 
+    ILogScope BeginScope(string scopeName, FixedString64Bytes correlationId = default, 
         string sourceContext = null);
 
+    // Target management with correlation tracking
     /// <summary>
     /// Registers a log target with the service.
     /// </summary>
-    /// <param name="target">The log target to register</param>
-    /// <param name="correlationId">Correlation ID for tracking</param>
     void RegisterTarget(ILogTarget target, FixedString64Bytes correlationId = default);
 
     /// <summary>
     /// Unregisters a log target from the service.
     /// </summary>
-    /// <param name="targetName">Name of the target to unregister</param>
-    /// <param name="correlationId">Correlation ID for tracking</param>
-    /// <returns>True if target was unregistered</returns>
     bool UnregisterTarget(string targetName, FixedString64Bytes correlationId = default);
 
     /// <summary>
     /// Gets all registered log targets.
     /// </summary>
-    /// <returns>Collection of registered targets</returns>
     IReadOnlyCollection<ILogTarget> GetTargets();
 
     /// <summary>
     /// Sets the minimum log level for filtering.
     /// </summary>
-    /// <param name="level">Minimum log level</param>
-    /// <param name="correlationId">Correlation ID for tracking</param>
     void SetMinimumLevel(LogLevel level, FixedString64Bytes correlationId = default);
 
     /// <summary>
     /// Adds a log filter for advanced filtering.
     /// </summary>
-    /// <param name="filter">Log filter to add</param>
-    /// <param name="correlationId">Correlation ID for tracking</param>
     void AddFilter(ILogFilter filter, FixedString64Bytes correlationId = default);
 
     /// <summary>
     /// Removes a log filter.
     /// </summary>
-    /// <param name="filterName">Name of filter to remove</param>
-    /// <param name="correlationId">Correlation ID for tracking</param>
-    /// <returns>True if filter was removed</returns>
     bool RemoveFilter(string filterName, FixedString64Bytes correlationId = default);
 
     /// <summary>
     /// Gets current logging statistics for monitoring.
     /// </summary>
-    /// <returns>Current logging statistics</returns>
     LoggingStatistics GetStatistics();
 
     /// <summary>
     /// Flushes all buffered log entries to targets.
     /// </summary>
-    /// <param name="correlationId">Correlation ID for tracking</param>
-    /// <returns>Task representing the flush operation</returns>
     Task FlushAsync(FixedString64Bytes correlationId = default);
 
     /// <summary>
     /// Validates logging configuration and targets.
     /// </summary>
-    /// <param name="correlationId">Correlation ID for tracking</param>
-    /// <returns>Validation result</returns>
     ValidationResult ValidateConfiguration(FixedString64Bytes correlationId = default);
 
     /// <summary>
     /// Clears internal caches and performs maintenance.
     /// </summary>
-    /// <param name="correlationId">Correlation ID for tracking</param>
     void PerformMaintenance(FixedString64Bytes correlationId = default);
+
+    // Channel management methods
+    /// <summary>
+    /// Registers a log channel with the service.
+    /// </summary>
+    void RegisterChannel(ILogChannel channel, FixedString64Bytes correlationId = default);
+
+    /// <summary>
+    /// Unregisters a log channel from the service.
+    /// </summary>
+    bool UnregisterChannel(string channelName, FixedString64Bytes correlationId = default);
+
+    /// <summary>
+    /// Gets all registered log channels.
+    /// </summary>
+    IReadOnlyCollection<ILogChannel> GetChannels();
+
+    /// <summary>
+    /// Gets a registered log channel by name.
+    /// </summary>
+    ILogChannel GetChannel(string channelName);
+
+    /// <summary>
+    /// Determines whether a log channel is registered.
+    /// </summary>
+    bool HasChannel(string channelName);
 }
 ```
 
 ### ILogTarget
 
-Interface for log output targets with correlation support.
+Interface for log output targets with streamlined synchronous operations.
 
 ```csharp
+using System;
+using System.Collections.Generic;
+using AhBearStudios.Core.Logging.Models;
+
 /// <summary>
-/// Interface for log output targets with correlation tracking and performance monitoring.
+/// Interface for log targets that define where log messages are written.
+/// Supports multiple output destinations including console, file, network, and custom targets.
 /// </summary>
 public interface ILogTarget : IDisposable
 {
     /// <summary>
-    /// Target name for identification.
+    /// Gets the unique name of this log target.
     /// </summary>
-    FixedString64Bytes Name { get; }
+    string Name { get; }
 
     /// <summary>
-    /// Whether the target is currently enabled.
-    /// </summary>
-    bool IsEnabled { get; set; }
-
-    /// <summary>
-    /// Minimum log level for this target.
+    /// Gets or sets the minimum log level that this target will process.
+    /// Messages below this level will be ignored.
     /// </summary>
     LogLevel MinimumLevel { get; set; }
 
     /// <summary>
-    /// Target-specific configuration.
+    /// Gets or sets whether this target is enabled and should process log messages.
     /// </summary>
-    TargetConfig Configuration { get; }
+    bool IsEnabled { get; set; }
 
     /// <summary>
-    /// Log formatter for this target.
+    /// Gets whether this target is currently healthy and operational.
     /// </summary>
-    ILogFormatter Formatter { get; set; }
+    bool IsHealthy { get; }
 
     /// <summary>
-    /// Writes a log entry to the target with correlation tracking.
+    /// Gets the list of channels this target listens to.
+    /// Empty list means it listens to all channels.
     /// </summary>
-    /// <param name="entry">Log entry to write</param>
-    /// <param name="correlationId">Correlation ID for tracking</param>
-    /// <returns>Task representing the write operation</returns>
-    Task WriteAsync(LogEntry entry, FixedString64Bytes correlationId = default);
+    IReadOnlyList<string> Channels { get; }
 
     /// <summary>
-    /// Writes multiple log entries in batch for performance.
+    /// Writes a log message to this target.
     /// </summary>
-    /// <param name="entries">Log entries to write</param>
-    /// <param name="correlationId">Correlation ID for tracking</param>
-    /// <returns>Task representing the batch write operation</returns>
-    Task WriteBatchAsync(IReadOnlyCollection<LogEntry> entries, FixedString64Bytes correlationId = default);
+    /// <param name="logMessage">The log message to write</param>
+    void Write(in LogMessage logMessage);
 
     /// <summary>
-    /// Flushes any buffered entries to the target.
+    /// Writes multiple log messages to this target in a batch operation.
     /// </summary>
-    /// <param name="correlationId">Correlation ID for tracking</param>
-    /// <returns>Task representing the flush operation</returns>
-    Task FlushAsync(FixedString64Bytes correlationId = default);
+    /// <param name="logMessages">The log messages to write</param>
+    void WriteBatch(IReadOnlyList<LogMessage> logMessages);
 
     /// <summary>
-    /// Validates the target configuration and connectivity.
+    /// Determines whether this target should process the given log message.
     /// </summary>
-    /// <param name="correlationId">Correlation ID for tracking</param>
-    /// <returns>Validation result</returns>
-    ValidationResult Validate(FixedString64Bytes correlationId = default);
+    /// <param name="logMessage">The log message to evaluate</param>
+    /// <returns>True if the message should be processed, false otherwise</returns>
+    bool ShouldProcessMessage(in LogMessage logMessage);
 
     /// <summary>
-    /// Gets target statistics for monitoring.
+    /// Flushes any buffered log messages to the target destination.
     /// </summary>
-    /// <returns>Target performance statistics</returns>
-    TargetStatistics GetStatistics();
+    void Flush();
 
     /// <summary>
-    /// Event raised when an error occurs in the target.
+    /// Performs a health check on this target.
     /// </summary>
-    event Action<ILogTarget, Exception, FixedString64Bytes> ErrorOccurred;
+    /// <returns>True if the target is healthy, false otherwise</returns>
+    bool PerformHealthCheck();
 }
 ```
-### ILoggingScope
+### ILogScope
 
-Interface for hierarchical logging scopes.
+Interface for hierarchical logging scopes with integrated logging methods.
 
 ```csharp
+using System;
+using System.Collections.Generic;
+using Unity.Collections;
+
 /// <summary>
-/// Interface for hierarchical logging scopes with correlation tracking.
+/// Interface for log scopes that provide contextual logging boundaries.
+/// Scopes automatically add context to all log messages within their lifetime.
 /// </summary>
-public interface ILoggingScope : IDisposable
+public interface ILogScope : IDisposable
 {
     /// <summary>
     /// Scope name for identification.
@@ -369,12 +448,12 @@ public interface ILoggingScope : IDisposable
     /// <summary>
     /// Parent scope (if any).
     /// </summary>
-    ILoggingScope Parent { get; }
+    ILogScope Parent { get; }
 
     /// <summary>
     /// Child scopes created within this scope.
     /// </summary>
-    IReadOnlyCollection<ILoggingScope> Children { get; }
+    IReadOnlyCollection<ILogScope> Children { get; }
 
     /// <summary>
     /// Creates a child scope within this scope.
@@ -382,7 +461,7 @@ public interface ILoggingScope : IDisposable
     /// <param name="childName">Name of the child scope</param>
     /// <param name="correlationId">Correlation ID for tracking</param>
     /// <returns>Child logging scope</returns>
-    ILoggingScope BeginChild(string childName, FixedString64Bytes correlationId = default);
+    ILogScope BeginChild(string childName, FixedString64Bytes correlationId = default);
 
     /// <summary>
     /// Adds a property to this scope's context.
@@ -404,10 +483,43 @@ public interface ILoggingScope : IDisposable
     /// <returns>Read-only dictionary of properties</returns>
     IReadOnlyDictionary<string, object> GetAllProperties();
 
+    // Direct logging methods within the scope context
     /// <summary>
-    /// Event raised when the scope completes.
+    /// Logs a debug message within this scope.
     /// </summary>
-    event Action<ILoggingScope> ScopeCompleted;
+    /// <param name="message">The message to log</param>
+    void LogDebug(string message);
+
+    /// <summary>
+    /// Logs an informational message within this scope.
+    /// </summary>
+    /// <param name="message">The message to log</param>
+    void LogInfo(string message);
+
+    /// <summary>
+    /// Logs a warning message within this scope.
+    /// </summary>
+    /// <param name="message">The message to log</param>
+    void LogWarning(string message);
+
+    /// <summary>
+    /// Logs an error message within this scope.
+    /// </summary>
+    /// <param name="message">The message to log</param>
+    void LogError(string message);
+
+    /// <summary>
+    /// Logs a critical message within this scope.
+    /// </summary>
+    /// <param name="message">The message to log</param>
+    void LogCritical(string message);
+
+    /// <summary>
+    /// Logs an exception within this scope.
+    /// </summary>
+    /// <param name="exception">The exception to log</param>
+    /// <param name="message">Additional context message</param>
+    void LogException(Exception exception, string message = null);
 }
 ```
 
@@ -508,401 +620,714 @@ public interface ILogFilter
 
 ### LoggingConfig Record
 
-Modern C# configuration using records with FixedString types.
+Modern C# configuration using records with performance-optimized settings for Unity game development.
 
 ```csharp
-/// <summary>
-/// Configuration record for logging system with modern C# patterns.
-/// </summary>
-/// <param name="MinimumLevel">Minimum log level to process</param>
-/// <param name="EnableBuffering">Whether to enable log buffering</param>
-/// <param name="BufferSize">Size of the log buffer</param>
-/// <param name="FlushInterval">Interval for automatic buffer flushing</param>
-/// <param name="EnableCorrelationTracking">Whether to enable correlation ID tracking</param>
-/// <param name="EnableStructuredLogging">Whether to enable structured logging</param>
-/// <param name="EnablePerformanceTracking">Whether to track logging performance</param>
-/// <param name="EnableHealthChecks">Whether to enable health monitoring</param>
-/// <param name="DefaultChannel">Default channel for log entries</param>
-/// <param name="TargetConfigs">Configuration for log targets</param>
-/// <param name="FilterConfigs">Configuration for log filters</param>
-/// <param name="FormatterConfigs">Configuration for log formatters</param>
-public record LoggingConfig(
-    LogLevel MinimumLevel = LogLevel.Information,
-    bool EnableBuffering = true,
-    int BufferSize = 1000,
-    TimeSpan FlushInterval = default,
-    bool EnableCorrelationTracking = true,
-    bool EnableStructuredLogging = true,
-    bool EnablePerformanceTracking = true,
-    bool EnableHealthChecks = true,
-    FixedString32Bytes DefaultChannel = default,
-    IReadOnlyCollection<TargetConfig> TargetConfigs = null,
-    IReadOnlyCollection<FilterConfig> FilterConfigs = null,
-    IReadOnlyDictionary<FixedString32Bytes, FormatterConfig> FormatterConfigs = null
-)
-{
-    public static LoggingConfig Default => new();
-    
-    public LoggingConfig() : this(
-        FlushInterval: TimeSpan.FromSeconds(30),
-        DefaultChannel: "Default",
-        TargetConfigs: CreateDefaultTargets(),
-        FilterConfigs: Array.Empty<FilterConfig>(),
-        FormatterConfigs: CreateDefaultFormatters()
-    ) { }
+using System;
+using System.Collections.Generic;
+using AhBearStudios.Core.Logging.Models;
 
-    private static IReadOnlyCollection<TargetConfig> CreateDefaultTargets()
+/// <summary>
+/// Configuration record for the logging system.
+/// Contains all settings required to configure the high-performance logging infrastructure.
+/// </summary>
+public sealed record LoggingConfig
+{
+    /// <summary>
+    /// Gets the default logging configuration for production use.
+    /// </summary>
+    public static LoggingConfig Default => new LoggingConfig
     {
-        return new[]
+        GlobalMinimumLevel = LogLevel.Info,
+        IsLoggingEnabled = true,
+        MaxQueueSize = 1000,
+        FlushInterval = TimeSpan.FromMilliseconds(100),
+        HighPerformanceMode = true,
+        BurstCompatibility = true,
+        StructuredLogging = true,
+        BatchingEnabled = true,
+        BatchSize = 100,
+        CorrelationIdFormat = "{0:N}",
+        AutoCorrelationId = true,
+        MessageFormat = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Level}] [{Channel}] {Message}",
+        IncludeTimestamps = true,
+        TimestampFormat = "yyyy-MM-dd HH:mm:ss.fff",
+        CachingEnabled = true,
+        MaxCacheSize = 1000,
+        TargetConfigs = new List<LogTargetConfig>().AsReadOnly(),
+        ChannelConfigs = new List<LogChannelConfig> 
+        { 
+            new LogChannelConfig 
+            { 
+                Name = "Default", 
+                MinimumLevel = LogLevel.Debug, 
+                IsEnabled = true 
+            } 
+        }.AsReadOnly()
+    };
+
+    /// <summary>
+    /// Gets or sets the global minimum log level. Messages below this level will be filtered out.
+    /// </summary>
+    public LogLevel GlobalMinimumLevel { get; init; } = LogLevel.Info;
+
+    /// <summary>
+    /// Gets or sets whether logging is enabled globally.
+    /// </summary>
+    public bool IsLoggingEnabled { get; init; } = true;
+
+    /// <summary>
+    /// Gets or sets the maximum number of log messages to queue when batching is enabled.
+    /// </summary>
+    public int MaxQueueSize { get; init; } = 1000;
+
+    /// <summary>
+    /// Gets or sets the interval at which batched log messages are flushed.
+    /// </summary>
+    public TimeSpan FlushInterval { get; init; } = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>
+    /// Gets or sets whether high-performance mode is enabled for zero-allocation logging.
+    /// When enabled, uses Unity.Collections v2 and object pooling for optimal performance.
+    /// </summary>
+    public bool HighPerformanceMode { get; init; } = true;
+
+    /// <summary>
+    /// Gets or sets whether Burst compilation compatibility is enabled for native job system integration.
+    /// When enabled, uses native-compatible data structures and algorithms.
+    /// </summary>
+    public bool BurstCompatibility { get; init; } = true;
+
+    /// <summary>
+    /// Gets or sets whether structured logging is enabled for rich contextual data.
+    /// </summary>
+    public bool StructuredLogging { get; init; } = true;
+
+    /// <summary>
+    /// Gets or sets whether batching is enabled for high-throughput scenarios.
+    /// </summary>
+    public bool BatchingEnabled { get; init; } = true;
+
+    /// <summary>
+    /// Gets or sets the number of messages to batch before flushing.
+    /// </summary>
+    public int BatchSize { get; init; } = 100;
+
+    /// <summary>
+    /// Gets or sets the format string for correlation IDs used to track operations across system boundaries.
+    /// </summary>
+    public string CorrelationIdFormat { get; init; } = "{0:N}";
+
+    /// <summary>
+    /// Gets or sets whether automatic correlation ID generation is enabled.
+    /// </summary>
+    public bool AutoCorrelationId { get; init; } = true;
+
+    /// <summary>
+    /// Gets or sets the message format template for log output.
+    /// </summary>
+    public string MessageFormat { get; init; } = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Level}] [{Channel}] {Message}";
+
+    /// <summary>
+    /// Gets or sets whether timestamps are included in log messages.
+    /// </summary>
+    public bool IncludeTimestamps { get; init; } = true;
+
+    /// <summary>
+    /// Gets or sets the format string for timestamps in log messages.
+    /// </summary>
+    public string TimestampFormat { get; init; } = "yyyy-MM-dd HH:mm:ss.fff";
+
+    /// <summary>
+    /// Gets or sets whether message formatting caching is enabled for performance.
+    /// </summary>
+    public bool CachingEnabled { get; init; } = true;
+
+    /// <summary>
+    /// Gets or sets the maximum cache size for formatted messages.
+    /// </summary>
+    public int MaxCacheSize { get; init; } = 1000;
+
+    /// <summary>
+    /// Gets or sets the collection of log target configurations.
+    /// </summary>
+    public IReadOnlyList<LogTargetConfig> TargetConfigs { get; init; } = new List<LogTargetConfig>().AsReadOnly();
+
+    /// <summary>
+    /// Gets or sets the collection of log channel configurations.
+    /// </summary>
+    public IReadOnlyList<LogChannelConfig> ChannelConfigs { get; init; } = new List<LogChannelConfig>().AsReadOnly();
+
+    /// <summary>
+    /// Validates the configuration and returns any validation errors.
+    /// </summary>
+    /// <returns>A list of validation errors, empty if configuration is valid</returns>
+    public IReadOnlyList<string> Validate()
+    {
+        var errors = new List<string>();
+
+        if (MaxQueueSize <= 0)
+            errors.Add("Max queue size must be greater than zero.");
+
+        if (FlushInterval <= TimeSpan.Zero)
+            errors.Add("Flush interval must be greater than zero.");
+
+        if (BatchingEnabled && BatchSize <= 0)
+            errors.Add("Batch size must be greater than zero when batching is enabled.");
+
+        if (string.IsNullOrWhiteSpace(CorrelationIdFormat))
+            errors.Add("Correlation ID format cannot be null or empty.");
+
+        if (string.IsNullOrWhiteSpace(MessageFormat))
+            errors.Add("Message format template cannot be null or empty.");
+
+        if (IncludeTimestamps && string.IsNullOrWhiteSpace(TimestampFormat))
+            errors.Add("Timestamp format cannot be null or empty when timestamps are enabled.");
+
+        if (CachingEnabled && MaxCacheSize <= 0)
+            errors.Add("Max cache size must be greater than zero when caching is enabled.");
+
+        // Validate nested configurations
+        foreach (var targetConfig in TargetConfigs)
         {
-            new TargetConfig("Console", typeof(ConsoleLogTarget), LogLevel.Information, enabled: true),
-            new TargetConfig("File", typeof(FileLogTarget), LogLevel.Warning, enabled: true,
-                settings: new Dictionary<FixedString32Bytes, object>
-                {
-                    ["FilePath"] = "logs/application.log",
-                    ["MaxFileSize"] = 10 * 1024 * 1024, // 10MB
-                    ["MaxFiles"] = 10
-                })
-        };
+            var targetErrors = targetConfig.Validate();
+            errors.AddRange(targetErrors);
+        }
+
+        foreach (var channelConfig in ChannelConfigs)
+        {
+            var channelErrors = channelConfig.Validate();
+            errors.AddRange(channelErrors);
+        }
+
+        return errors.AsReadOnly();
     }
 
-    private static IReadOnlyDictionary<FixedString32Bytes, FormatterConfig> CreateDefaultFormatters()
+    /// <summary>
+    /// Creates a copy of this configuration with the specified modifications.
+    /// </summary>
+    /// <param name="modifications">Action to apply modifications to the copy</param>
+    /// <returns>A new LoggingConfig instance with the modifications applied</returns>
+    public LoggingConfig WithModifications(Action<LoggingConfig> modifications)
     {
-        return new Dictionary<FixedString32Bytes, FormatterConfig>
-        {
-            ["Console"] = new FormatterConfig("PlainText", typeof(PlainTextFormatter)),
-            ["File"] = new FormatterConfig("Json", typeof(JsonLogFormatter)),
-            ["Database"] = new FormatterConfig("Structured", typeof(StructuredFormatter))
-        };
+        if (modifications == null)
+            throw new ArgumentNullException(nameof(modifications));
+
+        var copy = this with { };
+        modifications(copy);
+        return copy;
     }
-}
-
-/// <summary>
-/// Configuration for log targets.
-/// </summary>
-/// <param name="Name">Target name</param>
-/// <param name="TargetType">Type of log target</param>
-/// <param name="MinimumLevel">Minimum log level for this target</param>
-/// <param name="Enabled">Whether target is enabled</param>
-/// <param name="BufferSize">Buffer size for this target</param>
-/// <param name="Settings">Target-specific settings</param>
-public record TargetConfig(
-    FixedString64Bytes Name,
-    Type TargetType,
-    LogLevel MinimumLevel = LogLevel.Information,
-    bool Enabled = true,
-    int BufferSize = 100,
-    IReadOnlyDictionary<FixedString32Bytes, object> Settings = null
-);
-
-/// <summary>
-/// Configuration for log formatters.
-/// </summary>
-/// <param name="Name">Formatter name</param>
-/// <param name="FormatterType">Type of formatter</param>
-/// <param name="Settings">Formatter-specific settings</param>
-public record FormatterConfig(
-    FixedString64Bytes Name,
-    Type FormatterType,
-    IReadOnlyDictionary<FixedString32Bytes, object> Settings = null
-);
-
-/// <summary>
-/// Configuration for log filters.
-/// </summary>
-/// <param name="Name">Filter name</param>
-/// <param name="FilterType">Type of filter</param>
-/// <param name="Enabled">Whether filter is enabled</param>
-/// <param name="Settings">Filter-specific settings</param>
-public record FilterConfig(
-    FixedString64Bytes Name,
-    Type FilterType,
-    bool Enabled = true,
-    IReadOnlyDictionary<FixedString32Bytes, object> Settings = null
-);
-```
-## ⚙️ Configuration
-
-### LoggingConfig Record
-
-Modern C# configuration using records with FixedString types.
-
-```csharp
-/// <summary>
-/// Configuration record for logging system with modern C# patterns.
-/// </summary>
-/// <param name="MinimumLevel">Minimum log level to process</param>
-/// <param name="EnableBuffering">Whether to enable log buffering</param>
-/// <param name="BufferSize">Size of the log buffer</param>
-/// <param name="FlushInterval">Interval for automatic buffer flushing</param>
-/// <param name="EnableCorrelationTracking">Whether to enable correlation ID tracking</param>
-/// <param name="EnableStructuredLogging">Whether to enable structured logging</param>
-/// <param name="EnablePerformanceTracking">Whether to track logging performance</param>
-/// <param name="EnableHealthChecks">Whether to enable health monitoring</param>
-/// <param name="DefaultChannel">Default channel for log entries</param>
-/// <param name="TargetConfigs">Configuration for log targets</param>
-/// <param name="FilterConfigs">Configuration for log filters</param>
-/// <param name="FormatterConfigs">Configuration for log formatters</param>
-public record LoggingConfig(
-    LogLevel MinimumLevel = LogLevel.Information,
-    bool EnableBuffering = true,
-    int BufferSize = 1000,
-    TimeSpan FlushInterval = default,
-    bool EnableCorrelationTracking = true,
-    bool EnableStructuredLogging = true,
-    bool EnablePerformanceTracking = true,
-    bool EnableHealthChecks = true,
-    FixedString32Bytes DefaultChannel = default,
-    IReadOnlyCollection<TargetConfig> TargetConfigs = null,
-    IReadOnlyCollection<FilterConfig> FilterConfigs = null,
-    IReadOnlyDictionary<FixedString32Bytes, FormatterConfig> FormatterConfigs = null
-)
-{
-    public static LoggingConfig Default => new();
-    
-    public LoggingConfig() : this(
-        FlushInterval: TimeSpan.FromSeconds(30),
-        DefaultChannel: "Default",
-        TargetConfigs: CreateDefaultTargets(),
-        FilterConfigs: Array.Empty<FilterConfig>(),
-        FormatterConfigs: CreateDefaultFormatters()
-    ) { }
-
-    private static IReadOnlyCollection<TargetConfig> CreateDefaultTargets()
-    {
-        return new[]
-        {
-            new TargetConfig("Console", typeof(ConsoleLogTarget), LogLevel.Information, enabled: true),
-            new TargetConfig("File", typeof(FileLogTarget), LogLevel.Warning, enabled: true,
-                settings: new Dictionary<FixedString32Bytes, object>
-                {
-                    ["FilePath"] = "logs/application.log",
-                    ["MaxFileSize"] = 10 * 1024 * 1024, // 10MB
-                    ["MaxFiles"] = 10
-                })
-        };
-    }
-
-    private static IReadOnlyDictionary<FixedString32Bytes, FormatterConfig> CreateDefaultFormatters()
-    {
-        return new Dictionary<FixedString32Bytes, FormatterConfig>
-        {
-            ["Console"] = new FormatterConfig("PlainText", typeof(PlainTextFormatter)),
-            ["File"] = new FormatterConfig("Json", typeof(JsonLogFormatter)),
-            ["Database"] = new FormatterConfig("Structured", typeof(StructuredFormatter))
-        };
-    }
-}
-
-/// <summary>
-/// Configuration for log targets.
-/// </summary>
-/// <param name="Name">Target identifier</param>
-/// <param name="TargetType">Implementation type for the target</param>
-/// <param name="MinimumLevel">Minimum log level for this target</param>
-/// <param name="Enabled">Whether the target is enabled</param>
-/// <param name="Settings">Target-specific configuration</param>
-public record TargetConfig(
-    FixedString64Bytes Name,
-    Type TargetType,
-    LogLevel MinimumLevel = LogLevel.Information,
-    bool Enabled = true,
-    IReadOnlyDictionary<FixedString32Bytes, object> Settings = null
-)
-{
-    public TargetConfig() : this("Default", typeof(ConsoleLogTarget)) { }
-}
-
-/// <summary>
-/// Configuration for log filtering.
-/// </summary>
-/// <param name="Name">Filter identifier</param>
-/// <param name="FilterType">Implementation type for the filter</param>
-/// <param name="Enabled">Whether the filter is enabled</param>
-/// <param name="Settings">Filter-specific configuration</param>
-public record FilterConfig(
-    FixedString64Bytes Name,
-    Type FilterType,
-    bool Enabled = true,
-    IReadOnlyDictionary<FixedString32Bytes, object> Settings = null
-)
-{
-    public FilterConfig() : this("Default", typeof(LevelFilter)) { }
-}
-
-/// <summary>
-/// Configuration for log formatters.
-/// </summary>
-/// <param name="Name">Formatter identifier</param>
-/// <param name="FormatterType">Implementation type for the formatter</param>
-/// <param name="Settings">Formatter-specific configuration</param>
-public record FormatterConfig(
-    FixedString64Bytes Name,
-    Type FormatterType,
-    IReadOnlyDictionary<FixedString32Bytes, object> Settings = null
-)
-{
-    public FormatterConfig() : this("Default", typeof(PlainTextFormatter)) { }
 }
 ```
 
-### LoggingConfigBuilder
+### ILogTargetConfig Interface
 
-Fluent builder pattern for configuration creation.
+Interface for game-optimized log target configuration.
 
 ```csharp
+using System;
+using System.Collections.Generic;
+using AhBearStudios.Core.Logging.Models;
+
 /// <summary>
-/// Builder interface for creating logging configurations with fluent syntax.
+/// Interface for log target configuration with strongly-typed properties.
+/// Provides game-optimized configuration options for Unity development.
 /// </summary>
-public interface ILoggingConfigBuilder
+public interface ILogTargetConfig
 {
     /// <summary>
-    /// Sets the minimum log level.
+    /// Gets the unique name of the log target.
     /// </summary>
-    /// <param name="level">Minimum log level to process</param>
-    /// <returns>Builder instance for chaining</returns>
-    ILoggingConfigBuilder WithMinimumLevel(LogLevel level);
+    string Name { get; }
 
     /// <summary>
-    /// Configures log buffering.
+    /// Gets the type of the log target (e.g., "Console", "File", "Network").
     /// </summary>
-    /// <param name="enabled">Whether buffering is enabled</param>
-    /// <param name="bufferSize">Size of the buffer</param>
-    /// <param name="flushInterval">Automatic flush interval</param>
-    /// <returns>Builder instance for chaining</returns>
-    ILoggingConfigBuilder WithBuffering(bool enabled = true, int bufferSize = 1000, 
-        TimeSpan flushInterval = default);
+    string TargetType { get; }
 
     /// <summary>
-    /// Adds a console log target.
+    /// Gets the minimum log level for this target.
     /// </summary>
-    /// <param name="minimumLevel">Minimum level for console output</param>
-    /// <param name="formatter">Formatter type for console output</param>
-    /// <returns>Builder instance for chaining</returns>
-    ILoggingConfigBuilder AddConsoleTarget(LogLevel minimumLevel = LogLevel.Information, 
-        Type formatter = null);
+    LogLevel MinimumLevel { get; }
 
     /// <summary>
-    /// Adds a file log target.
+    /// Gets whether this target is enabled.
     /// </summary>
-    /// <param name="filePath">Path to log file</param>
-    /// <param name="minimumLevel">Minimum level for file output</param>
-    /// <param name="maxFileSize">Maximum file size before rotation</param>
-    /// <param name="maxFiles">Maximum number of files to keep</param>
-    /// <returns>Builder instance for chaining</returns>
-    ILoggingConfigBuilder AddFileTarget(string filePath, LogLevel minimumLevel = LogLevel.Warning, 
-        int maxFileSize = 10485760, int maxFiles = 10);
+    bool IsEnabled { get; }
 
     /// <summary>
-    /// Adds a database log target.
+    /// Gets the maximum number of messages to buffer for this target.
     /// </summary>
-    /// <param name="connectionString">Database connection string</param>
-    /// <param name="tableName">Table name for log entries</param>
-    /// <param name="minimumLevel">Minimum level for database output</param>
-    /// <returns>Builder instance for chaining</returns>
-    ILoggingConfigBuilder AddDatabaseTarget(string connectionString, string tableName = "LogEntries", 
-        LogLevel minimumLevel = LogLevel.Error);
+    int BufferSize { get; }
 
     /// <summary>
-    /// Adds a custom log target.
+    /// Gets the flush interval for this target.
     /// </summary>
-    /// <param name="name">Target name</param>
-    /// <param name="targetType">Target implementation type</param>
-    /// <param name="minimumLevel">Minimum log level</param>
-    /// <param name="settings">Target-specific settings</param>
-    /// <returns>Builder instance for chaining</returns>
-    ILoggingConfigBuilder AddCustomTarget(FixedString64Bytes name, Type targetType, 
-        LogLevel minimumLevel = LogLevel.Information,
-        IReadOnlyDictionary<FixedString32Bytes, object> settings = null);
+    TimeSpan FlushInterval { get; }
 
     /// <summary>
-    /// Enables or disables correlation tracking.
+    /// Gets whether this target should use asynchronous writing.
     /// </summary>
-    /// <param name="enabled">Whether correlation tracking is enabled</param>
-    /// <returns>Builder instance for chaining</returns>
-    ILoggingConfigBuilder WithCorrelationTracking(bool enabled = true);
+    bool UseAsyncWrite { get; }
 
     /// <summary>
-    /// Enables or disables structured logging.
+    /// Gets target-specific configuration properties.
     /// </summary>
-    /// <param name="enabled">Whether structured logging is enabled</param>
-    /// <returns>Builder instance for chaining</returns>
-    ILoggingConfigBuilder WithStructuredLogging(bool enabled = true);
+    IReadOnlyDictionary<string, object> Properties { get; }
 
     /// <summary>
-    /// Configures performance tracking.
+    /// Gets the message format template specific to this target.
+    /// If null or empty, the global message format will be used.
     /// </summary>
-    /// <param name="enabled">Whether performance tracking is enabled</param>
-    /// <returns>Builder instance for chaining</returns>
-    ILoggingConfigBuilder WithPerformanceTracking(bool enabled = true);
+    string MessageFormat { get; }
 
     /// <summary>
-    /// Adds a log filter.
+    /// Gets the list of channels this target should listen to.
+    /// If empty, the target will listen to all channels.
     /// </summary>
-    /// <param name="filterName">Filter name</param>
-    /// <param name="filterType">Type of filter</param>
-    /// <param name="settings">Filter settings</param>
-    /// <returns>Builder instance for chaining</returns>
-    ILoggingConfigBuilder AddFilter(FixedString64Bytes filterName, Type filterType,
-        IReadOnlyDictionary<FixedString32Bytes, object> settings = null);
+    IReadOnlyList<string> Channels { get; }
 
     /// <summary>
-    /// Sets the default channel for log entries.
+    /// Gets whether this target should include stack traces in error messages.
     /// </summary>
-    /// <param name="channel">Default channel name</param>
-    /// <returns>Builder instance for chaining</returns>
-    ILoggingConfigBuilder WithDefaultChannel(FixedString32Bytes channel);
+    bool IncludeStackTrace { get; }
 
     /// <summary>
-    /// Builds the final configuration.
+    /// Gets whether this target should include correlation IDs in messages.
     /// </summary>
-    /// <returns>Immutable logging configuration</returns>
+    bool IncludeCorrelationId { get; }
+
+    // Game-specific performance monitoring configuration
+    
+    /// <summary>
+    /// Gets the error rate threshold (0.0 to 1.0) that triggers alerts.
+    /// Default: 0.1 (10% error rate)
+    /// </summary>
+    double ErrorRateThreshold { get; }
+
+    /// <summary>
+    /// Gets the frame budget threshold in milliseconds per write operation.
+    /// Operations exceeding this threshold will trigger performance alerts.
+    /// Default: 0.5ms for 60 FPS games (16.67ms frame budget)
+    /// </summary>
+    double FrameBudgetThresholdMs { get; }
+
+    /// <summary>
+    /// Gets the alert suppression interval in minutes.
+    /// Prevents alert spam by suppressing duplicate alerts within this timeframe.
+    /// Default: 5 minutes
+    /// </summary>
+    int AlertSuppressionIntervalMinutes { get; }
+
+    /// <summary>
+    /// Gets the maximum concurrent async operations for this target.
+    /// Limits memory usage and prevents thread pool exhaustion.
+    /// Default: 10 concurrent operations
+    /// </summary>
+    int MaxConcurrentAsyncOperations { get; }
+
+    /// <summary>
+    /// Gets whether Unity Profiler integration is enabled.
+    /// When enabled, operations will be tracked in Unity Profiler.
+    /// Default: true in development builds, false in production
+    /// </summary>
+    bool EnableUnityProfilerIntegration { get; }
+
+    /// <summary>
+    /// Gets whether performance metrics should be tracked and reported.
+    /// Default: true
+    /// </summary>
+    bool EnablePerformanceMetrics { get; }
+
+    /// <summary>
+    /// Gets the health check interval in seconds.
+    /// More frequent checks for game development scenarios.
+    /// Default: 30 seconds
+    /// </summary>
+    int HealthCheckIntervalSeconds { get; }
+
+    /// <summary>
+    /// Validates the target configuration and returns any validation errors.
+    /// </summary>
+    /// <returns>A list of validation errors, empty if configuration is valid</returns>
+    IReadOnlyList<string> Validate();
+}
+```
+
+### ILogConfigBuilder
+
+Comprehensive builder interface with scenario-based configurations.
+
+```csharp
+using System;
+using System.Collections.Generic;
+using AhBearStudios.Core.Logging.Configs;
+using AhBearStudios.Core.Logging.Models;
+
+/// <summary>
+/// Interface for building logging configuration in a fluent manner.
+/// Follows the Builder pattern as specified in the AhBearStudios Core Architecture.
+/// Provides comprehensive configuration options for all available log targets.
+/// </summary>
+public interface ILogConfigBuilder
+{
+    // Basic configuration methods
+    ILogConfigBuilder WithGlobalMinimumLevel(LogLevel logLevel);
+    ILogConfigBuilder WithLoggingEnabled(bool enabled);
+    ILogConfigBuilder WithMaxQueueSize(int maxQueueSize);
+    ILogConfigBuilder WithFlushInterval(TimeSpan flushInterval);
+    ILogConfigBuilder WithHighPerformanceMode(bool enabled);
+    ILogConfigBuilder WithBurstCompatibility(bool enabled);
+    ILogConfigBuilder WithStructuredLogging(bool enabled);
+    ILogConfigBuilder WithBatching(bool enabled, int batchSize = 100);
+    ILogConfigBuilder WithCaching(bool enabled, int maxCacheSize = 1000);
+
+    // Target configuration methods
+    ILogConfigBuilder WithTarget(LogTargetConfig targetConfig);
+    ILogConfigBuilder WithTargets(params LogTargetConfig[] targetConfigs);
+    ILogConfigBuilder WithTargets(IEnumerable<LogTargetConfig> targetConfigs);
+    ILogConfigBuilder WithConsoleTarget(string name = "Console", LogLevel minimumLevel = LogLevel.Debug);
+    ILogConfigBuilder WithFileTarget(string name, string filePath, LogLevel minimumLevel = LogLevel.Info, int bufferSize = 100);
+    ILogConfigBuilder WithMemoryTarget(string name = "Memory", int maxEntries = 1000, LogLevel minimumLevel = LogLevel.Debug);
+    ILogConfigBuilder WithSerilogTarget(string name = "Serilog", LogLevel minimumLevel = LogLevel.Info, object loggerConfiguration = null);
+    ILogConfigBuilder WithNullTarget(string name = "Null");
+    ILogConfigBuilder WithStandardConsoleTarget(string name = "StdConsole", LogLevel minimumLevel = LogLevel.Debug, bool useColors = true);
+    ILogConfigBuilder WithUnityConsoleTarget(string name = "UnityConsole", LogLevel minimumLevel = LogLevel.Debug, bool useColors = true, bool showStackTraces = true);
+    ILogConfigBuilder WithNetworkTarget(string name, string endpoint, LogLevel minimumLevel = LogLevel.Info, int timeoutSeconds = 30);
+    ILogConfigBuilder WithDatabaseTarget(string name, string connectionString, string tableName = "Logs", LogLevel minimumLevel = LogLevel.Info);
+    ILogConfigBuilder WithEmailTarget(string name, string smtpServer, string fromEmail, string[] toEmails, LogLevel minimumLevel = LogLevel.Error);
+
+    // Channel configuration methods
+    ILogConfigBuilder WithChannel(LogChannelConfig channelConfig);
+    ILogConfigBuilder WithChannels(params LogChannelConfig[] channelConfigs);
+    ILogConfigBuilder WithChannels(IEnumerable<LogChannelConfig> channelConfigs);
+    ILogConfigBuilder WithChannel(string name, LogLevel minimumLevel = LogLevel.Debug, bool enabled = true);
+
+    // Message formatting methods
+    ILogConfigBuilder WithCorrelationIdFormat(string format);
+    ILogConfigBuilder WithAutoCorrelationId(bool enabled);
+    ILogConfigBuilder WithMessageFormat(string template);
+    ILogConfigBuilder WithTimestamps(bool enabled);
+    ILogConfigBuilder WithTimestampFormat(string format);
+
+    // Scenario-based configuration methods
+    ILogConfigBuilder ForProduction();
+    ILogConfigBuilder ForDevelopment();
+    ILogConfigBuilder ForTesting();
+    ILogConfigBuilder ForStaging();
+    ILogConfigBuilder ForPerformanceTesting();
+    ILogConfigBuilder ForHighAvailability();
+    ILogConfigBuilder ForCloudDeployment();
+    ILogConfigBuilder ForMobile();
+    ILogConfigBuilder ForDebugging(string debugChannel = "Debug");
+
+    // Validation and build methods
+    IReadOnlyList<string> Validate();
     LoggingConfig Build();
+    ILogConfigBuilder Reset();
 }
 ```
 
 ### Configuration Usage Examples
 
 ```csharp
+using AhBearStudios.Core.Logging.Builders;
+using AhBearStudios.Core.Logging.Models;
+
 // Basic configuration with default settings
-var basicConfig = new LoggingConfigBuilder()
-    .WithMinimumLevel(LogLevel.Information)
-    .AddConsoleTarget()
-    .AddFileTarget("logs/app.log")
-    .WithCorrelationTracking()
+var basicConfig = new LogConfigBuilder()
+    .WithGlobalMinimumLevel(LogLevel.Info)
+    .WithConsoleTarget()
+    .WithFileTarget("AppLog", "logs/app.log")
+    .WithAutoCorrelationId(true)
     .Build();
 
-// Advanced configuration with custom targets and filtering
-var advancedConfig = new LoggingConfigBuilder()
-    .WithMinimumLevel(LogLevel.Debug)
-    .WithBuffering(enabled: true, bufferSize: 5000, TimeSpan.FromSeconds(10))
-    .AddConsoleTarget(LogLevel.Information, typeof(ColoredConsoleFormatter))
-    .AddFileTarget("logs/detailed.log", LogLevel.Debug, maxFileSize: 50_000_000)
-    .AddDatabaseTarget("Server=localhost;Database=Logs", "AppLogs", LogLevel.Error)
-    .AddFilter("SensitiveDataFilter", typeof(SensitiveDataFilter))
-    .WithStructuredLogging(true)
-    .WithPerformanceTracking(true)
-    .WithDefaultChannel("Application")
+// Development configuration with comprehensive debugging
+var devConfig = new LogConfigBuilder()
+    .ForDevelopment()  // Sets up Unity console, standard console, memory buffer, and file logging
+    .WithChannel("GameLogic", LogLevel.Debug)
+    .WithChannel("Networking", LogLevel.Debug)
+    .WithChannel("Physics", LogLevel.Info)
     .Build();
 
-// Production configuration with external services
-var productionConfig = new LoggingConfigBuilder()
-    .WithMinimumLevel(LogLevel.Warning)
-    .WithBuffering(enabled: true, bufferSize: 10000, TimeSpan.FromMinutes(1))
-    .AddFileTarget("logs/production.log", LogLevel.Warning)
-    .AddCustomTarget("ElasticSearch", typeof(ElasticSearchTarget), LogLevel.Error,
-        new Dictionary<FixedString32Bytes, object>
-        {
-            ["Endpoint"] = "https://elastic.company.com",
-            ["Index"] = "application-logs",
-            ["ApiKey"] = Environment.GetEnvironmentVariable("ELASTIC_API_KEY")
-        })
-    .AddFilter("PerformanceFilter", typeof(PerformanceFilter))
-    .WithCorrelationTracking(true)
+// Production configuration with enterprise features
+var productionConfig = new LogConfigBuilder()
+    .ForProduction()  // Sets up Serilog, file logging, memory buffer, and email alerts
+    .WithHighPerformanceMode(true)
+    .WithBurstCompatibility(true)
+    .WithBatching(true, batchSize: 500)
+    .WithCaching(true, maxCacheSize: 5000)
+    .Build();
+
+// High-availability configuration with multiple redundant targets
+var haConfig = new LogConfigBuilder()
+    .ForHighAvailability()  // Sets up comprehensive logging with Serilog, database, network, and email alerts
+    .WithNetworkTarget("PrimaryLog", "https://logs.primary.com", LogLevel.Info)
+    .WithNetworkTarget("BackupLog", "https://logs.backup.com", LogLevel.Warning)
+    .WithDatabaseTarget("LogDB", "Server=db1;Database=Logs;")
+    .Build();
+
+// Mobile optimized configuration with minimal overhead
+var mobileConfig = new LogConfigBuilder()
+    .ForMobile()  // Minimal logging with small memory buffer and error-only file logging
+    .WithMaxQueueSize(100)  // Small queue for mobile
+    .WithFlushInterval(TimeSpan.FromSeconds(60))  // Less frequent flushes
+    .Build();
+
+// Testing configuration with comprehensive capture
+var testConfig = new LogConfigBuilder()
+    .ForTesting()  // Large memory buffer and null target for unit tests
+    .WithMemoryTarget("TestCapture", maxEntries: 10000, LogLevel.Trace)
     .WithStructuredLogging(true)
-    .WithPerformanceTracking(true)
+    .Build();
+
+// Performance testing configuration
+var perfConfig = new LogConfigBuilder()
+    .ForPerformanceTesting()  // Memory-only targets for minimal overhead
+    .WithHighPerformanceMode(true)
+    .WithBurstCompatibility(true)
+    .WithBatching(false)  // Disable batching for accurate timing
+    .Build();
+
+// Advanced custom configuration
+var customConfig = new LogConfigBuilder()
+    .WithGlobalMinimumLevel(LogLevel.Debug)
+    .WithHighPerformanceMode(true)
+    .WithBurstCompatibility(true)
+    .WithStructuredLogging(true)
+    .WithBatching(true, batchSize: 200)
+    .WithCaching(true, maxCacheSize: 2000)
+    // Add multiple targets with different configurations
+    .WithUnityConsoleTarget(minimumLevel: LogLevel.Info, showStackTraces: true)
+    .WithFileTarget("DetailedLog", "logs/detailed.log", LogLevel.Debug)
+    .WithFileTarget("ErrorLog", "logs/errors.log", LogLevel.Error)
+    .WithSerilogTarget("Serilog", LogLevel.Info)
+    .WithMemoryTarget("Buffer", maxEntries: 5000)
+    // Add channels for different subsystems
+    .WithChannel("UI", LogLevel.Info)
+    .WithChannel("GameLogic", LogLevel.Debug)
+    .WithChannel("Networking", LogLevel.Debug)
+    .WithChannel("Audio", LogLevel.Warning)
+    .WithChannel("Performance", LogLevel.Info)
+    // Configure message formatting
+    .WithMessageFormat("[{Timestamp:HH:mm:ss.fff}] [{Level,-5}] [{Channel,-12}] {Message}")
+    .WithTimestampFormat("HH:mm:ss.fff")
+    .WithCorrelationIdFormat("{0:D}")
+    .WithAutoCorrelationId(true)
     .Build();
 ```
+
+## 🔧 Advanced Features
+
+### Log Filters
+
+The logging system provides comprehensive filtering capabilities to control which log messages are processed.
+
+#### Available Filters
+
+- **LevelFilter**: Filters messages based on log level
+- **SourceFilter**: Filters messages based on source context or namespace
+- **CorrelationFilter**: Filters messages based on correlation ID patterns
+- **PatternFilter**: Filters messages using regex patterns on message content
+- **RateLimitFilter**: Prevents log flooding by limiting message rates
+- **SamplingFilter**: Statistical sampling for high-volume scenarios
+- **TimeRangeFilter**: Filters messages based on time windows
+
+#### Filter Usage Example
+
+```csharp
+using AhBearStudios.Core.Logging.Filters;
+
+// Create rate limit filter to prevent spam
+var rateLimitFilter = new RateLimitFilter
+{
+    Name = "RateLimit",
+    MaxMessagesPerSecond = 100,
+    BurstCapacity = 200
+};
+
+// Create pattern filter to exclude sensitive data
+var sensitiveDataFilter = new PatternFilter
+{
+    Name = "SensitiveData",
+    ExcludePatterns = new[] { @"password\s*=\s*\S+", @"\b\d{4}-\d{4}-\d{4}-\d{4}\b" },
+    IsExclusive = true  // Exclude matching messages
+};
+
+// Create sampling filter for performance metrics
+var performanceFilter = new SamplingFilter
+{
+    Name = "PerformanceSampling",
+    SampleRate = 0.1,  // Sample 10% of messages
+    ChannelFilter = "Performance"
+};
+
+// Apply filters to logging service
+_loggingService.AddFilter(rateLimitFilter);
+_loggingService.AddFilter(sensitiveDataFilter);
+_loggingService.AddFilter(performanceFilter);
+```
+
+### Log Formatters
+
+The system supports multiple output formats for different use cases.
+
+#### Available Formatters
+
+- **PlainTextFormatter**: Human-readable plain text format
+- **JsonFormatter**: Structured JSON format for log aggregation
+- **StructuredFormatter**: Key-value structured format
+- **BinaryFormatter**: Efficient binary format for performance
+- **CefFormatter**: Common Event Format for security tools
+- **CsvFormatter**: CSV format for data analysis
+- **GelfFormatter**: Graylog Extended Log Format
+- **KeyValueFormatter**: Simple key=value format
+- **MessagePackFormatter**: High-performance binary serialization
+- **ProtobufFormatter**: Protocol Buffers format for cross-platform
+- **SyslogFormatter**: RFC 5424 Syslog format
+- **XmlFormatter**: XML format for enterprise systems
+
+#### Formatter Configuration Example
+
+```csharp
+// Configure JSON formatter for file target
+var jsonFormatter = new JsonFormatter
+{
+    PrettyPrint = false,
+    IncludeStackTrace = true,
+    IncludeCorrelationId = true,
+    DateFormat = "yyyy-MM-dd'T'HH:mm:ss.fffZ"
+};
+
+// Configure CEF formatter for security logging
+var cefFormatter = new CefFormatter
+{
+    DeviceVendor = "AhBearStudios",
+    DeviceProduct = "GameEngine",
+    DeviceVersion = "1.0.0",
+    IncludeExtensions = true
+};
+
+// Configure binary formatter for high-performance scenarios
+var binaryFormatter = new BinaryFormatter
+{
+    CompressionLevel = CompressionLevel.Fastest,
+    IncludeMetadata = false
+};
+```
+
+### Log Targets
+
+Comprehensive set of output targets for different deployment scenarios.
+
+#### Available Targets
+
+- **ConsoleLogTarget**: Standard console output
+- **UnityConsoleLogTarget**: Unity Editor console integration
+- **FileLogTarget**: File-based logging with rotation
+- **MemoryLogTarget**: In-memory circular buffer
+- **SerilogTarget**: Serilog integration for enterprise logging
+- **NullLogTarget**: No-op target for testing
+
+#### Target Configuration Example
+
+```csharp
+// File target with rotation
+var fileTarget = new FileLogTarget
+{
+    Name = "MainLog",
+    FilePath = "logs/game.log",
+    MaxFileSize = 10 * 1024 * 1024,  // 10MB
+    MaxFiles = 5,
+    BufferSize = 1000,
+    FlushInterval = TimeSpan.FromSeconds(10),
+    IncludeTimestamp = true,
+    Formatter = new JsonFormatter()
+};
+
+// Memory target for recent log capture
+var memoryTarget = new MemoryLogTarget
+{
+    Name = "RecentLogs",
+    MaxEntries = 1000,
+    CircularBuffer = true,
+    MinimumLevel = LogLevel.Debug
+};
+
+// Serilog target for production
+var serilogTarget = new SerilogTarget
+{
+    Name = "Serilog",
+    MinimumLevel = LogLevel.Info,
+    WriteTo = new[] { "Seq", "ElasticSearch", "ApplicationInsights" },
+    EnrichWithCorrelationId = true,
+    EnrichWithMachineName = true
+};
+```
+
+### Channels and Scopes
+
+Organize logs by subsystem and create hierarchical contexts.
+
+```csharp
+// Register channels for different subsystems
+_loggingService.RegisterChannel(new LogChannel
+{
+    Name = "Gameplay",
+    MinimumLevel = LogLevel.Debug,
+    Targets = new[] { "Console", "GameplayLog" }
+});
+
+_loggingService.RegisterChannel(new LogChannel
+{
+    Name = "Networking",
+    MinimumLevel = LogLevel.Info,
+    Targets = new[] { "Console", "NetworkLog", "Serilog" }
+});
+
+// Use scopes for hierarchical context
+using (var gameScope = _loggingService.BeginScope("GameSession"))
+{
+    gameScope.SetProperty("SessionId", sessionId);
+    gameScope.SetProperty("PlayerId", playerId);
+    
+    gameScope.LogInfo("Game session started");
+    
+    using (var levelScope = gameScope.BeginChild("Level1"))
+    {
+        levelScope.SetProperty("LevelName", "Tutorial");
+        levelScope.LogDebug("Loading level assets");
+        
+        // All logs within this scope include session and level context
+        levelScope.LogInfo("Level loaded successfully");
+    }
+}
+```
+
+### Performance Monitoring Integration
+
+Track logging system performance metrics.
+
+```csharp
+// Get logging statistics
+var stats = _loggingService.GetStatistics();
+Console.WriteLine($"Total messages: {stats.TotalMessages}");
+Console.WriteLine($"Messages per second: {stats.MessagesPerSecond}");
+Console.WriteLine($"Average processing time: {stats.AverageProcessingTime}ms");
+Console.WriteLine($"Buffer utilization: {stats.BufferUtilization:P}");
+
+// Monitor individual targets
+foreach (var target in _loggingService.GetTargets())
+{
+    if (target is ILogTarget logTarget)
+    {
+        var targetStats = logTarget.GetStatistics();
+        Console.WriteLine($"{logTarget.Name}: {targetStats.ProcessedMessages} messages, " +
+                        $"{targetStats.FailedMessages} failures");
+    }
+}
+```
+
 ## 📦 Installation
 
 ### LoggingInstaller Bootstrap Integration
@@ -1363,6 +1788,296 @@ public static class LoggingServiceExtensions
     }
 }
 ```
+
+## 🎮 Unity Integration
+
+### Unity-Specific Components
+
+The logging system provides seamless Unity integration with specialized components.
+
+#### UnityLoggingBehaviour
+
+MonoBehaviour component for runtime log visualization and control.
+
+```csharp
+using AhBearStudios.Core.Unity.Logging;
+using UnityEngine;
+
+public class GameManager : MonoBehaviour
+{
+    private UnityLoggingBehaviour _loggingBehaviour;
+    
+    void Start()
+    {
+        // Add logging behaviour to GameObject
+        _loggingBehaviour = gameObject.AddComponent<UnityLoggingBehaviour>();
+        
+        // Configure Unity-specific settings
+        _loggingBehaviour.ShowInGameConsole = true;
+        _loggingBehaviour.MaxVisibleLogs = 50;
+        _loggingBehaviour.LogLevelColors = new Dictionary<LogLevel, Color>
+        {
+            [LogLevel.Debug] = Color.gray,
+            [LogLevel.Info] = Color.white,
+            [LogLevel.Warning] = Color.yellow,
+            [LogLevel.Error] = Color.red,
+            [LogLevel.Critical] = Color.magenta
+        };
+    }
+}
+```
+
+#### Unity Console Integration
+
+The UnityConsoleLogTarget provides deep integration with Unity's console.
+
+```csharp
+// Configure Unity console target with stack trace support
+var unityTarget = new UnityConsoleLogTarget
+{
+    Name = "UnityEditor",
+    MinimumLevel = LogLevel.Debug,
+    UseColors = true,
+    ShowStackTraces = true,
+    StackTraceLogLevel = LogLevel.Error,
+    GroupByContext = true,
+    CollapseIdenticalLogs = true
+};
+
+// Unity-specific log context
+_logger.LogInfo("Player spawned", sourceContext: "GameplaySystem", 
+    properties: new Dictionary<string, object>
+    {
+        ["Position"] = transform.position,
+        ["Health"] = playerHealth,
+        ["Level"] = currentLevel
+    });
+```
+
+### Unity Job System Integration
+
+Burst-compatible logging for high-performance scenarios.
+
+```csharp
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Jobs;
+using AhBearStudios.Core.Logging;
+
+[BurstCompile]
+public struct PhysicsCalculationJob : IJobParallelFor
+{
+    [ReadOnly] public NativeArray<float3> positions;
+    [WriteOnly] public NativeArray<float3> velocities;
+    
+    // Burst-compatible logging data
+    [ReadOnly] public FixedString64Bytes correlationId;
+    [WriteOnly] public NativeQueue<LogMessage>.ParallelWriter logQueue;
+    
+    public void Execute(int index)
+    {
+        // Perform physics calculations
+        var velocity = CalculateVelocity(positions[index]);
+        velocities[index] = velocity;
+        
+        // Log significant events (Burst-compatible)
+        if (math.length(velocity) > 100f)
+        {
+            var logData = new BurstLogData
+            {
+                Level = LogLevel.Warning,
+                Message = "High velocity detected",
+                Index = index,
+                Value = math.length(velocity)
+            };
+            
+            // Queue log for main thread processing
+            logQueue.Enqueue(new LogMessage
+            {
+                Level = LogLevel.Warning,
+                CorrelationId = correlationId,
+                Data = logData
+            });
+        }
+    }
+}
+
+// Process queued logs on main thread
+void ProcessJobLogs(NativeQueue<LogMessage> logQueue)
+{
+    while (logQueue.TryDequeue(out var logMessage))
+    {
+        _logger.LogWarning<BurstLogData>(
+            logMessage.Message, 
+            logMessage.Data, 
+            logMessage.CorrelationId
+        );
+    }
+}
+```
+
+### Unity Profiler Integration
+
+Track logging performance in Unity Profiler.
+
+```csharp
+using Unity.Profiling;
+
+public class ProfilingExample : MonoBehaviour
+{
+    private static readonly ProfilerMarker s_LogMarker = new ProfilerMarker("Logging.Write");
+    private static readonly ProfilerMarker s_FormatMarker = new ProfilerMarker("Logging.Format");
+    
+    void PerformLogging()
+    {
+        using (s_LogMarker.Auto())
+        {
+            // Logging operations are automatically profiled
+            _logger.LogInfo("Game state updated", 
+                sourceContext: "GameLoop",
+                properties: GetGameStateProperties());
+        }
+    }
+}
+```
+
+### ScriptableObject Configuration
+
+Use ScriptableObjects for runtime configuration changes.
+
+```csharp
+using UnityEngine;
+using AhBearStudios.Core.Unity.Logging.Configs;
+
+[CreateAssetMenu(fileName = "LoggingConfig", menuName = "AhBearStudios/Logging Configuration")]
+public class LoggingConfigAsset : ScriptableObject
+{
+    [Header("Global Settings")]
+    public LogLevel globalMinimumLevel = LogLevel.Info;
+    public bool enableLogging = true;
+    
+    [Header("Performance")]
+    public bool highPerformanceMode = true;
+    public bool burstCompatibility = true;
+    public int maxQueueSize = 1000;
+    
+    [Header("Targets")]
+    public bool enableUnityConsole = true;
+    public bool enableFileLogging = true;
+    public string logFilePath = "Logs/game.log";
+    
+    [Header("Channels")]
+    public ChannelConfig[] channels = new[]
+    {
+        new ChannelConfig { name = "Gameplay", minimumLevel = LogLevel.Debug },
+        new ChannelConfig { name = "Networking", minimumLevel = LogLevel.Info },
+        new ChannelConfig { name = "UI", minimumLevel = LogLevel.Warning }
+    };
+    
+    public LoggingConfig ToRuntimeConfig()
+    {
+        return new LoggingConfig
+        {
+            GlobalMinimumLevel = globalMinimumLevel,
+            IsLoggingEnabled = enableLogging,
+            HighPerformanceMode = highPerformanceMode,
+            BurstCompatibility = burstCompatibility,
+            MaxQueueSize = maxQueueSize,
+            // Convert Unity-specific settings to runtime config
+        };
+    }
+}
+```
+
+### Unity Event System Integration
+
+Integrate with Unity's event system for reactive logging.
+
+```csharp
+using UnityEngine;
+using UnityEngine.Events;
+
+public class LoggingEventBridge : MonoBehaviour
+{
+    [System.Serializable]
+    public class LogEvent : UnityEvent<LogLevel, string> { }
+    
+    public LogEvent onLogReceived;
+    public LogEvent onErrorOccurred;
+    
+    private ILoggingService _logger;
+    
+    void Start()
+    {
+        _logger = Container.Resolve<ILoggingService>();
+        
+        // Subscribe to specific log levels
+        var memoryTarget = _logger.GetTargets()
+            .OfType<MemoryLogTarget>()
+            .FirstOrDefault();
+            
+        if (memoryTarget != null)
+        {
+            memoryTarget.OnMessageLogged += HandleLogMessage;
+        }
+    }
+    
+    void HandleLogMessage(LogMessage message)
+    {
+        onLogReceived?.Invoke(message.Level, message.FormattedMessage);
+        
+        if (message.Level >= LogLevel.Error)
+        {
+            onErrorOccurred?.Invoke(message.Level, message.FormattedMessage);
+        }
+    }
+}
+```
+
+### Unity Addressables Integration
+
+Log asset loading and resource management.
+
+```csharp
+using UnityEngine.AddressableAssets;
+
+public class AssetLoader : MonoBehaviour
+{
+    private readonly ILoggingService _logger;
+    private readonly FixedString32Bytes _channel = "AssetLoading";
+    
+    async Task LoadGameAssets()
+    {
+        var correlationId = FixedString64Bytes.FromString(Guid.NewGuid().ToString());
+        
+        using (var scope = _logger.BeginScope("AssetLoading", correlationId))
+        {
+            scope.SetProperty("LoadType", "Addressables");
+            scope.SetProperty("Platform", Application.platform.ToString());
+            
+            try
+            {
+                scope.LogInfo("Starting asset load");
+                
+                var handle = Addressables.LoadAssetsAsync<GameObject>(
+                    "GameplayAssets", 
+                    null);
+                    
+                await handle.Task;
+                
+                scope.SetProperty("LoadedCount", handle.Result.Count);
+                scope.LogInfo($"Loaded {handle.Result.Count} assets successfully");
+            }
+            catch (Exception ex)
+            {
+                scope.LogException(ex, "Asset loading failed");
+                throw;
+            }
+        }
+    }
+}
+```
+
 ## 🚀 Usage Examples
 
 ### Basic Logging Operations
