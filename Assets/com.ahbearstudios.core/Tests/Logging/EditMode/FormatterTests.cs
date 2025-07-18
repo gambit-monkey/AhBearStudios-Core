@@ -636,7 +636,7 @@ namespace AhBearStudios.Core.Logging.Tests
             config.FormatType = LogFormat.PlainText;
             config.Template = "{InvalidField} {Level}: {Message}";
             var formatter = new PlainTextFormatter(config);
-            var message = TestDataFactory.CreateLogMessage(LogLevel.Info, "Test", "Invalid config test");
+            var message = TestDataFactory.CreateLogMessage(LogLevel.Info, "Test", "Invalid configSo test");
 
             // Act & Assert
             Assert.DoesNotThrow(() =>

@@ -1,5 +1,5 @@
 ﻿using System;
-using AhBearStudios.Core.Bootstrap;
+using AhBearStudios.Core.Infrastructure.Bootstrap;
 using AhBearStudios.Core.HealthCheck;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Serialization.Builders;
@@ -247,7 +247,7 @@ namespace AhBearStudios.Unity.Serialization.Installers
         /// Must be called before installation.
         /// </summary>
         /// <param name="config">New configuration</param>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when called after installation</exception>
         public void UpdateConfiguration(SerializationConfig config)
         {

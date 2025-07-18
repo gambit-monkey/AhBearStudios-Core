@@ -426,38 +426,32 @@ public class MessagingInstaller : IBootstrapInstaller
                 .WithCircuitBreaker(enabled: true, threshold: 10))
             .Build();
 
-        // Bind configuration
-        builder.Bind<MessageBusConfig>().FromInstance(config);
+        // Register configuration
+        builder.AddSingleton(config);
         
-        // Bind core services using Reflex patterns
-        builder.Bind<IMessageBusService>().To<MessageBusService>().AsSingle();
-        builder.Bind<IMessageBusFactory>().To<MessageBusFactory>().AsSingle();
-        builder.Bind<MessageTypeFactory>().To<MessageTypeFactory>().AsSingle();
+        // Register core services using Reflex patterns
+        builder.AddSingleton<IMessageBusService, MessageBusService>();
+        builder.AddSingleton<IMessageBusFactory, MessageBusFactory>();
+        builder.AddSingleton<MessageTypeFactory>();
         
-        // Bind specialized services
-        builder.Bind<MessageRegistry>().To<MessageRegistry>().AsSingle();
-        builder.Bind<MessageRoutingService>().To<MessageRoutingService>().AsSingle();
-        builder.Bind<MessageCorrelationService>().To<MessageCorrelationService>().AsSingle();
-        builder.Bind<MessagePerformanceService>().To<MessagePerformanceService>().AsSingle();
+        // Register specialized services
+        builder.AddSingleton<MessageRegistry>();
+        builder.AddSingleton<MessageRoutingService>();
+        builder.AddSingleton<MessageCorrelationService>();
+        builder.AddSingleton<MessagePerformanceService>();
         
-        // Bind publishers and subscribers
-        builder.Bind(typeof(IMessagePublisher<>)).To(typeof(MessagePublisher<>)).AsSingle();
-        builder.Bind(typeof(IMessageSubscriber<>)).To(typeof(MessageSubscriber<>)).AsSingle();
-        builder.Bind<BatchedMessagePublisher>().To<BatchedMessagePublisher>().AsSingle();
+        // Register publishers and subscribers
+        builder.AddSingleton(typeof(IMessagePublisher<>), typeof(MessagePublisher<>));
+        builder.AddSingleton(typeof(IMessageSubscriber<>), typeof(MessageSubscriber<>));
+        builder.AddSingleton<BatchedMessagePublisher>();
         
-        // Bind default filters
-        builder.Bind<PriorityMessageFilter>().To<PriorityMessageFilter>().AsSingle();
-        builder.Bind<SourceMessageFilter>().To<SourceMessageFilter>().AsSingle();
-        builder.Bind<CorrelationMessageFilter>().To<CorrelationMessageFilter>().AsSingle();
+        // Register default filters
+        builder.AddSingleton<PriorityMessageFilter>();
+        builder.AddSingleton<SourceMessageFilter>();
+        builder.AddSingleton<CorrelationMessageFilter>();
         
-        // Bind health check
-        builder.Bind<MessageBusHealthCheck>().To<MessageBusHealthCheck>().AsSingle();
-        
-        // Bind pooling integration if available
-        if (Container.HasBinding<IPoolingService>())
-        {
-            builder.Bind<PooledMessageService>().To<PooledMessageService>().AsSingle();
-        }
+        // Register health check
+        builder.AddSingleton<MessageBusHealthCheck>();
     }
 
     public void PostInstall()

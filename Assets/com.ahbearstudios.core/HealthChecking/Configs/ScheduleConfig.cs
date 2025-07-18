@@ -369,7 +369,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs
             if (EnableAdaptiveScheduling)
             {
                 var adaptiveErrors = AdaptiveConfig.Validate();
-                errors.AddRange(adaptiveErrors.Select(e => $"Adaptive Config: {e}"));
+                errors.AddRange(adaptiveErrors.Select(e => $"Adaptive ConfigSo: {e}"));
 
                 if (DegradationFrequencyMultiplier < 0.1 || DegradationFrequencyMultiplier > 1.0)
                     errors.Add("DegradationFrequencyMultiplier must be between 0.1 and 1.0");
@@ -412,7 +412,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs
             if (EnableBurstExecution)
             {
                 var burstErrors = BurstConfig.Validate();
-                errors.AddRange(burstErrors.Select(e => $"Burst Config: {e}"));
+                errors.AddRange(burstErrors.Select(e => $"Burst ConfigSo: {e}"));
             }
 
             // Seasonal adjustments validation

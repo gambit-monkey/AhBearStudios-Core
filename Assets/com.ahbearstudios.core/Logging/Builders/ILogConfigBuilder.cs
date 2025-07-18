@@ -327,9 +327,9 @@ namespace AhBearStudios.Core.Logging.Builders
         IReadOnlyList<string> Validate();
 
         /// <summary>
-        /// Builds the final LoggingConfig from the current builder state.
+        /// Builds the final LoggingConfigSO from the current builder state.
         /// </summary>
-        /// <returns>The configured LoggingConfig instance</returns>
+        /// <returns>The configured LoggingConfigSO instance</returns>
         /// <exception cref="InvalidOperationException">Thrown when configuration is invalid</exception>
         LoggingConfig Build();
 

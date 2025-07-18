@@ -490,7 +490,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <summary>
         /// Applies a custom configuration action.
         /// </summary>
-        /// <param name="configureAction">Action to configure the message bus config</param>
+        /// <param name="configureAction">Action to configure the message bus configSo</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when configureAction is null</exception>
         public MessageBusConfigBuilder Configure(Action<MessageBusConfig> configureAction)

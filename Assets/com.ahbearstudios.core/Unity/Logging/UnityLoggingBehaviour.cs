@@ -1,9 +1,15 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using AhBearStudios.Core.HealthChecking;
+using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Logging.HealthChecks;
+using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Profiling.Models;
+using AhBearStudios.Unity.Logging.ScriptableObjects;
+using UnityEngine.Profiling;
 
 namespace AhBearStudios.Unity.Logging
 {
@@ -15,6 +21,8 @@ namespace AhBearStudios.Unity.Logging
     public class UnityLoggingBehaviour : MonoBehaviour
     {
         [Header("Logging Configuration")]
+        [SerializeField] private LoggingConfigurationAsset _loggingConfig;
+        [SerializeField] private bool _useScriptableObjectConfig = true;
         [SerializeField] private bool _logUnityEvents = true;
         [SerializeField] private bool _logFrameRate = false;
         [SerializeField] private int _frameRateLogInterval = 60; // Log every N frames
@@ -406,7 +414,7 @@ namespace AhBearStudios.Unity.Logging
         {
             if (IsInitialized)
             {
-                _loggingService.Flush();
+                _loggingService.FlushAsync();
                 _loggingService.LogDebug("Manual log flush triggered from Unity component", "Unity.Debug");
             }
         }
@@ -459,6 +467,84 @@ namespace AhBearStudios.Unity.Logging
                 ["CurrentScene"] = _currentSceneName,
                 ["QualityLevel"] = QualitySettings.GetQualityLevel()
             };
+        }
+
+        /// <summary>
+        /// Gets the current logging configuration asset.
+        /// </summary>
+        public LoggingConfigurationAsset LoggingConfig => _loggingConfig;
+
+        /// <summary>
+        /// Sets the logging configuration asset.
+        /// </summary>
+        /// <param name="config">The new logging configuration</param>
+        public void SetLoggingConfig(LoggingConfigurationAsset config)
+        {
+            _loggingConfig = config;
+            
+            if (IsInitialized)
+            {
+                _loggingService.LogInfo($"Logging configuration updated: {(config?.name ?? "null")}", "Unity.ConfigSo");
+            }
+        }
+
+        /// <summary>
+        /// Gets whether the component is using scriptable object configuration.
+        /// </summary>
+        public bool UseScriptableObjectConfig => _useScriptableObjectConfig;
+
+        /// <summary>
+        /// Sets whether to use scriptable object configuration.
+        /// </summary>
+        /// <param name="useConfig">Whether to use scriptable object configuration</param>
+        public void SetUseScriptableObjectConfig(bool useConfig)
+        {
+            _useScriptableObjectConfig = useConfig;
+            
+            if (IsInitialized)
+            {
+                _loggingService.LogInfo($"ScriptableObject configuration {(useConfig ? "enabled" : "disabled")}", "Unity.ConfigSo");
+            }
+        }
+
+        /// <summary>
+        /// Validates the current logging configuration.
+        /// </summary>
+        /// <returns>Validation result with any errors</returns>
+        public List<string> ValidateLoggingConfig()
+        {
+            var errors = new List<string>();
+            
+            if (_useScriptableObjectConfig)
+            {
+                if (_loggingConfig == null)
+                {
+                    errors.Add("Logging configuration asset is not assigned");
+                }
+                else
+                {
+                    var configErrors = _loggingConfig.ValidateConfiguration();
+                    errors.AddRange(configErrors);
+                }
+            }
+            
+            return errors;
+        }
+
+        /// <summary>
+        /// Gets a summary of the current logging configuration.
+        /// </summary>
+        /// <returns>Configuration summary string</returns>
+        public string GetLoggingConfigSummary()
+        {
+            if (_useScriptableObjectConfig && _loggingConfig != null)
+            {
+                return _loggingConfig.GetConfigurationSummary();
+            }
+            else
+            {
+                return "Using traditional MonoBehaviour configuration";
+            }
         }
 
         /// <summary>
@@ -755,6 +841,27 @@ namespace AhBearStudios.Unity.Logging
 
             GUILayout.Space(10);
 
+            // Configuration info
+            GUILayout.Label("=== Configuration ===", _debugLabelStyle);
+            GUILayout.Label($"Using ScriptableObject: {_useScriptableObjectConfig}", _debugLabelStyle);
+            if (_useScriptableObjectConfig && _loggingConfig != null)
+            {
+                GUILayout.Label($"ConfigSo Asset: {_loggingConfig.name}", _debugLabelStyle);
+                GUILayout.Label($"Targets: {_loggingConfig.TargetConfigurations.Count}", _debugLabelStyle);
+                GUILayout.Label($"Filters: {_loggingConfig.FilterConfigurations.Count}", _debugLabelStyle);
+                GUILayout.Label($"Formatters: {_loggingConfig.FormatterConfigurations.Count}", _debugLabelStyle);
+            }
+            else if (_useScriptableObjectConfig)
+            {
+                GUILayout.Label("ConfigSo Asset: Not Assigned", _debugLabelStyle);
+            }
+            else
+            {
+                GUILayout.Label("Using MonoBehaviour ConfigSo", _debugLabelStyle);
+            }
+
+            GUILayout.Space(10);
+
             // Health status
             if (_loggingHealthCheck != null && _loggingHealthCheck.IsCacheValid())
             {
@@ -796,6 +903,24 @@ namespace AhBearStudios.Unity.Logging
             {
                 GC.Collect();
                 LogMessage(LogLevel.Info, "Garbage collection forced from debug GUI");
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Validate ConfigSo", _debugButtonStyle, GUILayout.Width(100)))
+            {
+                var errors = ValidateLoggingConfig();
+                var message = errors.Count == 0 ? "Configuration is valid" : $"Configuration has {errors.Count} errors";
+                LogMessage(errors.Count == 0 ? LogLevel.Info : LogLevel.Warning, message);
+            }
+            if (GUILayout.Button("ConfigSo Summary", _debugButtonStyle, GUILayout.Width(100)))
+            {
+                var summary = GetLoggingConfigSummary();
+                LogMessage(LogLevel.Info, $"Configuration Summary:\n{summary}");
+            }
+            if (GUILayout.Button("Toggle SO ConfigSo", _debugButtonStyle, GUILayout.Width(100)))
+            {
+                SetUseScriptableObjectConfig(!_useScriptableObjectConfig);
             }
             GUILayout.EndHorizontal();
 
@@ -857,6 +982,16 @@ namespace AhBearStudios.Unity.Logging
             _slowFrameThreshold = Mathf.Max(1f, _slowFrameThreshold);
             _memorySpikeThreshold = Mathf.Max(1024, _memorySpikeThreshold); // At least 1KB
             _healthCheckInterval = Mathf.Max(1f, _healthCheckInterval);
+            
+            // Validate scriptable object configuration if enabled
+            if (_useScriptableObjectConfig && _loggingConfig != null)
+            {
+                var configErrors = _loggingConfig.ValidateConfiguration();
+                if (configErrors.Count > 0)
+                {
+                    Debug.LogWarning($"Logging configuration validation failed:\n{string.Join("\n", configErrors)}", this);
+                }
+            }
         }
 
         /// <summary>
@@ -929,11 +1064,11 @@ namespace AhBearStudios.Unity.Logging
                     _enableDebugGUI = enabled;
                     break;
                 default:
-                    _loggingService.LogWarning($"Unknown logging feature: {featureName}", "Unity.Config");
+                    _loggingService.LogWarning($"Unknown logging feature: {featureName}", "Unity.ConfigSo");
                     return;
             }
 
-            _loggingService.LogInfo($"Logging feature '{featureName}' {(enabled ? "enabled" : "disabled")}", "Unity.Config");
+            _loggingService.LogInfo($"Logging feature '{featureName}' {(enabled ? "enabled" : "disabled")}", "Unity.ConfigSo");
         }
 
         /// <summary>
@@ -959,7 +1094,7 @@ namespace AhBearStudios.Unity.Logging
                 ["NewMemorySpikeThreshold"] = _memorySpikeThreshold
             };
 
-            _loggingService.LogInfo("Logging thresholds updated", thresholdData, "Unity.Config");
+            _loggingService.LogInfo("Logging thresholds updated", thresholdData, "Unity.ConfigSo");
         }
 
         /// <summary>

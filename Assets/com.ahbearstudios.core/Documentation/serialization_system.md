@@ -736,9 +736,9 @@ public async Task Serializer_WithNetworking_TransfersDataCorrectly()
 ### 2. Basic Setup
 
 ```csharp
-public class SerializationInstaller : MonoInstaller
+public class SerializationInstaller : MonoBehaviour, IInstaller
 {
-    public override void InstallBindings()
+    public void InstallBindings(ContainerBuilder builder)
     {
         // Configure serialization
         var config = new SerializationConfigBuilder()
@@ -747,9 +747,9 @@ public class SerializationInstaller : MonoInstaller
             .WithPerformanceMonitoring(true)
             .Build();
             
-        Container.Bind<SerializationConfig>().FromInstance(config);
-        Container.Bind<ISerializer>().To<MemoryPackSerializer>().AsSingle();
-        Container.Bind<IVersioningService>().To<VersioningService>().AsSingle();
+        builder.AddSingleton(config);
+        builder.AddSingleton<ISerializer, MemoryPackSerializer>();
+        builder.AddSingleton<IVersioningService, VersioningService>();
     }
 }
 ```

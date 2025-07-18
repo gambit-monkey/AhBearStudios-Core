@@ -10,7 +10,7 @@ namespace AhBearStudios.Unity.HealthCheck.ScriptableObjects
     /// Provides serializable configuration for health checks, circuit breakers, and degradation settings.
     /// Follows AhBearStudios Core Architecture Unity integration patterns.
     /// </summary>
-    [CreateAssetMenu(fileName = "HealthCheckConfig", menuName = "AhBearStudios/Configuration/Health Check Config", order = 100)]
+    [CreateAssetMenu(fileName = "HealthCheckConfig", menuName = "AhBearStudios/Configuration/Health Check ConfigSo", order = 100)]
     public sealed class HealthCheckConfigAsset : ScriptableObject
     {
         #region Serialized Fields

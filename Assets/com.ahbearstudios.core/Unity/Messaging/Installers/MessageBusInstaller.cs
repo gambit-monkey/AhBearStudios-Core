@@ -1,5 +1,6 @@
 ﻿using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.HealthChecking;
+using AhBearStudios.Core.Infrastructure.Bootstrap;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Messaging.Builders;
@@ -53,7 +54,7 @@ namespace AhBearStudios.Unity.Messaging.Installers
         /// <summary>
         /// Initializes a new instance of the MessageBusInstaller class.
         /// </summary>
-        /// <param name="config">Optional message bus configuration. If null, default config will be used.</param>
+        /// <param name="config">Optional message bus configuration. If null, default configSo will be used.</param>
         /// <param name="logger">Optional logging service for installer operations</param>
         public MessageBusInstaller(MessageBusConfig config = null, ILoggingService logger = null)
         {

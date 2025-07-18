@@ -143,7 +143,7 @@ namespace AhBearStudios.Core.Messaging
             _currentHealthStatus = HealthStatus.Healthy;
             _lastStatsReset = DateTime.UtcNow;
 
-            _logger.LogInfo($"[{_correlationId}] MessageBusService initialized with config: {_config.InstanceName}");
+            _logger.LogInfo($"[{_correlationId}] MessageBusService initialized with configSo: {_config.InstanceName}");
         }
 
         #endregion

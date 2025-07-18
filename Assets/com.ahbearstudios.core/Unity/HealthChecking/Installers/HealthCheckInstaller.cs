@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.HealthChecking;
+using AhBearStudios.Core.Infrastructure.Bootstrap;
 using AhBearStudios.Core.HealthChecking.Builders;
 using AhBearStudios.Core.HealthChecking.Checks;
 using AhBearStudios.Core.HealthChecking.Configs;

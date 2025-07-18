@@ -347,7 +347,7 @@ namespace AhBearStudios.Unity.HealthCheck.HealthChecks
                 healthData["UnityAnalyticsEnabled"] = UnityEngine.Analytics.Analytics.enabled;
                 
                 // Note: Additional Unity Services checks could be added here
-                // such as Unity Ads, Unity IAP, Unity Remote Config, etc.
+                // such as Unity Ads, Unity IAP, Unity Remote ConfigSo, etc.
             }
             catch (Exception ex)
             {

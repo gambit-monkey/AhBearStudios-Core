@@ -279,7 +279,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="config">Circuit breaker configuration</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
         public HealthCheckServiceConfigBuilder WithDefaultCircuitBreakerConfig(CircuitBreakerConfig config)
         {
             ThrowIfAlreadyBuilt();
@@ -294,7 +294,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
             }
             
             _defaultCircuitBreakerConfig = config;
-            _logger.LogDebug("Default circuit breaker config set");
+            _logger.LogDebug("Default circuit breaker configSo set");
             return this;
         }
 

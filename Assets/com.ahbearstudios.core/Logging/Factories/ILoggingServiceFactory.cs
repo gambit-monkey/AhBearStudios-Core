@@ -8,7 +8,7 @@ namespace AhBearStudios.Core.Logging.Factories
     /// <summary>
     /// Factory interface for creating logging service instances from configuration.
     /// Provides cohesive integration with ILogConfigBuilder and LogConfigBuilder patterns.
-    /// Completes the Builder → Config → Factory → Service pattern for the logging system.
+    /// Completes the Builder → ConfigSo → Factory → Service pattern for the logging system.
     /// </summary>
     public interface ILoggingServiceFactory
     {
@@ -17,7 +17,7 @@ namespace AhBearStudios.Core.Logging.Factories
         /// </summary>
         /// <param name="config">The logging configuration</param>
         /// <returns>A fully configured logging service instance</returns>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when configuration is invalid</exception>
         ILoggingService CreateLoggingService(LoggingConfig config);
 
@@ -32,7 +32,7 @@ namespace AhBearStudios.Core.Logging.Factories
         /// </summary>
         /// <param name="config">The logging configuration</param>
         /// <returns>A high-performance logging service instance</returns>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
         ILoggingService CreateHighPerformanceLoggingService(LoggingConfig config);
 
         /// <summary>
@@ -40,7 +40,7 @@ namespace AhBearStudios.Core.Logging.Factories
         /// </summary>
         /// <param name="config">The logging configuration</param>
         /// <returns>A development-optimized logging service instance</returns>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
         ILoggingService CreateDevelopmentLoggingService(LoggingConfig config);
 
         /// <summary>
@@ -80,7 +80,7 @@ namespace AhBearStudios.Core.Logging.Factories
         /// <param name="config">The logging configuration</param>
         /// <param name="targetFactory">Custom target factory to use</param>
         /// <returns>A logging service instance using the custom target factory</returns>
-        /// <exception cref="ArgumentNullException">Thrown when config or targetFactory is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configSo or targetFactory is null</exception>
         ILoggingService CreateLoggingService(LoggingConfig config, ILogTargetFactory targetFactory);
 
         /// <summary>

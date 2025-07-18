@@ -270,5 +270,11 @@ namespace AhBearStudios.Core.Logging
         /// <param name="channelName">The name of the channel to check</param>
         /// <returns>True if the channel is registered, false otherwise</returns>
         bool HasChannel(string channelName);
+
+        /// <summary>
+        /// Performs a health check on the logging service and all registered targets.
+        /// </summary>
+        /// <returns>True if the service and all targets are healthy, false otherwise</returns>
+        bool PerformHealthCheck();
     }
 }

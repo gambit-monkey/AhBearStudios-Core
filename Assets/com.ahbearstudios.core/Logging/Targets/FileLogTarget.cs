@@ -65,7 +65,7 @@ namespace AhBearStudios.Core.Logging.Targets
             IsEnabled = config.IsEnabled;
             Channels = config.Channels;
 
-            // Get file path from config or use default
+            // Get file path from configSo or use default
             _filePath = GetConfigProperty("FilePath", Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
                 "AhBearStudios", "Logs", $"{Name}.log"));

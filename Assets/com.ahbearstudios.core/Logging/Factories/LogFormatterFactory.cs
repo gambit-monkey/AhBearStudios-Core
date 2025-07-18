@@ -138,7 +138,7 @@ namespace AhBearStudios.Core.Logging.Factories
                 }
                 catch (Exception ex)
                 {
-                    _loggingService?.LogException($"Failed to create formatter from config: {config?.Name ?? "Unknown"}", ex);
+                    _loggingService?.LogException($"Failed to create formatter from configSo: {config?.Name ?? "Unknown"}", ex);
                     
                     // Continue creating other formatters even if one fails
                     // This provides graceful degradation
@@ -257,7 +257,7 @@ namespace AhBearStudios.Core.Logging.Factories
                 return errors.AsReadOnly();
             }
 
-            // Use the config's own validation
+            // Use the configSo's own validation
             var configValidation = config.Validate();
             if (!configValidation.IsValid)
             {
@@ -464,7 +464,7 @@ namespace AhBearStudios.Core.Logging.Factories
                 ["IsEnabled"] = GetSettingValue(config, nameof(config.IsEnabled), config.IsEnabled)
             };
 
-            // Add custom properties from the config with type safety
+            // Add custom properties from the configSo with type safety
             if (config.Properties != null)
             {
                 foreach (var kvp in config.Properties)

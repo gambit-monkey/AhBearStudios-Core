@@ -53,8 +53,8 @@ namespace AhBearStudios.Core.Messaging.Factories
         /// </summary>
         /// <param name="config">The message bus configuration</param>
         /// <returns>A configured message bus service instance</returns>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
-        /// <exception cref="ArgumentException">Thrown when config is invalid</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
+        /// <exception cref="ArgumentException">Thrown when configSo is invalid</exception>
         /// <exception cref="InvalidOperationException">Thrown when factory dependencies are not available</exception>
         public IMessageBusService CreateMessageBus(MessageBusConfig config)
         {

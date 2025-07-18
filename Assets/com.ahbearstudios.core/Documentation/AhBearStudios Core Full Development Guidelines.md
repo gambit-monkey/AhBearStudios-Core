@@ -372,30 +372,30 @@ When organizing code, verify:
 // Game-focused Reflex registration following ALL established patterns
 namespace AhBearStudios.Unity.Player
 {
-    public class PlayerInstaller : MonoInstaller  
+    public class PlayerInstaller : MonoBehaviour, IInstaller
     {  
         [Header("Player Configuration")]
         [SerializeField] private PlayerConfig _playerConfig;
         [SerializeField] private PlayerController _playerPrefab;
         
-        public override void InstallBindings(ContainerBuilder builder)  
+        public void InstallBindings(ContainerBuilder builder)  
         {  
             // Register core POCO services (from AhBearStudios.Core namespace)
-            builder.Bind<ILoggingService>().To<LoggingService>().AsSingle();
-            builder.Bind<IMessageBusService>().To<MessageBusService>().AsSingle();
-            builder.Bind<IPoolingService>().To<PoolingService>().AsSingle();
+            builder.AddSingleton<ILoggingService, LoggingService>();
+            builder.AddSingleton<IMessageBusService, MessageBusService>();
+            builder.AddSingleton<IPoolingService, PoolingService>();
             
             // Register game configuration
-            builder.Bind<PlayerConfig>().FromInstance(_playerConfig);
+            builder.AddSingleton(_playerConfig);
             
             // Register game managers - following functional organization
-            builder.Bind<IPlayerManager>().To<PlayerManager>().AsSingle();
-            builder.Bind<IMovementSystem>().To<PlayerMovementSystem>().AsSingle();
-            builder.Bind<IAnimationController>().To<PlayerAnimationController>().AsSingle();
+            builder.AddSingleton<IPlayerManager, PlayerManager>();
+            builder.AddSingleton<IMovementSystem, PlayerMovementSystem>();
+            builder.AddSingleton<IAnimationController, PlayerAnimationController>();
             
             // Factory registration following Builder → Config → Factory → Service pattern
-            builder.Bind<IPlayerFactory>().To<PlayerFactory>().AsSingle();
-            builder.Bind<IPlayerConfigBuilder>().To<PlayerConfigBuilder>().AsSingle();
+            builder.AddSingleton<IPlayerFactory, PlayerFactory>();
+            builder.AddSingleton<IPlayerConfigBuilder, PlayerConfigBuilder>();
         }  
     }
 }
@@ -676,35 +676,39 @@ namespace AhBearStudios.Unity.Pooling
 // Comprehensive Reflex registration example with functional organization
 namespace AhBearStudios.Core.Infrastructure.DependencyInjection
 {
-    public class CoreSystemsInstaller : MonoInstaller  
+    public class CoreSystemsInstaller : MonoBehaviour, IInstaller
     {  
-        public override void InstallBindings(ContainerBuilder builder)  
+        public void InstallBindings(ContainerBuilder builder)  
         {  
             // Core system services as singletons - organized by function
-            builder.Bind<ILoggingService>().To<LoggingService>().AsSingle();  
-            builder.Bind<IMessageBusService>().To<MessageBusService>().AsSingle();  
-            builder.Bind<IProfilerService>().To<ProfilerService>().AsSingle();  
-            builder.Bind<IAlertService>().To<AlertService>().AsSingle();  
-            builder.Bind<IHealthCheckService>().To<HealthCheckService>().AsSingle();  
-            builder.Bind<IPoolingService>().To<PoolingService>().AsSingle();  
+            builder.AddSingleton<ILoggingService, LoggingService>();  
+            builder.AddSingleton<IMessageBusService, MessageBusService>();  
+            builder.AddSingleton<IProfilerService, ProfilerService>();  
+            builder.AddSingleton<IAlertService, AlertService>();  
+            builder.AddSingleton<IHealthCheckService, HealthCheckService>();  
+            builder.AddSingleton<IPoolingService, PoolingService>();  
               
             // Factory pattern registration per functional system
-            builder.Bind<ILoggingServiceFactory>().To<LoggingServiceFactory>().AsSingle();
-            builder.Bind<IMessageBusFactory>().To<MessageBusFactory>().AsSingle();
+            builder.AddSingleton<ILoggingServiceFactory, LoggingServiceFactory>();
+            builder.AddSingleton<IMessageBusFactory, MessageBusFactory>();
               
             // Conditional bindings for different environments  
-            builder.Bind<IDataRepository>().To<ProductionDataRepository>().AsSingle()  
-                .When(context => !Application.isEditor);  
-            builder.Bind<IDataRepository>().To<TestDataRepository>().AsSingle()  
-                .When(context => Application.isEditor);  
+            if (Application.isEditor)
+            {
+                builder.AddSingleton<IDataRepository, TestDataRepository>();
+            }
+            else
+            {
+                builder.AddSingleton<IDataRepository, ProductionDataRepository>();
+            }
               
-            // Multi-binding for plugin architecture per functional area
-            builder.Bind<ILogTarget>().To<UnityConsoleLogTarget>().AsSingle().WithId("unity");
-            builder.Bind<ILogTarget>().To<SerilogLogTarget>().AsSingle().WithId("serilog");
+            // Register multiple implementations for plugin architecture
+            builder.AddSingleton<ILogTarget>(container => new UnityConsoleLogTarget(container.Resolve<ILoggingService>()));
+            builder.AddSingleton<ILogTarget>(container => new SerilogLogTarget(container.Resolve<ILoggingService>()));
               
             // Lazy initialization for expensive services  
-            builder.Bind<Lazy<IExpensiveService>>().FromMethod(container =>   
-                new Lazy<IExpensiveService>(() => container.Resolve<IExpensiveService>())).AsSingle();  
+            builder.AddSingleton<Lazy<IExpensiveService>>(container =>   
+                new Lazy<IExpensiveService>(() => container.Resolve<IExpensiveService>()));  
         }
     }
 }
@@ -1160,8 +1164,8 @@ namespace AhBearStudios.Core.HealthCheck.Checks
 
 ### **Bootstrapper System Integration with Reflex**
 
-* **All systems must be bootstrappable** through Reflex MonoInstaller components  
-* **Implement MonoInstaller** for components requiring initialization and registration  
+* **All systems must be bootstrappable** through Reflex Installer components  
+* **Implement IInstaller** for components requiring initialization and registration  
 * **Use InstallBindings()** for service registration with appropriate lifetimes  
 * **Use Start()** method for post-installation initialization  
 * **Define clear initialization order** using ScriptExecutionOrder or installer dependencies  
@@ -1184,30 +1188,30 @@ namespace AhBearStudios.Core.Infrastructure.Bootstrap
     using AhBearStudios.Core.Pooling;
     
     [DefaultExecutionOrder(-1000)] // Execute early
-    public class CoreSystemsInstaller : MonoInstaller
+    public class CoreSystemsInstaller : MonoBehaviour, IInstaller
     {
         [SerializeField] private LoggingConfig _loggingConfig;
         [SerializeField] private MessageBusConfig _messageBusConfig;
 
-        public override void InstallBindings(ContainerBuilder builder)
+        public void InstallBindings(ContainerBuilder builder)
         {
             // Register configurations from functional systems
-            builder.Bind<LoggingConfig>().FromInstance(_loggingConfig);
-            builder.Bind<MessageBusConfig>().FromInstance(_messageBusConfig);
+            builder.AddSingleton(_loggingConfig);
+            builder.AddSingleton(_messageBusConfig);
 
             // Register core services by functional system
-            builder.Bind<ILoggingService>().To<LoggingService>().AsSingle();
-            builder.Bind<IMessageBusService>().To<MessageBusService>().AsSingle();
-            builder.Bind<IProfilerService>().To<ProfilerService>().AsSingle();
-            builder.Bind<IAlertService>().To<AlertService>().AsSingle();
-            builder.Bind<IHealthCheckService>().To<HealthCheckService>().AsSingle();
-            builder.Bind<IPoolingService>().To<PoolingService>().AsSingle();
+            builder.AddSingleton<ILoggingService, LoggingService>();
+            builder.AddSingleton<IMessageBusService, MessageBusService>();
+            builder.AddSingleton<IProfilerService, ProfilerService>();
+            builder.AddSingleton<IAlertService, AlertService>();
+            builder.AddSingleton<IHealthCheckService, HealthCheckService>();
+            builder.AddSingleton<IPoolingService, PoolingService>();
 
             // Register health checks from functional systems
-            builder.Bind<CoreSystemHealthCheck>().AsSingle();
+            builder.AddSingleton<CoreSystemHealthCheck>();
         }
 
-        public override void Start()
+        private void Start()
         {
             // Validate that all critical services are registered
             ValidateCriticalServices();
@@ -1224,37 +1228,48 @@ namespace AhBearStudios.Core.Infrastructure.Bootstrap
 
         private void ValidateCriticalServices()
         {
-            var requiredServices = new[]
+            var container = this.GetComponent<ProjectScope>()?.Container ?? 
+                           this.GetComponent<SceneScope>()?.Container;
+                           
+            if (container == null)
             {
-                typeof(ILoggingService),
-                typeof(IMessageBusService),
-                typeof(IProfilerService),
-                typeof(IAlertService),
-                typeof(IHealthCheckService),
-                typeof(IPoolingService)
-            };
+                throw new InvalidOperationException("No Reflex container found");
+            }
 
-            foreach (var serviceType in requiredServices)
+            // Validate critical services are registered
+            try
             {
-                if (!Container.HasBinding(serviceType))
-                {
-                    throw new InvalidOperationException($"Critical service {serviceType.Name} is not registered");
-                }
+                container.Resolve<ILoggingService>();
+                container.Resolve<IMessageBusService>();
+                container.Resolve<IProfilerService>();
+                container.Resolve<IAlertService>();
+                container.Resolve<IHealthCheckService>();
+                container.Resolve<IPoolingService>();
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"Critical service validation failed: {ex.Message}", ex);
             }
         }
 
         private void InitializeServices()
         {
+            var container = this.GetComponent<ProjectScope>()?.Container ?? 
+                           this.GetComponent<SceneScope>()?.Container;
+                           
             // Start services that need initialization
-            var messageBus = Container.Resolve<IMessageBusService>();
-            var profiler = Container.Resolve<IProfilerService>();
+            var messageBus = container.Resolve<IMessageBusService>();
+            var profiler = container.Resolve<IProfilerService>();
             profiler.StartProfiling();
         }
 
         private void RegisterHealthChecks()
         {
-            var healthService = Container.Resolve<IHealthCheckService>();
-            var coreHealthCheck = Container.Resolve<CoreSystemHealthCheck>();
+            var container = this.GetComponent<ProjectScope>()?.Container ?? 
+                           this.GetComponent<SceneScope>()?.Container;
+                           
+            var healthService = container.Resolve<IHealthCheckService>();
+            var coreHealthCheck = container.Resolve<CoreSystemHealthCheck>();
             healthService.RegisterHealthCheck(coreHealthCheck);
         }
     }
@@ -1437,12 +1452,12 @@ namespace AhBearStudios.Tests.Unit.Unity.Player
 * **Domain Layer**: Minimal integration (logging, message bus for domain events via Reflex injection)  
 * **Infrastructure Layer**: Complete integration with all core systems via Reflex  
 * **Presentation Layer**: Logging, Reflex DI, health checks, and performance monitoring  
-* **Bootstrap Layer**: Orchestrates initialization of all other systems using Reflex MonoInstaller pattern  
+* **Bootstrap Layer**: Orchestrates initialization of all other systems using Reflex Installer pattern  
 * **Functional Integration**: Each functional system integrates with others through well-defined interfaces
 
 ### **Reflex Integration Requirements**
 
-* **Installer-based initialization** - Components must use MonoInstaller for registration and setup  
+* **Installer-based initialization** - Components must use IInstaller for registration and setup  
 * **Dependency declaration** - Components must declare their dependencies through constructor parameters  
 * **Configuration validation** - All configuration must be validated during installer Start() methods  
 * **Health check registration** - Components must register their health checks during installer Start() phase  
@@ -1581,7 +1596,7 @@ public class PlayerController : MonoBehaviour, IPlayerController
 * **Use explicit dependency injection** - Leverage Reflex constructor injection as the primary pattern  
 * **Minimize dependency chains** - Keep dependency graphs shallow and focused  
 * **Register core system dependencies** - Ensure logging, messaging, pooling, alerting, and health checking are properly configured in Reflex  
-* **Reflex installer dependency registration** - All dependencies must be resolvable during bootstrap through MonoInstaller components  
+* **Reflex installer dependency registration** - All dependencies must be resolvable during bootstrap through IInstaller components  
 * **Functional dependency management** - Manage dependencies within functional systems and minimize cross-functional dependencies
 
 ```csharp
@@ -1757,7 +1772,7 @@ AhBearStudios.Core.{FunctionalSystem}/
 // Unity-specific implementations
 AhBearStudios.Unity.{FunctionalSystem}/
 ├── {System}MonoBehaviour.cs         // MonoBehaviour wrappers
-├── Installers/                      // Reflex MonoInstallers
+├── Installers/                      // Reflex Installers
 │   ├── {System}Installer.cs        // Primary system installer
 │   └── {System}UnityInstaller.cs   // Unity-specific registrations
 ├── Components/                      // Unity Components
@@ -1848,7 +1863,7 @@ AhBearStudios.Unity.Logging/
 * **MonoBehaviour wrappers and adapters** - Unity lifecycle integration  
 * **Unity-specific API integration** - Debug.Log, PlayerPrefs, Resources, etc.  
 * **Scene-based component implementations** - GameObject-attached components  
-* **Reflex MonoInstaller registration** - DI container configuration  
+* **Reflex Installer registration** - DI container configuration  
 * **Unity asset integration** - ScriptableObjects, Resources, Addressables  
 * **Unity lifecycle event handling** - Start, Update, OnDestroy patterns  
 * **Unity Editor integrations** - Custom inspectors, editor windows, tools  
@@ -2058,7 +2073,7 @@ namespace AhBearStudios.Unity.Logging.Targets
 }
 ```
 
-#### **Reflex MonoInstaller Pattern**
+#### **Reflex Installer Pattern**
 
 ```csharp
 // Unity-specific installer
@@ -2069,49 +2084,63 @@ namespace AhBearStudios.Unity.Logging.Installers
     using AhBearStudios.Unity.Logging.Targets;
     
     [DefaultExecutionOrder(-500)]
-    public class UnityLoggingInstaller : MonoInstaller
+    public class UnityLoggingInstaller : MonoBehaviour, IInstaller
     {
         [SerializeField] private LoggingConfigAsset _configAsset;
         [SerializeField] private bool _enableUnityConsole = true;
         [SerializeField] private bool _enableFileLogging = true;
         
-        public override void InstallBindings(ContainerBuilder builder)
+        public void InstallBindings(ContainerBuilder builder)
         {
             // Register core configuration
             var config = _configAsset != null ? _configAsset.Config : LoggingConfig.Default;
-            builder.Bind<LoggingConfig>().FromInstance(config);
+            builder.AddSingleton(config);
             
             // Register core services (POCO implementations)
-            builder.Bind<ILogFormatter>().To<DefaultLogFormatter>().AsSingle();
-            builder.Bind<ILoggingService>().To<LoggingService>().AsSingle();
+            builder.AddSingleton<ILogFormatter, DefaultLogFormatter>();
+            builder.AddSingleton<ILoggingService, LoggingService>();
             
             // Register Unity-specific targets
             if (_enableUnityConsole)
             {
-                builder.Bind<ILogTarget>().To<UnityConsoleLogTarget>().AsSingle().WithId("unity");
+                builder.AddSingleton<ILogTarget>(container => 
+                    new UnityConsoleLogTarget(container.Resolve<ILogFormatter>()));
             }
             
             if (_enableFileLogging)
             {
-                builder.Bind<ILogTarget>().To<FileLogTarget>().AsSingle().WithId("file");
+                builder.AddSingleton<ILogTarget>(container => 
+                    new FileLogTarget(container.Resolve<ILogFormatter>()));
             }
             
             // Register Unity-specific health checks
-            builder.Bind<UnityLoggingHealthCheck>().AsSingle();
+            builder.AddSingleton<UnityLoggingHealthCheck>();
         }
         
-        public override void Start()
+        private void Start()
         {
-            // Validate core services are registered
-            if (!Container.HasBinding<ILoggingService>())
+            var container = this.GetComponent<ProjectScope>()?.Container ?? 
+                           this.GetComponent<SceneScope>()?.Container;
+                           
+            if (container == null)
             {
-                throw new InvalidOperationException("ILoggingService not registered");
+                throw new InvalidOperationException("No Reflex container found");
+            }
+            
+            // Validate core services are registered
+            try
+            {
+                container.Resolve<ILoggingService>();
+            }
+            catch (Exception ex)
+            {
+                throw new InvalidOperationException($"ILoggingService not registered: {ex.Message}", ex);
             }
             
             // Initialize Unity-specific functionality
-            var loggingService = Container.Resolve<ILoggingService>();
-            var healthService = Container.Resolve<IHealthCheckService>();
-            var unityHealthCheck = Container.Resolve<UnityLoggingHealthCheck>();
+            var loggingService = container.Resolve<ILoggingService>();
+            var healthService = container.Resolve<IHealthCheckService>();
+            var unityHealthCheck = container.Resolve<UnityLoggingHealthCheck>();
             
             healthService.RegisterHealthCheck(unityHealthCheck);
             

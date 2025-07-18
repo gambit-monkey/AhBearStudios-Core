@@ -945,9 +945,9 @@ public void PoolingService_WithRealWorkload_PerformsCorrectly()
 ### 2. Basic Setup
 
 ```csharp
-public class PoolingInstaller : MonoInstaller
+public class PoolingInstaller : MonoBehaviour, IInstaller
 {
-    public override void InstallBindings()
+    public void InstallBindings(ContainerBuilder builder)
     {
         // Configure pooling
         var config = new PoolConfigBuilder()
@@ -957,9 +957,9 @@ public class PoolingInstaller : MonoInstaller
             .WithMonitoring(enabled: true)
             .Build();
             
-        Container.Bind<PoolingConfig>().FromInstance(config);
-        Container.Bind<IPoolingService>().To<PoolingService>().AsSingle();
-        Container.Bind<IPoolFactory>().To<PoolFactory>().AsSingle();
+        builder.AddSingleton(config);
+        builder.AddSingleton<IPoolingService, PoolingService>();
+        builder.AddSingleton<IPoolFactory, PoolFactory>();
     }
 }
 ```

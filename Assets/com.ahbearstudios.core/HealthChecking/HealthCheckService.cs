@@ -89,7 +89,7 @@ namespace AhBearStudios.Core.HealthChecking
             if (_healthChecks.ContainsKey(name))
                 throw new InvalidOperationException($"Health check with name '{name}' is already registered");
 
-            // Use provided config or create default
+            // Use provided configSo or create default
             var healthCheckConfig = config ?? new HealthCheckConfiguration
             {
                 Name = name,

@@ -4,6 +4,8 @@ using System.Linq;
 using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Logging.Targets;
+using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Alerting;
 
 namespace AhBearStudios.Core.Logging.Factories
 {
@@ -15,14 +17,20 @@ namespace AhBearStudios.Core.Logging.Factories
     {
         private readonly Dictionary<string, Func<LogTargetConfig, ILogTarget>> _targetFactories;
         private readonly ILoggingService _loggingService;
+        private readonly IProfilerService _profilerService;
+        private readonly IAlertService _alertService;
 
         /// <summary>
         /// Initializes a new instance of the LogTargetFactory.
         /// </summary>
         /// <param name="loggingService">The logging service for internal logging</param>
-        public LogTargetFactory(ILoggingService loggingService = null)
+        /// <param name="profilerService">The profiler service for performance monitoring</param>
+        /// <param name="alertService">The alert service for critical notifications</param>
+        public LogTargetFactory(ILoggingService loggingService = null, IProfilerService profilerService = null, IAlertService alertService = null)
         {
             _loggingService = loggingService;
+            _profilerService = profilerService;
+            _alertService = alertService;
             _targetFactories = new Dictionary<string, Func<LogTargetConfig, ILogTarget>>(StringComparer.OrdinalIgnoreCase);
             
             RegisterDefaultTargetTypes();
@@ -77,7 +85,7 @@ namespace AhBearStudios.Core.Logging.Factories
                 }
                 catch (Exception ex)
                 {
-                    _loggingService?.LogException($"Failed to create target from config: {config?.Name ?? "Unknown"}", ex);
+                    _loggingService?.LogException($"Failed to create target from configSo: {config?.Name ?? "Unknown"}", ex);
                     
                     // Continue creating other targets even if one fails
                     // This provides graceful degradation
@@ -167,7 +175,7 @@ namespace AhBearStudios.Core.Logging.Factories
                 return errors.AsReadOnly();
             }
 
-            // Use the config's own validation
+            // Use the configSo's own validation
             var configErrors = config.Validate();
             errors.AddRange(configErrors);
 
@@ -211,8 +219,31 @@ namespace AhBearStudios.Core.Logging.Factories
             // Register Console target (when available)
             RegisterTargetType("Console", config => new ConsoleLogTarget(config));
             
+            // Register Serilog target (with optional dependency injection)
+            RegisterTargetType("Serilog", config => 
+            {
+                // Create Serilog target with available dependencies
+                // If dependencies are not available, SerilogTarget will handle gracefully
+                return CreateSerilogTarget(config);
+            });
+            
             // Register Null target for testing/disabled scenarios
             RegisterTargetType("Null", config => new NullLogTarget(config));
+        }
+
+        /// <summary>
+        /// Creates a Serilog target with proper dependency handling.
+        /// </summary>
+        /// <param name="config">The target configuration</param>
+        /// <returns>A configured SerilogTarget instance</returns>
+        private SerilogTarget CreateSerilogTarget(LogTargetConfig config)
+        {
+            // Use null-safe dependency injection
+            // If dependencies are not available, use null service implementations
+            var profilerService = _profilerService ?? NullProfilerService.Instance;
+            var alertService = _alertService ?? NullAlertService.Instance;
+            
+            return new SerilogTarget(config, profilerService, alertService);
         }
     }
 }

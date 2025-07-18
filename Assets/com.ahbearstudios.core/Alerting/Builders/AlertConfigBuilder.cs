@@ -857,7 +857,7 @@ namespace AhBearStudios.Core.Alerting.Builders
                 EmergencyEscalation = _emergencyEscalation
             };
 
-            // Final validation of the built config
+            // Final validation of the built configSo
             config.Validate();
             
             return config;

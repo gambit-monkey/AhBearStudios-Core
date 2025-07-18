@@ -18,8 +18,8 @@ namespace AhBearStudios.Core.Logging.Filters
         /// </summary>
         /// <param name="config">The filter configuration</param>
         /// <returns>A configured filter instance</returns>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
-        /// <exception cref="ArgumentException">Thrown when config has invalid values</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
+        /// <exception cref="ArgumentException">Thrown when configSo has invalid values</exception>
         /// <exception cref="NotSupportedException">Thrown when filter type is not supported</exception>
         ILogFilter CreateFilter(FilterConfig config);
 

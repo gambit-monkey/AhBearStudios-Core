@@ -18,7 +18,7 @@ namespace AhBearStudios.Core.Logging.Factories
         /// <param name="config">The formatter configuration</param>
         /// <param name="profilerService">Optional profiler service for performance metrics</param>
         /// <returns>A new log formatter instance</returns>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when formatter type is not supported</exception>
         ILogFormatter CreateFormatter(FormatterConfig config, IProfilerService profilerService = null);
 

@@ -367,44 +367,44 @@ Based on the dependency layers, teams can work on systems in parallel:
 Systems must be registered in dependency order:
 
 ```csharp
-public class CoreSystemsInstaller : MonoInstaller
+public class CoreSystemsInstaller : MonoBehaviour, IInstaller
 {
-    public override void InstallBindings()
+    public void InstallBindings(ContainerBuilder builder)
     {
         // Layer 0: Foundation
-        InstallLogging();
+        InstallLogging(builder);
         
         // Layer 1: Core Infrastructure
-        InstallSerialization();
-        InstallConfiguration();
-        InstallProfiling();
-        InstallAlerts();
+        InstallSerialization(builder);
+        InstallConfiguration(builder);
+        InstallProfiling(builder);
+        InstallAlerts(builder);
         
         // Layer 2: Service Infrastructure
-        InstallMessaging();
-        InstallPooling();
-        InstallHealthCheck();
+        InstallMessaging(builder);
+        InstallPooling(builder);
+        InstallHealthCheck(builder);
         
         // Layer 3: Data & Security
-        InstallDatabase();
-        InstallAuthentication();
-        InstallSession();
+        InstallDatabase(builder);
+        InstallAuthentication(builder);
+        InstallSession(builder);
         
         // Layer 4: Application Services
-        InstallAnalytics();
-        InstallLocalization();
-        InstallAssetManagement();
+        InstallAnalytics(builder);
+        InstallLocalization(builder);
+        InstallAssetManagement(builder);
         
         // Layer 5: Game Systems
-        InstallAudio();
-        InstallInput();
-        InstallSceneManagement();
-        InstallUIManagement();
+        InstallAudio(builder);
+        InstallInput(builder);
+        InstallSceneManagement(builder);
+        InstallUIManagement(builder);
         
         // Layer 6: Persistence & Networking
-        InstallSave();
-        InstallCloud();
-        InstallNetworking();
+        InstallSave(builder);
+        InstallCloud(builder);
+        InstallNetworking(builder);
         
         // Layer 7: Bootstrap (handled separately)
     }

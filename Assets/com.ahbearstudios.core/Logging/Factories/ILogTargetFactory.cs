@@ -15,7 +15,7 @@ namespace AhBearStudios.Core.Logging.Factories
         /// </summary>
         /// <param name="config">The configuration for the log target</param>
         /// <returns>A new log target instance</returns>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when target type is not supported</exception>
         ILogTarget CreateTarget(LogTargetConfig config);
 
@@ -33,7 +33,7 @@ namespace AhBearStudios.Core.Logging.Factories
         /// <typeparam name="T">The type of log target to create</typeparam>
         /// <param name="config">The configuration for the log target</param>
         /// <returns>A new log target instance of the specified type</returns>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when target type cannot be created</exception>
         T CreateTarget<T>(LogTargetConfig config) where T : class, ILogTarget;
 

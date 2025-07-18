@@ -146,24 +146,18 @@ We use **constructor injection** as our primary dependency resolution pattern.
 
 #### Example Registration
 ```csharp
-public class CoreSystemsInstaller : MonoInstaller
+public class CoreSystemsInstaller : MonoBehaviour, IInstaller
 {
-    public override void InstallBindings()
+    public void InstallBindings(ContainerBuilder builder)
     {
         // Register as singleton
-        Container.Bind<ILoggingService>()
-            .To<LoggingService>()
-            .AsSingle();
+        builder.AddSingleton<ILoggingService, LoggingService>();
 
         // Register with configuration
-        Container.Bind<LoggingConfig>()
-            .FromMethod(ctx => CreateLoggingConfig())
-            .AsSingle();
+        builder.AddSingleton<LoggingConfig>(container => CreateLoggingConfig());
 
         // Register factory
-        Container.Bind<ILoggingFactory>()
-            .To<LoggingFactory>()
-            .AsSingle();
+        builder.AddSingleton<ILoggingFactory, LoggingFactory>();
     }
 }
 ```

@@ -62,7 +62,7 @@ namespace AhBearStudios.Core.Logging.Factories
         {
             var config = LoggingConfig.Default;
             
-            // If the default config has no targets, add a memory target
+            // If the default configSo has no targets, add a memory target
             if (config.TargetConfigs.Count == 0)
             {
                 config = config with

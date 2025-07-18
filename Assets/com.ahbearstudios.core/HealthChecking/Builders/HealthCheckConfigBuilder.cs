@@ -223,7 +223,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
                 var validationErrors = config.Validate();
                 if (validationErrors.Count > 0)
                 {
-                    var errorMessage = $"Invalid circuit breaker config: {string.Join(", ", validationErrors)}";
+                    var errorMessage = $"Invalid circuit breaker configSo: {string.Join(", ", validationErrors)}";
                     _logger.LogError(errorMessage);
                     throw new ArgumentException(errorMessage, nameof(config));
                 }
@@ -546,7 +546,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
                 MaxRetryDelay = maxDelay
             };
             
-            _logger.LogDebug($"Retry config: max={maxRetries}, delay={delay}, backoff={backoffMultiplier}, maxDelay={maxDelay}");
+            _logger.LogDebug($"Retry configSo: max={maxRetries}, delay={delay}, backoff={backoffMultiplier}, maxDelay={maxDelay}");
             return this;
         }
 

@@ -183,7 +183,7 @@ namespace AhBearStudios.Core.Logging.Configs
         /// Creates a copy of this configuration with the specified modifications.
         /// </summary>
         /// <param name="modifications">Action to apply modifications to the copy</param>
-        /// <returns>A new LoggingConfig instance with the modifications applied</returns>
+        /// <returns>A new LoggingConfigSO instance with the modifications applied</returns>
         public LoggingConfig WithModifications(Action<LoggingConfig> modifications)
         {
             if (modifications == null)

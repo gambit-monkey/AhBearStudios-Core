@@ -25,7 +25,7 @@ namespace AhBearStudios.Core.Logging.Targets
         /// Initializes a new instance of ConsoleLogTarget with strongly-typed configuration.
         /// </summary>
         /// <param name="config">The target configuration</param>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
         public ConsoleLogTarget(ILogTargetConfig config)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));

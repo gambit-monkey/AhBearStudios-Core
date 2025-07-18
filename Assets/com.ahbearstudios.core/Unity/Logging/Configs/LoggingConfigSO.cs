@@ -11,9 +11,9 @@ namespace AhBearStudios.Unity.Logging.ScriptableObjects
     /// </summary>
     [CreateAssetMenu(
         menuName = "AhBearStudios/Logging/Logging Configuration", 
-        fileName = "LoggingConfig", 
+        fileName = "LoggingConfigSO", 
         order = 1)]
-    public class LoggingConfig : ScriptableObject
+    public class LoggingConfigSO : ScriptableObject
     {
         [Header("Global Settings")]
         [SerializeField] private LogLevel _globalMinimumLevel = LogLevel.Info;
@@ -61,7 +61,7 @@ namespace AhBearStudios.Unity.Logging.ScriptableObjects
         [SerializeField] private bool _showAdvancedOptions = false;
 
         /// <summary>
-        /// Gets the LoggingConfig instance created from this ScriptableObject's settings.
+        /// Gets the LoggingConfigSO instance created from this ScriptableObject's settings.
         /// </summary>
         public Core.Logging.Configs.LoggingConfig Config
         {
@@ -221,11 +221,11 @@ namespace AhBearStudios.Unity.Logging.ScriptableObjects
 
             if (errors.Count == 0)
             {
-                Debug.Log("LoggingConfig: Configuration validation passed successfully.");
+                Debug.Log("LoggingConfigSO: Configuration validation passed successfully.");
             }
             else
             {
-                Debug.LogError($"LoggingConfig: Configuration validation failed with {errors.Count} errors:\n{string.Join("\n", errors)}");
+                Debug.LogError($"LoggingConfigSO: Configuration validation failed with {errors.Count} errors:\n{string.Join("\n", errors)}");
             }
 
             return errors;

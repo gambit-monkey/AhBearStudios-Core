@@ -16,7 +16,7 @@ public interface IHealthCheckServiceFactory
     /// </summary>
     /// <param name="config">Service configuration</param>
     /// <returns>Configured and validated health check service</returns>
-    /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
+    /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
     /// <exception cref="InvalidOperationException">Thrown when configuration validation fails</exception>
     IHealthCheckService CreateService(HealthCheckServiceConfig config);
     

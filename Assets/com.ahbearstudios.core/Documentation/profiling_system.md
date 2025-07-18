@@ -884,9 +884,9 @@ public void ProfilerService_WithAlerts_TriggersCorrectly()
 ### 2. Basic Setup
 
 ```csharp
-public class ProfilingInstaller : MonoInstaller
+public class ProfilingInstaller : MonoBehaviour, IInstaller
 {
-    public override void InstallBindings()
+    public void InstallBindings(ContainerBuilder builder)
     {
         // Configure profiling
         var config = new ProfilerConfigBuilder()
@@ -896,9 +896,9 @@ public class ProfilingInstaller : MonoInstaller
             .WithAlerting(enabled: true)
             .Build();
             
-        Container.Bind<ProfilerConfig>().FromInstance(config);
-        Container.Bind<IProfilerService>().To<ProfilerService>().AsSingle();
-        Container.Bind<IPerformanceAnalyzer>().To<PerformanceAnalyzer>().AsSingle();
+        builder.AddSingleton(config);
+        builder.AddSingleton<IProfilerService, ProfilerService>();
+        builder.AddSingleton<IPerformanceAnalyzer, PerformanceAnalyzer>();
     }
 }
 ```

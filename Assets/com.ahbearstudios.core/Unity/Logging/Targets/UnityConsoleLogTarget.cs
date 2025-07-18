@@ -71,7 +71,7 @@ namespace AhBearStudios.Unity.Logging.Targets
         /// Initializes a new instance of the UnityConsoleLogTarget.
         /// </summary>
         /// <param name="config">The target configuration</param>
-        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
         public UnityConsoleLogTarget(ILogTargetConfig config)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));

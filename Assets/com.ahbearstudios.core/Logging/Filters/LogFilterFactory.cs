@@ -121,7 +121,7 @@ namespace AhBearStudios.Core.Logging.Filters
         public ValidationResult ValidateFilterConfig(FilterConfig config)
         {
             if (config == null)
-                return ValidationResult.Failure(new[] { new ValidationError("Filter config cannot be null", "Config") }, "Unknown");
+                return ValidationResult.Failure(new[] { new ValidationError("Filter configSo cannot be null", "ConfigSo") }, "Unknown");
 
             return config.Validate();
         }
