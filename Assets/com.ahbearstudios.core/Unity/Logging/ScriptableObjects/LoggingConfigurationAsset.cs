@@ -203,167 +203,7 @@ namespace AhBearStudios.Unity.Logging.ScriptableObjects
         /// </summary>
         public bool EnablePreviewMode => _enablePreviewMode;
 
-        /// <summary>
-        /// Gets the LoggingConfigSO instance created from this ScriptableObject's settings.
-        /// </summary>
-        public LoggingConfigSO ConfigSo
-        {
-            get
-            {
-                var config = CreateBaseConfig();
-                
-                // Apply scenario overrides
-                if (_useScenarioOverrides)
-                {
-                    ApplyScenarioOverrides(config);
-                }
-                
-                // Apply platform overrides
-                if (_enablePlatformOptimizations)
-                {
-                    ApplyPlatformOverrides(config);
-                }
-                
-                return config;
-            }
-        }
 
-        /// <summary>
-        /// Creates the base configuration without overrides.
-        /// </summary>
-        /// <returns>Base LoggingConfigSO</returns>
-        private LoggingConfigSO CreateBaseConfig()
-        {
-            var targetConfigs = new List<LogTargetConfig>();
-            foreach (var targetConfig in _targetConfigurations)
-            {
-                if (targetConfig != null && targetConfig.IsEnabled)
-                {
-                    targetConfigs.Add(targetConfig.ToLogTargetConfig());
-                }
-            }
-
-            var channelConfigs = new List<LogChannelConfig>();
-            foreach (var channelConfig in _channelConfigurations)
-            {
-                if (channelConfig.IsEnabled)
-                {
-                    channelConfigs.Add(channelConfig.ToLogChannelConfig());
-                }
-            }
-
-            return new LoggingConfigSO
-            {
-                GlobalMinimumLevel = _globalMinimumLevel,
-                IsLoggingEnabled = _isLoggingEnabled,
-                MaxQueueSize = _maxQueueSize,
-                FlushInterval = FlushInterval,
-                HighPerformanceMode = _highPerformanceMode,
-                BurstCompatibility = _burstCompatibility,
-                StructuredLogging = _structuredLogging,
-                BatchingEnabled = _batchingEnabled,
-                BatchSize = _batchSize,
-                CorrelationIdFormat = _correlationIdFormat,
-                AutoCorrelationId = _autoCorrelationId,
-                MessageFormat = _messageFormat,
-                IncludeTimestamps = _includeTimestamps,
-                TimestampFormat = _timestampFormat,
-                CachingEnabled = _cachingEnabled,
-                MaxCacheSize = _maxCacheSize,
-                TargetConfigs = targetConfigs.AsReadOnly(),
-                ChannelConfigs = channelConfigs.AsReadOnly()
-            };
-        }
-
-        /// <summary>
-        /// Applies scenario-specific overrides to the configuration.
-        /// </summary>
-        /// <param name="configSo">The configuration to modify</param>
-        private void ApplyScenarioOverrides(LoggingConfigSO configSo)
-        {
-            switch (_currentScenario)
-            {
-                case LoggingScenario.Development:
-                    ApplyDevelopmentOverrides(configSo);
-                    break;
-                case LoggingScenario.Testing:
-                    ApplyTestingOverrides(configSo);
-                    break;
-                case LoggingScenario.Staging:
-                    ApplyStagingOverrides(configSo);
-                    break;
-                case LoggingScenario.Production:
-                    ApplyProductionOverrides(configSo);
-                    break;
-                case LoggingScenario.Debugging:
-                    ApplyDebuggingOverrides(configSo);
-                    break;
-            }
-        }
-
-        /// <summary>
-        /// Applies platform-specific overrides to the configuration.
-        /// </summary>
-        /// <param name="configSo">The configuration to modify</param>
-        private void ApplyPlatformOverrides(LoggingConfigSO configSo)
-        {
-            var currentPlatform = Application.platform;
-            
-            foreach (var platformOverride in _platformOverrides)
-            {
-                if (platformOverride.Platform == currentPlatform && platformOverride.IsEnabled)
-                {
-                    platformOverride.ApplyOverrides(configSo);
-                }
-            }
-        }
-
-        /// <summary>
-        /// Applies development scenario overrides.
-        /// </summary>
-        /// <param name="configSo">The configuration to modify</param>
-        private void ApplyDevelopmentOverrides(LoggingConfigSO configSo)
-        {
-            // Development typically wants verbose logging
-            // This would modify the configSo object if it were mutable
-            // For now, we'll note that this is where development-specific logic would go
-        }
-
-        /// <summary>
-        /// Applies testing scenario overrides.
-        /// </summary>
-        /// <param name="configSo">The configuration to modify</param>
-        private void ApplyTestingOverrides(LoggingConfigSO configSo)
-        {
-            // Testing typically wants controllable logging
-        }
-
-        /// <summary>
-        /// Applies staging scenario overrides.
-        /// </summary>
-        /// <param name="configSo">The configuration to modify</param>
-        private void ApplyStagingOverrides(LoggingConfigSO configSo)
-        {
-            // Staging typically wants production-like logging with some debug info
-        }
-
-        /// <summary>
-        /// Applies production scenario overrides.
-        /// </summary>
-        /// <param name="configSo">The configuration to modify</param>
-        private void ApplyProductionOverrides(LoggingConfigSO configSo)
-        {
-            // Production typically wants minimal, efficient logging
-        }
-
-        /// <summary>
-        /// Applies debugging scenario overrides.
-        /// </summary>
-        /// <param name="configSo">The configuration to modify</param>
-        private void ApplyDebuggingOverrides(LoggingConfigSO configSo)
-        {
-            // Debugging typically wants maximum verbosity
-        }
 
         /// <summary>
         /// Validates the configuration settings and clamps values to valid ranges.
@@ -502,13 +342,51 @@ namespace AhBearStudios.Unity.Logging.ScriptableObjects
 
             try
             {
-                var config = ConfigSo;
-                var configErrors = config.Validate();
-                errors.AddRange(configErrors);
+                // Validate configuration properties directly
+                if (_maxQueueSize <= 0)
+                    errors.Add("Max queue size must be greater than zero.");
+
+                if (_flushIntervalSeconds <= 0)
+                    errors.Add("Flush interval must be greater than zero.");
+
+                if (_batchingEnabled && _batchSize <= 0)
+                    errors.Add("Batch size must be greater than zero when batching is enabled.");
+
+                if (string.IsNullOrWhiteSpace(_correlationIdFormat))
+                    errors.Add("Correlation ID format cannot be null or empty.");
+
+                if (string.IsNullOrWhiteSpace(_messageFormat))
+                    errors.Add("Message format template cannot be null or empty.");
+
+                if (_includeTimestamps && string.IsNullOrWhiteSpace(_timestampFormat))
+                    errors.Add("Timestamp format cannot be null or empty when timestamps are enabled.");
+
+                if (_cachingEnabled && _maxCacheSize <= 0)
+                    errors.Add("Max cache size must be greater than zero when caching is enabled.");
+
+                // Validate target configurations
+                foreach (var targetConfig in _targetConfigurations)
+                {
+                    if (targetConfig != null && targetConfig.IsEnabled)
+                    {
+                        var targetErrors = targetConfig.ToLogTargetConfig().Validate();
+                        errors.AddRange(targetErrors);
+                    }
+                }
+
+                // Validate channel configurations
+                foreach (var channelConfig in _channelConfigurations)
+                {
+                    if (channelConfig.IsEnabled)
+                    {
+                        var channelErrors = channelConfig.ToLogChannelConfig().Validate();
+                        errors.AddRange(channelErrors);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                errors.Add($"Configuration creation failed: {ex.Message}");
+                errors.Add($"Configuration validation failed: {ex.Message}");
             }
 
             // Validate individual components
@@ -665,11 +543,12 @@ namespace AhBearStudios.Unity.Logging.ScriptableObjects
 
         /// <summary>
         /// Applies the platform overrides to the configuration.
+        /// Note: This method is currently a placeholder for future platform-specific overrides.
         /// </summary>
-        /// <param name="configSo">The configuration to modify</param>
-        public void ApplyOverrides(LoggingConfigSO configSo)
+        /// <param name="config">The configuration to modify</param>
+        public void ApplyOverrides(LoggingConfig config)
         {
-            // Since LoggingConfigSO is immutable, we'd need to create a new one
+            // Since LoggingConfig is immutable, we'd need to create a new one
             // For now, this serves as a placeholder for the override logic
             // In a full implementation, this would return a modified configuration
         }

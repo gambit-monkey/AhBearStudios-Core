@@ -560,13 +560,36 @@ namespace AhBearStudios.Unity.Logging.Installers
         {
             if (_configAsset != null)
             {
-                var config = _configAsset.ConfigSo.Config;
-                
-                // Apply overrides
-                if (_overrideGlobalMinimumLevel)
+                // Create configuration directly from asset properties
+                var config = new LoggingConfig
                 {
-                    config = config with { GlobalMinimumLevel = _overrideMinimumLevel };
-                }
+                    GlobalMinimumLevel = _overrideGlobalMinimumLevel ? _overrideMinimumLevel : _configAsset.GlobalMinimumLevel,
+                    IsLoggingEnabled = _configAsset.IsLoggingEnabled,
+                    MaxQueueSize = _configAsset.MaxQueueSize,
+                    FlushInterval = _configAsset.FlushInterval,
+                    HighPerformanceMode = _configAsset.HighPerformanceMode,
+                    BurstCompatibility = _configAsset.BurstCompatibility,
+                    StructuredLogging = _configAsset.StructuredLogging,
+                    BatchingEnabled = _configAsset.BatchingEnabled,
+                    BatchSize = _configAsset.BatchSize,
+                    CorrelationIdFormat = _configAsset.CorrelationIdFormat,
+                    AutoCorrelationId = _configAsset.AutoCorrelationId,
+                    MessageFormat = _configAsset.MessageFormat,
+                    IncludeTimestamps = _configAsset.IncludeTimestamps,
+                    TimestampFormat = _configAsset.TimestampFormat,
+                    CachingEnabled = _configAsset.CachingEnabled,
+                    MaxCacheSize = _configAsset.MaxCacheSize,
+                    TargetConfigs = _configAsset.TargetConfigurations
+                        .Where(t => t != null && t.IsEnabled)
+                        .Select(t => t.ToLogTargetConfig())
+                        .ToList()
+                        .AsReadOnly(),
+                    ChannelConfigs = _configAsset.ChannelConfigurations
+                        .Where(c => c.IsEnabled)
+                        .Select(c => c.ToLogChannelConfig())
+                        .ToList()
+                        .AsReadOnly()
+                };
                 
                 return config;
             }
