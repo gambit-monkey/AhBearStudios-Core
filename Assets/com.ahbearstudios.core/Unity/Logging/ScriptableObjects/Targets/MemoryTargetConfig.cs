@@ -176,17 +176,6 @@ namespace AhBearStudios.Unity.Logging.ScriptableObjects.Targets
         public bool EnableStatistics => _enableStatistics;
 
         /// <summary>
-        /// Initializes default values.
-        /// </summary>
-        protected override void Awake()
-        {
-            base.Awake();
-            _targetType = "Memory";
-            _useAsyncWrite = false; // Memory operations are fast
-            _bufferSize = 1; // No additional buffering needed
-        }
-
-        /// <summary>
         /// Creates memory target specific properties.
         /// </summary>
         /// <returns>Dictionary of memory target properties</returns>

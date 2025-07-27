@@ -10,7 +10,7 @@ namespace AhBearStudios.Core.Serialization.Models;
         /// <summary>
         /// Whether the operation was successful.
         /// </summary>
-        public bool Success { get; init; }
+        public bool Successful { get; init; }
 
         /// <summary>
         /// Error message if operation failed.
@@ -54,7 +54,7 @@ namespace AhBearStudios.Core.Serialization.Models;
         {
             return new SerializationResult
             {
-                Success = true,
+                Successful = true,
                 DataSize = dataSize,
                 Duration = duration,
                 TargetType = targetType,
@@ -74,7 +74,7 @@ namespace AhBearStudios.Core.Serialization.Models;
         {
             return new SerializationResult
             {
-                Success = false,
+                Successful = false,
                 ErrorMessage = errorMessage,
                 Exception = exception,
                 TargetType = targetType,

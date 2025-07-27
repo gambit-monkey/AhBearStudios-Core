@@ -2,12 +2,12 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
-using System.Threading.Tasks;
 using Unity.Collections;
 using Unity.Burst;
 using Unity.Jobs;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Logging.Targets;
+using Cysharp.Threading.Tasks;
 
 namespace AhBearStudios.Core.Logging.Services
 {
@@ -28,7 +28,7 @@ namespace AhBearStudios.Core.Logging.Services
         private readonly Timer _flushTimer;
         private readonly object _batchLock = new object();
         private readonly CancellationTokenSource _cancellationTokenSource;
-        private readonly Task _processingTask;
+        private readonly UniTask _processingTask;
         private readonly Stopwatch _performanceStopwatch;
         
         private volatile bool _disposed = false;
@@ -124,7 +124,7 @@ namespace AhBearStudios.Core.Logging.Services
             _flushTimer = new Timer(FlushCallback, null, FlushInterval, FlushInterval);
             
             // Start the processing task
-            _processingTask = Task.Run(ProcessingLoop, _cancellationTokenSource.Token);
+            _processingTask = UniTask.RunOnThreadPool(ProcessingLoop, cancellationToken: _cancellationTokenSource.Token);
         }
 
         /// <summary>
@@ -253,12 +253,12 @@ namespace AhBearStudios.Core.Logging.Services
         /// <summary>
         /// Flushes all queued messages asynchronously.
         /// </summary>
-        /// <returns>A task representing the asynchronous flush operation</returns>
-        public async Task FlushAsync()
+        /// <returns>A UniTask representing the asynchronous flush operation</returns>
+        public async UniTask FlushAsync()
         {
             if (_disposed) return;
 
-            var tcs = new TaskCompletionSource<bool>();
+            var tcs = new UniTaskCompletionSource<bool>();
             
             // Trigger flush and wait for completion
             FlushCallback(tcs);
@@ -301,35 +301,35 @@ namespace AhBearStudios.Core.Logging.Services
         /// <summary>
         /// Timer callback for periodic flushing.
         /// </summary>
-        /// <param name="state">Timer state (can be TaskCompletionSource for async operations)</param>
+        /// <param name="state">Timer state (can be UniTaskCompletionSource for async operations)</param>
         private void FlushCallback(object state)
         {
             if (_disposed || _isProcessing) return;
 
-            var tcs = state as TaskCompletionSource<bool>;
+            var tcs = state as UniTaskCompletionSource<bool>;
             
             try
             {
                 ProcessBatch();
-                tcs?.SetResult(true);
+                tcs?.TrySetResult(true);
             }
             catch (Exception ex)
             {
-                tcs?.SetException(ex);
+                tcs?.TrySetException(ex);
             }
         }
 
         /// <summary>
         /// Main processing loop for batch operations.
         /// </summary>
-        private async Task ProcessingLoop()
+        private async UniTaskVoid ProcessingLoop()
         {
             while (!_cancellationTokenSource.Token.IsCancellationRequested)
             {
                 try
                 {
-                    // Process batches every flush interval
-                    await Task.Delay(FlushInterval, _cancellationTokenSource.Token);
+                    // Process batches every flush interval using UniTask
+                    await UniTask.Delay(FlushInterval, cancellationToken: _cancellationTokenSource.Token);
                     
                     if (!_disposed && !_isProcessing)
                     {
@@ -572,10 +572,11 @@ namespace AhBearStudios.Core.Logging.Services
                 System.Diagnostics.Debug.WriteLine($"LogBatchingService final batch processing error: {ex.Message}");
             }
 
-            // Wait for processing task to complete
+            // Cancel the processing task (UniTask doesn't need explicit waiting for UniTaskVoid)
             try
             {
-                _processingTask?.Wait(TimeSpan.FromSeconds(5));
+                // UniTaskVoid tasks are fire-and-forget, no need to wait
+                // The cancellation token will handle stopping the loop
             }
             catch (Exception ex)
             {
@@ -600,7 +601,7 @@ namespace AhBearStudios.Core.Logging.Services
 
             // Dispose managed resources
             _cancellationTokenSource?.Dispose();
-            _processingTask?.Dispose();
+            // UniTask doesn't require disposal
             _performanceStopwatch?.Stop();
         }
     }

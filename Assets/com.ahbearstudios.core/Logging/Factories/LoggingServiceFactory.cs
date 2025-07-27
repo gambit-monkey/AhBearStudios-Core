@@ -1,11 +1,11 @@
 ﻿using System.Collections.ObjectModel;
 using System.Collections.Generic;
-using System.Linq;
 using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Services;
 using AhBearStudios.Core.Logging.Targets;
 using AhBearStudios.Core.Logging.Builders;
 using AhBearStudios.Core.Logging.Models;
+using ZLinq;
 
 namespace AhBearStudios.Core.Logging.Factories
 {
@@ -220,7 +220,7 @@ namespace AhBearStudios.Core.Logging.Factories
                 try
                 {
                     var targetErrors = _targetFactory.ValidateTargetConfig(targetConfig);
-                    errors.AddRange(targetErrors.Select(e => $"Target '{targetConfig.Name}': {e}"));
+                    errors.AddRange(targetErrors.AsValueEnumerable().Select(e => $"Target '{targetConfig.Name}': {e}").ToList());
                 }
                 catch (Exception ex)
                 {
@@ -427,7 +427,7 @@ namespace AhBearStudios.Core.Logging.Factories
                 var failedTargets = new List<string>();
                 var createdTargetTypes = new HashSet<string>();
 
-                foreach (var targetConfig in config.TargetConfigs.Where(t => t.IsEnabled))
+                foreach (var targetConfig in config.TargetConfigs.AsValueEnumerable().Where(t => t.IsEnabled))
                 {
                     try
                     {
@@ -483,7 +483,7 @@ namespace AhBearStudios.Core.Logging.Factories
                 else
                 {
                     var successMessage = $"Logging service successfully created with {successCount} targets: " +
-                                       $"{string.Join(", ", createdTargetTypes)}";
+                                       $"{string.Join(", ", createdTargetTypes.AsValueEnumerable())}";
                     loggingService.LogInfo(successMessage, "Logging.Initialization", "LoggingServiceFactory");
                 }
 

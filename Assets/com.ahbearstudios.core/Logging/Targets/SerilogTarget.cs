@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using System.IO;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Profiling;
@@ -18,6 +17,7 @@ using Unity.Collections;
 using UnityEngine;
 using ILogger = Serilog.ILogger;
 using Logger = Serilog.Core.Logger;
+using Cysharp.Threading.Tasks;
 
 namespace AhBearStudios.Core.Logging.Targets
 {
@@ -201,10 +201,8 @@ namespace AhBearStudios.Core.Logging.Targets
                 {
                     if (UseAsyncWrite)
                     {
-                        // Use Task.Run for Unity-friendly async operations
-                        var writeTask = WriteAsync(logMessage);
-                        // Handle task completion without blocking
-                        HandleAsyncWriteTask(writeTask);
+                        // Use UniTask for Unity-optimized async operations
+                        WriteAsync(logMessage).Forget();
                     }
                     else
                     {
@@ -271,10 +269,8 @@ namespace AhBearStudios.Core.Logging.Targets
             {
                 if (UseAsyncWrite)
                 {
-                    // Use Task.Run for Unity-friendly async operations
-                    var batchTask = WriteBatchAsync(messagesToProcess);
-                    // Handle task completion without blocking
-                    HandleAsyncBatchTask(batchTask);
+                    // Use UniTask for Unity-optimized async operations
+                    WriteBatchAsync(messagesToProcess).Forget();
                 }
                 else
                 {
@@ -725,20 +721,22 @@ namespace AhBearStudios.Core.Logging.Targets
         /// Asynchronously writes a log message to Serilog.
         /// </summary>
         /// <param name="logMessage">The log message to write</param>
-        private async Task WriteAsync(LogMessage logMessage)
+        private async UniTaskVoid WriteAsync(LogMessage logMessage)
         {
             if (_asyncWriteSemaphore == null || _disposed) return;
 
             try
             {
-                // Use timeout to prevent hanging async operations
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
-                await _asyncWriteSemaphore.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+                // Use UniTask timeout for better Unity integration
+                var timeoutToken = new CancellationTokenSource();
+                timeoutToken.CancelAfterSlim(TimeSpan.FromSeconds(10));
+                
+                await _asyncWriteSemaphore.WaitAsync(timeoutToken.Token);
                 
                 try
                 {
-                    // Use ConfigureAwait(false) for Unity compatibility
-                    await Task.Run(() => WriteInternal(logMessage), timeoutCts.Token).ConfigureAwait(false);
+                    // Use UniTask.RunOnThreadPool for Unity-optimized threading
+                    await UniTask.RunOnThreadPool(() => WriteInternal(logMessage), cancellationToken: timeoutToken.Token);
                 }
                 finally
                 {
@@ -800,20 +798,22 @@ namespace AhBearStudios.Core.Logging.Targets
         /// Asynchronously writes multiple log messages to Serilog.
         /// </summary>
         /// <param name="logMessages">The log messages to write</param>
-        private async Task WriteBatchAsync(IReadOnlyList<LogMessage> logMessages)
+        private async UniTaskVoid WriteBatchAsync(IReadOnlyList<LogMessage> logMessages)
         {
             if (_asyncWriteSemaphore == null || _disposed) return;
 
             try
             {
-                // Use timeout to prevent hanging async operations (longer for batch operations)
-                using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
-                await _asyncWriteSemaphore.WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+                // Use UniTask timeout for better Unity integration (longer for batch operations)
+                var timeoutToken = new CancellationTokenSource();
+                timeoutToken.CancelAfterSlim(TimeSpan.FromSeconds(30));
+                
+                await _asyncWriteSemaphore.WaitAsync(timeoutToken.Token);
                 
                 try
                 {
-                    // Use ConfigureAwait(false) for Unity compatibility
-                    await Task.Run(() => WriteBatchInternal(logMessages), timeoutCts.Token).ConfigureAwait(false);
+                    // Use UniTask.RunOnThreadPool for Unity-optimized threading
+                    await UniTask.RunOnThreadPool(() => WriteBatchInternal(logMessages), cancellationToken: timeoutToken.Token);
                 }
                 finally
                 {
@@ -838,43 +838,8 @@ namespace AhBearStudios.Core.Logging.Targets
             }
         }
 
-        /// <summary>
-        /// Handles async write task completion without blocking.
-        /// </summary>
-        /// <param name="writeTask">The async write task</param>
-        private void HandleAsyncWriteTask(Task writeTask)
-        {
-            // Handle task completion asynchronously
-            writeTask.ContinueWith(task =>
-            {
-                if (task.IsFaulted && task.Exception != null)
-                {
-                    Interlocked.Increment(ref _errorsEncountered);
-                    _lastError = task.Exception.GetBaseException();
-                    _isHealthy = false;
-                    TriggerErrorAlert(task.Exception.GetBaseException(), "Async write task failed");
-                }
-            }, TaskContinuationOptions.OnlyOnFaulted);
-        }
-
-        /// <summary>
-        /// Handles async batch write task completion without blocking.
-        /// </summary>
-        /// <param name="batchTask">The async batch write task</param>
-        private void HandleAsyncBatchTask(Task batchTask)
-        {
-            // Handle task completion asynchronously
-            batchTask.ContinueWith(task =>
-            {
-                if (task.IsFaulted && task.Exception != null)
-                {
-                    Interlocked.Increment(ref _errorsEncountered);
-                    _lastError = task.Exception.GetBaseException();
-                    _isHealthy = false;
-                    TriggerErrorAlert(task.Exception.GetBaseException(), "Async batch write task failed");
-                }
-            }, TaskContinuationOptions.OnlyOnFaulted);
-        }
+        // Note: HandleAsyncWriteTask and HandleAsyncBatchTask methods are no longer needed
+        // with UniTask's .Forget() extension which handles exceptions internally
 
         /// <summary>
         /// Periodic health check timer callback.

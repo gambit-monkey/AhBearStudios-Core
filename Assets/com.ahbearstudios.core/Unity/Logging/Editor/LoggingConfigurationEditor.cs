@@ -1,6 +1,8 @@
 using UnityEditor;
-using UnityEngine;
 using AhBearStudios.Unity.Logging.ScriptableObjects;
+using AhBearStudios.Unity.Logging.ScriptableObjects.Targets;
+using AhBearStudios.Unity.Logging.ScriptableObjects.Formatters;
+using AhBearStudios.Unity.Logging.ScriptableObjects.Filters;
 
 namespace AhBearStudios.Unity.Logging.Editor
 {
@@ -366,7 +368,7 @@ namespace AhBearStudios.Unity.Logging.Editor
 
         private void CreateUnityConsoleTarget()
         {
-            var target = CreateInstance<Targets.UnityConsoleTargetConfig>();
+            var target = CreateInstance<UnityConsoleTargetConfig>();
             target.name = "Unity Console Target";
             target.ResetToDefaults();
             
@@ -380,7 +382,7 @@ namespace AhBearStudios.Unity.Logging.Editor
 
         private void CreateFileTarget()
         {
-            var target = CreateInstance<Targets.FileTargetConfig>();
+            var target = CreateInstance<FileTargetConfig>();
             target.name = "File Target";
             target.ResetToDefaults();
             
@@ -394,7 +396,7 @@ namespace AhBearStudios.Unity.Logging.Editor
 
         private void CreateMemoryTarget()
         {
-            var target = CreateInstance<Targets.MemoryTargetConfig>();
+            var target = CreateInstance<MemoryTargetConfig>();
             target.name = "Memory Target";
             target.ResetToDefaults();
             
@@ -408,7 +410,7 @@ namespace AhBearStudios.Unity.Logging.Editor
 
         private void CreateJsonFormatter()
         {
-            var formatter = CreateInstance<Formatters.JsonFormatterConfig>();
+            var formatter = CreateInstance<JsonFormatterConfig>();
             formatter.name = "JSON Formatter";
             formatter.ResetToDefaults();
             
@@ -422,7 +424,7 @@ namespace AhBearStudios.Unity.Logging.Editor
 
         private void CreatePlainTextFormatter()
         {
-            var formatter = CreateInstance<Formatters.PlainTextFormatterConfig>();
+            var formatter = CreateInstance<PlainTextFormatterConfig>();
             formatter.name = "Plain Text Formatter";
             formatter.ResetToDefaults();
             
@@ -436,7 +438,7 @@ namespace AhBearStudios.Unity.Logging.Editor
 
         private void CreateLevelFilter()
         {
-            var filter = CreateInstance<Filters.LevelFilterConfig>();
+            var filter = CreateInstance<LevelFilterConfig>();
             filter.name = "Level Filter";
             filter.ResetToDefaults();
             

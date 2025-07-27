@@ -2,10 +2,8 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using System.Threading.Tasks;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Models;
@@ -19,6 +17,8 @@ using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Logging.Messages;
 using AhBearStudios.Core.Logging.Filters;
+using Cysharp.Threading.Tasks;
+using ZLinq;
 
 namespace AhBearStudios.Core.Logging
 {
@@ -395,7 +395,7 @@ namespace AhBearStudios.Core.Logging
         /// <inheritdoc />
         public IReadOnlyList<ILogTarget> GetRegisteredTargets()
         {
-            return _targets.Values.ToList().AsReadOnly();
+            return _targets.Values.AsValueEnumerable().ToList().AsReadOnly();
         }
         
         /// <inheritdoc />
@@ -498,7 +498,7 @@ namespace AhBearStudios.Core.Logging
         public LoggingStatistics GetStatistics()
         {
             var totalTargets = _targets.Count;
-            var healthyTargets = GetHealthStatus().Values.Count(healthy => healthy);
+            var healthyTargets = GetHealthStatus().Values.AsValueEnumerable().Count(healthy => healthy);
             
             return LoggingStatistics.Create(
                 messagesProcessed: _totalMessagesProcessed,
@@ -545,7 +545,7 @@ namespace AhBearStudios.Core.Logging
                 // Periodic health check
                 if (DateTime.UtcNow - _lastHealthCheck > _healthCheckInterval)
                 {
-                    Task.Run(() => PerformAsyncHealthCheck());
+                    UniTask.RunOnThreadPool(() => PerformAsyncHealthCheck()).Forget();
                 }
             }
             catch (Exception ex)
@@ -656,7 +656,7 @@ namespace AhBearStudios.Core.Logging
                 {
                     var healthMessage = LoggingSystemHealthMessage.Create(
                         isHealthy: false,
-                        healthyTargets: _targets.Values.Count(t => t.IsHealthy),
+                        healthyTargets: _targets.Values.AsValueEnumerable().Count(t => t.IsHealthy),
                         totalTargets: _targets.Count,
                         activeChannels: _channels.Count,
                         details: $"Critical logging error: {message}");
@@ -814,7 +814,7 @@ namespace AhBearStudios.Core.Logging
         /// <summary>
         /// Performs an asynchronous health check without blocking the main thread.
         /// </summary>
-        private async Task PerformAsyncHealthCheck()
+        private async UniTaskVoid PerformAsyncHealthCheck()
         {
             try
             {
@@ -870,7 +870,7 @@ namespace AhBearStudios.Core.Logging
         /// <inheritdoc />
         public IReadOnlyCollection<ILogChannel> GetChannels()
         {
-            return _channels.Values.ToList().AsReadOnly();
+            return _channels.Values.AsValueEnumerable().ToList().AsReadOnly();
         }
 
         /// <inheritdoc />
@@ -903,7 +903,7 @@ namespace AhBearStudios.Core.Logging
         /// <inheritdoc />
         public IReadOnlyCollection<ILogTarget> GetTargets()
         {
-            return _targets.Values.ToList().AsReadOnly();
+            return _targets.Values.AsValueEnumerable().ToList().AsReadOnly();
         }
 
         /// <inheritdoc />
@@ -942,20 +942,21 @@ namespace AhBearStudios.Core.Logging
         }
 
         /// <inheritdoc />
-        public async Task FlushAsync(FixedString64Bytes correlationId = default)
+        public async UniTask FlushAsync(FixedString64Bytes correlationId = default)
         {
             using var scope = _profilerService?.BeginScope("LoggingService.FlushAsync");
             
-            var flushTasks = new List<Task>();
+            var flushTasks = new List<UniTask>();
             
             if (_batchingService != null)
             {
-                flushTasks.Add(Task.Run(() => _batchingService.ForceFlush()));
+                flushTasks.Add(UniTask.RunOnThreadPool(() => _batchingService.ForceFlush()));
             }
             
             foreach (var target in _targets.Values)
             {
-                flushTasks.Add(Task.Run(() =>
+                var targetName = target.Name;
+                flushTasks.Add(UniTask.RunOnThreadPool(() =>
                 {
                     try
                     {
@@ -963,13 +964,13 @@ namespace AhBearStudios.Core.Logging
                     }
                     catch (Exception ex)
                     {
-                        System.Diagnostics.Debug.WriteLine($"FlushAsync error for target '{target.Name}': {ex.Message}");
-                        TriggerTargetErrorAlert(target.Name, ex);
+                        System.Diagnostics.Debug.WriteLine($"FlushAsync error for target '{targetName}': {ex.Message}");
+                        TriggerTargetErrorAlert(targetName, ex);
                     }
                 }));
             }
             
-            await Task.WhenAll(flushTasks).ConfigureAwait(false);
+            await UniTask.WhenAll(flushTasks);
         }
 
         /// <inheritdoc />
@@ -982,7 +983,7 @@ namespace AhBearStudios.Core.Logging
             if (_config != null)
             {
                 var configErrors = _config.Validate();
-                errors.AddRange(configErrors.Select(e => new ValidationError(e, "Configuration")));
+                errors.AddRange(configErrors.AsValueEnumerable().Select(e => new ValidationError(e, "Configuration")).ToList());
             }
             else
             {

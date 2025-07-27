@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using UnityEngine;
 using AhBearStudios.Core.Logging.Models;
 
 namespace AhBearStudios.Unity.Logging.ScriptableObjects.Formatters
@@ -209,15 +208,6 @@ namespace AhBearStudios.Unity.Logging.ScriptableObjects.Formatters
         /// Gets whether to reuse buffers.
         /// </summary>
         public bool ReuseBuffers => _reuseBuffers;
-
-        /// <summary>
-        /// Initializes default values.
-        /// </summary>
-        protected override void Awake()
-        {
-            base.Awake();
-            _format = LogFormat.Json;
-        }
 
         /// <summary>
         /// Creates JSON formatter specific properties.

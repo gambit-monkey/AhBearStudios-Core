@@ -28,7 +28,7 @@ namespace AhBearStudios.Core.Serialization.Services;
             _registeredTypes = new ConcurrentDictionary<Type, TypeDescriptor>();
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo("SerializationRegistry initialized", correlationId);
+            _logger.LogInfo("SerializationRegistry initialized", correlationId, sourceContext: null, properties: null);
         }
 
         /// <inheritdoc />
@@ -64,12 +64,12 @@ namespace AhBearStudios.Core.Serialization.Services;
 
                 if (_registeredTypes.TryAdd(type, descriptor))
                 {
-                    _logger.LogInfo($"Registered type {type.FullName} with version {descriptor.Version}", correlationId);
+                    _logger.LogInfo($"Registered type {type.FullName} with version {descriptor.Version}", correlationId, sourceContext: null, properties: null);
                 }
                 else
                 {
                     _registeredTypes[type] = descriptor;
-                    _logger.LogInfo($"Updated registration for type {type.FullName}", correlationId);
+                    _logger.LogInfo($"Updated registration for type {type.FullName}", correlationId, sourceContext: null, properties: null);
                 }
             }
         }
@@ -109,7 +109,7 @@ namespace AhBearStudios.Core.Serialization.Services;
 
             if (result)
             {
-                _logger.LogInfo($"Unregistered type {type.FullName}", correlationId);
+                _logger.LogInfo($"Unregistered type {type.FullName}", correlationId, sourceContext: null, properties: null);
             }
 
             return result;
@@ -123,7 +123,7 @@ namespace AhBearStudios.Core.Serialization.Services;
             
             _registeredTypes.Clear();
             
-            _logger.LogInfo($"Cleared {count} registered types", correlationId);
+            _logger.LogInfo($"Cleared {count} registered types", correlationId, sourceContext: null, properties: null);
         }
 
         private int EstimateTypeSize(Type type)

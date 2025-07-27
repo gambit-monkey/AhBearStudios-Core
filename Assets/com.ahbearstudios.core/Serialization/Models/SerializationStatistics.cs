@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 
 namespace AhBearStudios.Core.Serialization.Models;
 
@@ -62,4 +63,51 @@ public record SerializationStatistics
     /// When statistics were last reset.
     /// </summary>
     public DateTime LastResetTime { get; init; } = DateTime.UtcNow;
+
+    // Additional properties for new decorator implementations
+    
+    /// <summary>
+    /// Whether validation is enabled for this serializer.
+    /// </summary>
+    public bool ValidationEnabled { get; init; }
+
+    /// <summary>
+    /// Validation-specific statistics.
+    /// </summary>
+    public ValidationStatisticsSummary ValidationStatistics { get; init; }
+
+    /// <summary>
+    /// Number of cached validation results.
+    /// </summary>
+    public int CachedValidationResults { get; init; }
+
+    /// <summary>
+    /// Whether encryption is enabled for this serializer.
+    /// </summary>
+    public bool EncryptionEnabled { get; init; }
+
+    /// <summary>
+    /// The encryption algorithm being used.
+    /// </summary>
+    public string EncryptionAlgorithm { get; init; }
+
+    /// <summary>
+    /// The encryption key size in bits.
+    /// </summary>
+    public int EncryptionKeySize { get; init; }
+
+    /// <summary>
+    /// Performance metrics for performance monitoring decorator.
+    /// </summary>
+    public PerformanceMetrics PerformanceMetrics { get; init; }
+
+    /// <summary>
+    /// Total operation time across all operations.
+    /// </summary>
+    public TimeSpan TotalOperationTime { get; init; }
+
+    /// <summary>
+    /// Average operation time across all operations.
+    /// </summary>
+    public TimeSpan AverageOperationTime { get; init; }
 }

@@ -149,15 +149,6 @@ namespace AhBearStudios.Unity.Logging.ScriptableObjects.Formatters
         public string ExceptionSeparator => _exceptionSeparator;
 
         /// <summary>
-        /// Initializes default values.
-        /// </summary>
-        protected override void Awake()
-        {
-            base.Awake();
-            _format = LogFormat.PlainText;
-        }
-
-        /// <summary>
         /// Creates plain text formatter specific properties.
         /// </summary>
         /// <returns>Dictionary of plain text formatter properties</returns>

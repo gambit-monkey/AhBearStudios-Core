@@ -60,7 +60,7 @@
         <see cref="T:System.Diagnostics.Activity.Enumerator`1" />.</returns>
     </member>
     <member name="M:System.Diagnostics.Activity.EnumerateTagObjects">
-      <summary>Enumerates the tag attached to this Activity object.</summary>
+      <summary>Enumerates the tags attached to this Activity object.</summary>
       <returns>
         <see cref="T:System.Diagnostics.Activity.Enumerator`1" />.</returns>
     </member>
@@ -199,7 +199,7 @@
       <returns>The format for the <see cref="P:System.Diagnostics.Activity.Id" />.</returns>
     </member>
     <member name="P:System.Diagnostics.Activity.IsAllDataRequested">
-      <summary>Gets or sets a value that indicates whether this activity should be populated with all the propagation information, as well as all the other properties, such as links, tag, and events.</summary>
+      <summary>Gets or sets a value that indicates whether this activity should be populated with all the propagation information, as well as all the other properties, such as links, tags, and events.</summary>
       <returns>
         <see langword="true" /> if the activity should be populated; <see langword="false" /> otherwise.</returns>
     </member>
@@ -257,10 +257,10 @@
       <summary>Gets the status description of the current activity object.</summary>
     </member>
     <member name="P:System.Diagnostics.Activity.TagObjects">
-      <summary>Gets the list of tag that represent information to log along with the activity. This information is not passed on to the children of this activity.</summary>
-      <returns>A key-value pair enumeration of tag and objects.</returns>
+      <summary>Gets the list of tags that represent information to log along with the activity. This information is not passed on to the children of this activity.</summary>
+      <returns>A key-value pair enumeration of tags and objects.</returns>
     </member>
-    <member name="P:System.Diagnostics.Activity.Tag">
+    <member name="P:System.Diagnostics.Activity.Tags">
       <summary>Gets a collection of key/value pairs that represent information that will be logged along with the <see cref="T:System.Diagnostics.Activity" /> to the logging system.</summary>
       <returns>Information that will be logged along with the <see cref="T:System.Diagnostics.Activity" /> to the logging system.</returns>
     </member>
@@ -412,16 +412,16 @@ The possible generic type parameters are <see cref="T:System.Diagnostics.Activit
       <returns>The parent of the activity, represented either as a <see cref="T:System.String" /> or as an <see cref="T:System.Diagnostics.ActivityContext" />.</returns>
     </member>
     <member name="P:System.Diagnostics.ActivityCreationOptions`1.SamplingTags">
-      <summary>Gets the collection that is used to add more tag during the sampling process. The added tag are also added to the created Activity if it is decided that it should be created by the <see cref="T:System.Diagnostics.ActivityListener" /> callbacks.</summary>
-      <returns>The Activity tag collection.</returns>
+      <summary>Gets the collection that is used to add more tags during the sampling process. The added tags are also added to the created Activity if it is decided that it should be created by the <see cref="T:System.Diagnostics.ActivityListener" /> callbacks.</summary>
+      <returns>The Activity tags collection.</returns>
     </member>
     <member name="P:System.Diagnostics.ActivityCreationOptions`1.Source">
       <summary>Gets the activity source that creates the activity.</summary>
       <returns>An activity source object.</returns>
     </member>
-    <member name="P:System.Diagnostics.ActivityCreationOptions`1.Tag">
-      <summary>Gets the tag that the activity will be created with.</summary>
-      <returns>A key-value pair enumeration of tag associated with the activity.</returns>
+    <member name="P:System.Diagnostics.ActivityCreationOptions`1.Tags">
+      <summary>Gets the tags that the activity will be created with.</summary>
+      <returns>A key-value pair enumeration of tags associated with the activity.</returns>
     </member>
     <member name="P:System.Diagnostics.ActivityCreationOptions`1.TraceId">
       <summary>Gets the trace Id to use in the Activity object if it is decided that it should be created by <see cref="T:System.Diagnostics.ActivityListener" /> callbacks.</summary>
@@ -431,20 +431,20 @@ The possible generic type parameters are <see cref="T:System.Diagnostics.Activit
       <summary>Gets or initializes the trace state to use when creating the Activity.</summary>
     </member>
     <member name="T:System.Diagnostics.ActivityEvent">
-      <summary>Represents an event containing a name and a timestamp, as well as an optional list of tag.</summary>
+      <summary>Represents an event containing a name and a timestamp, as well as an optional list of tags.</summary>
     </member>
     <member name="M:System.Diagnostics.ActivityEvent.#ctor(System.String)">
       <summary>Initializes a new activity event instance using the specified name and the current time as the event timestamp.</summary>
       <param name="name">The event name.</param>
     </member>
     <member name="M:System.Diagnostics.ActivityEvent.#ctor(System.String,System.DateTimeOffset,System.Diagnostics.ActivityTagsCollection)">
-      <summary>Initializes a new activity event instance using the specified name, timestamp and tag.</summary>
+      <summary>Initializes a new activity event instance using the specified name, timestamp and tags.</summary>
       <param name="name">The event name.</param>
       <param name="timestamp">The event timestamp. Timestamp must only be used for the events that happened in the past, not at the moment of this call.</param>
-      <param name="tag">The event tag.</param>
+      <param name="tags">The event tags.</param>
     </member>
     <member name="M:System.Diagnostics.ActivityEvent.EnumerateTagObjects">
-      <summary>Enumerate the tag attached to this <see cref="T:System.Diagnostics.ActivityEvent" /> object.</summary>
+      <summary>Enumerate the tags attached to this <see cref="T:System.Diagnostics.ActivityEvent" /> object.</summary>
       <returns>
         <see cref="T:System.Diagnostics.Activity.Enumerator`1" />.</returns>
     </member>
@@ -452,9 +452,9 @@ The possible generic type parameters are <see cref="T:System.Diagnostics.Activit
       <summary>Gets the activity event name.</summary>
       <returns>A string representing the activity event name.</returns>
     </member>
-    <member name="P:System.Diagnostics.ActivityEvent.Tag">
-      <summary>Gets the collection of tag associated with the event.</summary>
-      <returns>A key-value pair enumeration containing the tag associated with the event.</returns>
+    <member name="P:System.Diagnostics.ActivityEvent.Tags">
+      <summary>Gets the collection of tags associated with the event.</summary>
+      <returns>A key-value pair enumeration containing the tags associated with the event.</returns>
     </member>
     <member name="P:System.Diagnostics.ActivityEvent.Timestamp">
       <summary>Gets the activity event timestamp.</summary>
@@ -500,10 +500,10 @@ Activity links can be used to represent batched operations where an activity was
     <member name="M:System.Diagnostics.ActivityLink.#ctor(System.Diagnostics.ActivityContext,System.Diagnostics.ActivityTagsCollection)">
       <summary>Constructs a new activity link, which can be linked to an activity.</summary>
       <param name="context">The trace activity context.</param>
-      <param name="tag">The key-value pair list of tag associated to the activity context.</param>
+      <param name="tags">The key-value pair list of tags associated to the activity context.</param>
     </member>
     <member name="M:System.Diagnostics.ActivityLink.EnumerateTagObjects">
-      <summary>Enumerate the tag attached to this <see cref="T:System.Diagnostics.ActivityLink" /> object.</summary>
+      <summary>Enumerate the tags attached to this <see cref="T:System.Diagnostics.ActivityLink" /> object.</summary>
       <returns>
         <see cref="T:System.Diagnostics.Activity.Enumerator`1" />.</returns>
     </member>
@@ -540,9 +540,9 @@ Activity links can be used to represent batched operations where an activity was
     <member name="P:System.Diagnostics.ActivityLink.Context">
       <summary>Retrieves the activity context inside this activity link.</summary>
     </member>
-    <member name="P:System.Diagnostics.ActivityLink.Tag">
-      <summary>Retrieves the key-value pair enumeration of tag attached to the activity context.</summary>
-      <returns>An enumeration of tag attached to the activity context.</returns>
+    <member name="P:System.Diagnostics.ActivityLink.Tags">
+      <summary>Retrieves the key-value pair enumeration of tags attached to the activity context.</summary>
+      <returns>An enumeration of tags attached to the activity context.</returns>
     </member>
     <member name="T:System.Diagnostics.ActivityListener">
       <summary>Allows listening to the start and stop activity events and gives the opportunity to decide creating an activity for sampling scenarios.</summary>
@@ -578,7 +578,7 @@ Activity links can be used to represent batched operations where an activity was
       <summary>Enumeration values used by <see cref="T:System.Diagnostics.ActivityListener" /> to indicate the amount of data to collect for the related <see cref="T:System.Diagnostics.Activity" />. Requesting more data causes a greater performance overhead.</summary>
     </member>
     <member name="F:System.Diagnostics.ActivitySamplingResult.AllData">
-      <summary>The activity object should be populated with all the propagation information and also all other properties such as Links, Tag, and Events. Using this value causes <see cref="P:System.Diagnostics.Activity.IsAllDataRequested" /> to return <see langword="true" />.</summary>
+      <summary>The activity object should be populated with all the propagation information and also all other properties such as Links, Tags, and Events. Using this value causes <see cref="P:System.Diagnostics.Activity.IsAllDataRequested" /> to return <see langword="true" />.</summary>
     </member>
     <member name="F:System.Diagnostics.ActivitySamplingResult.AllDataAndRecorded">
       <summary>The activity object should be populated the same as the <see cref="F:System.Diagnostics.ActivitySamplingResult.AllData" /> case. Additionally, Activity.Recorded is set to <see langword="true" />. For activities using the W3C trace ids, this sets a flag bit in the ID that will be propagated downstream requesting that the trace is recorded everywhere.</summary>
@@ -613,7 +613,7 @@ Activity links can be used to represent batched operations where an activity was
       <param name="name">The operation name of the Activity.</param>
       <param name="kind">The <see cref="T:System.Diagnostics.ActivityKind" /></param>
       <param name="parentContext">The parent <see cref="T:System.Diagnostics.ActivityContext" /> object to initialize the created Activity object with.</param>
-      <param name="tag">The optional tag list to initialize the created Activity object with.</param>
+      <param name="tags">The optional tags list to initialize the created Activity object with.</param>
       <param name="links">The optional <see cref="T:System.Diagnostics.ActivityLink" /> list to initialize the created Activity object with.</param>
       <param name="idFormat">The default Id format to use.</param>
       <returns>The created <see cref="T:System.Diagnostics.Activity" /> object or <see langword="null" /> if there is no any listener.</returns>
@@ -623,7 +623,7 @@ Activity links can be used to represent batched operations where an activity was
       <param name="name">The operation name of the Activity.</param>
       <param name="kind">The <see cref="T:System.Diagnostics.ActivityKind" /></param>
       <param name="parentId">The parent Id to initialize the created Activity object with.</param>
-      <param name="tag">The optional tag list to initialize the created Activity object with.</param>
+      <param name="tags">The optional tags list to initialize the created Activity object with.</param>
       <param name="links">The optional <see cref="T:System.Diagnostics.ActivityLink" /> list to initialize the created Activity object with.</param>
       <param name="idFormat">The default Id format to use.</param>
       <returns>The created <see cref="T:System.Diagnostics.Activity" /> object or <see langword="null" /> if there is no any listener.</returns>
@@ -640,7 +640,7 @@ Activity links can be used to represent batched operations where an activity was
       <summary>Creates and starts a new <see cref="T:System.Diagnostics.Activity" /> object if there is any listener to the Activity events, returns <see langword="null" /> otherwise.</summary>
       <param name="kind">The <see cref="T:System.Diagnostics.ActivityKind" /></param>
       <param name="parentContext">The parent <see cref="T:System.Diagnostics.ActivityContext" /> object to initialize the created Activity object with.</param>
-      <param name="tag">The optional tag list to initialize the created Activity object with.</param>
+      <param name="tags">The optional tags list to initialize the created Activity object with.</param>
       <param name="links">The optional <see cref="T:System.Diagnostics.ActivityLink" /> list to initialize the created Activity object with.</param>
       <param name="startTime">The optional start timestamp to set on the created Activity object.</param>
       <param name="name">The operation name of the Activity.</param>
@@ -653,21 +653,21 @@ Activity links can be used to represent batched operations where an activity was
       <returns>The created activity object, if it had active listeners, or <see langword="null" /> if it has no event listeners.</returns>
     </member>
     <member name="M:System.Diagnostics.ActivitySource.StartActivity(System.String,System.Diagnostics.ActivityKind,System.Diagnostics.ActivityContext,System.Collections.Generic.IEnumerable{System.Collections.Generic.KeyValuePair{System.String,System.Object}},System.Collections.Generic.IEnumerable{System.Diagnostics.ActivityLink},System.DateTimeOffset)">
-      <summary>Creates a new activity if there are active listeners for it, using the specified name, activity kind, parent activity context, tag, optional activity link and optional start time.</summary>
+      <summary>Creates a new activity if there are active listeners for it, using the specified name, activity kind, parent activity context, tags, optional activity link and optional start time.</summary>
       <param name="name">The operation name of the activity.</param>
       <param name="kind">The activity kind.</param>
       <param name="parentContext">The parent <see cref="T:System.Diagnostics.ActivityContext" /> object to initialize the created activity object with.</param>
-      <param name="tag">The optional tag list to initialize the created activity object with.</param>
+      <param name="tags">The optional tags list to initialize the created activity object with.</param>
       <param name="links">The optional <see cref="T:System.Diagnostics.ActivityLink" /> list to initialize the created activity object with.</param>
       <param name="startTime">The optional start timestamp to set on the created activity object.</param>
       <returns>The created activity object, if it had active listeners, or <see langword="null" /> if it has no event listeners.</returns>
     </member>
     <member name="M:System.Diagnostics.ActivitySource.StartActivity(System.String,System.Diagnostics.ActivityKind,System.String,System.Collections.Generic.IEnumerable{System.Collections.Generic.KeyValuePair{System.String,System.Object}},System.Collections.Generic.IEnumerable{System.Diagnostics.ActivityLink},System.DateTimeOffset)">
-      <summary>Creates a new activity if there are active listeners for it, using the specified name, activity kind, parent Id, tag, optional activity links and optional start time.</summary>
+      <summary>Creates a new activity if there are active listeners for it, using the specified name, activity kind, parent Id, tags, optional activity links and optional start time.</summary>
       <param name="name">The operation name of the activity.</param>
       <param name="kind">The activity kind.</param>
       <param name="parentId">The parent Id to initialize the created activity object with.</param>
-      <param name="tag">The optional tag list to initialize the created activity object with.</param>
+      <param name="tags">The optional tags list to initialize the created activity object with.</param>
       <param name="links">The optional <see cref="T:System.Diagnostics.ActivityLink" /> list to initialize the created activity object with.</param>
       <param name="startTime">The optional start timestamp to set on the created activity object.</param>
       <returns>The created activity object, if it had active listeners, or <see langword="null" /> if it has no event listeners.</returns>
@@ -765,7 +765,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <summary>Unset status code is the default value indicating the status code is not initialized.</summary>
     </member>
     <member name="T:System.Diagnostics.ActivityTagsCollection">
-      <summary>ActivityTagsCollection is a collection class used to store tracing tag.
+      <summary>ActivityTagsCollection is a collection class used to store tracing tags.
 
 This collection will be used with classes like <see cref="T:System.Diagnostics.ActivityEvent" /> and <see cref="T:System.Diagnostics.ActivityLink" />.
 
@@ -794,7 +794,7 @@ This collection behaves as follows:
         <paramref name="item" /> is <see langword="null" />.</exception>
     </member>
     <member name="M:System.Diagnostics.ActivityTagsCollection.Add(System.String,System.Object)">
-      <summary>Adds a tag with the provided key and value to the collection. This collection doesn't allow adding two tag with the same key.</summary>
+      <summary>Adds a tag with the provided key and value to the collection. This collection doesn't allow adding two tags with the same key.</summary>
       <param name="key">The tag key.</param>
       <param name="value">The tag value.</param>
     </member>
@@ -867,11 +867,11 @@ This collection behaves as follows:
       <returns>The object mapped to the key.</returns>
     </member>
     <member name="P:System.Diagnostics.ActivityTagsCollection.Keys">
-      <summary>Get the list of the keys of all stored tag.</summary>
+      <summary>Get the list of the keys of all stored tags.</summary>
       <returns>An <see cref="T:System.Collections.Generic.ICollection`1" /> containing the keys of the object that implements <see cref="T:System.Collections.Generic.IDictionary`2" />.</returns>
     </member>
     <member name="P:System.Diagnostics.ActivityTagsCollection.Values">
-      <summary>Get the list of the values of all stored tag.</summary>
+      <summary>Get the list of the values of all stored tags.</summary>
       <returns>An <see cref="T:System.Collections.Generic.ICollection`1" /> containing the values in the object that implements <see cref="T:System.Collections.Generic.IDictionary`2" />.</returns>
     </member>
     <member name="T:System.Diagnostics.ActivityTagsCollection.Enumerator">
@@ -1209,17 +1209,17 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
     <member name="M:System.Diagnostics.Metrics.Counter`1.Add(`0,System.Collections.Generic.KeyValuePair{System.String,System.Object}[])">
       <summary>Records the increment value of the measurement.</summary>
       <param name="delta">The increment measurement.</param>
-      <param name="tag">A list of key-value pair tag associated with the measurement.</param>
+      <param name="tags">A list of key-value pair tags associated with the measurement.</param>
     </member>
     <member name="M:System.Diagnostics.Metrics.Counter`1.Add(`0,System.Diagnostics.TagList@)">
       <summary>Adds the increment value of the measurement.</summary>
       <param name="delta">The measurement value.</param>
-      <param name="tagList">The tag associated with the measurement.</param>
+      <param name="tagList">The tags associated with the measurement.</param>
     </member>
     <member name="M:System.Diagnostics.Metrics.Counter`1.Add(`0,System.ReadOnlySpan{System.Collections.Generic.KeyValuePair{System.String,System.Object}})">
       <summary>Records the increment value of the measurement.</summary>
       <param name="delta">The increment measurement.</param>
-      <param name="tag">A span of key-value pair tag associated with the measurement.</param>
+      <param name="tags">A span of key-value pair tags associated with the measurement.</param>
     </member>
     <member name="T:System.Diagnostics.Metrics.Histogram`1">
       <summary>Represents a metrics instrument that can be used to report arbitrary values that are likely to be statistically meaningful, for example, the request duration. Call <see cref="M:System.Diagnostics.Metrics.Meter.CreateHistogram``1(System.String,System.String,System.String)" /> to create a Histogram object.</summary>
@@ -1250,17 +1250,17 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
     <member name="M:System.Diagnostics.Metrics.Histogram`1.Record(`0,System.Collections.Generic.KeyValuePair{System.String,System.Object}[])">
       <summary>Records a measurement value.</summary>
       <param name="value">The measurement value.</param>
-      <param name="tag">A list of key-value pair tag associated with the measurement.</param>
+      <param name="tags">A list of key-value pair tags associated with the measurement.</param>
     </member>
     <member name="M:System.Diagnostics.Metrics.Histogram`1.Record(`0,System.Diagnostics.TagList@)">
       <summary>Records a measurement value.</summary>
       <param name="value">The measurement value.</param>
-      <param name="tagList">The tag associated with the measurement.</param>
+      <param name="tagList">The tags associated with the measurement.</param>
     </member>
     <member name="M:System.Diagnostics.Metrics.Histogram`1.Record(`0,System.ReadOnlySpan{System.Collections.Generic.KeyValuePair{System.String,System.Object}})">
       <summary>Records a measurement value.</summary>
       <param name="value">The measurement value.</param>
-      <param name="tag">A span of key-value pair tag associated with the measurement.</param>
+      <param name="tags">A span of key-value pair tags associated with the measurement.</param>
     </member>
     <member name="T:System.Diagnostics.Metrics.IMeterFactory" />
     <member name="M:System.Diagnostics.Metrics.IMeterFactory.Create(System.Diagnostics.Metrics.MeterOptions)">
@@ -1281,7 +1281,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="name" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Instrument.Publish">
       <summary>Activates the instrument to start recording measurements and to allow listeners to start listening to such measurements.</summary>
@@ -1301,7 +1301,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
     <member name="P:System.Diagnostics.Metrics.Instrument.Name">
       <summary>Gets the instrument name.</summary>
     </member>
-    <member name="P:System.Diagnostics.Metrics.Instrument.Tag" />
+    <member name="P:System.Diagnostics.Metrics.Instrument.Tags" />
     <member name="P:System.Diagnostics.Metrics.Instrument.Unit">
       <summary>Gets the instrument unit of measurements.</summary>
     </member>
@@ -1321,7 +1321,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="name" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Instrument`1.RecordMeasurement(`0)">
       <summary>Records a measurement by notifying all <see cref="T:System.Diagnostics.Metrics.MeterListener" /> objects that are listening to this instrument.</summary>
@@ -1348,15 +1348,15 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
     <member name="M:System.Diagnostics.Metrics.Instrument`1.RecordMeasurement(`0,System.Diagnostics.TagList@)">
       <summary>Records a measurement by notifying all <see cref="T:System.Diagnostics.Metrics.MeterListener" /> objects that are listening to this instrument.</summary>
       <param name="measurement">The measurement value.</param>
-      <param name="tagList">The tag associated with the measurement.</param>
+      <param name="tagList">The tags associated with the measurement.</param>
     </member>
     <member name="M:System.Diagnostics.Metrics.Instrument`1.RecordMeasurement(`0,System.ReadOnlySpan{System.Collections.Generic.KeyValuePair{System.String,System.Object}})">
       <summary>Records a measurement by notifying all <see cref="T:System.Diagnostics.Metrics.MeterListener" /> objects that are listening to this instrument.</summary>
       <param name="measurement">The measurement value.</param>
-      <param name="tag">A span of key-value pair tag associated with the measurement.</param>
+      <param name="tags">A span of key-value pair tags associated with the measurement.</param>
     </member>
     <member name="T:System.Diagnostics.Metrics.Measurement`1">
-      <summary>Stores one observed metrics value and its associated tag. This type is used by an Observable instrument's Observe() method when reporting current measurements.</summary>
+      <summary>Stores one observed metrics value and its associated tags. This type is used by an Observable instrument's Observe() method when reporting current measurements.</summary>
       <typeparam name="T">The type that the measurement represents.</typeparam>
     </member>
     <member name="M:System.Diagnostics.Metrics.Measurement`1.#ctor(`0)">
@@ -1364,22 +1364,22 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="value">The measurement value.</param>
     </member>
     <member name="M:System.Diagnostics.Metrics.Measurement`1.#ctor(`0,System.Collections.Generic.IEnumerable{System.Collections.Generic.KeyValuePair{System.String,System.Object}})">
-      <summary>Initializes a new instance of <see cref="T:System.Diagnostics.Metrics.Measurement`1" /> using the specified value and list of tag.</summary>
+      <summary>Initializes a new instance of <see cref="T:System.Diagnostics.Metrics.Measurement`1" /> using the specified value and list of tags.</summary>
       <param name="value">The measurement value.</param>
-      <param name="tag">The list of tag associated with the measurement.</param>
+      <param name="tags">The list of tags associated with the measurement.</param>
     </member>
     <member name="M:System.Diagnostics.Metrics.Measurement`1.#ctor(`0,System.Collections.Generic.KeyValuePair{System.String,System.Object}[])">
-      <summary>Initializes a new instance of <see cref="T:System.Diagnostics.Metrics.Measurement`1" /> using the specified value and list of tag.</summary>
+      <summary>Initializes a new instance of <see cref="T:System.Diagnostics.Metrics.Measurement`1" /> using the specified value and list of tags.</summary>
       <param name="value">The measurement value.</param>
-      <param name="tag">The list of tag associated with the measurement.</param>
+      <param name="tags">The list of tags associated with the measurement.</param>
     </member>
     <member name="M:System.Diagnostics.Metrics.Measurement`1.#ctor(`0,System.ReadOnlySpan{System.Collections.Generic.KeyValuePair{System.String,System.Object}})">
-      <summary>Initializes a new instance of <see cref="T:System.Diagnostics.Metrics.Measurement`1" /> using the specified value and list of tag.</summary>
+      <summary>Initializes a new instance of <see cref="T:System.Diagnostics.Metrics.Measurement`1" /> using the specified value and list of tags.</summary>
       <param name="value">The measurement value.</param>
-      <param name="tag">The list of tag associated with the measurement.</param>
+      <param name="tags">The list of tags associated with the measurement.</param>
     </member>
-    <member name="P:System.Diagnostics.Metrics.Measurement`1.Tag">
-      <summary>Gets the measurement tag list.</summary>
+    <member name="P:System.Diagnostics.Metrics.Measurement`1.Tags">
+      <summary>Gets the measurement tags list.</summary>
     </member>
     <member name="P:System.Diagnostics.Metrics.Measurement`1.Value">
       <summary>Gets the measurement value.</summary>
@@ -1388,7 +1388,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <summary>A delegate to represent the Meterlistener callbacks that are used when recording measurements.</summary>
       <param name="instrument">The instrument that sent the measurement.</param>
       <param name="measurement">The measurement value.</param>
-      <param name="tag">A span of key-value pair tag associated with the measurement.</param>
+      <param name="tags">A span of key-value pair tags associated with the measurement.</param>
       <param name="state">The state object originally passed to <see cref="M:System.Diagnostics.Metrics.MeterListener.EnableMeasurementEvents(System.Diagnostics.Metrics.Instrument,System.Object)" /> method.</param>
       <typeparam name="T">The type that the measurement represents.</typeparam>
     </member>
@@ -1410,7 +1410,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
     <member name="M:System.Diagnostics.Metrics.Meter.#ctor(System.String,System.String,System.Collections.Generic.IEnumerable{System.Collections.Generic.KeyValuePair{System.String,System.Object}},System.Object)">
       <param name="name" />
       <param name="version" />
-      <param name="tag" />
+      <param name="tags" />
       <param name="scope" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Meter.CreateCounter``1(System.String,System.String,System.String)">
@@ -1425,7 +1425,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="name" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
       <typeparam name="T" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Meter.CreateHistogram``1(System.String,System.String,System.String)">
@@ -1440,7 +1440,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="name" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
       <typeparam name="T" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Meter.CreateObservableCounter``1(System.String,System.Func{``0},System.String,System.String)">
@@ -1457,7 +1457,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="observeValue" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
       <typeparam name="T" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Meter.CreateObservableCounter``1(System.String,System.Func{System.Collections.Generic.IEnumerable{System.Diagnostics.Metrics.Measurement{``0}}},System.String,System.String)">
@@ -1474,7 +1474,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="observeValues" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
       <typeparam name="T" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Meter.CreateObservableCounter``1(System.String,System.Func{System.Diagnostics.Metrics.Measurement{``0}},System.String,System.String)">
@@ -1491,7 +1491,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="observeValue" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
       <typeparam name="T" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Meter.CreateObservableGauge``1(System.String,System.Func{``0},System.String,System.String)">
@@ -1508,7 +1508,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="observeValue" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
       <typeparam name="T" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Meter.CreateObservableGauge``1(System.String,System.Func{System.Collections.Generic.IEnumerable{System.Diagnostics.Metrics.Measurement{``0}}},System.String,System.String)">
@@ -1525,7 +1525,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="observeValues" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
       <typeparam name="T" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Meter.CreateObservableGauge``1(System.String,System.Func{System.Diagnostics.Metrics.Measurement{``0}},System.String,System.String)">
@@ -1542,7 +1542,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="observeValue" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
       <typeparam name="T" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Meter.CreateObservableUpDownCounter``1(System.String,System.Func{``0},System.String,System.String)">
@@ -1559,7 +1559,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="observeValue" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
       <typeparam name="T" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Meter.CreateObservableUpDownCounter``1(System.String,System.Func{System.Collections.Generic.IEnumerable{System.Diagnostics.Metrics.Measurement{``0}}},System.String,System.String)">
@@ -1576,7 +1576,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="observeValues" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
       <typeparam name="T" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Meter.CreateObservableUpDownCounter``1(System.String,System.Func{System.Diagnostics.Metrics.Measurement{``0}},System.String,System.String)">
@@ -1593,7 +1593,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="observeValue" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
       <typeparam name="T" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Meter.CreateUpDownCounter``1(System.String,System.String,System.String)">
@@ -1608,7 +1608,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="name" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
       <typeparam name="T" />
     </member>
     <member name="M:System.Diagnostics.Metrics.Meter.Dispose">
@@ -1622,7 +1622,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <returns>The Meter name</returns>
     </member>
     <member name="P:System.Diagnostics.Metrics.Meter.Scope" />
-    <member name="P:System.Diagnostics.Metrics.Meter.Tag" />
+    <member name="P:System.Diagnostics.Metrics.Meter.Tags" />
     <member name="P:System.Diagnostics.Metrics.Meter.Version">
       <summary>Gets the Meter version.</summary>
       <returns>The Meter version.</returns>
@@ -1632,7 +1632,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="meterFactory" />
       <param name="name" />
       <param name="version" />
-      <param name="tag" />
+      <param name="tags" />
     </member>
     <member name="T:System.Diagnostics.Metrics.MeterListener">
       <summary>The MeterListener is class used to listen to the metrics instrument measurements recording.</summary>
@@ -1680,7 +1680,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
     </member>
     <member name="P:System.Diagnostics.Metrics.MeterOptions.Name" />
     <member name="P:System.Diagnostics.Metrics.MeterOptions.Scope" />
-    <member name="P:System.Diagnostics.Metrics.MeterOptions.Tag" />
+    <member name="P:System.Diagnostics.Metrics.MeterOptions.Tags" />
     <member name="P:System.Diagnostics.Metrics.MeterOptions.Version" />
     <member name="T:System.Diagnostics.Metrics.ObservableCounter`1">
       <summary>Represents a metrics-observable instrument that reports monotonically increasing values when the instrument is being observed, for example, CPU time (for different processes, threads, user mode, or kernel mode). Call <see cref="Overload:System.Diagnostics.Metrics.Meter.CreateObservableCounter" /> to create the observable counter object.</summary>
@@ -1707,7 +1707,7 @@ The characters in <paramref name="idData" /> are not all lower-case hexadecimal 
       <param name="name" />
       <param name="unit" />
       <param name="description" />
-      <param name="tag" />
+      <param name="tags" />
     </member>
     <member name="M:System.Diagnostics.Metrics.ObservableInstrument`1.Observe">
       <summary>Fetches the current measurements being tracked by this instrument. All classes extending ObservableInstrument{T} need to implement this method.</summary>
@@ -1754,17 +1754,17 @@ To create an ObservableUpDownCounter object, use the <see cref="Overload:System.
     <member name="M:System.Diagnostics.Metrics.UpDownCounter`1.Add(`0,System.Collections.Generic.KeyValuePair{System.String,System.Object}[])">
       <summary>Records the delta value of the measurement. The delta can be positive, negative, or zero.</summary>
       <param name="delta">The amount to be added, which can be positive, negative, or zero.</param>
-      <param name="tag">A list of key-value pair tag associated with the measurement.</param>
+      <param name="tags">A list of key-value pair tags associated with the measurement.</param>
     </member>
     <member name="M:System.Diagnostics.Metrics.UpDownCounter`1.Add(`0,System.Diagnostics.TagList@)">
       <summary>Records the delta value of the measurement. The delta can be positive, negative, or zero.</summary>
       <param name="delta">The amount to be added, which can be positive, negative, or zero.</param>
-      <param name="tagList">A <see cref="T:System.Diagnostics.TagList" /> of tag associated with the measurement.</param>
+      <param name="tagList">A <see cref="T:System.Diagnostics.TagList" /> of tags associated with the measurement.</param>
     </member>
     <member name="M:System.Diagnostics.Metrics.UpDownCounter`1.Add(`0,System.ReadOnlySpan{System.Collections.Generic.KeyValuePair{System.String,System.Object}})">
       <summary>Records the delta value of the measurement. The delta can be positive, negative, or zero.</summary>
       <param name="delta">The amount to be added, which can be positive, negative, or zero.</param>
-      <param name="tag">A span of key-value pair tag associated with the measurement.</param>
+      <param name="tags">A span of key-value pair tags associated with the measurement.</param>
     </member>
     <member name="T:System.Diagnostics.SampleActivity`1">
       <summary>A delegate that defines the signature of the <see cref="T:System.Diagnostics.ActivityListener" /> callbacks used in the sampling process.</summary>
@@ -1773,11 +1773,11 @@ To create an ObservableUpDownCounter object, use the <see cref="Overload:System.
       <returns>An object containing the sampling results, which indicate the amount of data to collect for the related <see cref="T:System.Diagnostics.Activity" />.</returns>
     </member>
     <member name="T:System.Diagnostics.TagList">
-      <summary>Represents a list of tag that can be accessed by index. Provides methods to search, sort, and manipulate lists.</summary>
+      <summary>Represents a list of tags that can be accessed by index. Provides methods to search, sort, and manipulate lists.</summary>
     </member>
     <member name="M:System.Diagnostics.TagList.#ctor(System.ReadOnlySpan{System.Collections.Generic.KeyValuePair{System.String,System.Object}})">
       <summary>Initializes a new instance of <see cref="T:System.Diagnostics.TagList" /> using the specified <paramref name="tagList" />.</summary>
-      <param name="tagList">A span of tag to initialize the list with.</param>
+      <param name="tagList">A span of tags to initialize the list with.</param>
     </member>
     <member name="M:System.Diagnostics.TagList.Add(System.Collections.Generic.KeyValuePair{System.String,System.Object})">
       <summary>Adds a tag to the list.</summary>
@@ -1807,8 +1807,8 @@ To create an ObservableUpDownCounter object, use the <see cref="Overload:System.
         <paramref name="arrayIndex " /> is less than 0 or greater than or equal to the <paramref name="array" /> length.</exception>
     </member>
     <member name="M:System.Diagnostics.TagList.CopyTo(System.Span{System.Collections.Generic.KeyValuePair{System.String,System.Object}})">
-      <summary>Copies the contents of this <see cref="T:System.Diagnostics.TagList" /> into a destination <paramref name="tag" /> span.</summary>
-      <param name="tag">The destination <see cref="T:System.Span`1" /> object.</param>
+      <summary>Copies the contents of this <see cref="T:System.Diagnostics.TagList" /> into a destination <paramref name="tags" /> span.</summary>
+      <param name="tags">The destination <see cref="T:System.Span`1" /> object.</param>
       <exception cref="T:System.ArgumentException">
           The number of elements in the source <see cref="T:System.Diagnostics.TagList" /> is greater than the number of elements that the destination span.</exception>
     </member>
@@ -1845,7 +1845,7 @@ To create an ObservableUpDownCounter object, use the <see cref="Overload:System.
       <returns>An enumerator that iterates through the <see cref="T:System.Diagnostics.TagList" />.</returns>
     </member>
     <member name="P:System.Diagnostics.TagList.Count">
-      <summary>Gets the number of tag contained in the <see cref="T:System.Diagnostics.TagList" />.</summary>
+      <summary>Gets the number of tags contained in the <see cref="T:System.Diagnostics.TagList" />.</summary>
       <returns>The number of elements contained in the <see cref="T:System.Collections.Generic.ICollection`1" />.</returns>
     </member>
     <member name="P:System.Diagnostics.TagList.IsReadOnly">
@@ -1854,7 +1854,7 @@ To create an ObservableUpDownCounter object, use the <see cref="Overload:System.
           Always returns <see langword="false" />.</returns>
     </member>
     <member name="P:System.Diagnostics.TagList.Item(System.Int32)">
-      <summary>Gets or sets the tag at the specified index.</summary>
+      <summary>Gets or sets the tags at the specified index.</summary>
       <param name="index">The item index.</param>
       <exception cref="T:System.ArgumentOutOfRangeException">
         <paramref name="index" /> is not a valid index in the <see cref="T:System.Diagnostics.TagList" />.</exception>

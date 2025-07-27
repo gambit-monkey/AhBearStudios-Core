@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Models;
+using ZLinq;
 
 namespace AhBearStudios.Core.Logging.Filters
 {
@@ -92,16 +92,16 @@ namespace AhBearStudios.Core.Logging.Filters
             Priority = priority;
             
             if (sources != null)
-                _sources.AddRange(sources.Where(s => !string.IsNullOrEmpty(s)));
+                _sources.AddRange(sources.AsValueEnumerable().Where(s => !string.IsNullOrEmpty(s)).ToList());
             
             if (sourceContexts != null)
-                _sourceContexts.AddRange(sourceContexts.Where(sc => !string.IsNullOrEmpty(sc)));
+                _sourceContexts.AddRange(sourceContexts.AsValueEnumerable().Where(sc => !string.IsNullOrEmpty(sc)).ToList());
             
             _includeMode = includeMode;
             _caseSensitive = caseSensitive;
             _useRegex = useRegex;
             _hierarchicalMatch = hierarchicalMatch;
-            _statistics = FilterStatistics.ForSource(_sources.FirstOrDefault());
+            _statistics = FilterStatistics.ForSource(_sources.AsValueEnumerable().FirstOrDefault());
             
             _settings = new Dictionary<FixedString32Bytes, object>
             {
@@ -221,12 +221,12 @@ namespace AhBearStudios.Core.Logging.Filters
             }
 
             // Check for duplicate sources
-            if (_sources.Distinct().Count() != _sources.Count)
+            if (_sources.AsValueEnumerable().Distinct().Count() != _sources.Count)
             {
                 warnings.Add(new ValidationWarning("Duplicate sources detected", nameof(Sources)));
             }
 
-            if (_sourceContexts.Distinct().Count() != _sourceContexts.Count)
+            if (_sourceContexts.AsValueEnumerable().Distinct().Count() != _sourceContexts.Count)
             {
                 warnings.Add(new ValidationWarning("Duplicate source contexts detected", nameof(SourceContexts)));
             }
@@ -264,7 +264,7 @@ namespace AhBearStudios.Core.Logging.Filters
                         if (setting.Value is IEnumerable<string> sources)
                         {
                             _sources.Clear();
-                            _sources.AddRange(sources.Where(s => !string.IsNullOrEmpty(s)));
+                            _sources.AddRange(sources.AsValueEnumerable().Where(s => !string.IsNullOrEmpty(s)).ToList());
                         }
                         break;
                         
@@ -272,7 +272,7 @@ namespace AhBearStudios.Core.Logging.Filters
                         if (setting.Value is IEnumerable<string> contexts)
                         {
                             _sourceContexts.Clear();
-                            _sourceContexts.AddRange(contexts.Where(sc => !string.IsNullOrEmpty(sc)));
+                            _sourceContexts.AddRange(contexts.AsValueEnumerable().Where(sc => !string.IsNullOrEmpty(sc)).ToList());
                         }
                         break;
                         

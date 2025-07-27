@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.HealthChecking.Models;
 using Unity.Collections;
@@ -97,7 +97,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
         /// - Return degraded status for performance issues
         /// - Include relevant metrics and context data
         /// </remarks>
-        Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default);
+        UniTask<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Configures the health check with new configuration settings

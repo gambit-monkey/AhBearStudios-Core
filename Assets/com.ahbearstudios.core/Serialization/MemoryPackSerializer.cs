@@ -1,11 +1,16 @@
 ﻿using System.Collections.Concurrent;
+using System.Collections.Immutable;
 using System.IO;
 using System.Threading;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using Unity.Collections;
+using MemoryPack;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Serialization.Configs;
 using AhBearStudios.Core.Serialization.Models;
+using CompressionLevel = AhBearStudios.Core.Serialization.Models.CompressionLevel;
+using SerializationException = AhBearStudios.Core.Serialization.Models.SerializationException;
+using AhBearStudios.Core.Serialization.Services;
 
 namespace AhBearStudios.Core.Serialization
 {
@@ -23,6 +28,7 @@ namespace AhBearStudios.Core.Serialization
         private readonly SemaphoreSlim _concurrencyLimiter;
         private readonly ConcurrentDictionary<Type, bool> _registeredTypes;
         private readonly SerializationStatisticsCollector _statistics;
+        private readonly MemoryPackSerializerOptions _memoryPackOptions;
         private bool _disposed;
 
         /// <summary>
@@ -51,8 +57,11 @@ namespace AhBearStudios.Core.Serialization
             _registeredTypes = new ConcurrentDictionary<Type, bool>();
             _statistics = new SerializationStatisticsCollector();
 
+            // Configure MemoryPack options based on SerializationConfig
+            _memoryPackOptions = CreateMemoryPackOptions();
+
             var correlationId = GetCorrelationId();
-            _logger.LogInfo("MemoryPackSerializer initialized with MemoryPack format", correlationId);
+            _logger.LogInfo("MemoryPackSerializer initialized with MemoryPack format", correlationId, sourceContext: null, properties: null);
         }
 
         /// <inheritdoc />
@@ -68,12 +77,12 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Starting serialization of type {typeof(T).Name}", correlationId);
+                _logger.LogInfo($"Starting serialization of type {typeof(T).Name}", correlationId, sourceContext: null, properties: null);
 
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
 
-                var serializedData = MemoryPackSerializer.Serialize(obj);
+                var serializedData = MemoryPack.MemoryPackSerializer.Serialize(obj, _memoryPackOptions);
 
                 var result = _config.Compression != CompressionLevel.None
                     ? _compressionService.Compress(serializedData, _config.Compression)
@@ -82,7 +91,7 @@ namespace AhBearStudios.Core.Serialization
                 var duration = DateTime.UtcNow - startTime;
                 _statistics.RecordSerialization(typeof(T), result.Length, duration, true);
 
-                _logger.LogInfo($"Successfully serialized {typeof(T).Name} to {result.Length} bytes in {duration.TotalMilliseconds:F2}ms", correlationId);
+                _logger.LogInfo($"Successfully serialized {typeof(T).Name} to {result.Length} bytes in {duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
 
                 return result;
             }
@@ -115,7 +124,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Starting deserialization of type {typeof(T).Name} from {data.Length} bytes", correlationId);
+                _logger.LogInfo($"Starting deserialization of type {typeof(T).Name} from {data.Length} bytes", correlationId, sourceContext: null, properties: null);
 
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
@@ -124,7 +133,7 @@ namespace AhBearStudios.Core.Serialization
                     ? _compressionService.Decompress(data)
                     : data.ToArray();
 
-                var result = MemoryPackSerializer.Deserialize<T>(decompressedData);
+                var result = MemoryPack.MemoryPackSerializer.Deserialize<T>(decompressedData, _memoryPackOptions);
 
                 if (_config.EnableVersioning)
                 {
@@ -134,7 +143,7 @@ namespace AhBearStudios.Core.Serialization
                 var duration = DateTime.UtcNow - startTime;
                 _statistics.RecordDeserialization(typeof(T), data.Length, duration, true);
 
-                _logger.LogInfo($"Successfully deserialized {typeof(T).Name} in {duration.TotalMilliseconds:F2}ms", correlationId);
+                _logger.LogInfo($"Successfully deserialized {typeof(T).Name} in {duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
 
                 return result;
             }
@@ -167,7 +176,7 @@ namespace AhBearStudios.Core.Serialization
             catch (Exception ex)
             {
                 var correlationId = GetCorrelationId();
-                _logger.LogError($"TryDeserialize failed for type {typeof(T).Name}: {ex.Message}", correlationId);
+                _logger.LogError($"TryDeserialize failed for type {typeof(T).Name}: {ex.Message}", correlationId, sourceContext: null, properties: null);
                 return false;
             }
         }
@@ -191,7 +200,17 @@ namespace AhBearStudios.Core.Serialization
             if (_registeredTypes.TryAdd(type, true))
             {
                 _registry.RegisterType(type);
-                _logger.LogInfo($"Registered type {type.FullName} for serialization", correlationId);
+                
+                // Check if type has MemoryPackable attribute
+                var hasMemoryPackableAttribute = type.GetCustomAttributes(typeof(MemoryPackableAttribute), false).Length > 0;
+                if (hasMemoryPackableAttribute)
+                {
+                    _logger.LogInfo($"Registered MemoryPackable type {type.FullName} for serialization", correlationId, sourceContext: null, properties: null);
+                }
+                else
+                {
+                    _logger.LogWarning($"Type {type.FullName} is not marked with [MemoryPackable] attribute. MemoryPack serialization may fail.", correlationId, sourceContext: null, properties: null);
+                }
             }
         }
 
@@ -211,7 +230,7 @@ namespace AhBearStudios.Core.Serialization
         }
 
         /// <inheritdoc />
-        public async Task<byte[]> SerializeAsync<T>(T obj, CancellationToken cancellationToken = default)
+        public async UniTask<byte[]> SerializeAsync<T>(T obj, CancellationToken cancellationToken = default)
         {
             if (obj == null)
                 throw new ArgumentNullException(nameof(obj));
@@ -222,7 +241,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                return await Task.Run(() => Serialize(obj), cancellationToken);
+                return await UniTask.RunOnThreadPool(() => Serialize(obj), cancellationToken: cancellationToken);
             }
             finally
             {
@@ -231,7 +250,7 @@ namespace AhBearStudios.Core.Serialization
         }
 
         /// <inheritdoc />
-        public async Task<T> DeserializeAsync<T>(byte[] data, CancellationToken cancellationToken = default)
+        public async UniTask<T> DeserializeAsync<T>(byte[] data, CancellationToken cancellationToken = default)
         {
             if (data == null)
                 throw new ArgumentNullException(nameof(data));
@@ -242,7 +261,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                return await Task.Run(() => Deserialize<T>(data), cancellationToken);
+                return await UniTask.RunOnThreadPool(() => Deserialize<T>(data), cancellationToken: cancellationToken);
             }
             finally
             {
@@ -282,18 +301,16 @@ namespace AhBearStudios.Core.Serialization
         /// <inheritdoc />
         public NativeArray<byte> SerializeToNativeArray<T>(T obj, Allocator allocator) where T : unmanaged
         {
-            if (obj.Equals(default(T)))
-                throw new ArgumentException("Object cannot be default value", nameof(obj));
+            // Allow default values for value types in MemoryPack
+            // MemoryPack can serialize default values unlike some other serializers
 
             ThrowIfDisposed();
 
             var data = Serialize(obj);
             var nativeArray = new NativeArray<byte>(data.Length, allocator);
             
-            for (int i = 0; i < data.Length; i++)
-            {
-                nativeArray[i] = data[i];
-            }
+            // Use NativeArray.CopyFrom for better performance
+            nativeArray.CopyFrom(data);
 
             return nativeArray;
         }
@@ -306,11 +323,8 @@ namespace AhBearStudios.Core.Serialization
 
             ThrowIfDisposed();
 
-            var managedArray = new byte[data.Length];
-            for (int i = 0; i < data.Length; i++)
-            {
-                managedArray[i] = data[i];
-            }
+            // Use ToArray() for better performance
+            var managedArray = data.ToArray();
 
             return Deserialize<T>(managedArray);
         }
@@ -320,6 +334,15 @@ namespace AhBearStudios.Core.Serialization
         {
             ThrowIfDisposed();
             return _statistics.GetStatistics(_registeredTypes.Count);
+        }
+
+        /// <summary>
+        /// Gets the MemoryPack serializer options being used.
+        /// </summary>
+        /// <returns>Current MemoryPack serializer options</returns>
+        public MemoryPackSerializerOptions GetMemoryPackOptions()
+        {
+            return _memoryPackOptions;
         }
 
         private void EnsureTypeRegistered<T>()
@@ -374,6 +397,17 @@ namespace AhBearStudios.Core.Serialization
                 throw new ObjectDisposedException(nameof(MemoryPackSerializer));
         }
 
+        private MemoryPackSerializerOptions CreateMemoryPackOptions()
+        {
+            // Configure MemoryPack options based on our serialization config
+            var options = MemoryPackSerializerOptions.Default;
+            
+            // MemoryPack handles compression differently - we disable it here since we use our own compression service
+            // This allows for better control over compression algorithms and settings
+            
+            return options;
+        }
+
         private FixedString64Bytes GetCorrelationId()
         {
             return new FixedString64Bytes(Guid.NewGuid().ToString("N")[..32]);
@@ -397,7 +431,7 @@ namespace AhBearStudios.Core.Serialization
                 _disposed = true;
 
                 var correlationId = GetCorrelationId();
-                _logger.LogInfo("MemoryPackSerializer disposed", correlationId);
+                _logger.LogInfo("MemoryPackSerializer disposed", correlationId, sourceContext: null, properties: null);
             }
         }
     }

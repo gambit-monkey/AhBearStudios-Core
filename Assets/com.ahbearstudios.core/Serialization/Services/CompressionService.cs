@@ -3,6 +3,7 @@ using System.IO.Compression;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Serialization.Models;
 using Unity.Collections;
+using CompressionLevel = AhBearStudios.Core.Serialization.Models.CompressionLevel;
 
 namespace AhBearStudios.Core.Serialization.Services;
 
@@ -26,7 +27,7 @@ namespace AhBearStudios.Core.Serialization.Services;
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo("CompressionService initialized", correlationId);
+            _logger.LogInfo("CompressionService initialized", correlationId, sourceContext: null, properties: null);
         }
 
         /// <inheritdoc />
@@ -59,7 +60,7 @@ namespace AhBearStudios.Core.Serialization.Services;
                 
                 UpdateCompressionRatio(originalSize, compressed.Length);
                 
-                _logger.LogInfo($"Compressed {originalSize} bytes to {compressed.Length} bytes (ratio: {_lastCompressionRatio:P2})", correlationId);
+                _logger.LogInfo($"Compressed {originalSize} bytes to {compressed.Length} bytes (ratio: {_lastCompressionRatio:P2})", correlationId, sourceContext: null, properties: null);
                 
                 return compressed;
             }
@@ -94,7 +95,7 @@ namespace AhBearStudios.Core.Serialization.Services;
                 decompressionStream.CopyTo(output);
                 var decompressed = output.ToArray();
                 
-                _logger.LogInfo($"Decompressed {compressedSize} bytes to {decompressed.Length} bytes", correlationId);
+                _logger.LogInfo($"Decompressed {compressedSize} bytes to {decompressed.Length} bytes", correlationId, sourceContext: null, properties: null);
                 
                 return decompressed;
             }
@@ -116,13 +117,25 @@ namespace AhBearStudios.Core.Serialization.Services;
 
         private Stream CreateCompressionStream(Stream output, CompressionLevel level)
         {
-            var compressionLevel = level switch
+            System.IO.Compression.CompressionLevel compressionLevel;
+            
+            switch (level)
             {
-                CompressionLevel.Fastest => System.IO.Compression.CompressionLevel.Fastest,
-                CompressionLevel.Optimal => System.IO.Compression.CompressionLevel.Optimal,
-                CompressionLevel.SmallestSize => System.IO.Compression.CompressionLevel.SmallestSize,
-                _ => System.IO.Compression.CompressionLevel.Optimal
-            };
+                case CompressionLevel.Fastest:
+                    compressionLevel = System.IO.Compression.CompressionLevel.Fastest;
+                    break;
+                case CompressionLevel.Optimal:
+                    compressionLevel = System.IO.Compression.CompressionLevel.Optimal;
+                    break;
+                case CompressionLevel.SmallestSize:
+                    // SmallestSize is not available in .NET Framework 4.7.2, use Optimal instead
+                    compressionLevel = System.IO.Compression.CompressionLevel.Optimal;
+                    break;
+                case CompressionLevel.None:
+                default:
+                    compressionLevel = System.IO.Compression.CompressionLevel.NoCompression;
+                    break;
+            }
 
             return new GZipStream(output, compressionLevel, leaveOpen: true);
         }

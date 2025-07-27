@@ -7,6 +7,7 @@ using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Profiling.Models;
 using Unity.Collections;
+using Cysharp.Threading.Tasks;
 
 namespace AhBearStudios.Core.Logging.HealthChecks
 {
@@ -332,7 +333,7 @@ namespace AhBearStudios.Core.Logging.HealthChecks
         /// <param name="healthData">Dictionary to add health data to</param>
         /// <param name="warnings">List to add warnings to</param>
         /// <param name="cancellationToken">Cancellation token</param>
-        private async Task PerformTestLogOperation(
+        private async UniTask PerformTestLogOperation(
             Dictionary<string, object> healthData, 
             List<string> warnings, 
             CancellationToken cancellationToken)
@@ -350,7 +351,7 @@ namespace AhBearStudios.Core.Logging.HealthChecks
                 _loggingService.LogDebug(testMessage, testCorrelationId, "HealthCheck");
                 
                 // Force flush to ensure the message is processed
-                await _loggingService.FlushAsync(testCorrelationId).ConfigureAwait(false);
+                await _loggingService.FlushAsync(testCorrelationId);
                 
                 var testDuration = DateTime.UtcNow - testStartTime;
                 healthData["TestLogDuration"] = testDuration.TotalMilliseconds;
@@ -365,7 +366,7 @@ namespace AhBearStudios.Core.Logging.HealthChecks
                 healthData["LastTestTime"] = DateTime.UtcNow;
                 
                 // Simulate async operation to test cancellation handling
-                await Task.Delay(1, cancellationToken).ConfigureAwait(false);
+                await UniTask.Delay(1, cancellationToken: cancellationToken);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {

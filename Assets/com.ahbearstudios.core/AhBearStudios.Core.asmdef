@@ -1,23 +1,22 @@
 {
-  "name": "AhBearStudios.Core",
-  "rootNamespace": "AhBearStudios.Core",
-  "references": [
-    "Unity.Collections",
-    "Unity.Jobs",
-    "Unity.Burst",
-    "Unity.Mathematics",
-    "Reflex",
-    "MemoryPack",
-    "MessagePipe",
-    "UniTask"
-  ],
-  "includePlatforms": [],
-  "excludePlatforms": [],
-  "allowUnsafeCode": true,
-  "overrideReferences": false,
-  "precompiledReferences": [],
-  "autoReferenced": true,
-  "defineConstraints": [],
-  "versionDefines": [],
-  "noEngineReferences": false
+    "name": "AhBearStudios.Core",
+    "rootNamespace": "AhBearStudios.Core",
+    "references": [
+        "Unity.Collections",
+        "Unity.Burst",
+        "Unity.Mathematics",
+        "Reflex",
+        "MessagePipe",
+        "UniTask",
+        "ZLinq.Unity"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
 }

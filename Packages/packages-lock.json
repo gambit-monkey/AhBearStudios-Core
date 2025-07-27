@@ -1,5 +1,12 @@
 {
   "dependencies": {
+    "com.cysharp.memorypack": {
+      "version": "https://github.com/Cysharp/MemoryPack.git?path=src/MemoryPack.Unity/Assets/MemoryPack.Unity",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "dfbcedc078c5da938443d23c9f6b5738af42ba7d"
+    },
     "com.cysharp.messagepipe": {
       "version": "https://github.com/Cysharp/MessagePipe.git?path=src/MessagePipe.Unity/Assets/Plugins/MessagePipe",
       "depth": 0,
@@ -14,19 +21,26 @@
       "dependencies": {},
       "hash": "f213ff497e4ff462a77319cf677cf20cc0860ca9"
     },
+    "com.cysharp.zlinq": {
+      "version": "https://github.com/Cysharp/ZLinq.git?path=src/ZLinq.Unity/Assets/ZLinq.Unity",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {},
+      "hash": "1e77b7e08f4091d9e71f01fed155bc0d2922dbfa"
+    },
     "com.github-glitchenzo.nugetforunity": {
       "version": "https://github.com/GlitchEnzo/NuGetForUnity.git?path=/src/NuGetForUnity",
       "depth": 0,
       "source": "git",
       "dependencies": {},
-      "hash": "f789083c31250c83082da9b29be0c976152d699b"
+      "hash": "a7c6b49a0141a5bff9b1983e38137522ef61977d"
     },
     "com.gustavopsantos.reflex": {
       "version": "https://github.com/gustavopsantos/reflex.git?path=/Assets/Reflex",
       "depth": 0,
       "source": "git",
       "dependencies": {},
-      "hash": "224d2a1d1716b26f8eddf2e0d4a5c47d50d7a75c"
+      "hash": "4593b54e2f5faeefa08148e92931196ea5fac6c1"
     },
     "com.unity.burst": {
       "version": "1.8.23",

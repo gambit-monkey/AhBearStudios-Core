@@ -166,17 +166,6 @@ namespace AhBearStudios.Unity.Logging.ScriptableObjects.Targets
         public string CustomBasePath => _customBasePath;
 
         /// <summary>
-        /// Initializes default values.
-        /// </summary>
-        protected override void Awake()
-        {
-            base.Awake();
-            _targetType = "File";
-            _useAsyncWrite = true;
-            _bufferSize = 1000;
-        }
-
-        /// <summary>
         /// Creates file target specific properties.
         /// </summary>
         /// <returns>Dictionary of file target properties</returns>

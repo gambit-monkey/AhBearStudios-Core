@@ -1,4 +1,6 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 using AhBearStudios.Core.Serialization.Configs;
 using AhBearStudios.Core.Serialization.Models;
@@ -165,7 +167,7 @@ namespace AhBearStudios.Core.Serialization.Builders;
                 EncryptionKey = _encryptionKey,
                 TypeWhitelist = _typeWhitelist.AsReadOnly(),
                 TypeBlacklist = _typeBlacklist.AsReadOnly(),
-                CustomProperties = _customProperties.AsReadOnly()
+                CustomProperties = new ReadOnlyDictionary<string, object>(_customProperties)
             };
 
             return config.Validate();

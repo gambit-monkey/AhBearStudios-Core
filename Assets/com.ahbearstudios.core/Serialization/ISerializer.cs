@@ -1,6 +1,7 @@
 ﻿using System.IO;
 using System.Threading;
-using System.Threading.Tasks;
+using AhBearStudios.Core.Serialization.Models;
+using Cysharp.Threading.Tasks;
 using Unity.Collections;
 
 namespace AhBearStudios.Core.Serialization
@@ -94,7 +95,7 @@ namespace AhBearStudios.Core.Serialization
         /// <param name="obj">The object to serialize</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Task containing serialized byte array</returns>
-        Task<byte[]> SerializeAsync<T>(T obj, CancellationToken cancellationToken = default);
+        UniTask<byte[]> SerializeAsync<T>(T obj, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Asynchronously deserializes a byte array to an object.
@@ -103,7 +104,7 @@ namespace AhBearStudios.Core.Serialization
         /// <param name="data">The serialized data</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Task containing deserialized object</returns>
-        Task<T> DeserializeAsync<T>(byte[] data, CancellationToken cancellationToken = default);
+        UniTask<T> DeserializeAsync<T>(byte[] data, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Serializes an object directly to a stream.

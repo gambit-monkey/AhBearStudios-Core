@@ -1,8 +1,8 @@
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Logging.Targets;
+using Cysharp.Threading.Tasks;
 
 namespace AhBearStudios.Core.Logging.Services
 {
@@ -105,8 +105,8 @@ namespace AhBearStudios.Core.Logging.Services
         /// <summary>
         /// Flushes all queued messages asynchronously.
         /// </summary>
-        /// <returns>A task representing the asynchronous flush operation</returns>
-        Task FlushAsync();
+        /// <returns>A UniTask representing the asynchronous flush operation</returns>
+        UniTask FlushAsync();
 
         /// <summary>
         /// Gets the current batching performance metrics.

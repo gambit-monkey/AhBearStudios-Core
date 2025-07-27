@@ -1,10 +1,10 @@
 ﻿using System.Collections.Generic;
-using System.Threading.Tasks;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Logging.Targets;
 using AhBearStudios.Core.Logging.Filters;
+using Cysharp.Threading.Tasks;
 
 namespace AhBearStudios.Core.Logging
 {
@@ -220,7 +220,7 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         /// <param name="correlationId">Correlation ID for tracking</param>
         /// <returns>Task representing the flush operation</returns>
-        Task FlushAsync(FixedString64Bytes correlationId = default);
+        UniTask FlushAsync(FixedString64Bytes correlationId = default);
 
         /// <summary>
         /// Validates logging configuration and targets.

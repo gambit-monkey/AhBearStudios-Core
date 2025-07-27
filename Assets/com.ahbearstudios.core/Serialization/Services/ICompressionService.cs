@@ -1,4 +1,6 @@
-﻿namespace AhBearStudios.Core.Serialization.Services;
+﻿using CompressionLevel = AhBearStudios.Core.Serialization.Models.CompressionLevel;
+
+namespace AhBearStudios.Core.Serialization.Services;
 
 /// <summary>
 /// Interface for data compression services.

@@ -1,6 +1,6 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
+using Unity.Collections;
 using AhBearStudios.Core.HealthChecking;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Logging;
@@ -10,6 +10,8 @@ using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Profiling.Models;
 using AhBearStudios.Unity.Logging.ScriptableObjects;
 using UnityEngine.Profiling;
+using Cysharp.Threading.Tasks;
+using ZLinq;
 
 namespace AhBearStudios.Unity.Logging
 {
@@ -186,7 +188,8 @@ namespace AhBearStudios.Unity.Logging
 
                 if (_logUnityEvents)
                 {
-                    _loggingService.LogInfo($"UnityLoggingBehaviour initialized on GameObject '{gameObject.name}'", "Unity.Logging.Lifecycle");
+                    _loggingService.Log(LogLevel.Info, $"UnityLoggingBehaviour initialized on GameObject '{gameObject.name}'", 
+                        default, "UnityLoggingBehaviour", null, null, "Unity.Logging.Lifecycle");
                 }
 
                 if (_verboseStartup)
@@ -227,7 +230,8 @@ namespace AhBearStudios.Unity.Logging
                     ["SlowFramePercentage"] = SlowFramePercentage
                 };
 
-                _loggingService.LogInfo($"Performance: {fps:F1} FPS, {_frameTime:F2}ms frame time", frameData, "Unity.Performance.FrameRate");
+                _loggingService.Log(LogLevel.Info, $"Performance: {fps:F1} FPS, {_frameTime:F2}ms frame time", 
+                    default, "UnityLoggingBehaviour", null, frameData, "Unity.Performance.FrameRate");
             }
 
             // Monitor slow frames
@@ -244,16 +248,17 @@ namespace AhBearStudios.Unity.Logging
                     ["SlowFramePercentage"] = SlowFramePercentage
                 };
 
-                _loggingService.LogWarning(
+                _loggingService.Log(LogLevel.Warning, 
                     $"Slow frame detected: {_frameTime:F2}ms (threshold: {_slowFrameThreshold:F2}ms)", 
-                    slowFrameData, "Unity.Performance.SlowFrame");
+                    default, "UnityLoggingBehaviour", null, slowFrameData, "Unity.Performance.SlowFrame");
             }
 
             // Handle debug GUI toggle
             if (_enableDebugGUI && Input.GetKeyDown(_toggleDebugKey))
             {
                 _showDebugGUI = !_showDebugGUI;
-                _loggingService.LogDebug($"Debug GUI toggled: {(_showDebugGUI ? "ON" : "OFF")}", "Unity.Debug");
+                _loggingService.Log(LogLevel.Debug, $"Debug GUI toggled: {(_showDebugGUI ? "ON" : "OFF")}", 
+                    default, "UnityLoggingBehaviour", null, null, "Unity.Debug");
             }
 
             // Monitor memory spikes
@@ -302,7 +307,8 @@ namespace AhBearStudios.Unity.Logging
                 ["Timestamp"] = DateTime.UtcNow
             };
 
-            _loggingService.LogInfo($"Application {(pauseStatus ? "paused" : "resumed")}", stateData, "Unity.Lifecycle.Pause");
+            _loggingService.Log(LogLevel.Info, $"Application {(pauseStatus ? "paused" : "resumed")}", 
+                default, "UnityLoggingBehaviour", null, stateData, "Unity.Lifecycle.Pause");
         }
 
         /// <summary>
@@ -321,7 +327,8 @@ namespace AhBearStudios.Unity.Logging
                 ["Timestamp"] = DateTime.UtcNow
             };
 
-            _loggingService.LogInfo($"Application {(hasFocus ? "gained" : "lost")} focus", focusData, "Unity.Lifecycle.Focus");
+            _loggingService.Log(LogLevel.Info, $"Application {(hasFocus ? "gained" : "lost")} focus", 
+                default, "UnityLoggingBehaviour", null, focusData, "Unity.Lifecycle.Focus");
         }
 
         /// <summary>
@@ -333,7 +340,8 @@ namespace AhBearStudios.Unity.Logging
             {
                 if (IsInitialized && _logUnityEvents)
                 {
-                    _loggingService.LogInfo($"UnityLoggingBehaviour destroyed on GameObject '{gameObject.name}'", "Unity.Logging.Lifecycle");
+                    _loggingService.Log(LogLevel.Info, $"UnityLoggingBehaviour destroyed on GameObject '{gameObject.name}'", 
+                        default, "UnityLoggingBehaviour", null, null, "Unity.Logging.Lifecycle");
                     
                     // Log final statistics
                     LogFinalStatistics();
@@ -367,7 +375,8 @@ namespace AhBearStudios.Unity.Logging
                 ["FrameCount"] = Time.frameCount
             };
 
-            _loggingService.Log(level, channel, message, null, correlationId, contextData, gameObject.name);
+            var correlationIdFixed = new FixedString64Bytes(correlationId);
+            _loggingService.Log(level, message, correlationIdFixed, gameObject.name, null, contextData, channel);
 
             // Add to recent logs for debug display
             AddToRecentLogs($"[{level}] {message}");
@@ -404,25 +413,27 @@ namespace AhBearStudios.Unity.Logging
                 ["QualityLevel"] = QualitySettings.GetQualityLevel()
             };
 
-            _loggingService.LogInfo("Unity system information", systemInfo, "Unity.SystemInfo");
+            _loggingService.Log(LogLevel.Info, "Unity system information", 
+                default, "UnityLoggingBehaviour", null, systemInfo, "Unity.SystemInfo");
         }
 
         /// <summary>
         /// Forces a flush of all logging targets.
         /// </summary>
-        public void FlushLogs()
+        public async UniTaskVoid FlushLogs()
         {
             if (IsInitialized)
             {
-                _loggingService.FlushAsync();
-                _loggingService.LogDebug("Manual log flush triggered from Unity component", "Unity.Debug");
+                await _loggingService.FlushAsync();
+                _loggingService.Log(LogLevel.Debug, "Manual log flush triggered from Unity component", 
+                    default, "UnityLoggingBehaviour", null, null, "Unity.Debug");
             }
         }
 
         /// <summary>
         /// Triggers a health check and logs the results.
         /// </summary>
-        public async void CheckHealth()
+        public async UniTaskVoid CheckHealth()
         {
             if (!IsInitialized || _loggingHealthCheck == null) return;
 
@@ -434,17 +445,17 @@ namespace AhBearStudios.Unity.Logging
                 var logLevel = result.Status == HealthStatus.Healthy ? LogLevel.Info :
                               result.Status == HealthStatus.Degraded ? LogLevel.Warning : LogLevel.Error;
 
-                var healthData = result.Data.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+                var healthData = result.Data.AsValueEnumerable().ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
                 healthData["TriggeredBy"] = "UnityLoggingBehaviour";
                 healthData["GameObject"] = gameObject.name;
 
-                _loggingService.Log(logLevel, "Unity.Health", healthMessage, null, null, healthData);
+                _loggingService.Log(logLevel, healthMessage, default, "UnityLoggingBehaviour", null, healthData, "Unity.Health");
                 
                 AddToRecentLogs($"Health: {result.Status}");
             }
             catch (Exception ex)
             {
-                _loggingService.LogException(ex, "Failed to perform health check from Unity component");
+                _loggingService.LogException("Failed to perform health check from Unity component", ex);
             }
         }
 
@@ -484,7 +495,8 @@ namespace AhBearStudios.Unity.Logging
             
             if (IsInitialized)
             {
-                _loggingService.LogInfo($"Logging configuration updated: {(config?.name ?? "null")}", "Unity.ConfigSo");
+                _loggingService.Log(LogLevel.Info, $"Logging configuration updated: {(config?.name ?? "null")}", 
+                    default, "UnityLoggingBehaviour", null, null, "Unity.ConfigSo");
             }
         }
 
@@ -503,7 +515,8 @@ namespace AhBearStudios.Unity.Logging
             
             if (IsInitialized)
             {
-                _loggingService.LogInfo($"ScriptableObject configuration {(useConfig ? "enabled" : "disabled")}", "Unity.ConfigSo");
+                _loggingService.Log(LogLevel.Info, $"ScriptableObject configuration {(useConfig ? "enabled" : "disabled")}", 
+                    default, "UnityLoggingBehaviour", null, null, "Unity.ConfigSo");
             }
         }
 
@@ -554,7 +567,8 @@ namespace AhBearStudios.Unity.Logging
         {
             // Unity-specific channels would be registered here if the logging service supported runtime channel registration
             // For now, we'll just log that Unity channels are being used
-            _loggingService.LogDebug("Unity-specific log channels initialized", "Unity.Logging.Channels");
+            _loggingService.Log(LogLevel.Debug, "Unity-specific log channels initialized", 
+                default, "UnityLoggingBehaviour", null, null, "Unity.Logging.Channels");
         }
 
         /// <summary>
@@ -568,7 +582,8 @@ namespace AhBearStudios.Unity.Logging
                 UnityEngine.SceneManagement.SceneManager.sceneUnloaded += OnSceneUnloaded;
             }
 
-            _loggingService.LogDebug("Unity event handlers registered", "Unity.Logging.Events");
+            _loggingService.Log(LogLevel.Debug, "Unity event handlers registered", 
+                default, "UnityLoggingBehaviour", null, null, "Unity.Logging.Events");
         }
 
         /// <summary>
@@ -588,7 +603,8 @@ namespace AhBearStudios.Unity.Logging
                 ["GameObjectCount"] = scene.rootCount
             };
 
-            _loggingService.LogInfo($"Scene loaded: {scene.name} ({mode})", sceneData, "Unity.Scene.Loaded");
+            _loggingService.Log(LogLevel.Info, $"Scene loaded: {scene.name} ({mode})", 
+                default, "UnityLoggingBehaviour", null, sceneData, "Unity.Scene.Loaded");
             _currentSceneName = scene.name;
         }
 
@@ -606,7 +622,8 @@ namespace AhBearStudios.Unity.Logging
                 ["BuildIndex"] = scene.buildIndex
             };
 
-            _loggingService.LogInfo($"Scene unloaded: {scene.name}", sceneData, "Unity.Scene.Unloaded");
+            _loggingService.Log(LogLevel.Info, $"Scene unloaded: {scene.name}", 
+                default, "UnityLoggingBehaviour", null, sceneData, "Unity.Scene.Unloaded");
         }
 
         /// <summary>
@@ -629,11 +646,12 @@ namespace AhBearStudios.Unity.Logging
                     ["Gen0Collections"] = GC.CollectionCount(0),
                     ["Gen1Collections"] = GC.CollectionCount(1),
                     ["Gen2Collections"] = GC.CollectionCount(2),
-                    ["UnityAllocatedMemoryMB"] = Profiler.GetTotalAllocatedMemory(Profiler.Area.All) / (1024f * 1024f),
-                    ["UnityReservedMemoryMB"] = Profiler.GetTotalReservedMemory(Profiler.Area.All) / (1024f * 1024f)
+                    ["UnityAllocatedMemoryMB"] = Profiler.GetTotalAllocatedMemoryLong() / (1024f * 1024f),
+                    ["UnityReservedMemoryMB"] = Profiler.GetTotalReservedMemoryLong() / (1024f * 1024f)
                 };
 
-                _loggingService.LogInfo($"Memory usage: {memoryMB:F2} MB", memoryData, "Unity.Performance.Memory");
+                _loggingService.Log(LogLevel.Info, $"Memory usage: {memoryMB:F2} MB", 
+                    default, "UnityLoggingBehaviour", null, memoryData, "Unity.Performance.Memory");
                 _lastMemoryUsage = currentMemory;
             }
         }
@@ -653,23 +671,42 @@ namespace AhBearStudios.Unity.Logging
                 {
                     if (_loggingHealthCheck != null)
                     {
-                        var result = await _loggingHealthCheck.CheckHealthAsync();
-                        
-                        if (_logHealthStatus)
-                        {
-                            var logLevel = result.Status == HealthStatus.Healthy ? LogLevel.Debug : LogLevel.Warning;
-                            var healthData = result.Data.ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-                            healthData["PeriodicCheck"] = true;
-                            healthData["GameObject"] = gameObject.name;
-
-                            _loggingService.Log(logLevel, "Unity.Health.Periodic", 
-                                $"Periodic health check: {result.Status}", null, null, healthData);
-                        }
+                        // Start the async health check without awaiting (fire-and-forget)
+                        PerformHealthCheckAsync();
                     }
                 }
                 catch (Exception ex)
                 {
-                    _loggingService.LogException(ex, "Periodic health check failed in UnityLoggingBehaviour");
+                    _loggingService.LogException("Periodic health check failed in UnityLoggingBehaviour", ex);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Performs the health check asynchronously.
+        /// </summary>
+        private async UniTaskVoid PerformHealthCheckAsync()
+        {
+            try
+            {
+                var result = await _loggingHealthCheck.CheckHealthAsync();
+                
+                if (_logHealthStatus && IsInitialized)
+                {
+                    var logLevel = result.Status == HealthStatus.Healthy ? LogLevel.Debug : LogLevel.Warning;
+                    var healthData = result.Data.AsValueEnumerable().ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+                    healthData["PeriodicCheck"] = true;
+                    healthData["GameObject"] = gameObject.name;
+
+                    _loggingService.Log(logLevel, $"Periodic health check: {result.Status}", 
+                        default, "UnityLoggingBehaviour", null, healthData, "Unity.Health.Periodic");
+                }
+            }
+            catch (Exception ex)
+            {
+                if (IsInitialized)
+                {
+                    _loggingService.LogException("Async health check failed", ex);
                 }
             }
         }
@@ -687,8 +724,9 @@ namespace AhBearStudios.Unity.Logging
 
                 // Log performance summary
                 var perfData = GetPerformanceStats();
-                _loggingService.LogDebug($"Performance summary - FPS: {CurrentFrameRate:F1}, Memory: {CurrentMemoryUsageMB:F1}MB", 
-                    perfData, "Unity.Performance.Summary");
+                _loggingService.Log(LogLevel.Debug, 
+                    $"Performance summary - FPS: {CurrentFrameRate:F1}, Memory: {CurrentMemoryUsageMB:F1}MB", 
+                    default, "UnityLoggingBehaviour", null, perfData, "Unity.Performance.Summary");
             }
         }
 
@@ -707,7 +745,7 @@ namespace AhBearStudios.Unity.Logging
             // Calculate average frame time
             if (_frameTimeHistory.Count > 0)
             {
-                _averageFrameTime = _frameTimeHistory.Average();
+                _averageFrameTime = _frameTimeHistory.AsValueEnumerable().Average();
             }
         }
 
@@ -730,9 +768,9 @@ namespace AhBearStudios.Unity.Logging
                     ["FrameNumber"] = Time.frameCount
                 };
 
-                _loggingService.LogWarning(
+                _loggingService.Log(LogLevel.Warning, 
                     $"Memory spike detected: +{spikeMB:F2} MB in one frame", 
-                    spikeData, "Unity.Performance.MemorySpike");
+                    default, "UnityLoggingBehaviour", null, spikeData, "Unity.Performance.MemorySpike");
                 
                 _lastMemoryUsage = currentMemory;
                 AddToRecentLogs($"Memory spike: +{spikeMB:F1}MB");
@@ -754,8 +792,9 @@ namespace AhBearStudios.Unity.Logging
                     ["QualityName"] = QualitySettings.names[currentQuality]
                 };
 
-                _loggingService.LogInfo($"Quality level changed: {_lastQualityLevel} -> {currentQuality} ({QualitySettings.names[currentQuality]})", 
-                    qualityData, "Unity.Settings.Quality");
+                _loggingService.Log(LogLevel.Info, 
+                    $"Quality level changed: {_lastQualityLevel} -> {currentQuality} ({QualitySettings.names[currentQuality]})", 
+                    default, "UnityLoggingBehaviour", null, qualityData, "Unity.Settings.Quality");
 
                 _lastQualityLevel = currentQuality;
             }
@@ -928,7 +967,7 @@ namespace AhBearStudios.Unity.Logging
 
             // Recent logs
             GUILayout.Label("=== Recent Logs ===", _debugLabelStyle);
-            foreach (var log in _recentLogs.TakeLast(10))
+            foreach (var log in _recentLogs.AsValueEnumerable().TakeLast(10))
             {
                 GUILayout.Label(log, _debugLabelStyle);
             }
@@ -969,7 +1008,8 @@ namespace AhBearStudios.Unity.Logging
                 ["FinalScene"] = _currentSceneName
             };
 
-            _loggingService.LogInfo("Unity logging session statistics", finalStats, "Unity.Logging.SessionStats");
+            _loggingService.Log(LogLevel.Info, "Unity logging session statistics", 
+                default, "UnityLoggingBehaviour", null, finalStats, "Unity.Logging.SessionStats");
         }
 
         /// <summary>
@@ -980,7 +1020,7 @@ namespace AhBearStudios.Unity.Logging
             _frameRateLogInterval = Mathf.Max(1, _frameRateLogInterval);
             _memoryLogInterval = Mathf.Max(1f, _memoryLogInterval);
             _slowFrameThreshold = Mathf.Max(1f, _slowFrameThreshold);
-            _memorySpikeThreshold = Mathf.Max(1024, _memorySpikeThreshold); // At least 1KB
+            _memorySpikeThreshold = Math.Max(1024L, _memorySpikeThreshold); // At least 1KB
             _healthCheckInterval = Mathf.Max(1f, _healthCheckInterval);
             
             // Validate scriptable object configuration if enabled
@@ -1026,7 +1066,7 @@ namespace AhBearStudios.Unity.Logging
             // Add logging-specific stats
             stats["RecentLogCount"] = _recentLogs.Count;
             stats["IsLoggingHealthy"] = _loggingHealthCheck?.GetCachedResult()?.Status.ToString() ?? "Unknown";
-            stats["LoggingTargetCount"] = _loggingService.GetRegisteredTargets().Count;
+            stats["LoggingTargetCount"] = _loggingService.GetTargets().Count;
             
             return stats;
         }
@@ -1064,11 +1104,13 @@ namespace AhBearStudios.Unity.Logging
                     _enableDebugGUI = enabled;
                     break;
                 default:
-                    _loggingService.LogWarning($"Unknown logging feature: {featureName}", "Unity.ConfigSo");
+                    _loggingService.Log(LogLevel.Warning, $"Unknown logging feature: {featureName}", 
+                        default, "UnityLoggingBehaviour", null, null, "Unity.ConfigSo");
                     return;
             }
 
-            _loggingService.LogInfo($"Logging feature '{featureName}' {(enabled ? "enabled" : "disabled")}", "Unity.ConfigSo");
+            _loggingService.Log(LogLevel.Info, $"Logging feature '{featureName}' {(enabled ? "enabled" : "disabled")}", 
+                default, "UnityLoggingBehaviour", null, null, "Unity.ConfigSo");
         }
 
         /// <summary>
@@ -1084,7 +1126,7 @@ namespace AhBearStudios.Unity.Logging
             var oldMemorySpike = _memorySpikeThreshold;
 
             _slowFrameThreshold = Mathf.Max(1f, slowFrameThreshold);
-            _memorySpikeThreshold = Mathf.Max(1024, memorySpikeThreshold);
+            _memorySpikeThreshold = System.Math.Max(1024L, memorySpikeThreshold);
 
             var thresholdData = new Dictionary<string, object>
             {
@@ -1094,7 +1136,8 @@ namespace AhBearStudios.Unity.Logging
                 ["NewMemorySpikeThreshold"] = _memorySpikeThreshold
             };
 
-            _loggingService.LogInfo("Logging thresholds updated", thresholdData, "Unity.ConfigSo");
+            _loggingService.Log(LogLevel.Info, "Logging thresholds updated", 
+                default, "UnityLoggingBehaviour", null, thresholdData, "Unity.ConfigSo");
         }
 
         /// <summary>
@@ -1125,7 +1168,7 @@ namespace AhBearStudios.Unity.Logging
             }
 
             sessionData.AppendLine("\n=== Recent Logs ===");
-            foreach (var log in _recentLogs.TakeLast(5))
+            foreach (var log in _recentLogs.AsValueEnumerable().TakeLast(5))
             {
                 sessionData.AppendLine(log);
             }
@@ -1168,7 +1211,7 @@ namespace AhBearStudios.Unity.Logging
                 ["Active"] = gameObject.activeInHierarchy
             };
 
-            loggingService.Log(level, channel, message, null, null, contextData, gameObject.name);
+            loggingService.Log(level, message, default, gameObject.name, null, contextData, channel);
         }
 
         /// <summary>
@@ -1189,7 +1232,8 @@ namespace AhBearStudios.Unity.Logging
                 ["Scene"] = component.gameObject.scene.name
             };
 
-            loggingService.LogDebug($"{component.GetType().Name} {lifecycleEvent}", contextData, "Unity.Component.Lifecycle");
+            loggingService.Log(LogLevel.Debug, $"{component.GetType().Name} {lifecycleEvent}", 
+                default, component.GetType().Name, null, contextData, "Unity.Component.Lifecycle");
         }
     }
 }

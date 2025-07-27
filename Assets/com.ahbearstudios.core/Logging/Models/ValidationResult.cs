@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using ZLinq;
 
 namespace AhBearStudios.Core.Logging.Models
 {
@@ -181,13 +181,13 @@ namespace AhBearStudios.Core.Logging.Models
             IEnumerable<ValidationResult> results,
             string component = null)
         {
-            var resultList = results.ToList();
+            var resultList = results.AsValueEnumerable().ToList();
             if (resultList.Count == 0)
                 return Success(component);
 
-            var allErrors = resultList.SelectMany(r => r.Errors).ToList();
-            var allWarnings = resultList.SelectMany(r => r.Warnings).ToList();
-            var isValid = resultList.All(r => r.IsValid);
+            var allErrors = resultList.AsValueEnumerable().SelectMany(r => r.Errors).ToList();
+            var allWarnings = resultList.AsValueEnumerable().SelectMany(r => r.Warnings).ToList();
+            var isValid = resultList.AsValueEnumerable().All(r => r.IsValid);
 
             var combinedContext = new Dictionary<string, object>();
             for (int i = 0; i < resultList.Count; i++)
@@ -218,7 +218,7 @@ namespace AhBearStudios.Core.Logging.Models
         /// <returns>A new ValidationResult with the additional warnings</returns>
         public ValidationResult WithWarnings(IEnumerable<ValidationWarning> additionalWarnings)
         {
-            var newWarnings = Warnings.Concat(additionalWarnings).ToList();
+            var newWarnings = Warnings.AsValueEnumerable().Concat(additionalWarnings).ToList();
             return new ValidationResult(
                 isValid: IsValid,
                 errors: Errors,
@@ -254,7 +254,7 @@ namespace AhBearStudios.Core.Logging.Models
         /// <returns>A collection of all validation issues</returns>
         public IEnumerable<ValidationIssue> GetAllIssues()
         {
-            return Errors.Cast<ValidationIssue>().Concat(Warnings.Cast<ValidationIssue>());
+            return Errors.AsValueEnumerable().Cast<ValidationIssue>().Concat(Warnings.AsValueEnumerable().Cast<ValidationIssue>()).ToList();
         }
 
         /// <summary>

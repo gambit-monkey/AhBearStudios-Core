@@ -125,17 +125,6 @@ namespace AhBearStudios.Unity.Logging.ScriptableObjects.Targets
         public bool EnableBuildIntegration => _enableBuildIntegration;
 
         /// <summary>
-        /// Initializes default values.
-        /// </summary>
-        protected override void Awake()
-        {
-            base.Awake();
-            _targetType = "UnityConsole";
-            _useAsyncWrite = false; // Unity Console doesn't need async write
-            _bufferSize = 1; // No buffering needed for Unity Console
-        }
-
-        /// <summary>
         /// Creates Unity Console specific properties.
         /// </summary>
         /// <returns>Dictionary of Unity Console properties</returns>

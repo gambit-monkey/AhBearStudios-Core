@@ -1,6 +1,11 @@
 ﻿using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
+using ZLinq;
+using AhBearStudios.Core.HealthChecking.Checks;
+using AhBearStudios.Core.HealthChecking.Models;
+using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.Logging;
 using Unity.Collections;
 
@@ -19,7 +24,7 @@ namespace AhBearStudios.Core.Serialization.HealthChecks
         /// <summary>
         /// Gets the name of this health check.
         /// </summary>
-        public string Name => "Serialization System";
+        public FixedString64Bytes Name => new("SerializationHealthCheck");
 
         /// <summary>
         /// Gets the description of this health check.
@@ -27,9 +32,24 @@ namespace AhBearStudios.Core.Serialization.HealthChecks
         public string Description => "Monitors serialization system performance and health";
 
         /// <summary>
-        /// Gets the tags associated with this health check.
+        /// Gets the category of this health check.
         /// </summary>
-        public IReadOnlyList<string> Tags => new[] { "serialization", "performance", "core" };
+        public HealthCheckCategory Category { get; private set; } = HealthCheckCategory.Performance;
+
+        /// <summary>
+        /// Gets the timeout for this health check.
+        /// </summary>
+        public TimeSpan Timeout { get; private set; } = TimeSpan.FromSeconds(30);
+
+        /// <summary>
+        /// Gets the current configuration for this health check.
+        /// </summary>
+        public HealthCheckConfiguration Configuration { get; private set; }
+
+        /// <summary>
+        /// Gets the dependencies for this health check.
+        /// </summary>
+        public IEnumerable<FixedString64Bytes> Dependencies { get; private set; } = Array.Empty<FixedString64Bytes>();
 
         /// <summary>
         /// Initializes a new instance of SerializationHealthCheck.
@@ -46,6 +66,16 @@ namespace AhBearStudios.Core.Serialization.HealthChecks
             _serializer = serializer ?? throw new ArgumentNullException(nameof(serializer));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _thresholds = thresholds ?? SerializationHealthThresholds.Default;
+            
+            // Initialize default configuration
+            Configuration = new HealthCheckConfiguration
+            {
+                Name = Name,
+                DisplayName = "Serialization System Health Check",
+                Description = Description,
+                Category = Category,
+                Timeout = Timeout
+            };
         }
 
         /// <summary>
@@ -53,13 +83,13 @@ namespace AhBearStudios.Core.Serialization.HealthChecks
         /// </summary>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Health check result</returns>
-        public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
+        public async UniTask<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
         {
             var correlationId = GetCorrelationId();
             
             try
             {
-                _logger.LogInfo("Starting serialization health check", correlationId);
+                _logger.LogInfo("Starting serialization health check", correlationId, nameof(SerializationHealthCheck));
 
                 var healthData = new Dictionary<string, object>();
                 var issues = new List<string>();
@@ -114,31 +144,37 @@ namespace AhBearStudios.Core.Serialization.HealthChecks
                     ? "Serialization system is operating normally"
                     : $"Serialization system has {issues.Count} issue(s)";
 
-                _logger.LogInfo($"Serialization health check completed with status: {status}", correlationId);
+                _logger.LogInfo($"Serialization health check completed with status: {status}", correlationId, nameof(SerializationHealthCheck));
 
-                return new HealthCheckResult(status, message, healthData)
+                return new HealthCheckResult
                 {
-                    Issues = issues,
-                    CheckedAt = DateTime.UtcNow,
-                    Duration = TimeSpan.FromMilliseconds(100) // Placeholder - should track actual duration
+                    Name = Name.ToString(),
+                    Status = status,
+                    Message = message,
+                    Data = healthData,
+                    Duration = TimeSpan.FromMilliseconds(100), // Placeholder - should track actual duration
+                    Timestamp = DateTime.UtcNow,
+                    CorrelationId = correlationId
                 };
             }
             catch (Exception ex)
             {
-                _logger.LogException("Serialization health check failed", ex, correlationId);
+                _logger.LogException("Serialization health check failed", ex, correlationId, nameof(SerializationHealthCheck));
                 
-                return new HealthCheckResult(
-                    HealthStatus.Unhealthy,
-                    $"Health check failed: {ex.Message}",
-                    new Dictionary<string, object> { ["Exception"] = ex.GetType().Name })
+                return new HealthCheckResult
                 {
-                    Issues = new[] { ex.Message },
-                    CheckedAt = DateTime.UtcNow
+                    Name = Name.ToString(),
+                    Status = HealthStatus.Unhealthy,
+                    Message = $"Health check failed: {ex.Message}",
+                    Data = new Dictionary<string, object> { ["Exception"] = ex.GetType().Name },
+                    Exception = ex,
+                    Timestamp = DateTime.UtcNow,
+                    CorrelationId = correlationId
                 };
             }
         }
 
-        private async Task<(bool IsHealthy, string ErrorMessage)> CheckBasicFunctionality(CancellationToken cancellationToken)
+        private async UniTask<(bool IsHealthy, string ErrorMessage)> CheckBasicFunctionality(CancellationToken cancellationToken)
         {
             try
             {
@@ -292,6 +328,79 @@ namespace AhBearStudios.Core.Serialization.HealthChecks
             }
 
             return (status, data, issues);
+        }
+
+        /// <summary>
+        /// Configures this health check with new settings.
+        /// </summary>
+        /// <param name="configuration">The configuration to apply</param>
+        /// <exception cref="ArgumentNullException">Thrown when configuration is null</exception>
+        public void Configure(HealthCheckConfiguration configuration)
+        {
+            Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            
+            // Update properties from configuration
+            Timeout = configuration.Timeout;
+            Category = configuration.Category;
+            
+            var correlationId = GetCorrelationId();
+            _logger.LogInfo($"SerializationHealthCheck reconfigured with timeout: {Timeout}", correlationId, nameof(SerializationHealthCheck));
+        }
+
+        /// <summary>
+        /// Gets metadata about this health check.
+        /// </summary>
+        /// <returns>Dictionary containing metadata</returns>
+        public Dictionary<string, object> GetMetadata()
+        {
+            var statistics = _serializer.GetStatistics();
+            
+            // Convert dependencies to string array without LINQ
+            var dependencyList = new List<string>();
+            foreach (var dependency in Dependencies)
+            {
+                dependencyList.Add(dependency.ToString());
+            }
+            var dependencyArray = dependencyList.ToArray();
+            
+            return new Dictionary<string, object>
+            {
+                ["Name"] = Name.ToString(),
+                ["Description"] = Description,
+                ["Category"] = Category.ToString(),
+                ["Timeout"] = Timeout.ToString(),
+                ["Version"] = "1.0.0",
+                ["Implementation"] = GetType().FullName,
+                ["SerializerType"] = _serializer.GetType().Name,
+                ["Thresholds"] = new Dictionary<string, object>
+                {
+                    ["MaxFailureRate"] = _thresholds.MaxFailureRate,
+                    ["CriticalFailureRate"] = _thresholds.CriticalFailureRate,
+                    ["MaxAverageSerializationTimeMs"] = _thresholds.MaxAverageSerializationTimeMs,
+                    ["CriticalSerializationTimeMs"] = _thresholds.CriticalSerializationTimeMs,
+                    ["MaxAverageDeserializationTimeMs"] = _thresholds.MaxAverageDeserializationTimeMs,
+                    ["CriticalDeserializationTimeMs"] = _thresholds.CriticalDeserializationTimeMs,
+                    ["MaxMemoryUsageBytes"] = _thresholds.MaxMemoryUsageBytes,
+                    ["CriticalMemoryUsageBytes"] = _thresholds.CriticalMemoryUsageBytes,
+                    ["MinBufferPoolHitRatio"] = _thresholds.MinBufferPoolHitRatio
+                },
+                ["CurrentStatistics"] = new Dictionary<string, object>
+                {
+                    ["TotalSerializations"] = statistics.TotalSerializations,
+                    ["TotalDeserializations"] = statistics.TotalDeserializations,
+                    ["FailedOperations"] = statistics.FailedOperations,
+                    ["TotalBytesProcessed"] = statistics.TotalBytesProcessed,
+                    ["AverageSerializationTimeMs"] = statistics.AverageSerializationTimeMs,
+                    ["AverageDeserializationTimeMs"] = statistics.AverageDeserializationTimeMs,
+                    ["RegisteredTypeCount"] = statistics.RegisteredTypeCount,
+                    ["PeakMemoryUsage"] = statistics.PeakMemoryUsage
+                },
+                ["Dependencies"] = dependencyArray,
+                ["Tags"] = new[] { "serialization", "performance", "core" },
+                ["SupportsAsync"] = true,
+                ["SupportsCancellation"] = true,
+                ["RequiresExternalDependencies"] = false
+            };
         }
 
         private FixedString64Bytes GetCorrelationId()

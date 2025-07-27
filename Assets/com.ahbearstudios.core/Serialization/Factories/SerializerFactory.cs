@@ -1,6 +1,9 @@
-﻿using System.Collections.Concurrent;
+﻿using System;
+using System.Collections.Concurrent;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Serialization.Configs;
+using AhBearStudios.Core.Serialization.Models;
+using AhBearStudios.Core.Serialization.Services;
 using Unity.Collections;
 
 namespace AhBearStudios.Core.Serialization.Factories
@@ -39,7 +42,7 @@ namespace AhBearStudios.Core.Serialization.Factories
             
             _serializerCache = new ConcurrentDictionary<string, ISerializer>();
 
-            _logger.LogInfo("SerializerFactory initialized successfully", GetCorrelationId());
+            _logger.LogInfo("SerializerFactory initialized successfully", GetCorrelationId(), nameof(SerializerFactory));
         }
 
         /// <inheritdoc />
@@ -52,7 +55,7 @@ namespace AhBearStudios.Core.Serialization.Factories
                 throw new ArgumentException("Invalid serialization configuration", nameof(config));
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo($"Creating serializer with format: {config.Format}", correlationId);
+            _logger.LogInfo($"Creating serializer with format: {config.Format}", correlationId, nameof(SerializerFactory));
 
             try
             {
@@ -61,12 +64,15 @@ namespace AhBearStudios.Core.Serialization.Factories
                     SerializationFormat.MemoryPack => CreateMemoryPackSerializer(config, correlationId),
                     SerializationFormat.Binary => CreateBinarySerializer(config, correlationId),
                     SerializationFormat.Json => CreateJsonSerializer(config, correlationId),
+                    SerializationFormat.Xml => CreateXmlSerializer(config, correlationId),
+                    SerializationFormat.MessagePack => CreateMessagePackSerializer(config, correlationId),
+                    SerializationFormat.Protobuf => CreateProtobufSerializer(config, correlationId),
                     _ => throw new NotSupportedException($"Serialization format {config.Format} is not supported")
                 };
             }
             catch (Exception ex)
             {
-                _logger.LogException($"Failed to create serializer for format {config.Format}", ex, correlationId);
+                _logger.LogException($"Failed to create serializer for format {config.Format}", ex, correlationId, nameof(SerializerFactory));
                 throw;
             }
         }
@@ -95,7 +101,7 @@ namespace AhBearStudios.Core.Serialization.Factories
                         return existingSerializer;
 
                     var correlationId = GetCorrelationId();
-                    _logger.LogInfo($"Creating new cached serializer with key: {cacheKey}", correlationId);
+                    _logger.LogInfo($"Creating new cached serializer with key: {cacheKey}", correlationId, nameof(SerializerFactory));
                     
                     return CreateSerializer(config);
                 }
@@ -113,6 +119,9 @@ namespace AhBearStudios.Core.Serialization.Factories
                 SerializationFormat.MemoryPack => true,
                 SerializationFormat.Binary => true,
                 SerializationFormat.Json => true,
+                SerializationFormat.Xml => true,
+                SerializationFormat.MessagePack => false, // Not implemented yet
+                SerializationFormat.Protobuf => false, // Not implemented yet
                 _ => false
             };
         }
@@ -124,7 +133,9 @@ namespace AhBearStudios.Core.Serialization.Factories
             {
                 SerializationFormat.MemoryPack,
                 SerializationFormat.Binary,
-                SerializationFormat.Json
+                SerializationFormat.Json,
+                SerializationFormat.Xml
+                // MessagePack and Protobuf not yet implemented
             };
         }
 
@@ -136,12 +147,12 @@ namespace AhBearStudios.Core.Serialization.Factories
             
             _serializerCache.Clear();
             
-            _logger.LogInfo($"Cleared serializer cache. Removed {cacheCount} cached instances", correlationId);
+            _logger.LogInfo($"Cleared serializer cache. Removed {cacheCount} cached instances", correlationId, nameof(SerializerFactory));
         }
 
         private ISerializer CreateMemoryPackSerializer(SerializationConfig config, FixedString64Bytes correlationId)
         {
-            _logger.LogInfo("Creating MemoryPack serializer", correlationId);
+            _logger.LogInfo("Creating MemoryPack serializer", correlationId, nameof(SerializerFactory));
             
             var serializer = new MemoryPackSerializer(
                 config,
@@ -155,7 +166,7 @@ namespace AhBearStudios.Core.Serialization.Factories
 
         private ISerializer CreateBinarySerializer(SerializationConfig config, FixedString64Bytes correlationId)
         {
-            _logger.LogInfo("Creating Binary serializer", correlationId);
+            _logger.LogInfo("Creating Binary serializer", correlationId, nameof(SerializerFactory));
             
             var serializer = new BinarySerializer(
                 config,
@@ -169,7 +180,7 @@ namespace AhBearStudios.Core.Serialization.Factories
 
         private ISerializer CreateJsonSerializer(SerializationConfig config, FixedString64Bytes correlationId)
         {
-            _logger.LogInfo("Creating JSON serializer", correlationId);
+            _logger.LogInfo("Creating JSON serializer", correlationId, nameof(SerializerFactory));
             
             var serializer = new JsonSerializer(
                 config,
@@ -181,6 +192,32 @@ namespace AhBearStudios.Core.Serialization.Factories
             return WrapWithDecorators(serializer, config, correlationId);
         }
 
+        private ISerializer CreateXmlSerializer(SerializationConfig config, FixedString64Bytes correlationId)
+        {
+            _logger.LogInfo("Creating XML serializer", correlationId, nameof(SerializerFactory));
+            
+            var serializer = new XmlSerializer(
+                config,
+                _logger,
+                _registry,
+                _versioningService,
+                _compressionService);
+
+            return WrapWithDecorators(serializer, config, correlationId);
+        }
+
+        private ISerializer CreateMessagePackSerializer(SerializationConfig config, FixedString64Bytes correlationId)
+        {
+            _logger.LogInfo("MessagePack serializer not yet implemented", correlationId, nameof(SerializerFactory));
+            throw new NotImplementedException("MessagePack serializer is not yet implemented");
+        }
+
+        private ISerializer CreateProtobufSerializer(SerializationConfig config, FixedString64Bytes correlationId)
+        {
+            _logger.LogInfo("Protobuf serializer not yet implemented", correlationId, nameof(SerializerFactory));
+            throw new NotImplementedException("Protobuf serializer is not yet implemented");
+        }
+
         private ISerializer WrapWithDecorators(ISerializer baseSerializer, SerializationConfig config, FixedString64Bytes correlationId)
         {
             var serializer = baseSerializer;
@@ -188,28 +225,24 @@ namespace AhBearStudios.Core.Serialization.Factories
             // Add performance monitoring if enabled
             if (config.EnablePerformanceMonitoring)
             {
-                _logger.LogInfo("Adding performance monitoring decorator", correlationId);
+                _logger.LogInfo("Adding performance monitoring decorator", correlationId, nameof(SerializerFactory));
                 serializer = new PerformanceMonitoringSerializer(serializer, _logger);
             }
 
             // Add encryption if enabled
             if (config.EnableEncryption)
             {
-                _logger.LogInfo("Adding encryption decorator", correlationId);
+                _logger.LogInfo("Adding encryption decorator", correlationId, nameof(SerializerFactory));
                 serializer = new EncryptedSerializer(serializer, config.EncryptionKey, _logger);
             }
 
-            // Add buffer pooling if enabled
-            if (config.EnableBufferPooling)
-            {
-                _logger.LogInfo("Adding buffer pooling decorator", correlationId);
-                serializer = new PooledSerializer(serializer, config.MaxBufferPoolSize, _logger);
-            }
+            // Note: Buffer pooling should be handled by AhBearStudios.Core.Pooling namespace
+            // See design guidelines - do not mix functionality between systems
 
             // Add type validation if enabled
             if (config.EnableTypeValidation)
             {
-                _logger.LogInfo("Adding type validation decorator", correlationId);
+                _logger.LogInfo("Adding type validation decorator", correlationId, nameof(SerializerFactory));
                 serializer = new ValidatingSerializer(serializer, config, _logger);
             }
 
@@ -226,8 +259,6 @@ namespace AhBearStudios.Core.Serialization.Factories
                 config.Mode.ToString(),
                 config.EnableTypeValidation.ToString(),
                 config.EnablePerformanceMonitoring.ToString(),
-                config.EnableBufferPooling.ToString(),
-                config.MaxBufferPoolSize.ToString(),
                 config.EnableVersioning.ToString(),
                 config.StrictVersioning.ToString(),
                 config.EnableEncryption.ToString(),
