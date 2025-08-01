@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Models;
+using AhBearStudios.Core.Common.Models;
 
 namespace AhBearStudios.Core.Logging.Filters
 {
@@ -42,7 +43,7 @@ namespace AhBearStudios.Core.Logging.Filters
         /// </summary>
         /// <param name="correlationId">Correlation ID for tracking validation operations</param>
         /// <returns>Validation result indicating configuration validity</returns>
-        ValidationResult Validate(FixedString64Bytes correlationId = default);
+        Common.Models.ValidationResult Validate(FixedString64Bytes correlationId = default);
 
         /// <summary>
         /// Gets filter performance and operation statistics.

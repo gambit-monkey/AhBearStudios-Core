@@ -1,13 +1,13 @@
-﻿using System.Collections.Generic;
-using System.Linq;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using AhBearStudios.Core.HealthChecking.Checks;
 using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Profiling.Models;
 using Unity.Collections;
 using Cysharp.Threading.Tasks;
+using ZLinq;
 
 namespace AhBearStudios.Core.Logging.HealthChecks
 {
@@ -59,7 +59,7 @@ namespace AhBearStudios.Core.Logging.HealthChecks
         /// <summary>
         /// Gets the dependencies for this health check (logging service has no dependencies).
         /// </summary>
-        public IEnumerable<FixedString64Bytes> Dependencies => Enumerable.Empty<FixedString64Bytes>();
+        public IEnumerable<FixedString64Bytes> Dependencies => new FixedString64Bytes[0];
 
         /// <summary>
         /// Initializes a new instance of the LoggingServiceHealthCheck.
@@ -108,7 +108,7 @@ namespace AhBearStudios.Core.Logging.HealthChecks
                 ["Category"] = Category.ToString(),
                 ["Timeout"] = Timeout.TotalSeconds,
                 ["CacheTimeout"] = _cacheTimeout.TotalSeconds,
-                ["Dependencies"] = Dependencies.Select(d => d.ToString()).ToArray(),
+                ["Dependencies"] = Dependencies.AsValueEnumerable().Select(d => d.ToString()).ToArray(),
                 ["Version"] = "1.0.0",
                 ["ConfigurationVersion"] = _configuration?.Version ?? "Unknown",
                 ["LastExecutionTime"] = _lastCheckTime != DateTime.MinValue ? _lastCheckTime : null,
@@ -143,7 +143,7 @@ namespace AhBearStudios.Core.Logging.HealthChecks
         /// <param name="cancellationToken">Cancellation token for the health check operation</param>
         /// <returns>The health check result with detailed status information</returns>
         /// <exception cref="ObjectDisposedException">Thrown when the logging service has been disposed</exception>
-        public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
+        public async UniTask<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
         {
             var startTime = DateTime.UtcNow;
             

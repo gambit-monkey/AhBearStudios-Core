@@ -33,5 +33,10 @@ public enum SerializationFormat
     /// <summary>
     /// Protocol Buffers format - Cross-platform compatibility
     /// </summary>
-    Protobuf
+    Protobuf,
+    
+    /// <summary>
+    /// FishNet network serialization format - Optimized for Unity networking with FishNet
+    /// </summary>
+    FishNet
 }

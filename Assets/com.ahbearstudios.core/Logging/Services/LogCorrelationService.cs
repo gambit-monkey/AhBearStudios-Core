@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Models;
+using AhBearStudios.Core.Common.Models;
 using AhBearStudios.Core.Pooling.Pools;
 
 namespace AhBearStudios.Core.Logging.Services

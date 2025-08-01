@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Linq;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Models;
+using AhBearStudios.Core.Common.Models;
 
 namespace AhBearStudios.Core.Logging.Filters
 {
@@ -226,19 +227,19 @@ namespace AhBearStudios.Core.Logging.Filters
         }
 
         /// <inheritdoc />
-        public ValidationResult Validate(FixedString64Bytes correlationId = default)
+        public Common.Models.ValidationResult Validate(FixedString64Bytes correlationId = default)
         {
-            var errors = new List<ValidationError>();
-            var warnings = new List<ValidationWarning>();
+            var errors = new List<Common.Models.ValidationError>();
+            var warnings = new List<Common.Models.ValidationWarning>();
 
             if (string.IsNullOrEmpty(Name.ToString()))
             {
-                errors.Add(new ValidationError("Filter name cannot be empty", nameof(Name)));
+                errors.Add(new Common.Models.ValidationError("Filter name cannot be empty", nameof(Name)));
             }
 
             if (_correlationIdPatterns.Count == 0 && _userIds.Count == 0 && _sessionIds.Count == 0)
             {
-                warnings.Add(new ValidationWarning("No correlation patterns, user IDs, or session IDs specified - filter will allow all entries", nameof(CorrelationIdPatterns)));
+                warnings.Add(new Common.Models.ValidationWarning("No correlation patterns, user IDs, or session IDs specified - filter will allow all entries", nameof(CorrelationIdPatterns)));
             }
 
             // Validate regex patterns if enabled
@@ -252,7 +253,7 @@ namespace AhBearStudios.Core.Logging.Filters
                     }
                     catch (ArgumentException)
                     {
-                        errors.Add(new ValidationError($"Invalid regex pattern in correlation ID: {pattern}", nameof(CorrelationIdPatterns)));
+                        errors.Add(new Common.Models.ValidationError($"Invalid regex pattern in correlation ID: {pattern}", nameof(CorrelationIdPatterns)));
                     }
                 }
             }
@@ -260,39 +261,39 @@ namespace AhBearStudios.Core.Logging.Filters
             // Check for duplicate patterns
             if (_correlationIdPatterns.Distinct().Count() != _correlationIdPatterns.Count)
             {
-                warnings.Add(new ValidationWarning("Duplicate correlation ID patterns detected", nameof(CorrelationIdPatterns)));
+                warnings.Add(new Common.Models.ValidationWarning("Duplicate correlation ID patterns detected", nameof(CorrelationIdPatterns)));
             }
 
             if (_userIds.Distinct().Count() != _userIds.Count)
             {
-                warnings.Add(new ValidationWarning("Duplicate user IDs detected", nameof(UserIds)));
+                warnings.Add(new Common.Models.ValidationWarning("Duplicate user IDs detected", nameof(UserIds)));
             }
 
             if (_sessionIds.Distinct().Count() != _sessionIds.Count)
             {
-                warnings.Add(new ValidationWarning("Duplicate session IDs detected", nameof(SessionIds)));
+                warnings.Add(new Common.Models.ValidationWarning("Duplicate session IDs detected", nameof(SessionIds)));
             }
 
             // Check for potentially problematic configurations
             if (!_allowEmptyCorrelationIds && _includeMode && _correlationIdPatterns.Count > 0)
             {
-                warnings.Add(new ValidationWarning("Filter will block entries with empty correlation IDs", nameof(AllowEmptyCorrelationIds)));
+                warnings.Add(new Common.Models.ValidationWarning("Filter will block entries with empty correlation IDs", nameof(AllowEmptyCorrelationIds)));
             }
             
             // Check if user or session ID filtering is configured but may not find values
             if (_userIds.Count > 0)
             {
-                warnings.Add(new ValidationWarning("User ID filtering requires 'UserId', 'User', or 'UserName' properties in log entries", nameof(UserIds)));
+                warnings.Add(new Common.Models.ValidationWarning("User ID filtering requires 'UserId', 'User', or 'UserName' properties in log entries", nameof(UserIds)));
             }
             
             if (_sessionIds.Count > 0)
             {
-                warnings.Add(new ValidationWarning("Session ID filtering requires 'SessionId' or 'Session' properties in log entries", nameof(SessionIds)));
+                warnings.Add(new Common.Models.ValidationWarning("Session ID filtering requires 'SessionId' or 'Session' properties in log entries", nameof(SessionIds)));
             }
 
             return errors.Count > 0 
-                ? ValidationResult.Failure(errors, Name.ToString(), warnings)
-                : ValidationResult.Success(Name.ToString(), warnings);
+                ? Common.Models.ValidationResult.Failure(errors, Name.ToString(), warnings)
+                : Common.Models.ValidationResult.Success(Name.ToString(), warnings);
         }
 
         /// <inheritdoc />

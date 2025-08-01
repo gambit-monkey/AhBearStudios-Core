@@ -7,7 +7,7 @@ using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Serialization.Models;
 using ZLinq;
 
-namespace AhBearStudios.Core.Serialization
+namespace AhBearStudios.Unity.Serialization.Formatters
 {
     /// <summary>
     /// Specialized formatter for Unity-specific types and objects.
@@ -90,7 +90,7 @@ namespace AhBearStudios.Core.Serialization
         /// <param name="data">The serialized Unity data</param>
         /// <param name="logger">Optional logging service</param>
         /// <returns>Deserialized Unity object</returns>
-        /// <exception cref=\"ArgumentNullException\">Thrown when data is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when data is null</exception>
         public static T DeserializeUnityObject<T>(UnitySerializationData data, ILoggingService logger = null)
         {
             if (data == null)

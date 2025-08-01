@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using AhBearStudios.Core.Common.Models;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Models;
 

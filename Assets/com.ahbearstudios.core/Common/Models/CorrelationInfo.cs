@@ -2,9 +2,8 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Burst;
-using AhBearStudios.Core.Logging.Services;
 
-namespace AhBearStudios.Core.Logging.Models
+namespace AhBearStudios.Core.Common.Models
 {
     /// <summary>
     /// Represents correlation information for tracking operations across system boundaries.
@@ -133,7 +132,7 @@ namespace AhBearStudios.Core.Logging.Models
             UserId = userId;
             SessionId = sessionId;
             RequestId = requestId;
-            ServiceName = serviceName.IsEmpty ? new FixedString64Bytes("LoggingSystem") : serviceName;
+            ServiceName = serviceName.IsEmpty ? new FixedString64Bytes("Unknown") : serviceName;
             CreatedAt = createdAt == default ? DateTime.UtcNow : createdAt;
             Depth = depth;
             HasProperties = properties != null && properties.Count > 0;
@@ -171,7 +170,7 @@ namespace AhBearStudios.Core.Logging.Models
                 userId: new FixedString64Bytes(userId ?? string.Empty),
                 sessionId: new FixedString64Bytes(sessionId ?? string.Empty),
                 requestId: new FixedString64Bytes(requestId ?? string.Empty),
-                serviceName: new FixedString64Bytes(serviceName ?? "LoggingSystem"),
+                serviceName: new FixedString64Bytes(serviceName ?? "Unknown"),
                 properties: properties);
         }
 
@@ -256,7 +255,7 @@ namespace AhBearStudios.Core.Logging.Models
                 userId: new FixedString64Bytes(userId ?? string.Empty),
                 sessionId: new FixedString64Bytes(sessionId ?? string.Empty),
                 requestId: new FixedString64Bytes(requestId ?? string.Empty),
-                serviceName: new FixedString64Bytes(serviceName ?? "LoggingSystem"),
+                serviceName: new FixedString64Bytes(serviceName ?? "Unknown"),
                 depth: depth,
                 properties: properties);
         }
@@ -295,7 +294,7 @@ namespace AhBearStudios.Core.Logging.Models
                 userId: new FixedString64Bytes(userId ?? string.Empty),
                 sessionId: new FixedString64Bytes(sessionId ?? string.Empty),
                 requestId: new FixedString64Bytes(requestId),
-                serviceName: new FixedString64Bytes(serviceName ?? "LoggingSystem"),
+                serviceName: new FixedString64Bytes(serviceName ?? "Unknown"),
                 properties: requestProperties);
         }
 
@@ -331,7 +330,7 @@ namespace AhBearStudios.Core.Logging.Models
                 spanId: spanId,
                 traceId: traceId,
                 operation: new FixedString128Bytes(operation),
-                serviceName: new FixedString64Bytes(serviceName ?? "LoggingSystem"),
+                serviceName: new FixedString64Bytes(serviceName ?? "Unknown"),
                 depth: string.IsNullOrEmpty(parentCorrelationId) ? 0 : 1,
                 properties: scopeProperties);
         }
@@ -372,7 +371,7 @@ namespace AhBearStudios.Core.Logging.Models
                 spanId: spanId,
                 traceId: traceId,
                 operation: new FixedString128Bytes(operation),
-                serviceName: new FixedString64Bytes(serviceName ?? "LoggingSystem"),
+                serviceName: new FixedString64Bytes(serviceName ?? "Unknown"),
                 properties: backgroundProperties);
         }
 
@@ -402,7 +401,7 @@ namespace AhBearStudios.Core.Logging.Models
                 spanId: spanId,
                 traceId: traceId,
                 operation: new FixedString128Bytes(healthCheckName),
-                serviceName: new FixedString64Bytes(serviceName ?? "LoggingSystem"),
+                serviceName: new FixedString64Bytes(serviceName ?? "Unknown"),
                 properties: healthCheckProperties);
         }
 
@@ -413,38 +412,6 @@ namespace AhBearStudios.Core.Logging.Models
         public static CorrelationInfo Generate()
         {
             return Create();
-        }
-
-        /// <summary>
-        /// Creates a CorrelationInfo from a LogScope instance.
-        /// </summary>
-        /// <param name="scope">The LogScope to create correlation info from</param>
-        /// <returns>A new CorrelationInfo instance based on the scope</returns>
-        public static CorrelationInfo FromScope(ILogScope scope)
-        {
-            if (scope == null)
-                throw new ArgumentNullException(nameof(scope));
-
-            var correlationId = new FixedString128Bytes(scope.CorrelationId.ToString());
-            var spanId = new FixedString64Bytes(Guid.NewGuid().ToString("N")[..16]);
-            var traceId = new FixedString64Bytes(scope.CorrelationId.ToString()[..16]);
-
-            var scopeProperties = new Dictionary<string, object>
-            {
-                ["CorrelationType"] = "Scope",
-                ["ScopeStartTime"] = DateTime.UtcNow,
-                ["ScopeName"] = scope.Name.ToString(),
-                ["ScopeSourceContext"] = scope.SourceContext,
-                ["ScopeElapsed"] = scope.Elapsed.TotalMilliseconds
-            };
-
-            return new CorrelationInfo(
-                correlationId: correlationId,
-                spanId: spanId,
-                traceId: traceId,
-                operation: new FixedString128Bytes(scope.Name.ToString()),
-                serviceName: new FixedString64Bytes("LoggingSystem"),
-                properties: scopeProperties);
         }
 
         /// <summary>

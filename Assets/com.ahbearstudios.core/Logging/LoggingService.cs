@@ -7,6 +7,7 @@ using System.Threading;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Models;
+using AhBearStudios.Core.Common.Models;
 using AhBearStudios.Core.Logging.Targets;
 using AhBearStudios.Core.Logging.Services;
 using AhBearStudios.Core.Logging.HealthChecks;
@@ -974,26 +975,26 @@ namespace AhBearStudios.Core.Logging
         }
 
         /// <inheritdoc />
-        public ValidationResult ValidateConfiguration(FixedString64Bytes correlationId = default)
+        public Common.Models.ValidationResult ValidateConfiguration(FixedString64Bytes correlationId = default)
         {
-            var errors = new List<ValidationError>();
-            var warnings = new List<ValidationWarning>();
+            var errors = new List<Common.Models.ValidationError>();
+            var warnings = new List<Common.Models.ValidationWarning>();
             
             // Validate logging configuration
             if (_config != null)
             {
                 var configErrors = _config.Validate();
-                errors.AddRange(configErrors.AsValueEnumerable().Select(e => new ValidationError(e, "Configuration")).ToList());
+                errors.AddRange(configErrors.AsValueEnumerable().Select(e => new Common.Models.ValidationError(e, "Configuration")).ToList());
             }
             else
             {
-                errors.Add(new ValidationError("Logging configuration is null", "Configuration"));
+                errors.Add(new Common.Models.ValidationError("Logging configuration is null", "Configuration"));
             }
             
             // Validate targets
             if (_targets.Count == 0)
             {
-                warnings.Add(new ValidationWarning("No log targets registered", "Targets"));
+                warnings.Add(new Common.Models.ValidationWarning("No log targets registered", "Targets"));
             }
             
             foreach (var target in _targets.Values)
@@ -1002,19 +1003,19 @@ namespace AhBearStudios.Core.Logging
                 {
                     if (!target.PerformHealthCheck())
                     {
-                        warnings.Add(new ValidationWarning($"Target '{target.Name}' failed health check", $"Target.{target.Name}"));
+                        warnings.Add(new Common.Models.ValidationWarning($"Target '{target.Name}' failed health check", $"Target.{target.Name}"));
                     }
                 }
                 catch (Exception ex)
                 {
-                    errors.Add(new ValidationError($"Target '{target.Name}' validation error: {ex.Message}", $"Target.{target.Name}"));
+                    errors.Add(new Common.Models.ValidationError($"Target '{target.Name}' validation error: {ex.Message}", $"Target.{target.Name}"));
                 }
             }
             
             // Use appropriate factory method based on whether errors exist
             if (errors.Count == 0)
             {
-                return ValidationResult.Success(
+                return Common.Models.ValidationResult.Success(
                     component: "LoggingService",
                     warnings: warnings,
                     context: new Dictionary<string, object>
@@ -1027,7 +1028,7 @@ namespace AhBearStudios.Core.Logging
             }
             else
             {
-                return ValidationResult.Failure(
+                return Common.Models.ValidationResult.Failure(
                     errors: errors,
                     component: "LoggingService",
                     warnings: warnings,

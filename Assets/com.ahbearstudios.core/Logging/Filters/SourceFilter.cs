@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using AhBearStudios.Core.Common.Models;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Models;
 using ZLinq;

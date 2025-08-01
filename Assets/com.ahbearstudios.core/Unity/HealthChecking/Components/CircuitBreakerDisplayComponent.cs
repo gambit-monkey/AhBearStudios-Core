@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using AhBearStudios.Core.HealthChecking;
@@ -7,7 +6,6 @@ using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Logging;
 using Reflex.Attributes;
 using Unity.Collections;
-using UnityEngine;
 using UnityEngine.UI;
 
 namespace AhBearStudios.Unity.HealthCheck.Components
@@ -187,7 +185,7 @@ namespace AhBearStudios.Unity.HealthCheck.Components
 
             try
             {
-                _healthCheckService.ResetCircuitBreaker(operationName);
+                _healthCheckService.ForceCircuitBreakerClosed(operationName, "Manual reset from UI");
                 _loggingService?.LogInfo($"Circuit breaker reset manually: {operationName}", _correlationId);
                 
                 // Trigger immediate refresh to show the change
@@ -195,7 +193,7 @@ namespace AhBearStudios.Unity.HealthCheck.Components
             }
             catch (Exception ex)
             {
-                _loggingService?.LogException(ex, $"Failed to reset circuit breaker: {operationName}", _correlationId);
+                _loggingService?.LogException($"Failed to reset circuit breaker: {operationName}", ex, _correlationId);
             }
         }
 
@@ -310,7 +308,7 @@ namespace AhBearStudios.Unity.HealthCheck.Components
             }
             catch (Exception ex)
             {
-                _loggingService?.LogException(ex, "Failed to initialize CircuitBreakerDisplayComponent", _correlationId);
+                _loggingService?.LogException("Failed to initialize CircuitBreakerDisplayComponent", ex, _correlationId);
                 Debug.LogError($"[CircuitBreakerDisplayComponent] Initialization failed: {ex.Message}");
             }
         }
@@ -456,7 +454,7 @@ namespace AhBearStudios.Unity.HealthCheck.Components
             }
             catch (Exception ex)
             {
-                _loggingService?.LogException(ex, "Error updating circuit breaker display", _correlationId);
+                _loggingService?.LogException("Error updating circuit breaker display", ex, _correlationId);
             }
         }
 
@@ -573,29 +571,40 @@ namespace AhBearStudios.Unity.HealthCheck.Components
         /// </summary>
         private IEnumerator ResetAllCircuitBreakersAsync()
         {
+            _loggingService?.LogInfo("Resetting all circuit breakers", _correlationId);
+
+            Dictionary<FixedString64Bytes, CircuitBreakerState> circuitBreakerStates = null;
+            var resetCount = 0;
+            var hasError = false;
+
             try
             {
-                _loggingService?.LogInfo("Resetting all circuit breakers", _correlationId);
+                circuitBreakerStates = _healthCheckService.GetAllCircuitBreakerStates();
+            }
+            catch (Exception ex)
+            {
+                _loggingService?.LogException("Failed to get circuit breaker states", ex, _correlationId);
+                hasError = true;
+            }
 
-                var circuitBreakerStates = _healthCheckService.GetAllCircuitBreakerStates();
-                var resetCount = 0;
-
+            if (!hasError && circuitBreakerStates != null)
+            {
                 foreach (var operationName in circuitBreakerStates.Keys)
                 {
                     try
                     {
-                        _healthCheckService.ResetCircuitBreaker(operationName);
+                        _healthCheckService.ForceCircuitBreakerClosed(operationName, "Manual reset all from UI");
                         resetCount++;
-                        
-                        // Yield every few operations to avoid blocking
-                        if (resetCount % 5 == 0)
-                        {
-                            yield return null;
-                        }
                     }
                     catch (Exception ex)
                     {
-                        _loggingService?.LogException(ex, $"Failed to reset circuit breaker: {operationName}", _correlationId);
+                        _loggingService?.LogException($"Failed to reset circuit breaker: {operationName}", ex, _correlationId);
+                    }
+
+                    // Yield every few operations to avoid blocking
+                    if (resetCount % 5 == 0)
+                    {
+                        yield return null;
                     }
                 }
 
@@ -603,10 +612,6 @@ namespace AhBearStudios.Unity.HealthCheck.Components
                 
                 // Trigger immediate refresh to show the changes
                 yield return StartCoroutine(UpdateDisplayAsync(forceUpdate: true));
-            }
-            catch (Exception ex)
-            {
-                _loggingService?.LogException(ex, "Failed to reset all circuit breakers", _correlationId);
             }
         }
 
@@ -918,7 +923,7 @@ namespace AhBearStudios.Unity.HealthCheck.Components
                 _resetButton.onClick.RemoveAllListeners();
                 if (enableResetButton && resetCallback != null)
                 {
-                    _resetButton.onClick.AddListener(() => resetCallback(operationName));
+                    _resetButton.onClick.AddListener(() => _resetCallback(_operationName));
                 }
             }
         }

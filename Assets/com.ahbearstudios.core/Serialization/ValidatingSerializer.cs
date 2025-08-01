@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
 using System.Threading;
+using AhBearStudios.Core.Common.Models;
 using Unity.Collections;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Logging.Models;

@@ -2,6 +2,7 @@
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Models;
+using AhBearStudios.Core.Common.Models;
 using AhBearStudios.Core.Logging.Targets;
 using AhBearStudios.Core.Logging.Filters;
 using Cysharp.Threading.Tasks;
@@ -227,7 +228,7 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         /// <param name="correlationId">Correlation ID for tracking</param>
         /// <returns>Validation result</returns>
-        ValidationResult ValidateConfiguration(FixedString64Bytes correlationId = default);
+        Common.Models.ValidationResult ValidateConfiguration(FixedString64Bytes correlationId = default);
 
         /// <summary>
         /// Clears internal caches and performs maintenance.

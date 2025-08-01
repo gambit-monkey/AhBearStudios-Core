@@ -2,11 +2,11 @@ using System;
 using System.Collections.Generic;
 using ZLinq;
 
-namespace AhBearStudios.Core.Logging.Models
+namespace AhBearStudios.Core.Common.Models
 {
     /// <summary>
     /// Represents the result of a validation operation with success status and error details.
-    /// Used throughout the logging system for configuration validation and system health checks.
+    /// Used throughout the system for configuration validation and health checks.
     /// </summary>
     public sealed record ValidationResult
     {
@@ -154,20 +154,20 @@ namespace AhBearStudios.Core.Logging.Models
         }
 
         /// <summary>
-        /// Creates a failed validation result with a single error message.
+        /// Creates a failed validation result with a simple error message.
         /// </summary>
         /// <param name="errorMessage">The error message</param>
         /// <param name="component">The component that was validated</param>
-        /// <param name="propertyName">The property name associated with the error</param>
+        /// <param name="propertyPath">The property path where error occurred</param>
         /// <param name="context">Additional context information</param>
         /// <returns>A failed ValidationResult</returns>
         public static ValidationResult Failure(
             string errorMessage,
             string component = null,
-            string propertyName = null,
+            string propertyPath = null,
             IReadOnlyDictionary<string, object> context = null)
         {
-            var error = new ValidationError(errorMessage, propertyName);
+            var error = new ValidationError(errorMessage, propertyPath);
             return Failure(error, component, null, context);
         }
 
@@ -326,9 +326,9 @@ namespace AhBearStudios.Core.Logging.Models
         public string Message { get; }
 
         /// <summary>
-        /// Gets the property name associated with the issue, if any.
+        /// Gets the property path associated with the issue, if any.
         /// </summary>
-        public string PropertyName { get; }
+        public string PropertyPath { get; }
 
         /// <summary>
         /// Gets the severity of the issue.
@@ -344,11 +344,11 @@ namespace AhBearStudios.Core.Logging.Models
         /// Initializes a new instance of the ValidationIssue record.
         /// </summary>
         /// <param name="message">The issue message</param>
-        /// <param name="propertyName">The property name associated with the issue</param>
-        protected ValidationIssue(string message, string propertyName = null)
+        /// <param name="propertyPath">The property path associated with the issue</param>
+        protected ValidationIssue(string message, string propertyPath = null)
         {
             Message = message ?? throw new ArgumentNullException(nameof(message));
-            PropertyName = propertyName;
+            PropertyPath = propertyPath;
             CreatedAt = DateTime.UtcNow;
         }
 
@@ -358,7 +358,7 @@ namespace AhBearStudios.Core.Logging.Models
         /// <returns>A string representation</returns>
         public override string ToString()
         {
-            var prefix = string.IsNullOrEmpty(PropertyName) ? "" : $"{PropertyName}: ";
+            var prefix = string.IsNullOrEmpty(PropertyPath) ? "" : $"{PropertyPath}: ";
             return $"{prefix}{Message}";
         }
     }
@@ -374,12 +374,25 @@ namespace AhBearStudios.Core.Logging.Models
         public override ValidationSeverity Severity => ValidationSeverity.Error;
 
         /// <summary>
+        /// Gets the error code for programmatic handling.
+        /// </summary>
+        public string ErrorCode { get; }
+
+        /// <summary>
+        /// Gets the property name associated with the error (alias for PropertyPath for backward compatibility).
+        /// </summary>
+        public string PropertyName => PropertyPath;
+
+        /// <summary>
         /// Initializes a new instance of the ValidationError record.
         /// </summary>
         /// <param name="message">The error message</param>
-        /// <param name="propertyName">The property name associated with the error</param>
-        public ValidationError(string message, string propertyName = null) : base(message, propertyName)
+        /// <param name="propertyPath">The property path where error occurred</param>
+        /// <param name="errorCode">Optional error code</param>
+        public ValidationError(string message, string propertyPath = null, string errorCode = null) 
+            : base(message, propertyPath)
         {
+            ErrorCode = errorCode;
         }
     }
 
@@ -394,12 +407,25 @@ namespace AhBearStudios.Core.Logging.Models
         public override ValidationSeverity Severity => ValidationSeverity.Warning;
 
         /// <summary>
+        /// Gets the warning code for programmatic handling.
+        /// </summary>
+        public string WarningCode { get; }
+
+        /// <summary>
+        /// Gets the property name associated with the warning (alias for PropertyPath for backward compatibility).
+        /// </summary>
+        public string PropertyName => PropertyPath;
+
+        /// <summary>
         /// Initializes a new instance of the ValidationWarning record.
         /// </summary>
         /// <param name="message">The warning message</param>
-        /// <param name="propertyName">The property name associated with the warning</param>
-        public ValidationWarning(string message, string propertyName = null) : base(message, propertyName)
+        /// <param name="propertyPath">The property path where warning occurred</param>
+        /// <param name="warningCode">Optional warning code</param>
+        public ValidationWarning(string message, string propertyPath = null, string warningCode = null) 
+            : base(message, propertyPath)
         {
+            WarningCode = warningCode;
         }
     }
 

@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Xml;
 using System.Xml.Linq;
+using AhBearStudios.Core.Common.Models;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Profiling;

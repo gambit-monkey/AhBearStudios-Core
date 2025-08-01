@@ -9,7 +9,7 @@ namespace AhBearStudios.Core.HealthChecking
     /// <summary>
     /// Interface for circuit breaker implementation providing fault tolerance and system protection
     /// </summary>
-    public interface ICircuitBreaker
+    public interface ICircuitBreaker : IDisposable
     {
         /// <summary>
         /// Event triggered when circuit breaker state changes

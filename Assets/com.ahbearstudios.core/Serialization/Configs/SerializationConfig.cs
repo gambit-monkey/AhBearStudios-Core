@@ -94,6 +94,16 @@ namespace AhBearStudios.Core.Serialization.Configs;
             new Dictionary<string, object>();
 
         /// <summary>
+        /// Whether to enable FishNet network serialization support.
+        /// </summary>
+        public bool EnableFishNetSupport { get; init; } = false;
+
+        /// <summary>
+        /// FishNet-specific serialization options.
+        /// </summary>
+        public FishNetSerializationOptions FishNetOptions { get; init; } = new();
+
+        /// <summary>
         /// Validates the configuration for consistency and correctness.
         /// </summary>
         /// <returns>True if configuration is valid</returns>

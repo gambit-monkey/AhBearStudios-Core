@@ -31,6 +31,8 @@ namespace AhBearStudios.Core.Serialization.Builders;
         private readonly List<string> _typeWhitelist = new();
         private readonly List<string> _typeBlacklist = new();
         private readonly Dictionary<string, object> _customProperties = new();
+        private bool _enableFishNetSupport = false;
+        private FishNetSerializationOptions _fishNetOptions = new();
 
         /// <inheritdoc />
         public ISerializationConfigBuilder WithFormat(SerializationFormat format)
@@ -147,6 +149,19 @@ namespace AhBearStudios.Core.Serialization.Builders;
             return this;
         }
 
+        /// <summary>
+        /// Configures FishNet network serialization support.
+        /// </summary>
+        /// <param name="enabled">Whether to enable FishNet support</param>
+        /// <param name="options">FishNet-specific options</param>
+        /// <returns>Builder instance for chaining</returns>
+        public ISerializationConfigBuilder WithFishNetSupport(bool enabled, FishNetSerializationOptions options = null)
+        {
+            _enableFishNetSupport = enabled;
+            _fishNetOptions = options ?? (enabled ? FishNetSerializationOptions.Default : new FishNetSerializationOptions());
+            return this;
+        }
+
         /// <inheritdoc />
         public SerializationConfig Build()
         {
@@ -167,7 +182,9 @@ namespace AhBearStudios.Core.Serialization.Builders;
                 EncryptionKey = _encryptionKey,
                 TypeWhitelist = _typeWhitelist.AsReadOnly(),
                 TypeBlacklist = _typeBlacklist.AsReadOnly(),
-                CustomProperties = new ReadOnlyDictionary<string, object>(_customProperties)
+                CustomProperties = new ReadOnlyDictionary<string, object>(_customProperties),
+                EnableFishNetSupport = _enableFishNetSupport,
+                FishNetOptions = _fishNetOptions
             };
 
             return config.Validate();
@@ -203,7 +220,9 @@ namespace AhBearStudios.Core.Serialization.Builders;
                 _maxConcurrentOperations = config.MaxConcurrentOperations,
                 _asyncTimeoutMs = config.AsyncTimeoutMs,
                 _enableEncryption = config.EnableEncryption,
-                _encryptionKey = config.EncryptionKey
+                _encryptionKey = config.EncryptionKey,
+                _enableFishNetSupport = config.EnableFishNetSupport,
+                _fishNetOptions = config.FishNetOptions
             };
 
             builder._typeWhitelist.AddRange(config.TypeWhitelist);

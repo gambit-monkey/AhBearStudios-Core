@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Models;
+using AhBearStudios.Core.Common.Models;
 
 namespace AhBearStudios.Core.Logging.Services
 {

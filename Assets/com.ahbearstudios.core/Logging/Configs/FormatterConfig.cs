@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Linq;
+using AhBearStudios.Core.Common.Models;
 using AhBearStudios.Core.Logging.Models;
 
 namespace AhBearStudios.Core.Logging.Configs
