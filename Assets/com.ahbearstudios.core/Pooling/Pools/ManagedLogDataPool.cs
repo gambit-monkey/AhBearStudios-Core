@@ -1,5 +1,8 @@
+using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Messaging;
+using AhBearStudios.Core.Pooling.Models;
+using AhBearStudios.Core.Pooling.Configs;
 
 namespace AhBearStudios.Core.Pooling.Pools
 {
@@ -197,84 +200,6 @@ namespace AhBearStudios.Core.Pooling.Pools
 
             _disposed = true;
             ClearAll();
-        }
-    }
-
-    /// <summary>
-    /// Represents managed data that cannot be stored in native collections.
-    /// </summary>
-    public sealed class ManagedLogData : IPooledObject
-    {
-        /// <summary>
-        /// The exception associated with the log entry.
-        /// </summary>
-        public Exception Exception { get; set; }
-
-        /// <summary>
-        /// The structured properties associated with the log entry.
-        /// </summary>
-        public IReadOnlyDictionary<string, object> Properties { get; set; }
-
-        /// <summary>
-        /// The scope context associated with the log entry.
-        /// </summary>
-        public object Scope { get; set; }
-
-        /// <summary>
-        /// The unique storage ID for this data.
-        /// </summary>
-        public Guid StorageId { get; set; }
-
-        /// <summary>
-        /// The timestamp when this data was created.
-        /// </summary>
-        public DateTime CreatedAt { get; set; }
-
-        /// <summary>
-        /// Gets the pool name for this object.
-        /// </summary>
-        public string PoolName { get; set; }
-
-        /// <summary>
-        /// Gets the timestamp when this object was last used.
-        /// </summary>
-        public DateTime LastUsed { get; set; }
-
-        /// <summary>
-        /// Called when the object is retrieved from the pool.
-        /// </summary>
-        public void OnGet()
-        {
-            LastUsed = DateTime.UtcNow;
-        }
-
-        /// <summary>
-        /// Called when the object is returned to the pool.
-        /// </summary>
-        public void OnReturn()
-        {
-            // Reset is called separately, so we don't need to do anything here
-        }
-
-        /// <summary>
-        /// Resets the object to its initial state for reuse.
-        /// </summary>
-        public void Reset()
-        {
-            Exception = null;
-            Properties = null;
-            Scope = null;
-            StorageId = Guid.Empty;
-            CreatedAt = DateTime.MinValue;
-        }
-
-        /// <summary>
-        /// Validates that the object is in a valid state.
-        /// </summary>
-        /// <returns>True if the object is valid</returns>
-        public bool IsValid()
-        {
-            return true; // ManagedLogData is always valid
         }
     }
 }

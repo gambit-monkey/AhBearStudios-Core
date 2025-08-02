@@ -1,0 +1,215 @@
+using System;
+using AhBearStudios.Core.Pooling.Configs;
+using AhBearStudios.Core.Pooling.Models;
+using AhBearStudios.Core.Pooling.Pools;
+using AhBearStudios.Core.Pooling.Services;
+using AhBearStudios.Core.Pooling.Strategies;
+
+namespace AhBearStudios.Core.Pooling.Factories
+{
+    /// <summary>
+    /// Factory implementation for creating network buffer pools.
+    /// Responsible for creating individual buffer pools with proper configuration and validation.
+    /// Follows the Builder → Config → Factory → Service design pattern.
+    /// </summary>
+    public class NetworkBufferPoolFactory : INetworkBufferPoolFactory
+    {
+        private readonly IPoolValidationService _validationService;
+        private readonly IPooledNetworkBufferFactory _bufferFactory;
+
+        /// <summary>
+        /// Initializes a new instance of the NetworkBufferPoolFactory.
+        /// </summary>
+        /// <param name="validationService">Service for pool validation operations</param>
+        /// <param name="bufferFactory">Factory for creating individual network buffers</param>
+        public NetworkBufferPoolFactory(
+            IPoolValidationService validationService,
+            IPooledNetworkBufferFactory bufferFactory)
+        {
+            _validationService = validationService ?? throw new ArgumentNullException(nameof(validationService));
+            _bufferFactory = bufferFactory ?? throw new ArgumentNullException(nameof(bufferFactory));
+        }
+
+        /// <summary>
+        /// Creates a small buffer pool optimized for simple types (1KB buffers).
+        /// </summary>
+        /// <param name="poolConfig">Pool configuration</param>
+        /// <param name="strategy">Pooling strategy</param>
+        /// <returns>Configured small buffer pool</returns>
+        public SmallBufferPool CreateSmallBufferPool(PoolConfiguration poolConfig, IPoolingStrategy strategy)
+        {
+            if (poolConfig == null)
+                throw new ArgumentNullException(nameof(poolConfig));
+            if (strategy == null)
+                throw new ArgumentNullException(nameof(strategy));
+
+            var config = CreatePoolConfigForSmallBuffers(poolConfig);
+            return new SmallBufferPool(config, strategy);
+        }
+
+        /// <summary>
+        /// Creates a medium buffer pool optimized for medium complexity objects (16KB buffers).
+        /// </summary>
+        /// <param name="poolConfig">Pool configuration</param>
+        /// <param name="strategy">Pooling strategy</param>
+        /// <returns>Configured medium buffer pool</returns>
+        public MediumBufferPool CreateMediumBufferPool(PoolConfiguration poolConfig, IPoolingStrategy strategy)
+        {
+            if (poolConfig == null)
+                throw new ArgumentNullException(nameof(poolConfig));
+            if (strategy == null)
+                throw new ArgumentNullException(nameof(strategy));
+
+            var config = CreatePoolConfigForMediumBuffers(poolConfig);
+            return new MediumBufferPool(config, strategy);
+        }
+
+        /// <summary>
+        /// Creates a large buffer pool optimized for complex objects (64KB buffers).
+        /// </summary>
+        /// <param name="poolConfig">Pool configuration</param>
+        /// <param name="strategy">Pooling strategy</param>
+        /// <returns>Configured large buffer pool</returns>
+        public LargeBufferPool CreateLargeBufferPool(PoolConfiguration poolConfig, IPoolingStrategy strategy)
+        {
+            if (poolConfig == null)
+                throw new ArgumentNullException(nameof(poolConfig));
+            if (strategy == null)
+                throw new ArgumentNullException(nameof(strategy));
+
+            var config = CreatePoolConfigForLargeBuffers(poolConfig);
+            return new LargeBufferPool(config, strategy);
+        }
+
+        /// <summary>
+        /// Creates a compression buffer pool optimized for compression operations (32KB buffers).
+        /// </summary>
+        /// <param name="poolConfig">Pool configuration</param>
+        /// <param name="strategy">Pooling strategy</param>
+        /// <returns>Configured compression buffer pool</returns>
+        public CompressionBufferPool CreateCompressionBufferPool(PoolConfiguration poolConfig, IPoolingStrategy strategy)
+        {
+            if (poolConfig == null)
+                throw new ArgumentNullException(nameof(poolConfig));
+            if (strategy == null)
+                throw new ArgumentNullException(nameof(strategy));
+
+            var config = CreatePoolConfigForCompressionBuffers(poolConfig);
+            return new CompressionBufferPool(config, strategy);
+        }
+
+        /// <summary>
+        /// Creates all network buffer pools from a network pooling configuration.
+        /// </summary>
+        /// <param name="networkConfig">Network pooling configuration</param>
+        /// <param name="strategy">Pooling strategy to use for all pools</param>
+        /// <returns>Collection of created buffer pools</returns>
+        public NetworkBufferPools CreateAllBufferPools(NetworkPoolingConfig networkConfig, IPoolingStrategy strategy)
+        {
+            if (networkConfig == null)
+                throw new ArgumentNullException(nameof(networkConfig));
+            if (strategy == null)
+                throw new ArgumentNullException(nameof(strategy));
+
+            return new NetworkBufferPools
+            {
+                SmallBufferPool = CreateSmallBufferPool(networkConfig.SmallBufferPoolConfig, strategy),
+                MediumBufferPool = CreateMediumBufferPool(networkConfig.MediumBufferPoolConfig, strategy),
+                LargeBufferPool = CreateLargeBufferPool(networkConfig.LargeBufferPoolConfig, strategy),
+                CompressionBufferPool = CreateCompressionBufferPool(networkConfig.CompressionBufferPoolConfig, strategy)
+            };
+        }
+
+        /// <summary>
+        /// Creates pool configuration for small buffers with validation and reset actions.
+        /// </summary>
+        /// <param name="baseConfig">Base pool configuration</param>
+        /// <returns>Configured pool configuration for small buffers</returns>
+        private PoolConfiguration CreatePoolConfigForSmallBuffers(PoolConfiguration baseConfig)
+        {
+            return new PoolConfiguration
+            {
+                Name = "SmallBuffer",
+                InitialCapacity = baseConfig.InitialCapacity,
+                MaxCapacity = baseConfig.MaxCapacity,
+                Factory = () => _bufferFactory.CreateSmallBuffer(),
+                ResetAction = buffer => _validationService.ResetPooledObject(buffer),
+                ValidationFunc = buffer => _validationService.ValidatePooledObject(buffer),
+                ValidationInterval = baseConfig.ValidationInterval,
+                MaxIdleTime = baseConfig.MaxIdleTime,
+                EnableValidation = baseConfig.EnableValidation,
+                EnableStatistics = baseConfig.EnableStatistics,
+                DisposalPolicy = baseConfig.DisposalPolicy
+            };
+        }
+
+        /// <summary>
+        /// Creates pool configuration for medium buffers with validation and reset actions.
+        /// </summary>
+        /// <param name="baseConfig">Base pool configuration</param>
+        /// <returns>Configured pool configuration for medium buffers</returns>
+        private PoolConfiguration CreatePoolConfigForMediumBuffers(PoolConfiguration baseConfig)
+        {
+            return new PoolConfiguration
+            {
+                Name = "MediumBuffer",
+                InitialCapacity = baseConfig.InitialCapacity,
+                MaxCapacity = baseConfig.MaxCapacity,
+                Factory = () => _bufferFactory.CreateMediumBuffer(),
+                ResetAction = buffer => _validationService.ResetPooledObject(buffer),
+                ValidationFunc = buffer => _validationService.ValidatePooledObject(buffer),
+                ValidationInterval = baseConfig.ValidationInterval,
+                MaxIdleTime = baseConfig.MaxIdleTime,
+                EnableValidation = baseConfig.EnableValidation,
+                EnableStatistics = baseConfig.EnableStatistics,
+                DisposalPolicy = baseConfig.DisposalPolicy
+            };
+        }
+
+        /// <summary>
+        /// Creates pool configuration for large buffers with validation and reset actions.
+        /// </summary>
+        /// <param name="baseConfig">Base pool configuration</param>
+        /// <returns>Configured pool configuration for large buffers</returns>
+        private PoolConfiguration CreatePoolConfigForLargeBuffers(PoolConfiguration baseConfig)
+        {
+            return new PoolConfiguration
+            {
+                Name = "LargeBuffer",
+                InitialCapacity = baseConfig.InitialCapacity,
+                MaxCapacity = baseConfig.MaxCapacity,
+                Factory = () => _bufferFactory.CreateLargeBuffer(),
+                ResetAction = buffer => _validationService.ResetPooledObject(buffer),
+                ValidationFunc = buffer => _validationService.ValidatePooledObject(buffer),
+                ValidationInterval = baseConfig.ValidationInterval,
+                MaxIdleTime = baseConfig.MaxIdleTime,
+                EnableValidation = baseConfig.EnableValidation,
+                EnableStatistics = baseConfig.EnableStatistics,
+                DisposalPolicy = baseConfig.DisposalPolicy
+            };
+        }
+
+        /// <summary>
+        /// Creates pool configuration for compression buffers with validation and reset actions.
+        /// </summary>
+        /// <param name="baseConfig">Base pool configuration</param>
+        /// <returns>Configured pool configuration for compression buffers</returns>
+        private PoolConfiguration CreatePoolConfigForCompressionBuffers(PoolConfiguration baseConfig)
+        {
+            return new PoolConfiguration
+            {
+                Name = "CompressionBuffer",
+                InitialCapacity = baseConfig.InitialCapacity,
+                MaxCapacity = baseConfig.MaxCapacity,
+                Factory = () => _bufferFactory.CreateCompressionBuffer(),
+                ResetAction = buffer => _validationService.ResetPooledObject(buffer),
+                ValidationFunc = buffer => _validationService.ValidatePooledObject(buffer),
+                ValidationInterval = baseConfig.ValidationInterval,
+                MaxIdleTime = baseConfig.MaxIdleTime,
+                EnableValidation = baseConfig.EnableValidation,
+                EnableStatistics = baseConfig.EnableStatistics,
+                DisposalPolicy = baseConfig.DisposalPolicy
+            };
+        }
+    }
+}

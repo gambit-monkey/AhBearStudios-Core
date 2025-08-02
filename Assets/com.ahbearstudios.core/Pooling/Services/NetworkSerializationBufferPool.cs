@@ -2,8 +2,10 @@ using System;
 using System.Threading;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Pooling.Configs;
+using AhBearStudios.Core.Pooling.Factories;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Pools;
+using AhBearStudios.Core.Pooling.Services;
 using AhBearStudios.Core.Pooling.Strategies;
 
 namespace AhBearStudios.Core.Pooling.Services
@@ -12,14 +14,16 @@ namespace AhBearStudios.Core.Pooling.Services
     /// Specialized buffer pool service for network serialization operations.
     /// Provides optimized buffer management for FishNet + MemoryPack integration.
     /// Acts as a facade over multiple IObjectPool instances for different buffer sizes.
+    /// Follows the Builder → Config → Factory → Service design pattern.
     /// </summary>
     public class NetworkSerializationBufferPool : IDisposable
     {
         private readonly ILoggingService _logger;
-        private readonly SmallBufferPool _smallBufferPool;
-        private readonly MediumBufferPool _mediumBufferPool;
-        private readonly LargeBufferPool _largeBufferPool;
-        private readonly CompressionBufferPool _compressionBufferPool;
+        private readonly NetworkPoolingConfig _configuration;
+        private readonly INetworkBufferPoolFactory _poolFactory;
+        private readonly IPoolValidationService _validationService;
+        private readonly IPoolingStrategy _poolingStrategy;
+        private readonly NetworkBufferPools _bufferPools;
         private bool _disposed;
 
         // Performance statistics
@@ -30,25 +34,31 @@ namespace AhBearStudios.Core.Pooling.Services
         private long _totalBufferReturns;
 
         /// <summary>
-        /// Initializes a new NetworkSerializationBufferPool.
+        /// Initializes a new NetworkSerializationBufferPool with dependency injection.
         /// </summary>
         /// <param name="logger">Logging service</param>
-        /// <param name="config">Network pooling configuration</param>
+        /// <param name="configuration">Network pooling configuration</param>
+        /// <param name="poolFactory">Factory for creating buffer pools</param>
+        /// <param name="validationService">Service for pool validation operations</param>
+        /// <param name="poolingStrategy">Strategy for pool management</param>
+        /// <exception cref="ArgumentNullException">Thrown when any required parameter is null</exception>
         public NetworkSerializationBufferPool(
             ILoggingService logger,
-            NetworkPoolingConfig config = null)
+            NetworkPoolingConfig configuration,
+            INetworkBufferPoolFactory poolFactory,
+            IPoolValidationService validationService,
+            IPoolingStrategy poolingStrategy)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            var networkConfig = config ?? NetworkPoolingConfig.CreateDefault();
-            var strategy = new DynamicSizeStrategy();
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _poolFactory = poolFactory ?? throw new ArgumentNullException(nameof(poolFactory));
+            _validationService = validationService ?? throw new ArgumentNullException(nameof(validationService));
+            _poolingStrategy = poolingStrategy ?? throw new ArgumentNullException(nameof(poolingStrategy));
 
-            // Create individual buffer pools
-            _smallBufferPool = new SmallBufferPool(CreatePoolConfig("SmallBuffer", networkConfig.SmallBufferPoolConfig), strategy);
-            _mediumBufferPool = new MediumBufferPool(CreatePoolConfig("MediumBuffer", networkConfig.MediumBufferPoolConfig), strategy);
-            _largeBufferPool = new LargeBufferPool(CreatePoolConfig("LargeBuffer", networkConfig.LargeBufferPoolConfig), strategy);
-            _compressionBufferPool = new CompressionBufferPool(CreatePoolConfig("CompressionBuffer", networkConfig.CompressionBufferPoolConfig), strategy);
+            // Create all buffer pools using the factory
+            _bufferPools = _poolFactory.CreateAllBufferPools(_configuration, _poolingStrategy);
 
-            _logger.LogInfo("NetworkSerializationBufferPool initialized with individual buffer pools", default, nameof(NetworkSerializationBufferPool));
+            _logger.LogInfo($"NetworkSerializationBufferPool initialized with {_bufferPools.SmallBufferPool?.GetType().Name}, {_bufferPools.MediumBufferPool?.GetType().Name}, {_bufferPools.LargeBufferPool?.GetType().Name}, {_bufferPools.CompressionBufferPool?.GetType().Name}", default, nameof(NetworkSerializationBufferPool));
         }
 
         /// <summary>
@@ -64,17 +74,17 @@ namespace AhBearStudios.Core.Pooling.Services
             if (expectedSize <= 1024)
             {
                 Interlocked.Increment(ref _smallBufferGets);
-                return _smallBufferPool.Get();
+                return _bufferPools.SmallBufferPool.Get();
             }
             else if (expectedSize <= 16384)
             {
                 Interlocked.Increment(ref _mediumBufferGets);
-                return _mediumBufferPool.Get();
+                return _bufferPools.MediumBufferPool.Get();
             }
             else
             {
                 Interlocked.Increment(ref _largeBufferGets);
-                return _largeBufferPool.Get();
+                return _bufferPools.LargeBufferPool.Get();
             }
         }
 
@@ -86,7 +96,7 @@ namespace AhBearStudios.Core.Pooling.Services
         {
             ThrowIfDisposed();
             Interlocked.Increment(ref _smallBufferGets);
-            return _smallBufferPool.Get();
+            return _bufferPools.SmallBufferPool.Get();
         }
 
         /// <summary>
@@ -97,7 +107,7 @@ namespace AhBearStudios.Core.Pooling.Services
         {
             ThrowIfDisposed();
             Interlocked.Increment(ref _mediumBufferGets);
-            return _mediumBufferPool.Get();
+            return _bufferPools.MediumBufferPool.Get();
         }
 
         /// <summary>
@@ -108,7 +118,7 @@ namespace AhBearStudios.Core.Pooling.Services
         {
             ThrowIfDisposed();
             Interlocked.Increment(ref _largeBufferGets);
-            return _largeBufferPool.Get();
+            return _bufferPools.LargeBufferPool.Get();
         }
 
         /// <summary>
@@ -119,7 +129,7 @@ namespace AhBearStudios.Core.Pooling.Services
         {
             ThrowIfDisposed();
             Interlocked.Increment(ref _compressionBufferGets);
-            return _compressionBufferPool.Get();
+            return _bufferPools.CompressionBufferPool.Get();
         }
 
         /// <summary>
@@ -139,16 +149,16 @@ namespace AhBearStudios.Core.Pooling.Services
                 switch (buffer.Capacity)
                 {
                     case 1024:
-                        _smallBufferPool.Return(buffer);
+                        _bufferPools.SmallBufferPool.Return(buffer);
                         break;
                     case 16384:
-                        _mediumBufferPool.Return(buffer);
+                        _bufferPools.MediumBufferPool.Return(buffer);
                         break;
                     case 32768:
-                        _compressionBufferPool.Return(buffer);
+                        _bufferPools.CompressionBufferPool.Return(buffer);
                         break;
                     case 65536:
-                        _largeBufferPool.Return(buffer);
+                        _bufferPools.LargeBufferPool.Return(buffer);
                         break;
                     default:
                         // Unknown buffer size, dispose it
@@ -183,10 +193,10 @@ namespace AhBearStudios.Core.Pooling.Services
                 CompressionBufferGets = _compressionBufferGets,
                 TotalBufferReturns = _totalBufferReturns,
                 TotalBufferGets = _smallBufferGets + _mediumBufferGets + _largeBufferGets + _compressionBufferGets,
-                SmallBufferPoolStats = _smallBufferPool.GetStatistics(),
-                MediumBufferPoolStats = _mediumBufferPool.GetStatistics(),
-                LargeBufferPoolStats = _largeBufferPool.GetStatistics(),
-                CompressionBufferPoolStats = _compressionBufferPool.GetStatistics()
+                SmallBufferPoolStats = _bufferPools.SmallBufferPool.GetStatistics(),
+                MediumBufferPoolStats = _bufferPools.MediumBufferPool.GetStatistics(),
+                LargeBufferPoolStats = _bufferPools.LargeBufferPool.GetStatistics(),
+                CompressionBufferPoolStats = _bufferPools.CompressionBufferPool.GetStatistics()
             };
         }
 
@@ -196,10 +206,10 @@ namespace AhBearStudios.Core.Pooling.Services
         public void TrimExcess()
         {
             ThrowIfDisposed();
-            _smallBufferPool.TrimExcess();
-            _mediumBufferPool.TrimExcess();
-            _largeBufferPool.TrimExcess();
-            _compressionBufferPool.TrimExcess();
+            _bufferPools.SmallBufferPool.TrimExcess();
+            _bufferPools.MediumBufferPool.TrimExcess();
+            _bufferPools.LargeBufferPool.TrimExcess();
+            _bufferPools.CompressionBufferPool.TrimExcess();
             _logger.LogDebug("Network buffer pools trimmed");
         }
 
@@ -210,29 +220,31 @@ namespace AhBearStudios.Core.Pooling.Services
         public bool ValidateAllPools()
         {
             ThrowIfDisposed();
-            var smallValid = _smallBufferPool.Validate();
-            var mediumValid = _mediumBufferPool.Validate();
-            var largeValid = _largeBufferPool.Validate();
-            var compressionValid = _compressionBufferPool.Validate();
+            var smallValid = _bufferPools.SmallBufferPool.Validate();
+            var mediumValid = _bufferPools.MediumBufferPool.Validate();
+            var largeValid = _bufferPools.LargeBufferPool.Validate();
+            var compressionValid = _bufferPools.CompressionBufferPool.Validate();
             return smallValid && mediumValid && largeValid && compressionValid;
         }
 
-        private PoolConfiguration CreatePoolConfig(string name, PoolConfiguration baseConfig)
+        /// <summary>
+        /// Gets the current configuration for this buffer pool service.
+        /// </summary>
+        /// <returns>Network pooling configuration</returns>
+        public NetworkPoolingConfig GetConfiguration()
         {
-            return new PoolConfiguration
-            {
-                Name = name,
-                InitialCapacity = baseConfig?.InitialCapacity ?? 10,
-                MaxCapacity = baseConfig?.MaxCapacity ?? 100,
-                Factory = baseConfig?.Factory,
-                ResetAction = buffer => ((PooledNetworkBuffer)buffer).Reset(),
-                ValidationFunc = buffer => buffer != null && ((PooledNetworkBuffer)buffer).IsValid(),
-                ValidationInterval = baseConfig?.ValidationInterval ?? TimeSpan.FromMinutes(5),
-                MaxIdleTime = baseConfig?.MaxIdleTime ?? TimeSpan.FromMinutes(30),
-                EnableValidation = baseConfig?.EnableValidation ?? true,
-                EnableStatistics = baseConfig?.EnableStatistics ?? true,
-                DisposalPolicy = baseConfig?.DisposalPolicy ?? PoolDisposalPolicy.ReturnToPool
-            };
+            ThrowIfDisposed();
+            return _configuration;
+        }
+        
+        /// <summary>
+        /// Gets the buffer pools managed by this service.
+        /// </summary>
+        /// <returns>Collection of buffer pools</returns>
+        public NetworkBufferPools GetBufferPools()
+        {
+            ThrowIfDisposed();
+            return _bufferPools;
         }
 
         private void ThrowIfDisposed()
@@ -249,35 +261,13 @@ namespace AhBearStudios.Core.Pooling.Services
             if (!_disposed)
             {
                 _disposed = true;
-                _smallBufferPool?.Dispose();
-                _mediumBufferPool?.Dispose();
-                _largeBufferPool?.Dispose();
-                _compressionBufferPool?.Dispose();
+                _bufferPools?.SmallBufferPool?.Dispose();
+                _bufferPools?.MediumBufferPool?.Dispose();
+                _bufferPools?.LargeBufferPool?.Dispose();
+                _bufferPools?.CompressionBufferPool?.Dispose();
                 _logger.LogInfo("NetworkSerializationBufferPool disposed");
             }
         }
     }
 
-    /// <summary>
-    /// Statistics for network buffer pool usage.
-    /// </summary>
-    public class NetworkBufferPoolStatistics
-    {
-        public long SmallBufferGets { get; init; }
-        public long MediumBufferGets { get; init; }
-        public long LargeBufferGets { get; init; }
-        public long CompressionBufferGets { get; init; }
-        public long TotalBufferGets { get; init; }
-        public long TotalBufferReturns { get; init; }
-        public PoolStatistics SmallBufferPoolStats { get; init; }
-        public PoolStatistics MediumBufferPoolStats { get; init; }
-        public PoolStatistics LargeBufferPoolStats { get; init; }
-        public PoolStatistics CompressionBufferPoolStats { get; init; }
-
-        public double BufferReturnRate => TotalBufferGets > 0 ? (double)TotalBufferReturns / TotalBufferGets : 0.0;
-        public double SmallBufferUsageRate => TotalBufferGets > 0 ? (double)SmallBufferGets / TotalBufferGets : 0.0;
-        public double MediumBufferUsageRate => TotalBufferGets > 0 ? (double)MediumBufferGets / TotalBufferGets : 0.0;
-        public double LargeBufferUsageRate => TotalBufferGets > 0 ? (double)LargeBufferGets / TotalBufferGets : 0.0;
-        public double CompressionBufferUsageRate => TotalBufferGets > 0 ? (double)CompressionBufferGets / TotalBufferGets : 0.0;
-    }
 }

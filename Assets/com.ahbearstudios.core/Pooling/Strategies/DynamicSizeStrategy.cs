@@ -1,19 +1,32 @@
 using System;
+using System.Collections.Generic;
 using AhBearStudios.Core.Pooling.Models;
+using AhBearStudios.Core.Pooling.Configs;
+using AhBearStudios.Core.Pooling.Strategies.Models;
 
 namespace AhBearStudios.Core.Pooling.Strategies
 {
     /// <summary>
     /// Dynamic pool strategy that adjusts pool size based on usage patterns.
     /// Expands when utilization is high and contracts when objects are idle.
+    /// Enhanced with production-ready features for Unity game development.
     /// </summary>
-    public class DynamicSizeStrategy : IPoolStrategy
+    public class DynamicSizeStrategy : IPoolingStrategy
     {
         private readonly double _expandThreshold;
         private readonly double _contractThreshold;
         private readonly double _maxUtilization;
         private readonly TimeSpan _validationInterval;
         private readonly TimeSpan _idleTimeThreshold;
+        private readonly PoolingStrategyConfig _configuration;
+        private readonly PerformanceBudget _performanceBudget;
+        
+        // Performance monitoring
+        private readonly List<TimeSpan> _recentOperationTimes = new();
+        private readonly object _metricsLock = new object();
+        private int _errorCount;
+        private int _circuitBreakerTriggerCount;
+        private DateTime _lastHealthCheck = DateTime.UtcNow;
 
         /// <summary>
         /// Initializes a new instance of the DynamicSizeStrategy.
@@ -23,18 +36,22 @@ namespace AhBearStudios.Core.Pooling.Strategies
         /// <param name="maxUtilization">Maximum allowed utilization before forcing expansion (0.0-1.0)</param>
         /// <param name="validationInterval">Interval between validation checks</param>
         /// <param name="idleTimeThreshold">Time threshold for considering objects idle</param>
+        /// <param name="configuration">Strategy configuration (optional)</param>
         public DynamicSizeStrategy(
             double expandThreshold = 0.8,
             double contractThreshold = 0.3,
             double maxUtilization = 0.95,
             TimeSpan? validationInterval = null,
-            TimeSpan? idleTimeThreshold = null)
+            TimeSpan? idleTimeThreshold = null,
+            PoolingStrategyConfig configuration = null)
         {
             _expandThreshold = Math.Clamp(expandThreshold, 0.0, 1.0);
             _contractThreshold = Math.Clamp(contractThreshold, 0.0, 1.0);
             _maxUtilization = Math.Clamp(maxUtilization, 0.0, 1.0);
             _validationInterval = validationInterval ?? TimeSpan.FromMinutes(5);
             _idleTimeThreshold = idleTimeThreshold ?? TimeSpan.FromMinutes(10);
+            _configuration = configuration ?? PoolingStrategyConfig.Default("DynamicSize");
+            _performanceBudget = _configuration.PerformanceBudget ?? PerformanceBudget.For60FPS();
 
             if (_contractThreshold >= _expandThreshold)
                 throw new ArgumentException("Contract threshold must be less than expand threshold");
@@ -181,5 +198,216 @@ namespace AhBearStudios.Core.Pooling.Strategies
 
             return true;
         }
+
+        #region Production-Ready Enhancements
+
+        /// <summary>
+        /// Determines if the circuit breaker should be triggered based on current statistics.
+        /// </summary>
+        /// <param name="statistics">Current pool statistics</param>
+        /// <returns>True if circuit breaker should be triggered</returns>
+        public bool ShouldTriggerCircuitBreaker(PoolStatistics statistics)
+        {
+            if (!_configuration.EnableCircuitBreaker || statistics == null)
+                return false;
+
+            // Trigger circuit breaker if error rate is too high
+            var errorRate = statistics.TotalCount > 0 ? (double)_errorCount / statistics.TotalCount : 0.0;
+            if (errorRate > 0.1) // 10% error rate
+            {
+                _circuitBreakerTriggerCount++;
+                return _circuitBreakerTriggerCount >= _configuration.CircuitBreakerFailureThreshold;
+            }
+
+            // Trigger if performance is severely degraded
+            lock (_metricsLock)
+            {
+                if (_recentOperationTimes.Count > 10)
+                {
+                    var averageTime = TimeSpan.Zero;
+                    foreach (var time in _recentOperationTimes)
+                        averageTime = averageTime.Add(time);
+                    averageTime = TimeSpan.FromTicks(averageTime.Ticks / _recentOperationTimes.Count);
+
+                    if (averageTime > _performanceBudget.MaxOperationTime.Multiply(5)) // 5x over budget
+                    {
+                        _circuitBreakerTriggerCount++;
+                        return _circuitBreakerTriggerCount >= _configuration.CircuitBreakerFailureThreshold;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Gets the performance budget for this strategy.
+        /// </summary>
+        /// <returns>Performance budget configuration</returns>
+        public PerformanceBudget GetPerformanceBudget()
+        {
+            return _performanceBudget;
+        }
+
+        /// <summary>
+        /// Gets the current health status of this strategy.
+        /// </summary>
+        /// <returns>Strategy health status</returns>
+        public StrategyHealthStatus GetHealthStatus()
+        {
+            var now = DateTime.UtcNow;
+            var warnings = new List<string>();
+            var errors = new List<string>();
+
+            // Check error rate
+            if (_errorCount > 0)
+            {
+                warnings.Add($"Strategy has encountered {_errorCount} errors");
+            }
+
+            // Check performance
+            lock (_metricsLock)
+            {
+                if (_recentOperationTimes.Count > 0)
+                {
+                    var averageTime = TimeSpan.Zero;
+                    foreach (var time in _recentOperationTimes)
+                        averageTime = averageTime.Add(time);
+                    averageTime = TimeSpan.FromTicks(averageTime.Ticks / _recentOperationTimes.Count);
+
+                    if (averageTime > _performanceBudget.MaxOperationTime)
+                    {
+                        warnings.Add($"Average operation time ({averageTime.TotalMilliseconds:F2}ms) exceeds budget");
+                    }
+                }
+            }
+
+            // Check circuit breaker
+            if (_circuitBreakerTriggerCount >= _configuration.CircuitBreakerFailureThreshold)
+            {
+                errors.Add("Circuit breaker threshold reached");
+            }
+
+            var status = errors.Count > 0 ? StrategyHealth.Unhealthy :
+                        warnings.Count > 0 ? StrategyHealth.Degraded :
+                        StrategyHealth.Healthy;
+
+            return new StrategyHealthStatus
+            {
+                Status = status,
+                Description = status == StrategyHealth.Healthy ? "Strategy operating normally" : 
+                             $"Strategy has {warnings.Count} warnings and {errors.Count} errors",
+                Timestamp = now,
+                Warnings = warnings,
+                Errors = errors,
+                CircuitBreakerOpen = _circuitBreakerTriggerCount >= _configuration.CircuitBreakerFailureThreshold,
+                OperationCount = _recentOperationTimes.Count,
+                ErrorCount = _errorCount,
+                AverageOperationTime = GetAverageOperationTime(),
+                MaxOperationTime = GetMaxOperationTime()
+            };
+        }
+
+        /// <summary>
+        /// Called when a pool operation starts (for performance monitoring).
+        /// </summary>
+        public void OnPoolOperationStart()
+        {
+            // Currently no pre-operation setup needed
+        }
+
+        /// <summary>
+        /// Called when a pool operation completes (for performance monitoring).
+        /// </summary>
+        /// <param name="duration">Duration of the operation</param>
+        public void OnPoolOperationComplete(TimeSpan duration)
+        {
+            if (!_configuration.EnableDetailedMetrics)
+                return;
+
+            lock (_metricsLock)
+            {
+                _recentOperationTimes.Add(duration);
+                
+                // Keep only recent samples to avoid memory growth
+                if (_recentOperationTimes.Count > _configuration.MaxMetricsSamples)
+                {
+                    _recentOperationTimes.RemoveAt(0);
+                }
+            }
+
+            // Log performance warnings if enabled
+            if (_performanceBudget.LogPerformanceWarnings && duration > _performanceBudget.MaxOperationTime)
+            {
+                // Would log warning here if logging service was available
+                // For now, just track in metrics
+            }
+        }
+
+        /// <summary>
+        /// Called when a pool operation encounters an error.
+        /// </summary>
+        /// <param name="error">The error that occurred</param>
+        public void OnPoolError(Exception error)
+        {
+            _errorCount++;
+            // Could log error details here if logging service was available
+        }
+
+        /// <summary>
+        /// Gets network-specific metrics if this strategy supports network optimizations.
+        /// </summary>
+        /// <returns>Network pooling metrics, or null if not supported</returns>
+        public NetworkPoolingMetrics GetNetworkMetrics()
+        {
+            // DynamicSizeStrategy doesn't have network-specific optimizations
+            return null;
+        }
+
+        /// <summary>
+        /// Gets the strategy configuration.
+        /// </summary>
+        /// <returns>Strategy configuration</returns>
+        public PoolingStrategyConfig GetConfiguration()
+        {
+            return _configuration;
+        }
+
+        #endregion
+
+        #region Private Helper Methods
+
+        private TimeSpan GetAverageOperationTime()
+        {
+            lock (_metricsLock)
+            {
+                if (_recentOperationTimes.Count == 0)
+                    return TimeSpan.Zero;
+
+                var total = TimeSpan.Zero;
+                foreach (var time in _recentOperationTimes)
+                    total = total.Add(time);
+                return TimeSpan.FromTicks(total.Ticks / _recentOperationTimes.Count);
+            }
+        }
+
+        private TimeSpan GetMaxOperationTime()
+        {
+            lock (_metricsLock)
+            {
+                if (_recentOperationTimes.Count == 0)
+                    return TimeSpan.Zero;
+
+                var max = TimeSpan.Zero;
+                foreach (var time in _recentOperationTimes)
+                {
+                    if (time > max)
+                        max = time;
+                }
+                return max;
+            }
+        }
+
+        #endregion
     }
 }

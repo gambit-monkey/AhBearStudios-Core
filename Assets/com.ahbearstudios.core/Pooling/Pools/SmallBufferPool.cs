@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using AhBearStudios.Core.Pooling.Models;
+using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Pooling.Strategies;
 
 namespace AhBearStudios.Core.Pooling.Pools
@@ -14,7 +15,7 @@ namespace AhBearStudios.Core.Pooling.Pools
     {
         private readonly ConcurrentQueue<PooledNetworkBuffer> _objects;
         private readonly PoolConfiguration _configuration;
-        private readonly IPoolStrategy _strategy;
+        private readonly IPoolingStrategy _strategy;
         private readonly PoolStatistics _statistics;
         private readonly Timer _maintenanceTimer;
         private readonly object _maintenanceLock = new object();
@@ -27,7 +28,7 @@ namespace AhBearStudios.Core.Pooling.Pools
         /// </summary>
         /// <param name="configuration">Pool configuration</param>
         /// <param name="strategy">Pool strategy, defaults to DynamicSizeStrategy</param>
-        public SmallBufferPool(PoolConfiguration configuration, IPoolStrategy strategy = null)
+        public SmallBufferPool(PoolConfiguration configuration, IPoolingStrategy strategy = null)
         {
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _strategy = strategy ?? new DynamicSizeStrategy();
@@ -78,7 +79,7 @@ namespace AhBearStudios.Core.Pooling.Pools
         /// <summary>
         /// Gets the pooling strategy used by this pool.
         /// </summary>
-        public IPoolStrategy Strategy => _strategy;
+        public IPoolingStrategy Strategy => _strategy;
 
         /// <summary>
         /// Event raised when a new object is created for the pool.

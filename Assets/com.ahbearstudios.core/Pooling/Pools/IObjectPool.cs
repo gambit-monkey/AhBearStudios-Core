@@ -1,5 +1,6 @@
 using System;
 using AhBearStudios.Core.Pooling.Models;
+using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Pooling.Strategies;
 
 namespace AhBearStudios.Core.Pooling.Pools
@@ -54,7 +55,7 @@ namespace AhBearStudios.Core.Pooling.Pools
         /// <summary>
         /// Gets the pooling strategy used by this pool.
         /// </summary>
-        IPoolStrategy Strategy { get; }
+        IPoolingStrategy Strategy { get; }
         
         // Maintenance
         /// <summary>

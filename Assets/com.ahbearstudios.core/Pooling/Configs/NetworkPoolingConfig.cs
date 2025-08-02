@@ -1,82 +1,116 @@
 using System;
+using System.Collections.Generic;
 using AhBearStudios.Core.Pooling.Models;
+using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Pooling.Strategies;
+using AhBearStudios.Core.Pooling.Services;
 
 namespace AhBearStudios.Core.Pooling.Configs
 {
     /// <summary>
-    /// Configuration for network-related object pools.
+    /// Immutable configuration record for network-related object pools.
     /// Defines buffer sizes and pooling strategies optimized for network serialization.
+    /// Use with-expressions to create modified copies.
     /// </summary>
-    public class NetworkPoolingConfig
+    public record NetworkPoolingConfig
     {
         /// <summary>
         /// Configuration for small network buffers (up to 1KB).
         /// Used for simple types like primitives, Vector3, Quaternion.
         /// </summary>
-        public PoolConfiguration SmallBufferPoolConfig { get; set; } = new PoolConfiguration
-        {
-            Name = "SmallNetworkBuffer",
-            InitialCapacity = 100,
-            MaxCapacity = 500,
-            Factory = () => new PooledNetworkBuffer(1024), // 1KB buffers
-            ResetAction = buffer => buffer.Reset(),
-            ValidationFunc = buffer => buffer.IsValid(),
-            ValidationInterval = TimeSpan.FromMinutes(5),
-            MaxIdleTime = TimeSpan.FromMinutes(10),
-            Strategy = new DynamicSizeStrategy()
-        };
+        public PoolConfiguration SmallBufferPoolConfig { get; init; }
 
         /// <summary>
         /// Configuration for medium network buffers (up to 16KB).
         /// Used for medium complexity objects and collections.
         /// </summary>
-        public PoolConfiguration MediumBufferPoolConfig { get; set; } = new PoolConfiguration
-        {
-            Name = "MediumNetworkBuffer",
-            InitialCapacity = 50,
-            MaxCapacity = 200,
-            Factory = () => new PooledNetworkBuffer(16384), // 16KB buffers
-            ResetAction = buffer => buffer.Reset(),
-            ValidationFunc = buffer => buffer.IsValid(),
-            ValidationInterval = TimeSpan.FromMinutes(5),
-            MaxIdleTime = TimeSpan.FromMinutes(15),
-            Strategy = new DynamicSizeStrategy()
-        };
+        public PoolConfiguration MediumBufferPoolConfig { get; init; }
 
         /// <summary>
         /// Configuration for large network buffers (up to 64KB).
         /// Used for complex objects, large collections, and compressed data.
         /// </summary>
-        public PoolConfiguration LargeBufferPoolConfig { get; set; } = new PoolConfiguration
-        {
-            Name = "LargeNetworkBuffer",
-            InitialCapacity = 20,
-            MaxCapacity = 100,
-            Factory = () => new PooledNetworkBuffer(65536), // 64KB buffers
-            ResetAction = buffer => buffer.Reset(),
-            ValidationFunc = buffer => buffer.IsValid(),
-            ValidationInterval = TimeSpan.FromMinutes(5),
-            MaxIdleTime = TimeSpan.FromMinutes(20),
-            Strategy = new DynamicSizeStrategy()
-        };
+        public PoolConfiguration LargeBufferPoolConfig { get; init; }
 
         /// <summary>
         /// Configuration for compression working buffers.
         /// Used by the compression service for network payload optimization.
         /// </summary>
-        public PoolConfiguration CompressionBufferPoolConfig { get; set; } = new PoolConfiguration
+        public PoolConfiguration CompressionBufferPoolConfig { get; init; }
+
+        /// <summary>
+        /// Creates a default network pooling configuration.
+        /// </summary>
+        /// <param name="validationService">Service for pool validation operations</param>
+        /// <returns>Default network pooling configuration</returns>
+        public static NetworkPoolingConfig CreateDefault(IPoolValidationService validationService = null)
         {
-            Name = "CompressionBuffer",
-            InitialCapacity = 25,
-            MaxCapacity = 100,
-            Factory = () => new PooledNetworkBuffer(32768), // 32KB compression buffers
-            ResetAction = buffer => buffer.Reset(),
-            ValidationFunc = buffer => buffer.IsValid(),
-            ValidationInterval = TimeSpan.FromMinutes(5),
-            MaxIdleTime = TimeSpan.FromMinutes(10),
-            Strategy = new DynamicSizeStrategy()
-        };
+            validationService ??= new PoolValidationService();
+            
+            return new NetworkPoolingConfig
+            {
+                SmallBufferPoolConfig = new PoolConfiguration
+                {
+                    Name = "SmallNetworkBuffer",
+                    InitialCapacity = 100,
+                    MaxCapacity = 500,
+                    Factory = null, // Will be set by factory
+                    ResetAction = buffer => validationService.ResetPooledObject(buffer),
+                    ValidationFunc = buffer => validationService.ValidatePooledObject(buffer),
+                    ValidationInterval = TimeSpan.FromMinutes(2),
+                    MaxIdleTime = TimeSpan.FromMinutes(10),
+                    Strategy = new DynamicSizeStrategy(),
+                    EnableValidation = true,
+                    EnableStatistics = true,
+                    DisposalPolicy = PoolDisposalPolicy.PoolDecision
+                },
+                MediumBufferPoolConfig = new PoolConfiguration
+                {
+                    Name = "MediumNetworkBuffer",
+                    InitialCapacity = 50,
+                    MaxCapacity = 200,
+                    Factory = null, // Will be set by factory
+                    ResetAction = buffer => validationService.ResetPooledObject(buffer),
+                    ValidationFunc = buffer => validationService.ValidatePooledObject(buffer),
+                    ValidationInterval = TimeSpan.FromMinutes(3),
+                    MaxIdleTime = TimeSpan.FromMinutes(15),
+                    Strategy = new DynamicSizeStrategy(),
+                    EnableValidation = true,
+                    EnableStatistics = true,
+                    DisposalPolicy = PoolDisposalPolicy.PoolDecision
+                },
+                LargeBufferPoolConfig = new PoolConfiguration
+                {
+                    Name = "LargeNetworkBuffer",
+                    InitialCapacity = 20,
+                    MaxCapacity = 100,
+                    Factory = null, // Will be set by factory
+                    ResetAction = buffer => validationService.ResetPooledObject(buffer),
+                    ValidationFunc = buffer => validationService.ValidatePooledObject(buffer),
+                    ValidationInterval = TimeSpan.FromMinutes(5),
+                    MaxIdleTime = TimeSpan.FromMinutes(20),
+                    Strategy = new DynamicSizeStrategy(),
+                    EnableValidation = true,
+                    EnableStatistics = true,
+                    DisposalPolicy = PoolDisposalPolicy.PoolDecision
+                },
+                CompressionBufferPoolConfig = new PoolConfiguration
+                {
+                    Name = "CompressionBuffer",
+                    InitialCapacity = 25,
+                    MaxCapacity = 100,
+                    Factory = null, // Will be set by factory
+                    ResetAction = buffer => validationService.ResetPooledObject(buffer),
+                    ValidationFunc = buffer => validationService.ValidatePooledObject(buffer),
+                    ValidationInterval = TimeSpan.FromMinutes(3),
+                    MaxIdleTime = TimeSpan.FromMinutes(10),
+                    Strategy = new DynamicSizeStrategy(),
+                    EnableValidation = true,
+                    EnableStatistics = true,
+                    DisposalPolicy = PoolDisposalPolicy.PoolDecision
+                }
+            };
+        }
 
         /// <summary>
         /// Gets the appropriate buffer pool configuration based on expected data size.
@@ -94,64 +128,124 @@ namespace AhBearStudios.Core.Pooling.Configs
         }
 
         /// <summary>
-        /// Creates a default network pooling configuration optimized for FishNet + MemoryPack.
+        /// Gets health monitoring thresholds for network buffer pools.
         /// </summary>
-        /// <returns>Default configuration</returns>
-        public static NetworkPoolingConfig CreateDefault()
+        /// <returns>Health monitoring thresholds</returns>
+        public static NetworkBufferHealthThresholds GetHealthThresholds()
         {
-            return new NetworkPoolingConfig();
+            return new NetworkBufferHealthThresholds
+            {
+                MaxConsecutiveFailures = 5,
+                MaxValidationErrors = 10,
+                CorruptionThresholdPercentage = 0.25,
+                WarningMemoryUsageBytes = 64 * 1024 * 1024, // 64MB
+                CriticalMemoryUsageBytes = 128 * 1024 * 1024, // 128MB
+                MaxIdleTimeBeforeCleanup = TimeSpan.FromMinutes(30),
+                ValidationFrequency = TimeSpan.FromMinutes(2)
+            };
         }
 
         /// <summary>
-        /// Creates a high-performance configuration for intensive network operations.
+        /// Validates the configuration and returns any validation errors.
         /// </summary>
-        /// <returns>High-performance configuration</returns>
-        public static NetworkPoolingConfig CreateHighPerformance()
+        /// <returns>A list of validation errors, empty if configuration is valid</returns>
+        public List<string> Validate()
         {
-            var config = new NetworkPoolingConfig();
+            var errors = new List<string>();
 
-            // Increase pool sizes for high-throughput scenarios
-            config.SmallBufferPoolConfig.InitialCapacity = 200;
-            config.SmallBufferPoolConfig.MaxCapacity = 1000;
+            // Validate Small Buffer Pool Config
+            var smallErrors = ValidatePoolConfiguration(SmallBufferPoolConfig, "SmallBufferPool");
+            errors.AddRange(smallErrors);
 
-            config.MediumBufferPoolConfig.InitialCapacity = 100;
-            config.MediumBufferPoolConfig.MaxCapacity = 500;
+            // Validate Medium Buffer Pool Config
+            var mediumErrors = ValidatePoolConfiguration(MediumBufferPoolConfig, "MediumBufferPool");
+            errors.AddRange(mediumErrors);
 
-            config.LargeBufferPoolConfig.InitialCapacity = 50;
-            config.LargeBufferPoolConfig.MaxCapacity = 250;
+            // Validate Large Buffer Pool Config
+            var largeErrors = ValidatePoolConfiguration(LargeBufferPoolConfig, "LargeBufferPool");
+            errors.AddRange(largeErrors);
 
-            config.CompressionBufferPoolConfig.InitialCapacity = 50;
-            config.CompressionBufferPoolConfig.MaxCapacity = 200;
+            // Validate Compression Buffer Pool Config
+            var compressionErrors = ValidatePoolConfiguration(CompressionBufferPoolConfig, "CompressionBufferPool");
+            errors.AddRange(compressionErrors);
 
-            return config;
+            // Validate size hierarchy
+            if (SmallBufferPoolConfig != null && MediumBufferPoolConfig != null)
+            {
+                if (SmallBufferPoolConfig.MaxCapacity > MediumBufferPoolConfig.MaxCapacity)
+                {
+                    errors.Add("Small buffer pool max capacity should not exceed medium buffer pool max capacity");
+                }
+            }
+
+            if (MediumBufferPoolConfig != null && LargeBufferPoolConfig != null)
+            {
+                if (MediumBufferPoolConfig.MaxCapacity > LargeBufferPoolConfig.MaxCapacity)
+                {
+                    errors.Add("Medium buffer pool max capacity should not exceed large buffer pool max capacity");
+                }
+            }
+
+            return errors;
         }
 
         /// <summary>
-        /// Creates a memory-optimized configuration for resource-constrained environments.
+        /// Validates an individual pool configuration.
         /// </summary>
-        /// <returns>Memory-optimized configuration</returns>
-        public static NetworkPoolingConfig CreateMemoryOptimized()
+        /// <param name="config">Pool configuration to validate</param>
+        /// <param name="configName">Name of the configuration for error messages</param>
+        /// <returns>List of validation errors</returns>
+        private List<string> ValidatePoolConfiguration(PoolConfiguration config, string configName)
         {
-            var config = new NetworkPoolingConfig();
+            var errors = new List<string>();
 
-            // Reduce pool sizes and use shorter idle times
-            config.SmallBufferPoolConfig.InitialCapacity = 50;
-            config.SmallBufferPoolConfig.MaxCapacity = 200;
-            config.SmallBufferPoolConfig.MaxIdleTime = TimeSpan.FromMinutes(5);
+            if (config == null)
+            {
+                errors.Add($"{configName} configuration is null");
+                return errors;
+            }
 
-            config.MediumBufferPoolConfig.InitialCapacity = 25;
-            config.MediumBufferPoolConfig.MaxCapacity = 100;
-            config.MediumBufferPoolConfig.MaxIdleTime = TimeSpan.FromMinutes(7);
+            if (string.IsNullOrWhiteSpace(config.Name))
+            {
+                errors.Add($"{configName} name cannot be null or empty");
+            }
 
-            config.LargeBufferPoolConfig.InitialCapacity = 10;
-            config.LargeBufferPoolConfig.MaxCapacity = 50;
-            config.LargeBufferPoolConfig.MaxIdleTime = TimeSpan.FromMinutes(10);
+            if (config.InitialCapacity < 0)
+            {
+                errors.Add($"{configName} initial capacity must be non-negative");
+            }
 
-            config.CompressionBufferPoolConfig.InitialCapacity = 10;
-            config.CompressionBufferPoolConfig.MaxCapacity = 50;
-            config.CompressionBufferPoolConfig.MaxIdleTime = TimeSpan.FromMinutes(5);
+            if (config.MaxCapacity <= 0)
+            {
+                errors.Add($"{configName} max capacity must be greater than zero");
+            }
 
-            return config;
+            if (config.InitialCapacity > config.MaxCapacity)
+            {
+                errors.Add($"{configName} initial capacity cannot exceed max capacity");
+            }
+
+            if (config.Factory == null)
+            {
+                errors.Add($"{configName} factory cannot be null");
+            }
+
+            if (config.ValidationInterval <= TimeSpan.Zero)
+            {
+                errors.Add($"{configName} validation interval must be greater than zero");
+            }
+
+            if (config.MaxIdleTime <= TimeSpan.Zero)
+            {
+                errors.Add($"{configName} max idle time must be greater than zero");
+            }
+
+            if (config.Strategy == null)
+            {
+                errors.Add($"{configName} pooling strategy cannot be null");
+            }
+
+            return errors;
         }
     }
 }
