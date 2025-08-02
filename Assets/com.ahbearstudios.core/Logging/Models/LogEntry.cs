@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Burst;
 using AhBearStudios.Core.Messaging.Models;
+using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Pools;
 
 namespace AhBearStudios.Core.Logging.Models
