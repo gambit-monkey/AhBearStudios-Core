@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace AhBearStudios.Core.Pooling.Strategies.Models
+namespace AhBearStudios.Core.Pooling.Models
 {
     /// <summary>
     /// Represents the health status of a pooling strategy.
@@ -47,7 +47,7 @@ namespace AhBearStudios.Core.Pooling.Strategies.Models
         /// <summary>
         /// Whether the circuit breaker is currently open.
         /// </summary>
-        public bool CircuitBreakerOpen { get; init; }
+        public bool IsCircuitBreakerOpen { get; init; }
 
         /// <summary>
         /// Number of recent operations that exceeded performance budget.
@@ -137,7 +137,7 @@ namespace AhBearStudios.Core.Pooling.Strategies.Models
                 Status = StrategyHealth.CircuitBreakerOpen,
                 Description = description,
                 Timestamp = DateTime.UtcNow,
-                CircuitBreakerOpen = true
+                IsCircuitBreakerOpen = true
             };
         }
 

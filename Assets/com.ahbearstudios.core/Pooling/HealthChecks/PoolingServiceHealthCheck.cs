@@ -7,6 +7,7 @@ using Unity.Collections;
 using AhBearStudios.Core.HealthChecking.Checks;
 using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.HealthChecking.Models;
+using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Services;
 
 namespace AhBearStudios.Core.Pooling.HealthChecks
@@ -105,7 +106,7 @@ namespace AhBearStudios.Core.Pooling.HealthChecks
                 healthData["TotalMemoryUsageBytes"] = totalMemoryUsage;
                 healthData["TotalMemoryUsageMB"] = totalMemoryUsage / (1024.0 * 1024.0);
                 
-                var healthThresholds = new Models.NetworkBufferHealthThresholds();
+                var healthThresholds = new NetworkBufferHealthThresholds();
                 
                 if (totalMemoryUsage > healthThresholds.CriticalMemoryUsageBytes)
                 {

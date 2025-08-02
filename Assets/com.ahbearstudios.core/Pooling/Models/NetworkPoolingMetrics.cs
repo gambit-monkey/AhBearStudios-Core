@@ -1,6 +1,6 @@
 using System;
 
-namespace AhBearStudios.Core.Pooling.Strategies.Models
+namespace AhBearStudios.Core.Pooling.Models
 {
     /// <summary>
     /// Network-specific metrics for pooling strategies.

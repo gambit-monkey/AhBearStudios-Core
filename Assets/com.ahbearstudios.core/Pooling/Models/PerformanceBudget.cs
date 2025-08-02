@@ -1,6 +1,6 @@
 using System;
 
-namespace AhBearStudios.Core.Pooling.Strategies.Models
+namespace AhBearStudios.Core.Pooling.Models
 {
     /// <summary>
     /// Defines performance budgets for pooling operations to maintain frame rate targets.

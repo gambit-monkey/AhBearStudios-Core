@@ -1,7 +1,6 @@
 using System;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
-using AhBearStudios.Core.Pooling.Strategies.Models;
 
 namespace AhBearStudios.Core.Pooling.Strategies
 {

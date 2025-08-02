@@ -84,21 +84,22 @@ namespace AhBearStudios.Core.Pooling.Models
 
         /// <summary>
         /// Gets the total memory usage across all buffer pools.
+        /// Calculated based on buffer sizes and active counts.
         /// </summary>
         public long TotalMemoryUsage =>
-            (SmallBufferPoolStats?.TotalMemoryUsage ?? 0) +
-            (MediumBufferPoolStats?.TotalMemoryUsage ?? 0) +
-            (LargeBufferPoolStats?.TotalMemoryUsage ?? 0) +
-            (CompressionBufferPoolStats?.TotalMemoryUsage ?? 0);
+            (SmallBufferPoolStats?.ActiveCount ?? 0) * 1024 +  // 1KB per small buffer
+            (MediumBufferPoolStats?.ActiveCount ?? 0) * 16384 + // 16KB per medium buffer
+            (LargeBufferPoolStats?.ActiveCount ?? 0) * 65536 +  // 64KB per large buffer
+            (CompressionBufferPoolStats?.ActiveCount ?? 0) * 4096; // 4KB per compression buffer
 
         /// <summary>
         /// Gets the total number of active objects across all buffer pools.
         /// </summary>
         public int TotalActiveObjects =>
-            (SmallBufferPoolStats?.ActiveObjectCount ?? 0) +
-            (MediumBufferPoolStats?.ActiveObjectCount ?? 0) +
-            (LargeBufferPoolStats?.ActiveObjectCount ?? 0) +
-            (CompressionBufferPoolStats?.ActiveObjectCount ?? 0);
+            (SmallBufferPoolStats?.ActiveCount ?? 0) +
+            (MediumBufferPoolStats?.ActiveCount ?? 0) +
+            (LargeBufferPoolStats?.ActiveCount ?? 0) +
+            (CompressionBufferPoolStats?.ActiveCount ?? 0);
 
         /// <summary>
         /// Gets the efficiency score (0.0 to 1.0) based on buffer return rate and pool utilization.

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
-using AhBearStudios.Core.Pooling.Strategies.Models;
 
 namespace AhBearStudios.Core.Pooling.Strategies
 {
@@ -318,7 +317,7 @@ namespace AhBearStudios.Core.Pooling.Strategies
                 Timestamp = DateTime.UtcNow,
                 Warnings = warnings,
                 Errors = errors,
-                CircuitBreakerOpen = _circuitBreakerTriggerCount >= _configuration.CircuitBreakerFailureThreshold,
+                IsCircuitBreakerOpen = _circuitBreakerTriggerCount >= _configuration.CircuitBreakerFailureThreshold,
                 OperationCount = _recentOperationTimes.Count,
                 ErrorCount = _errorCount,
                 AverageOperationTime = GetAverageOperationTime(),
