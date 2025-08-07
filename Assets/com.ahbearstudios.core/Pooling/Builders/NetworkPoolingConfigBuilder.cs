@@ -49,28 +49,24 @@ namespace AhBearStudios.Core.Pooling.Builders
                     InitialCapacity = 200,
                     MaxCapacity = 1000,
                     ValidationInterval = TimeSpan.FromMinutes(1),
-                    Strategy = HighPerformanceStrategy.For60FPS()
                 },
                 MediumBufferPoolConfig = _config.MediumBufferPoolConfig with
                 {
                     InitialCapacity = 100,
                     MaxCapacity = 500,
                     ValidationInterval = TimeSpan.FromMinutes(2),
-                    Strategy = HighPerformanceStrategy.For60FPS()
                 },
                 LargeBufferPoolConfig = _config.LargeBufferPoolConfig with
                 {
                     InitialCapacity = 50,
                     MaxCapacity = 250,
                     ValidationInterval = TimeSpan.FromMinutes(3),
-                    Strategy = HighPerformanceStrategy.For60FPS()
                 },
                 CompressionBufferPoolConfig = _config.CompressionBufferPoolConfig with
                 {
                     InitialCapacity = 50,
                     MaxCapacity = 200,
                     ValidationInterval = TimeSpan.FromMinutes(1),
-                    Strategy = HighPerformanceStrategy.For60FPS()
                 }
             };
             return this;
@@ -90,7 +86,6 @@ namespace AhBearStudios.Core.Pooling.Builders
                     MaxCapacity = 200,
                     MaxIdleTime = TimeSpan.FromMinutes(5),
                     ValidationInterval = TimeSpan.FromMinutes(5),
-                    Strategy = FixedSizeStrategy.ForMobile(50)
                 },
                 MediumBufferPoolConfig = _config.MediumBufferPoolConfig with
                 {
@@ -98,7 +93,6 @@ namespace AhBearStudios.Core.Pooling.Builders
                     MaxCapacity = 100,
                     MaxIdleTime = TimeSpan.FromMinutes(7),
                     ValidationInterval = TimeSpan.FromMinutes(7),
-                    Strategy = FixedSizeStrategy.ForMobile(25)
                 },
                 LargeBufferPoolConfig = _config.LargeBufferPoolConfig with
                 {
@@ -106,7 +100,6 @@ namespace AhBearStudios.Core.Pooling.Builders
                     MaxCapacity = 50,
                     MaxIdleTime = TimeSpan.FromMinutes(10),
                     ValidationInterval = TimeSpan.FromMinutes(10),
-                    Strategy = FixedSizeStrategy.ForMobile(10)
                 },
                 CompressionBufferPoolConfig = _config.CompressionBufferPoolConfig with
                 {
@@ -114,7 +107,6 @@ namespace AhBearStudios.Core.Pooling.Builders
                     MaxCapacity = 50,
                     MaxIdleTime = TimeSpan.FromMinutes(5),
                     ValidationInterval = TimeSpan.FromMinutes(5),
-                    Strategy = FixedSizeStrategy.ForMobile(10)
                 }
             };
             return this;

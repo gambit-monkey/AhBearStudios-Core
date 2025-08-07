@@ -69,6 +69,21 @@ namespace AhBearStudios.Core.Pooling.Models
         public DateTime CreatedAt { get; set; }
         
         /// <summary>
+        /// Gets or sets the initial capacity of the pool when it was created.
+        /// </summary>
+        public int InitialCapacity { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the maximum allowed capacity of the pool.
+        /// </summary>
+        public int MaxCapacity { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the total number of requests made to the pool.
+        /// </summary>
+        public long TotalRequestCount { get; set; }
+        
+        /// <summary>
         /// Gets the cache hit ratio as a percentage.
         /// </summary>
         public double HitRatio
@@ -132,6 +147,7 @@ namespace AhBearStudios.Core.Pooling.Models
             TotalReturns = 0;
             CacheHits = 0;
             CacheMisses = 0;
+            TotalRequestCount = 0;
             LastUpdated = DateTime.UtcNow;
             CreatedAt = DateTime.UtcNow;
         }
@@ -143,6 +159,7 @@ namespace AhBearStudios.Core.Pooling.Models
         public void RecordGet(bool wasFromPool)
         {
             TotalGets++;
+            TotalRequestCount++;
             if (wasFromPool)
             {
                 CacheHits++;

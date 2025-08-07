@@ -1,7 +1,15 @@
 using System;
 using System.Collections.Generic;
+using AhBearStudios.Core.Alerting;
+using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
+using AhBearStudios.Core.Pooling.Messages;
+using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Messaging;
+using AhBearStudios.Core.Profiling.Models;
+using Unity.Collections;
 
 namespace AhBearStudios.Core.Pooling.Strategies
 {
@@ -20,6 +28,20 @@ namespace AhBearStudios.Core.Pooling.Strategies
         private readonly PoolingStrategyConfig _configuration;
         private readonly PerformanceBudget _performanceBudget;
         
+        // Core system integration
+        private readonly ILoggingService _loggingService;
+        private readonly IProfilerService _profilerService;
+        private readonly IAlertService _alertService;
+        private readonly IMessageBusService _messageBusService;
+        
+        // Performance profiling tags
+        private static readonly ProfilerTag CalculateTargetTag = new ProfilerTag("DynamicSize.CalculateTarget");
+        private static readonly ProfilerTag ShouldExpandTag = new ProfilerTag("DynamicSize.ShouldExpand");
+        private static readonly ProfilerTag ShouldContractTag = new ProfilerTag("DynamicSize.ShouldContract");
+        
+        // Alert source identifier
+        private static readonly FixedString64Bytes AlertSource = "DynamicSizeStrategy";
+        
         // Performance monitoring
         private readonly List<TimeSpan> _recentOperationTimes = new();
         private readonly object _metricsLock = new object();
@@ -29,31 +51,52 @@ namespace AhBearStudios.Core.Pooling.Strategies
 
         /// <summary>
         /// Initializes a new instance of the DynamicSizeStrategy.
+        /// This constructor should be called by the DynamicSizeStrategyFactory.
         /// </summary>
+        /// <param name="configuration">Strategy configuration</param>
+        /// <param name="loggingService">The logging service for system integration</param>
+        /// <param name="profilerService">The profiler service for performance monitoring</param>
+        /// <param name="alertService">The alert service for critical error notifications</param>
+        /// <param name="messageBusService">The message bus service for event publishing</param>
         /// <param name="expandThreshold">Utilization threshold to trigger expansion (0.0-1.0)</param>
         /// <param name="contractThreshold">Utilization threshold to trigger contraction (0.0-1.0)</param>
         /// <param name="maxUtilization">Maximum allowed utilization before forcing expansion (0.0-1.0)</param>
         /// <param name="validationInterval">Interval between validation checks</param>
         /// <param name="idleTimeThreshold">Time threshold for considering objects idle</param>
-        /// <param name="configuration">Strategy configuration (optional)</param>
         public DynamicSizeStrategy(
+            PoolingStrategyConfig configuration,
+            ILoggingService loggingService,
+            IProfilerService profilerService,
+            IAlertService alertService,
+            IMessageBusService messageBusService,
             double expandThreshold = 0.8,
             double contractThreshold = 0.3,
             double maxUtilization = 0.95,
             TimeSpan? validationInterval = null,
-            TimeSpan? idleTimeThreshold = null,
-            PoolingStrategyConfig configuration = null)
+            TimeSpan? idleTimeThreshold = null)
         {
+            // Validate dependencies
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _loggingService = loggingService ?? throw new ArgumentNullException(nameof(loggingService));
+            _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
+            _alertService = alertService ?? throw new ArgumentNullException(nameof(alertService));
+            _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
+            
             _expandThreshold = Math.Clamp(expandThreshold, 0.0, 1.0);
             _contractThreshold = Math.Clamp(contractThreshold, 0.0, 1.0);
             _maxUtilization = Math.Clamp(maxUtilization, 0.0, 1.0);
             _validationInterval = validationInterval ?? TimeSpan.FromMinutes(5);
             _idleTimeThreshold = idleTimeThreshold ?? TimeSpan.FromMinutes(10);
-            _configuration = configuration ?? PoolingStrategyConfig.Default("DynamicSize");
             _performanceBudget = _configuration.PerformanceBudget ?? PerformanceBudget.For60FPS();
 
             if (_contractThreshold >= _expandThreshold)
                 throw new ArgumentException("Contract threshold must be less than expand threshold");
+            
+            // Subscribe to profiler threshold events for performance monitoring
+            _profilerService.ThresholdExceeded += OnPerformanceThresholdExceeded;
+            
+            _loggingService.LogInfo($"DynamicSizeStrategy initialized - Config: {_configuration.Name}, " +
+                $"Expand: {_expandThreshold}, Contract: {_contractThreshold}, Max: {_maxUtilization}");
         }
 
         /// <summary>
@@ -68,15 +111,34 @@ namespace AhBearStudios.Core.Pooling.Strategies
         /// <returns>Target pool size</returns>
         public int CalculateTargetSize(PoolStatistics statistics)
         {
-            if (statistics == null) return 0;
+            if (statistics == null)
+            {
+                _loggingService.LogWarning("CalculateTargetSize called with null statistics");
+                return 0;
+            }
 
+            using var profileSession = _profilerService.BeginScope(CalculateTargetTag);
+            
             var currentUtilization = statistics.Utilization / 100.0;
             var currentSize = statistics.TotalCount;
+            
+            _loggingService.LogDebug($"Calculating target size - Current: {currentSize}, Utilization: {currentUtilization:P}");
 
             // If utilization is very high, expand aggressively
             if (currentUtilization >= _maxUtilization)
             {
-                return Math.Max(currentSize * 2, currentSize + 10);
+                var targetSize = Math.Max(currentSize * 2, currentSize + 10);
+                _loggingService.LogInfo($"Max utilization exceeded ({currentUtilization:P}) - expanding aggressively from {currentSize} to {targetSize}");
+                
+                _messageBusService.PublishMessage(PoolExpansionMessage.Create(
+                    strategyName: Name,
+                    oldSize: currentSize,
+                    newSize: targetSize,
+                    reason: "MaxUtilizationExceeded",
+                    source: AlertSource
+                ));
+                
+                return targetSize;
             }
 
             // If utilization is above expand threshold, grow gradually
@@ -104,10 +166,23 @@ namespace AhBearStudios.Core.Pooling.Strategies
         /// <returns>True if the pool should expand</returns>
         public bool ShouldExpand(PoolStatistics statistics)
         {
-            if (statistics == null) return false;
+            if (statistics == null)
+            {
+                _loggingService.LogWarning("ShouldExpand called with null statistics");
+                return false;
+            }
 
+            using var profileSession = _profilerService.BeginScope(ShouldExpandTag);
+            
             var utilization = statistics.Utilization / 100.0;
-            return utilization >= _expandThreshold || statistics.AvailableCount == 0;
+            var shouldExpand = utilization >= _expandThreshold || statistics.AvailableCount == 0;
+            
+            if (shouldExpand)
+            {
+                _loggingService.LogDebug($"Should expand - Utilization: {utilization:P}, Available: {statistics.AvailableCount}");
+            }
+            
+            return shouldExpand;
         }
 
         /// <summary>
@@ -117,12 +192,24 @@ namespace AhBearStudios.Core.Pooling.Strategies
         /// <returns>True if the pool should contract</returns>
         public bool ShouldContract(PoolStatistics statistics)
         {
-            if (statistics == null) return false;
+            if (statistics == null)
+            {
+                _loggingService.LogWarning("ShouldContract called with null statistics");
+                return false;
+            }
 
+            using var profileSession = _profilerService.BeginScope(ShouldContractTag);
+            
             var utilization = statistics.Utilization / 100.0;
             var hasIdleTime = statistics.AverageIdleTimeMinutes > _idleTimeThreshold.TotalMinutes;
+            var shouldContract = utilization <= _contractThreshold && hasIdleTime && statistics.TotalCount > 1;
             
-            return utilization <= _contractThreshold && hasIdleTime && statistics.TotalCount > 1;
+            if (shouldContract)
+            {
+                _loggingService.LogDebug($"Should contract - Utilization: {utilization:P}, Idle time: {statistics.AverageIdleTimeMinutes:F1}min");
+            }
+            
+            return shouldContract;
         }
 
         /// <summary>
@@ -215,7 +302,18 @@ namespace AhBearStudios.Core.Pooling.Strategies
             if (errorRate > 0.1) // 10% error rate
             {
                 _circuitBreakerTriggerCount++;
-                return _circuitBreakerTriggerCount >= _configuration.CircuitBreakerFailureThreshold;
+                _loggingService.LogWarning($"High error rate detected: {errorRate:P} - Circuit breaker trigger count: {_circuitBreakerTriggerCount}");
+                
+                if (_circuitBreakerTriggerCount >= _configuration.CircuitBreakerFailureThreshold)
+                {
+                    _alertService.RaiseAlert(
+                        message: "DynamicSize strategy circuit breaker triggered due to high error rate",
+                        severity: AlertSeverity.Critical,
+                        source: AlertSource,
+                        tag: "CircuitBreakerTriggered"
+                    );
+                    return true;
+                }
             }
 
             // Trigger if performance is severely degraded
@@ -231,7 +329,18 @@ namespace AhBearStudios.Core.Pooling.Strategies
                     if (averageTime > _performanceBudget.MaxOperationTime.Multiply(5)) // 5x over budget
                     {
                         _circuitBreakerTriggerCount++;
-                        return _circuitBreakerTriggerCount >= _configuration.CircuitBreakerFailureThreshold;
+                        _loggingService.LogWarning($"Severe performance degradation detected: {averageTime.TotalMilliseconds}ms average - Circuit breaker trigger count: {_circuitBreakerTriggerCount}");
+                        
+                        if (_circuitBreakerTriggerCount >= _configuration.CircuitBreakerFailureThreshold)
+                        {
+                            _alertService.RaiseAlert(
+                                message: "DynamicSize strategy circuit breaker triggered due to performance degradation",
+                                severity: AlertSeverity.Critical,
+                                source: AlertSource,
+                                tag: "PerformanceDegradation"
+                            );
+                            return true;
+                        }
                     }
                 }
             }
@@ -338,8 +447,7 @@ namespace AhBearStudios.Core.Pooling.Strategies
             // Log performance warnings if enabled
             if (_performanceBudget.LogPerformanceWarnings && duration > _performanceBudget.MaxOperationTime)
             {
-                // Would log warning here if logging service was available
-                // For now, just track in metrics
+                _loggingService.LogWarning($"Pool operation exceeded performance budget: {duration.TotalMilliseconds}ms > {_performanceBudget.MaxOperationTime.TotalMilliseconds}ms");
             }
         }
 
@@ -350,7 +458,17 @@ namespace AhBearStudios.Core.Pooling.Strategies
         public void OnPoolError(Exception error)
         {
             _errorCount++;
-            // Could log error details here if logging service was available
+            _loggingService.LogException($"Pool operation error in {Name} strategy - Error count: {_errorCount}", error);
+            
+            if (_errorCount > 10)
+            {
+                _alertService.RaiseAlert(
+                    message: "High error rate in DynamicSizeStrategy",
+                    severity: AlertSeverity.Warning,
+                    source: AlertSource,
+                    tag: "HighErrorRate"
+                );
+            }
         }
 
         /// <summary>
@@ -404,6 +522,28 @@ namespace AhBearStudios.Core.Pooling.Strategies
                         max = time;
                 }
                 return max;
+            }
+        }
+
+        /// <summary>
+        /// Handles performance threshold exceeded events from the profiler service.
+        /// </summary>
+        /// <param name="tag">The profiler tag that exceeded threshold</param>
+        /// <param name="value">The measured value</param>
+        /// <param name="unit">The unit of measurement</param>
+        private void OnPerformanceThresholdExceeded(ProfilerTag tag, double value, string unit)
+        {
+            _loggingService.LogWarning($"DynamicSize performance threshold exceeded for {tag.Name}: {value}{unit}");
+            
+            // Record performance degradation
+            if (value > 10.0) // > 10ms is significant for dynamic sizing operations
+            {
+                _alertService.RaiseAlert(
+                    message: $"Severe performance degradation in {Name}: {tag.Name} took {value}{unit}",
+                    severity: AlertSeverity.Warning,
+                    source: AlertSource,
+                    tag: "DynamicSizePerformanceDegradation"
+                );
             }
         }
 

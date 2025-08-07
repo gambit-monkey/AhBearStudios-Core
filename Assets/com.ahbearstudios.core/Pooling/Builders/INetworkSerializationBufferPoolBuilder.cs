@@ -41,12 +41,6 @@ namespace AhBearStudios.Core.Pooling.Builders
         /// <returns>Builder instance for method chaining</returns>
         INetworkSerializationBufferPoolBuilder WithValidationService(IPoolValidationService validationService);
 
-        /// <summary>
-        /// Sets the pooling strategy to use for all buffer pools.
-        /// </summary>
-        /// <param name="strategy">Pooling strategy</param>
-        /// <returns>Builder instance for method chaining</returns>
-        INetworkSerializationBufferPoolBuilder WithPoolingStrategy(IPoolingStrategy strategy);
 
         /// <summary>
         /// Configures the builder with default settings optimized for FishNet + MemoryPack.

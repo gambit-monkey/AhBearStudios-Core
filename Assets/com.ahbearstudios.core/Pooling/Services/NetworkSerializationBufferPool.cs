@@ -6,7 +6,6 @@ using AhBearStudios.Core.Pooling.Factories;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Pools;
 using AhBearStudios.Core.Pooling.Services;
-using AhBearStudios.Core.Pooling.Strategies;
 
 namespace AhBearStudios.Core.Pooling.Services
 {
@@ -22,7 +21,6 @@ namespace AhBearStudios.Core.Pooling.Services
         private readonly NetworkPoolingConfig _configuration;
         private readonly INetworkBufferPoolFactory _poolFactory;
         private readonly IPoolValidationService _validationService;
-        private readonly IPoolingStrategy _poolingStrategy;
         private readonly NetworkBufferPools _bufferPools;
         private bool _disposed;
 
@@ -40,23 +38,20 @@ namespace AhBearStudios.Core.Pooling.Services
         /// <param name="configuration">Network pooling configuration</param>
         /// <param name="poolFactory">Factory for creating buffer pools</param>
         /// <param name="validationService">Service for pool validation operations</param>
-        /// <param name="poolingStrategy">Strategy for pool management</param>
         /// <exception cref="ArgumentNullException">Thrown when any required parameter is null</exception>
         public NetworkSerializationBufferPool(
             ILoggingService logger,
             NetworkPoolingConfig configuration,
             INetworkBufferPoolFactory poolFactory,
-            IPoolValidationService validationService,
-            IPoolingStrategy poolingStrategy)
+            IPoolValidationService validationService)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _poolFactory = poolFactory ?? throw new ArgumentNullException(nameof(poolFactory));
             _validationService = validationService ?? throw new ArgumentNullException(nameof(validationService));
-            _poolingStrategy = poolingStrategy ?? throw new ArgumentNullException(nameof(poolingStrategy));
 
             // Create all buffer pools using the factory
-            _bufferPools = _poolFactory.CreateAllBufferPools(_configuration, _poolingStrategy);
+            _bufferPools = _poolFactory.CreateAllBufferPools(_configuration);
 
             _logger.LogInfo($"NetworkSerializationBufferPool initialized with {_bufferPools.SmallBufferPool?.GetType().Name}, {_bufferPools.MediumBufferPool?.GetType().Name}, {_bufferPools.LargeBufferPool?.GetType().Name}, {_bufferPools.CompressionBufferPool?.GetType().Name}", default, nameof(NetworkSerializationBufferPool));
         }

@@ -13,43 +13,43 @@ namespace AhBearStudios.Core.Pooling.Factories
     {
         /// <summary>
         /// Creates a small buffer pool optimized for simple types (1KB buffers).
+        /// Uses AdaptiveNetworkStrategy for handling frequent small packet traffic.
         /// </summary>
         /// <param name="poolConfig">Pool configuration</param>
-        /// <param name="strategy">Pooling strategy</param>
         /// <returns>Configured small buffer pool</returns>
-        SmallBufferPool CreateSmallBufferPool(PoolConfiguration poolConfig, IPoolingStrategy strategy);
+        SmallBufferPool CreateSmallBufferPool(PoolConfiguration poolConfig);
 
         /// <summary>
         /// Creates a medium buffer pool optimized for medium complexity objects (16KB buffers).
+        /// Uses HighPerformanceStrategy for consistent 60+ FPS performance.
         /// </summary>
         /// <param name="poolConfig">Pool configuration</param>
-        /// <param name="strategy">Pooling strategy</param>
         /// <returns>Configured medium buffer pool</returns>
-        MediumBufferPool CreateMediumBufferPool(PoolConfiguration poolConfig, IPoolingStrategy strategy);
+        MediumBufferPool CreateMediumBufferPool(PoolConfiguration poolConfig);
 
         /// <summary>
         /// Creates a large buffer pool optimized for complex objects (64KB buffers).
+        /// Uses DynamicSizeStrategy for memory-conscious scaling.
         /// </summary>
         /// <param name="poolConfig">Pool configuration</param>
-        /// <param name="strategy">Pooling strategy</param>
         /// <returns>Configured large buffer pool</returns>
-        LargeBufferPool CreateLargeBufferPool(PoolConfiguration poolConfig, IPoolingStrategy strategy);
+        LargeBufferPool CreateLargeBufferPool(PoolConfiguration poolConfig);
 
         /// <summary>
         /// Creates a compression buffer pool optimized for compression operations (32KB buffers).
+        /// Uses AdaptiveNetworkStrategy for compression workload spikes.
         /// </summary>
         /// <param name="poolConfig">Pool configuration</param>
-        /// <param name="strategy">Pooling strategy</param>
         /// <returns>Configured compression buffer pool</returns>
-        CompressionBufferPool CreateCompressionBufferPool(PoolConfiguration poolConfig, IPoolingStrategy strategy);
+        CompressionBufferPool CreateCompressionBufferPool(PoolConfiguration poolConfig);
 
         /// <summary>
         /// Creates all network buffer pools from a network pooling configuration.
+        /// Each pool uses its optimal strategy (Adaptive, HighPerformance, or Dynamic).
         /// </summary>
         /// <param name="networkConfig">Network pooling configuration</param>
-        /// <param name="strategy">Pooling strategy to use for all pools</param>
         /// <returns>Collection of created buffer pools</returns>
-        NetworkBufferPools CreateAllBufferPools(NetworkPoolingConfig networkConfig, IPoolingStrategy strategy);
+        NetworkBufferPools CreateAllBufferPools(NetworkPoolingConfig networkConfig);
     }
 
     /// <summary>

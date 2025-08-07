@@ -262,6 +262,198 @@ public interface IMessageFilter<T> where T : class, IMessage
 }
 ```
 
+## 🔢 TypeCode Management
+
+The AhBearStudios Core messaging system uses a centralized TypeCode management approach to prevent conflicts and enable efficient message routing. All message types must use the `MessageTypeCodes` class for consistent identifier assignment.
+
+### Centralized TypeCode System
+
+TypeCodes are organized into dedicated ranges for each functional system to prevent conflicts and provide clear ownership:
+
+| System | Range | Purpose |
+|--------|-------|---------|
+| Core System | 1000-1099 | General messaging, startup, shutdown |
+| Logging System | 1100-1199 | Logging infrastructure |
+| Health System | 1200-1299 | Health checks and monitoring |
+| Pooling System | 1300-1399 | Object pooling strategies |
+| Alerting System | 1400-1499 | Alert and notification messages |
+| Profiling System | 1500-1599 | Performance profiling |
+| Serialization System | 1600-1699 | Serialization infrastructure |
+| Game Systems | 2000-2999 | Game-specific messages |
+| Custom/Third-party | 3000-64999 | Custom integrations |
+| Reserved/Testing | 65000-65535 | Special cases and testing |
+
+### Implementation Guidelines
+
+Always use centralized constants from `MessageTypeCodes` instead of hard-coding TypeCode values:
+
+```csharp
+using AhBearStudios.Core.Messaging.Messages;
+
+// ✅ CORRECT: Use centralized constants
+public readonly record struct PoolExpansionMessage : IMessage
+{
+    public Guid Id { get; init; }
+    public long TimestampTicks { get; init; }
+    public ushort TypeCode { get; init; }
+    public FixedString64Bytes Source { get; init; }
+    public MessagePriority Priority { get; init; }
+    public Guid CorrelationId { get; init; }
+    
+    // Pooling-specific properties
+    public string StrategyName { get; init; }
+    public int OldSize { get; init; }
+    public int NewSize { get; init; }
+    public string Reason { get; init; }
+    
+    public static PoolExpansionMessage Create(
+        string strategyName,
+        int oldSize,
+        int newSize,
+        string reason,
+        FixedString64Bytes source = default,
+        Guid correlationId = default)
+    {
+        return new PoolExpansionMessage
+        {
+            Id = Guid.NewGuid(),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.PoolExpansion, // ✅ Use constant
+            Source = source.IsEmpty ? "PoolingStrategy" : source,
+            Priority = MessagePriority.Normal,
+            CorrelationId = correlationId,
+            StrategyName = strategyName,
+            OldSize = oldSize,
+            NewSize = newSize,
+            Reason = reason
+        };
+    }
+}
+
+// ❌ INCORRECT: Never hard-code TypeCode values
+public readonly record struct BadMessage : IMessage
+{
+    public static BadMessage Create()
+    {
+        return new BadMessage
+        {
+            TypeCode = 1300, // ❌ Conflicts possible, no clear ownership
+            // ...
+        };
+    }
+}
+```
+
+### TypeCode Validation
+
+Use the built-in validation methods to ensure proper TypeCode usage:
+
+```csharp
+// Validate TypeCode is within system range
+bool isPoolingMessage = MessageTypeCodes.IsTypeCodeInRange(
+    typeCode: MessageTypeCodes.PoolExpansion,
+    systemRangeStart: MessageTypeCodes.PoolingSystemRangeStart,
+    systemRangeEnd: MessageTypeCodes.PoolingSystemRangeEnd
+);
+
+// Get system name for a TypeCode
+string systemName = MessageTypeCodes.GetSystemForTypeCode(MessageTypeCodes.PoolExpansion);
+// Returns: "Pooling System"
+
+// Available pooling system TypeCodes
+var poolingTypeCodes = new[]
+{
+    MessageTypeCodes.PoolExpansion,           // 1300
+    MessageTypeCodes.NetworkSpikeDetected,   // 1301
+    MessageTypeCodes.PoolContraction,        // 1302
+    MessageTypeCodes.BufferExhaustion,       // 1303
+    MessageTypeCodes.CircuitBreakerStateChanged // 1304
+};
+```
+
+### Adding New Message Types
+
+When creating new message types for existing systems:
+
+1. **Add constant to MessageTypeCodes.cs** within the system's allocated range
+2. **Document the purpose** with XML comments
+3. **Use the constant** in your message factory method
+4. **Register with MessageBus** if using automatic registration
+
+```csharp
+// 1. Add to MessageTypeCodes.cs
+public static class MessageTypeCodes
+{
+    #region Pooling System Messages (1300-1399)
+    
+    public const ushort PoolExpansion = 1300;
+    public const ushort NetworkSpikeDetected = 1301;
+    public const ushort PoolContraction = 1302;
+    public const ushort BufferExhaustion = 1303;
+    public const ushort CircuitBreakerStateChanged = 1304;
+    
+    /// <summary>
+    /// Type code for pool performance degradation messages.
+    /// Sent when pool performance metrics exceed acceptable thresholds.
+    /// </summary>
+    public const ushort PoolPerformanceDegradation = 1305;
+    
+    #endregion
+}
+
+// 2. Use in message implementation
+public static PoolPerformanceDegradationMessage Create(...)
+{
+    return new PoolPerformanceDegradationMessage
+    {
+        TypeCode = MessageTypeCodes.PoolPerformanceDegradation,
+        // ...
+    };
+}
+
+// 3. Register with MessageBus (if using automatic registration)
+_messageBus.RegisterMessageType<PoolPerformanceDegradationMessage>();
+```
+
+### Requesting New System Ranges
+
+For new functional systems requiring TypeCode allocation:
+
+1. **Document system requirements** - Define message types needed
+2. **Request range allocation** - Update MessageTypeCodes.cs documentation
+3. **Add range constants** - Include start/end constants for validation
+4. **Update GetSystemForTypeCode()** - Add the new system to the switch expression
+
+### Integration with MessageRegistry
+
+The MessageRegistry automatically validates TypeCodes and can detect conflicts:
+
+```csharp
+// MessageRegistry validates TypeCodes during registration
+var registry = container.Resolve<MessageRegistry>();
+
+// Auto-assignment starts at 1000 but respects explicit TypeCodes
+registry.RegisterMessage<MyMessage>(); // Uses MessageTypeCodeAttribute or auto-assigns
+
+// Explicit TypeCode assignment
+[MessageTypeCode(MessageTypeCodes.PoolExpansion)]
+public readonly record struct PoolExpansionMessage : IMessage
+{
+    // Implementation...
+}
+```
+
+### Best Practices
+
+- **Always use constants** - Never hard-code TypeCode values
+- **Follow ranges** - Respect system range boundaries
+- **Document purpose** - Add clear XML comments for new TypeCodes
+- **Validate ranges** - Use IsTypeCodeInRange() for validation
+- **Register properly** - Use MessageBus registration for automatic discovery
+- **Handle conflicts** - The system will detect and warn about TypeCode conflicts
+
+This centralized approach ensures scalable, conflict-free message identification across all AhBearStudios Core systems while maintaining clear ownership and efficient routing.
+
 ## ⚙️ Configuration
 
 ### Basic Configuration

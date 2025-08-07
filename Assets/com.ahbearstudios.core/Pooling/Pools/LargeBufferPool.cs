@@ -4,6 +4,8 @@ using System.Threading;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Pooling.Strategies;
+using AhBearStudios.Core.Pooling.Factories;
+using AhBearStudios.Core.Pooling.Builders;
 
 namespace AhBearStudios.Core.Pooling.Pools
 {
@@ -27,11 +29,24 @@ namespace AhBearStudios.Core.Pooling.Pools
         /// Initializes a new LargeBufferPool instance.
         /// </summary>
         /// <param name="configuration">Pool configuration</param>
-        /// <param name="strategy">Pool strategy, defaults to DynamicSizeStrategy</param>
-        public LargeBufferPool(PoolConfiguration configuration, IPoolingStrategy strategy = null)
+        /// <param name="strategyFactory">Factory for creating the DynamicSizeStrategy</param>
+        public LargeBufferPool(PoolConfiguration configuration, IDynamicSizeStrategyFactory strategyFactory)
         {
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-            _strategy = strategy ?? new DynamicSizeStrategy();
+            if (strategyFactory == null)
+                throw new ArgumentNullException(nameof(strategyFactory));
+
+            // Create strategy configuration for large buffer pool
+            var strategyConfig = new PoolingStrategyConfigBuilder()
+                .WithName("LargeBufferPool")
+                .NetworkOptimized() // Use network optimization preset
+                .WithCircuitBreaker(true, 10, TimeSpan.FromMinutes(5))
+                .WithHealthMonitoring(true, TimeSpan.FromMinutes(2))
+                .WithMetrics(true, 1000)
+                .WithNetworkOptimizations(true)
+                .Build();
+
+            _strategy = strategyFactory.Create(strategyConfig);
             _objects = new ConcurrentQueue<PooledNetworkBuffer>();
             _statistics = new PoolStatistics { CreatedAt = DateTime.UtcNow };
 

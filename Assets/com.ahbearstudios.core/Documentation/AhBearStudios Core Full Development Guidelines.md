@@ -1039,6 +1039,155 @@ namespace AhBearStudios.Core.Messaging
 }
 ```
 
+### **Message TypeCode Management**
+
+#### **Centralized TypeCode System**
+
+All message types in the AhBearStudios Core system must use centralized TypeCode management to prevent conflicts and enable efficient message routing. The `MessageTypeCodes` class provides organized ranges for different functional systems.
+
+* **Use centralized constants** - Never hard-code TypeCode values directly in message implementations
+* **Follow range allocation** - Each functional system has a dedicated 100-value range for TypeCode assignment
+* **Request new ranges** - Contact the architecture team to request new TypeCode ranges for new systems
+* **Validate ranges** - Use the provided validation methods to ensure TypeCodes are within proper ranges
+
+#### **TypeCode Range Allocation**
+
+The following ranges are allocated for each functional system:
+
+```csharp
+// Core System: 1000-1099 (General messaging, startup, shutdown)
+// Logging System: 1100-1199 (Logging infrastructure) 
+// Health System: 1200-1299 (Health checks and monitoring)
+// Pooling System: 1300-1399 (Object pooling strategies)
+// Alerting System: 1400-1499 (Alert and notification messages)
+// Profiling System: 1500-1599 (Performance profiling)
+// Serialization System: 1600-1699 (Serialization infrastructure)
+// Authentication System: 1700-1799 (Auth and security)
+// Networking System: 1800-1899 (Network communication)
+// User Interface System: 1900-1999 (UI and interaction)
+// Game Systems: 2000-2999 (Game-specific messages)
+// Custom/Third-party: 3000-64999 (Custom integrations)
+// Reserved/Testing: 65000-65535 (Special cases and testing)
+```
+
+#### **Implementation Pattern**
+
+Always reference centralized constants instead of hard-coding TypeCode values:
+
+```csharp
+// ✅ CORRECT: Use centralized constants
+using AhBearStudios.Core.Messaging.Messages;
+
+public readonly record struct PoolExpansionMessage : IMessage
+{
+    // Other IMessage properties...
+    
+    public static PoolExpansionMessage Create(
+        string strategyName,
+        int oldSize,
+        int newSize,
+        string reason)
+    {
+        return new PoolExpansionMessage
+        {
+            Id = Guid.NewGuid(),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.PoolExpansion, // ✅ Use constant
+            Source = "PoolingStrategy",
+            Priority = MessagePriority.Normal,
+            // ... other properties
+        };
+    }
+}
+
+// ❌ INCORRECT: Never hard-code TypeCode values
+public readonly record struct BadMessage : IMessage
+{
+    public static BadMessage Create()
+    {
+        return new BadMessage
+        {
+            TypeCode = 1300, // ❌ Hard-coded value - conflicts possible
+            // ...
+        };
+    }
+}
+```
+
+#### **Range Validation**
+
+Use the provided validation methods to ensure TypeCodes are properly allocated:
+
+```csharp
+// Validate TypeCode is within system range
+bool isValid = MessageTypeCodes.IsTypeCodeInRange(
+    typeCode: MessageTypeCodes.PoolExpansion,
+    systemRangeStart: MessageTypeCodes.PoolingSystemRangeStart,
+    systemRangeEnd: MessageTypeCodes.PoolingSystemRangeEnd
+);
+
+// Get system name for a TypeCode
+string systemName = MessageTypeCodes.GetSystemForTypeCode(MessageTypeCodes.PoolExpansion);
+// Returns: "Pooling System"
+```
+
+#### **Adding New Message Types**
+
+When creating new message types for existing systems:
+
+1. **Add constant to MessageTypeCodes** - Add the new constant within the system's allocated range
+2. **Update documentation** - Add a descriptive comment explaining the message purpose
+3. **Use the constant** - Reference the constant in your message Create() method
+4. **Validate range** - Ensure the TypeCode falls within your system's allocated range
+
+```csharp
+// Step 1: Add to MessageTypeCodes.cs
+namespace AhBearStudios.Core.Messaging.Messages
+{
+    public static class MessageTypeCodes
+    {
+        #region Pooling System Messages (1300-1399)
+        
+        public const ushort PoolExpansion = 1300;
+        public const ushort NetworkSpikeDetected = 1301;
+        public const ushort PoolContraction = 1302;
+        public const ushort BufferExhaustion = 1303;
+        public const ushort CircuitBreakerStateChanged = 1304;
+        
+        // Step 2: Add new message type within range
+        /// <summary>
+        /// Type code for pool performance degradation messages.
+        /// Sent when pool performance metrics exceed acceptable thresholds.
+        /// </summary>
+        public const ushort PoolPerformanceDegradation = 1305;
+        
+        #endregion
+    }
+}
+
+// Step 3: Use the constant in your message
+public static PoolPerformanceDegradationMessage Create(...)
+{
+    return new PoolPerformanceDegradationMessage
+    {
+        TypeCode = MessageTypeCodes.PoolPerformanceDegradation, // ✅ Use constant
+        // ...
+    };
+}
+```
+
+#### **Requesting New System Ranges**
+
+For new functional systems requiring TypeCode allocation:
+
+1. **Document the system purpose** - Clearly define what types of messages the system will send
+2. **Estimate TypeCode needs** - Determine how many message types the system requires
+3. **Request range allocation** - Update MessageTypeCodes.cs documentation with the new range
+4. **Add range constants** - Include RangeStart and RangeEnd constants for validation
+5. **Update validation methods** - Add the new system to GetSystemForTypeCode()
+
+This centralized approach prevents TypeCode conflicts, enables efficient message routing, and provides clear ownership of message type ranges across all AhBearStudios Core systems.
+
 ### **Logging System Integration with Multiple Targets**
 
 #### **ILogTarget Implementations**

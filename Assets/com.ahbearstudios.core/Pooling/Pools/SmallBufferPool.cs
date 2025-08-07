@@ -4,6 +4,8 @@ using System.Threading;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Pooling.Strategies;
+using AhBearStudios.Core.Pooling.Factories;
+using AhBearStudios.Core.Pooling.Builders;
 
 namespace AhBearStudios.Core.Pooling.Pools
 {
@@ -27,11 +29,29 @@ namespace AhBearStudios.Core.Pooling.Pools
         /// Initializes a new SmallBufferPool instance.
         /// </summary>
         /// <param name="configuration">Pool configuration</param>
-        /// <param name="strategy">Pool strategy, defaults to DynamicSizeStrategy</param>
-        public SmallBufferPool(PoolConfiguration configuration, IPoolingStrategy strategy = null)
+        /// <param name="strategyFactory">Factory for creating the AdaptiveNetworkStrategy</param>
+        public SmallBufferPool(PoolConfiguration configuration, IAdaptiveNetworkStrategyFactory strategyFactory)
         {
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-            _strategy = strategy ?? new DynamicSizeStrategy();
+            if (strategyFactory == null)
+                throw new ArgumentNullException(nameof(strategyFactory));
+
+            // Create strategy configuration for small buffer pool
+            var strategyConfig = new PoolingStrategyConfigBuilder()
+                .WithName("SmallBufferPool")
+                .NetworkOptimized() // Optimized for frequent small packet traffic
+                .WithCircuitBreaker(true, 15, TimeSpan.FromMinutes(3)) // More tolerant for frequent operations
+                .WithHealthMonitoring(true, TimeSpan.FromMinutes(2))
+                .WithMetrics(true, 2000) // Higher sample count for frequent operations
+                .WithNetworkOptimizations(true)
+                .Build();
+
+            _strategy = strategyFactory.CreateWithNetworkParameters(
+                strategyConfig,
+                spikeDetectionThreshold: 0.85, // Higher threshold for small frequent packets
+                preemptiveAllocationRatio: 0.25, // More aggressive preemptive allocation
+                burstWindow: TimeSpan.FromSeconds(2), // Short burst window for responsiveness
+                maxBurstAllocations: 50); // Higher burst tolerance for small packets
             _objects = new ConcurrentQueue<PooledNetworkBuffer>();
             _statistics = new PoolStatistics { CreatedAt = DateTime.UtcNow };
 

@@ -1,6 +1,5 @@
 using System;
 using AhBearStudios.Core.Pooling.Models;
-using AhBearStudios.Core.Pooling.Strategies;
 
 namespace AhBearStudios.Core.Pooling.Configs
 {
@@ -51,10 +50,6 @@ namespace AhBearStudios.Core.Pooling.Configs
         /// </summary>
         public TimeSpan MaxIdleTime { get; init; } = TimeSpan.FromMinutes(30);
 
-        /// <summary>
-        /// Gets the pooling strategy to use.
-        /// </summary>
-        public IPoolingStrategy Strategy { get; init; }
 
         /// <summary>
         /// Gets whether validation is enabled.
@@ -85,7 +80,6 @@ namespace AhBearStudios.Core.Pooling.Configs
                 MaxCapacity = 100,
                 ValidationInterval = TimeSpan.FromMinutes(5),
                 MaxIdleTime = TimeSpan.FromMinutes(30),
-                Strategy = new DynamicSizeStrategy(),
                 EnableValidation = true,
                 EnableStatistics = true,
                 DisposalPolicy = PoolDisposalPolicy.ReturnToPool

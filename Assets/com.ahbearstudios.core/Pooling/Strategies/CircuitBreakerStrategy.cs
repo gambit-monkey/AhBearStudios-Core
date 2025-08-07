@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AhBearStudios.Core.HealthChecking;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
 
@@ -556,26 +557,5 @@ namespace AhBearStudios.Core.Pooling.Strategies
         }
 
         #endregion
-    }
-
-    /// <summary>
-    /// Represents the state of a circuit breaker.
-    /// </summary>
-    public enum CircuitBreakerState
-    {
-        /// <summary>
-        /// Circuit is closed - operations are allowed through.
-        /// </summary>
-        Closed,
-
-        /// <summary>
-        /// Circuit is open - operations are blocked and fallback is used.
-        /// </summary>
-        Open,
-
-        /// <summary>
-        /// Circuit is half-open - testing if the service has recovered.
-        /// </summary>
-        HalfOpen
     }
 }

@@ -11,6 +11,8 @@ using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Tests.Mocks;
+using AhBearStudios.Core.Pooling.Factories;
+using Moq;
 using MemoryPack;
 
 namespace AhBearStudios.Core.Tests.Serialization
@@ -39,8 +41,18 @@ namespace AhBearStudios.Core.Tests.Serialization
             _mockSerializationService = new MockSerializationService();
             _mockPoolingService = new MockPoolingService();
 
-            var networkConfig = NetworkPoolingConfig.CreateHighPerformance();
-            _bufferPool = new NetworkSerializationBufferPool(_mockPoolingService, _mockLoggingService, networkConfig);
+            var networkConfig = NetworkPoolingConfig.CreateDefault();
+            // Use builder pattern to create buffer pool with required factory dependencies
+            var mockAdaptiveFactory = new Mock<IAdaptiveNetworkStrategyFactory>();
+            var mockHighPerfFactory = new Mock<IHighPerformanceStrategyFactory>();
+            var mockDynamicFactory = new Mock<IDynamicSizeStrategyFactory>();
+            var mockPoolFactory = new Mock<INetworkBufferPoolFactory>();
+            
+            _bufferPool = new NetworkSerializationBufferPool(
+                _mockLoggingService,
+                networkConfig,
+                mockPoolFactory.Object,
+                _mockPoolingService);
             _fishNetAdapter = new FishNetSerializationAdapter(_mockLoggingService, _mockSerializationService, _bufferPool);
 
             // Warmup JIT and pools

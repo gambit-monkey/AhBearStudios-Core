@@ -19,7 +19,25 @@ namespace AhBearStudios.Core.Pooling.Builders
         private NetworkPoolingConfig _configuration;
         private INetworkBufferPoolFactory _poolFactory;
         private IPoolValidationService _validationService;
-        private IPoolingStrategy _poolingStrategy;
+        private readonly IAdaptiveNetworkStrategyFactory _adaptiveNetworkStrategyFactory;
+        private readonly IHighPerformanceStrategyFactory _highPerformanceStrategyFactory;
+        private readonly IDynamicSizeStrategyFactory _dynamicSizeStrategyFactory;
+
+        /// <summary>
+        /// Initializes a new instance of the NetworkSerializationBufferPoolBuilder.
+        /// </summary>
+        /// <param name="adaptiveNetworkStrategyFactory">Factory for creating adaptive network strategies</param>
+        /// <param name="highPerformanceStrategyFactory">Factory for creating high performance strategies</param>
+        /// <param name="dynamicSizeStrategyFactory">Factory for creating dynamic size strategies</param>
+        public NetworkSerializationBufferPoolBuilder(
+            IAdaptiveNetworkStrategyFactory adaptiveNetworkStrategyFactory,
+            IHighPerformanceStrategyFactory highPerformanceStrategyFactory,
+            IDynamicSizeStrategyFactory dynamicSizeStrategyFactory)
+        {
+            _adaptiveNetworkStrategyFactory = adaptiveNetworkStrategyFactory ?? throw new ArgumentNullException(nameof(adaptiveNetworkStrategyFactory));
+            _highPerformanceStrategyFactory = highPerformanceStrategyFactory ?? throw new ArgumentNullException(nameof(highPerformanceStrategyFactory));
+            _dynamicSizeStrategyFactory = dynamicSizeStrategyFactory ?? throw new ArgumentNullException(nameof(dynamicSizeStrategyFactory));
+        }
 
         /// <summary>
         /// Sets the logging service for the buffer pool.
@@ -65,16 +83,6 @@ namespace AhBearStudios.Core.Pooling.Builders
             return this;
         }
 
-        /// <summary>
-        /// Sets the pooling strategy to use for all buffer pools.
-        /// </summary>
-        /// <param name="strategy">Pooling strategy</param>
-        /// <returns>Builder instance for method chaining</returns>
-        public INetworkSerializationBufferPoolBuilder WithPoolingStrategy(IPoolingStrategy strategy)
-        {
-            _poolingStrategy = strategy ?? throw new ArgumentNullException(nameof(strategy));
-            return this;
-        }
 
         /// <summary>
         /// Configures the builder with default settings optimized for FishNet + MemoryPack.
@@ -92,7 +100,12 @@ namespace AhBearStudios.Core.Pooling.Builders
             if (_poolFactory == null)
             {
                 var bufferFactory = new PooledNetworkBufferFactory();
-                _poolFactory = new NetworkBufferPoolFactory(_validationService, bufferFactory);
+                _poolFactory = new NetworkBufferPoolFactory(
+                    _validationService,
+                    bufferFactory,
+                    _adaptiveNetworkStrategyFactory,
+                    _highPerformanceStrategyFactory,
+                    _dynamicSizeStrategyFactory);
             }
 
             // Set default configuration if not already set
@@ -104,11 +117,6 @@ namespace AhBearStudios.Core.Pooling.Builders
                     .Build();
             }
 
-            // Set default pooling strategy if not already set
-            if (_poolingStrategy == null)
-            {
-                _poolingStrategy = new DynamicSizeStrategy();
-            }
 
             return this;
         }
@@ -129,7 +137,12 @@ namespace AhBearStudios.Core.Pooling.Builders
             if (_poolFactory == null)
             {
                 var bufferFactory = new PooledNetworkBufferFactory();
-                _poolFactory = new NetworkBufferPoolFactory(_validationService, bufferFactory);
+                _poolFactory = new NetworkBufferPoolFactory(
+                    _validationService,
+                    bufferFactory,
+                    _adaptiveNetworkStrategyFactory,
+                    _highPerformanceStrategyFactory,
+                    _dynamicSizeStrategyFactory);
             }
 
             // Set high-performance configuration
@@ -141,11 +154,6 @@ namespace AhBearStudios.Core.Pooling.Builders
                     .Build();
             }
 
-            // Set high-performance pooling strategy
-            if (_poolingStrategy == null)
-            {
-                _poolingStrategy = HighPerformanceStrategy.For60FPS();
-            }
 
             return this;
         }
@@ -166,7 +174,12 @@ namespace AhBearStudios.Core.Pooling.Builders
             if (_poolFactory == null)
             {
                 var bufferFactory = new PooledNetworkBufferFactory();
-                _poolFactory = new NetworkBufferPoolFactory(_validationService, bufferFactory);
+                _poolFactory = new NetworkBufferPoolFactory(
+                    _validationService,
+                    bufferFactory,
+                    _adaptiveNetworkStrategyFactory,
+                    _highPerformanceStrategyFactory,
+                    _dynamicSizeStrategyFactory);
             }
 
             // Set memory-optimized configuration
@@ -178,12 +191,6 @@ namespace AhBearStudios.Core.Pooling.Builders
                     .Build();
             }
 
-            // Set memory-optimized pooling strategy
-            if (_poolingStrategy == null)
-            {
-                // Fixed size strategy for predictable memory usage
-                _poolingStrategy = FixedSizeStrategy.ForMobile(50);
-            }
 
             return this;
         }
@@ -208,8 +215,6 @@ namespace AhBearStudios.Core.Pooling.Builders
             if (_validationService == null)
                 errors.Add("ValidationService is required");
 
-            if (_poolingStrategy == null)
-                errors.Add("PoolingStrategy is required");
 
             // Validate configuration if present
             if (_configuration != null)
@@ -241,35 +246,61 @@ namespace AhBearStudios.Core.Pooling.Builders
                 _loggingService,
                 _configuration,
                 _poolFactory,
-                _validationService,
-                _poolingStrategy);
+                _validationService);
         }
 
         /// <summary>
         /// Creates a new builder instance with default settings.
         /// </summary>
+        /// <param name="adaptiveNetworkStrategyFactory">Factory for creating adaptive network strategies</param>
+        /// <param name="highPerformanceStrategyFactory">Factory for creating high performance strategies</param>
+        /// <param name="dynamicSizeStrategyFactory">Factory for creating dynamic size strategies</param>
         /// <returns>New NetworkSerializationBufferPoolBuilder with defaults</returns>
-        public static INetworkSerializationBufferPoolBuilder CreateDefault()
+        public static INetworkSerializationBufferPoolBuilder CreateDefault(
+            IAdaptiveNetworkStrategyFactory adaptiveNetworkStrategyFactory,
+            IHighPerformanceStrategyFactory highPerformanceStrategyFactory,
+            IDynamicSizeStrategyFactory dynamicSizeStrategyFactory)
         {
-            return new NetworkSerializationBufferPoolBuilder().WithDefaults();
+            return new NetworkSerializationBufferPoolBuilder(
+                adaptiveNetworkStrategyFactory,
+                highPerformanceStrategyFactory,
+                dynamicSizeStrategyFactory).WithDefaults();
         }
 
         /// <summary>
         /// Creates a new builder instance with high-performance settings.
         /// </summary>
+        /// <param name="adaptiveNetworkStrategyFactory">Factory for creating adaptive network strategies</param>
+        /// <param name="highPerformanceStrategyFactory">Factory for creating high performance strategies</param>
+        /// <param name="dynamicSizeStrategyFactory">Factory for creating dynamic size strategies</param>
         /// <returns>New NetworkSerializationBufferPoolBuilder with high-performance settings</returns>
-        public static INetworkSerializationBufferPoolBuilder CreateHighPerformance()
+        public static INetworkSerializationBufferPoolBuilder CreateHighPerformance(
+            IAdaptiveNetworkStrategyFactory adaptiveNetworkStrategyFactory,
+            IHighPerformanceStrategyFactory highPerformanceStrategyFactory,
+            IDynamicSizeStrategyFactory dynamicSizeStrategyFactory)
         {
-            return new NetworkSerializationBufferPoolBuilder().WithHighPerformance();
+            return new NetworkSerializationBufferPoolBuilder(
+                adaptiveNetworkStrategyFactory,
+                highPerformanceStrategyFactory,
+                dynamicSizeStrategyFactory).WithHighPerformance();
         }
 
         /// <summary>
         /// Creates a new builder instance with memory-optimized settings.
         /// </summary>
+        /// <param name="adaptiveNetworkStrategyFactory">Factory for creating adaptive network strategies</param>
+        /// <param name="highPerformanceStrategyFactory">Factory for creating high performance strategies</param>
+        /// <param name="dynamicSizeStrategyFactory">Factory for creating dynamic size strategies</param>
         /// <returns>New NetworkSerializationBufferPoolBuilder with memory-optimized settings</returns>
-        public static INetworkSerializationBufferPoolBuilder CreateMemoryOptimized()
+        public static INetworkSerializationBufferPoolBuilder CreateMemoryOptimized(
+            IAdaptiveNetworkStrategyFactory adaptiveNetworkStrategyFactory,
+            IHighPerformanceStrategyFactory highPerformanceStrategyFactory,
+            IDynamicSizeStrategyFactory dynamicSizeStrategyFactory)
         {
-            return new NetworkSerializationBufferPoolBuilder().WithMemoryOptimized();
+            return new NetworkSerializationBufferPoolBuilder(
+                adaptiveNetworkStrategyFactory,
+                highPerformanceStrategyFactory,
+                dynamicSizeStrategyFactory).WithMemoryOptimized();
         }
     }
 }

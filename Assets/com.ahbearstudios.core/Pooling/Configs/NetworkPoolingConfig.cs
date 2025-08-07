@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
-using AhBearStudios.Core.Pooling.Strategies;
 using AhBearStudios.Core.Pooling.Services;
 
 namespace AhBearStudios.Core.Pooling.Configs
@@ -41,11 +40,10 @@ namespace AhBearStudios.Core.Pooling.Configs
         /// <summary>
         /// Creates a default network pooling configuration.
         /// </summary>
-        /// <param name="validationService">Service for pool validation operations</param>
         /// <returns>Default network pooling configuration</returns>
-        public static NetworkPoolingConfig CreateDefault(IPoolValidationService validationService = null)
+        public static NetworkPoolingConfig CreateDefault()
         {
-            validationService ??= new PoolValidationService();
+            var validationService = new PoolValidationService();
             
             return new NetworkPoolingConfig
             {
@@ -59,7 +57,6 @@ namespace AhBearStudios.Core.Pooling.Configs
                     ValidationFunc = buffer => validationService.ValidatePooledObject(buffer),
                     ValidationInterval = TimeSpan.FromMinutes(2),
                     MaxIdleTime = TimeSpan.FromMinutes(10),
-                    Strategy = new DynamicSizeStrategy(),
                     EnableValidation = true,
                     EnableStatistics = true,
                     DisposalPolicy = PoolDisposalPolicy.PoolDecision
@@ -74,7 +71,6 @@ namespace AhBearStudios.Core.Pooling.Configs
                     ValidationFunc = buffer => validationService.ValidatePooledObject(buffer),
                     ValidationInterval = TimeSpan.FromMinutes(3),
                     MaxIdleTime = TimeSpan.FromMinutes(15),
-                    Strategy = new DynamicSizeStrategy(),
                     EnableValidation = true,
                     EnableStatistics = true,
                     DisposalPolicy = PoolDisposalPolicy.PoolDecision
@@ -89,7 +85,6 @@ namespace AhBearStudios.Core.Pooling.Configs
                     ValidationFunc = buffer => validationService.ValidatePooledObject(buffer),
                     ValidationInterval = TimeSpan.FromMinutes(5),
                     MaxIdleTime = TimeSpan.FromMinutes(20),
-                    Strategy = new DynamicSizeStrategy(),
                     EnableValidation = true,
                     EnableStatistics = true,
                     DisposalPolicy = PoolDisposalPolicy.PoolDecision
@@ -104,7 +99,6 @@ namespace AhBearStudios.Core.Pooling.Configs
                     ValidationFunc = buffer => validationService.ValidatePooledObject(buffer),
                     ValidationInterval = TimeSpan.FromMinutes(3),
                     MaxIdleTime = TimeSpan.FromMinutes(10),
-                    Strategy = new DynamicSizeStrategy(),
                     EnableValidation = true,
                     EnableStatistics = true,
                     DisposalPolicy = PoolDisposalPolicy.PoolDecision
@@ -240,10 +234,6 @@ namespace AhBearStudios.Core.Pooling.Configs
                 errors.Add($"{configName} max idle time must be greater than zero");
             }
 
-            if (config.Strategy == null)
-            {
-                errors.Add($"{configName} pooling strategy cannot be null");
-            }
 
             return errors;
         }

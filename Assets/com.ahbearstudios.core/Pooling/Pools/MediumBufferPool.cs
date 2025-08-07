@@ -4,6 +4,8 @@ using System.Threading;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Pooling.Strategies;
+using AhBearStudios.Core.Pooling.Factories;
+using AhBearStudios.Core.Pooling.Builders;
 
 namespace AhBearStudios.Core.Pooling.Pools
 {
@@ -27,11 +29,25 @@ namespace AhBearStudios.Core.Pooling.Pools
         /// Initializes a new MediumBufferPool instance.
         /// </summary>
         /// <param name="configuration">Pool configuration</param>
-        /// <param name="strategy">Pool strategy, defaults to DynamicSizeStrategy</param>
-        public MediumBufferPool(PoolConfiguration configuration, IPoolingStrategy strategy = null)
+        /// <param name="strategyFactory">Factory for creating the HighPerformanceStrategy</param>
+        public MediumBufferPool(PoolConfiguration configuration, IHighPerformanceStrategyFactory strategyFactory)
         {
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
-            _strategy = strategy ?? new DynamicSizeStrategy();
+            if (strategyFactory == null)
+                throw new ArgumentNullException(nameof(strategyFactory));
+
+            // Create strategy configuration for medium buffer pool
+            var strategyConfig = new PoolingStrategyConfigBuilder()
+                .WithName("MediumBufferPool")
+                .HighPerformance() // Use high performance preset for gameplay data
+                .WithCircuitBreaker(true, 10, TimeSpan.FromMinutes(5))
+                .WithHealthMonitoring(true, TimeSpan.FromMinutes(1)) // More frequent health checks
+                .WithMetrics(false, 100) // Reduced metrics overhead for performance
+                .WithUnityOptimizations(true)
+                .Build();
+
+            _strategy = strategyFactory.CreateFor60FPS(
+                preAllocationSize: 30); // Pre-allocate moderate amount for consistent performance
             _objects = new ConcurrentQueue<PooledNetworkBuffer>();
             _statistics = new PoolStatistics { CreatedAt = DateTime.UtcNow };
 

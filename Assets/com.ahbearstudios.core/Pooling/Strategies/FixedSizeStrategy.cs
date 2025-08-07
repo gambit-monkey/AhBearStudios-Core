@@ -1,7 +1,14 @@
 using System;
 using System.Collections.Generic;
+using AhBearStudios.Core.Alerting;
+using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
+using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Messaging;
+using AhBearStudios.Core.Profiling.Models;
+using Unity.Collections;
 
 namespace AhBearStudios.Core.Pooling.Strategies
 {
@@ -16,6 +23,18 @@ namespace AhBearStudios.Core.Pooling.Strategies
         private readonly PoolingStrategyConfig _configuration;
         private readonly PerformanceBudget _performanceBudget;
         
+        // Core system integration
+        private readonly ILoggingService _loggingService;
+        private readonly IProfilerService _profilerService;
+        private readonly IAlertService _alertService;
+        private readonly IMessageBusService _messageBusService;
+        
+        // Performance profiling tags
+        private static readonly ProfilerTag FixedSizeOperationTag = new ProfilerTag("FixedSize.Operation");
+        
+        // Alert source identifier
+        private static readonly FixedString64Bytes AlertSource = "FixedSizeStrategy";
+        
         // Performance monitoring
         private readonly List<TimeSpan> _recentOperationTimes = new();
         private readonly object _metricsLock = new object();
@@ -26,17 +45,39 @@ namespace AhBearStudios.Core.Pooling.Strategies
 
         /// <summary>
         /// Initializes a new instance of the FixedSizeStrategy.
+        /// This constructor should be called by the FixedSizeStrategyFactory.
         /// </summary>
         /// <param name="fixedSize">The fixed size to maintain for the pool</param>
-        /// <param name="configuration">Strategy configuration (optional)</param>
-        public FixedSizeStrategy(int fixedSize, PoolingStrategyConfig configuration = null)
+        /// <param name="configuration">Strategy configuration</param>
+        /// <param name="loggingService">The logging service for system integration</param>
+        /// <param name="profilerService">The profiler service for performance monitoring</param>
+        /// <param name="alertService">The alert service for critical error notifications</param>
+        /// <param name="messageBusService">The message bus service for event publishing</param>
+        public FixedSizeStrategy(
+            int fixedSize, 
+            PoolingStrategyConfig configuration,
+            ILoggingService loggingService,
+            IProfilerService profilerService,
+            IAlertService alertService,
+            IMessageBusService messageBusService)
         {
             if (fixedSize <= 0)
                 throw new ArgumentException("Fixed size must be greater than zero", nameof(fixedSize));
 
+            // Validate dependencies
             _fixedSize = fixedSize;
-            _configuration = configuration ?? PoolingStrategyConfig.MemoryOptimized("FixedSize");
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _loggingService = loggingService ?? throw new ArgumentNullException(nameof(loggingService));
+            _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
+            _alertService = alertService ?? throw new ArgumentNullException(nameof(alertService));
+            _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
+            
             _performanceBudget = _configuration.PerformanceBudget ?? PerformanceBudget.For30FPS();
+            
+            // Subscribe to profiler threshold events for performance monitoring
+            _profilerService.ThresholdExceeded += OnPerformanceThresholdExceeded;
+            
+            _loggingService.LogInfo($"FixedSizeStrategy initialized - Size: {_fixedSize}, Config: {_configuration.Name}");
         }
 
         /// <summary>
@@ -88,6 +129,19 @@ namespace AhBearStudios.Core.Pooling.Strategies
             if (statistics.TotalCount >= _fixedSize)
             {
                 _rejectedRequests++;
+                _loggingService.LogDebug($"Request rejected due to fixed size limit - Total rejections: {_rejectedRequests}");
+                
+                // Alert if rejection rate becomes high
+                if (_rejectedRequests > 0 && _rejectedRequests % 100 == 0)
+                {
+                    _alertService.RaiseAlert(
+                        message: $"High rejection rate in FixedSizeStrategy - {_rejectedRequests} requests rejected",
+                        severity: AlertSeverity.Warning,
+                        source: AlertSource,
+                        tag: "HighRejectionRate"
+                    );
+                }
+                
                 return false;
             }
             
@@ -154,7 +208,18 @@ namespace AhBearStudios.Core.Pooling.Strategies
             if (rejectionRate > 0.5) // 50% rejection rate
             {
                 _circuitBreakerTriggerCount++;
-                return _circuitBreakerTriggerCount >= _configuration.CircuitBreakerFailureThreshold;
+                _loggingService.LogWarning($"High rejection rate: {rejectionRate:P} - Circuit breaker trigger count: {_circuitBreakerTriggerCount}");
+                
+                if (_circuitBreakerTriggerCount >= _configuration.CircuitBreakerFailureThreshold)
+                {
+                    _alertService.RaiseAlert(
+                        message: "FixedSize strategy circuit breaker triggered due to high rejection rate",
+                        severity: AlertSeverity.Critical,
+                        source: AlertSource,
+                        tag: "CircuitBreakerTriggered"
+                    );
+                    return true;
+                }
             }
 
             // Trigger on excessive errors
@@ -162,7 +227,18 @@ namespace AhBearStudios.Core.Pooling.Strategies
             if (errorRate > 0.1) // 10% error rate
             {
                 _circuitBreakerTriggerCount++;
-                return _circuitBreakerTriggerCount >= _configuration.CircuitBreakerFailureThreshold;
+                _loggingService.LogWarning($"High error rate: {errorRate:P} - Circuit breaker trigger count: {_circuitBreakerTriggerCount}");
+                
+                if (_circuitBreakerTriggerCount >= _configuration.CircuitBreakerFailureThreshold)
+                {
+                    _alertService.RaiseAlert(
+                        message: "FixedSize strategy circuit breaker triggered due to high error rate",
+                        severity: AlertSeverity.Critical,
+                        source: AlertSource,
+                        tag: "HighErrorRate"
+                    );
+                    return true;
+                }
             }
 
             return false;
@@ -271,6 +347,12 @@ namespace AhBearStudios.Core.Pooling.Strategies
                     _recentOperationTimes.RemoveAt(0);
                 }
             }
+            
+            // Check performance budget
+            if (duration > _performanceBudget.MaxOperationTime)
+            {
+                _loggingService.LogWarning($"Fixed-size pool operation exceeded performance budget: {duration.TotalMilliseconds}ms > {_performanceBudget.MaxOperationTime.TotalMilliseconds}ms");
+            }
         }
 
         /// <summary>
@@ -280,6 +362,17 @@ namespace AhBearStudios.Core.Pooling.Strategies
         public void OnPoolError(Exception error)
         {
             _errorCount++;
+            _loggingService.LogException($"Pool operation error in {Name} strategy - Error count: {_errorCount}", error);
+            
+            if (_errorCount > 5)
+            {
+                _alertService.RaiseAlert(
+                    message: "Multiple errors in FixedSizeStrategy",
+                    severity: AlertSeverity.Warning,
+                    source: AlertSource,
+                    tag: "MultipleErrors"
+                );
+            }
         }
 
         /// <summary>
@@ -374,44 +467,25 @@ namespace AhBearStudios.Core.Pooling.Strategies
         #endregion
 
         /// <summary>
-        /// Creates a fixed-size strategy optimized for mobile devices.
+        /// Handles performance threshold exceeded events from the profiler service.
         /// </summary>
-        /// <param name="size">Fixed pool size</param>
-        /// <returns>Mobile-optimized fixed-size strategy</returns>
-        public static FixedSizeStrategy ForMobile(int size)
+        /// <param name="tag">The profiler tag that exceeded threshold</param>
+        /// <param name="value">The measured value</param>
+        /// <param name="unit">The unit of measurement</param>
+        private void OnPerformanceThresholdExceeded(ProfilerTag tag, double value, string unit)
         {
-            var config = PoolingStrategyConfig.MemoryOptimized("FixedSizeMobile")
-                .WithPerformanceBudget(PerformanceBudget.For30FPS())
-                .WithAdditionalTags("mobile", "memory-constrained");
-                
-            return new FixedSizeStrategy(size, config);
-        }
-
-        /// <summary>
-        /// Creates a fixed-size strategy for high-performance scenarios.
-        /// </summary>
-        /// <param name="size">Fixed pool size</param>
-        /// <returns>High-performance fixed-size strategy</returns>
-        public static FixedSizeStrategy ForHighPerformance(int size)
-        {
-            var config = PoolingStrategyConfig.HighPerformance("FixedSizeHighPerf")
-                .WithPerformanceBudget(PerformanceBudget.For60FPS())
-                .WithAdditionalTags("high-performance", "predictable");
-                
-            return new FixedSizeStrategy(size, config);
-        }
-
-        /// <summary>
-        /// Creates a fixed-size strategy for testing and development.
-        /// </summary>
-        /// <param name="size">Fixed pool size</param>
-        /// <returns>Development-optimized fixed-size strategy</returns>
-        public static FixedSizeStrategy ForDevelopment(int size)
-        {
-            var config = PoolingStrategyConfig.Development("FixedSizeDev")
-                .WithAdditionalTags("development", "testing");
-                
-            return new FixedSizeStrategy(size, config);
+            _loggingService.LogWarning($"FixedSize performance threshold exceeded for {tag.Name}: {value}{unit}");
+            
+            // Fixed size operations should be very fast
+            if (value > 5.0) // > 5ms is significant for fixed-size operations
+            {
+                _alertService.RaiseAlert(
+                    message: $"Performance degradation in {Name}: {tag.Name} took {value}{unit}",
+                    severity: AlertSeverity.Warning,
+                    source: AlertSource,
+                    tag: "FixedSizePerformanceDegradation"
+                );
+            }
         }
     }
 }
