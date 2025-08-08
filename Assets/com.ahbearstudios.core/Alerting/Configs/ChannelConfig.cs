@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using Unity.Collections;
 using AhBearStudios.Core.Alerting.Models;
 
@@ -17,17 +16,12 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the unique name identifier for this channel.
         /// Must be unique across all configured channels in the alert system.
         /// </summary>
-        [Required]
-        [StringLength(64, MinimumLength = 1)]
         public FixedString64Bytes Name { get; init; }
 
         /// <summary>
-        /// Gets the channel type identifier that determines the implementation to use.
-        /// Supported types: Log, Console, Network, Email, UnityConsole, UnityNotification.
+        /// Gets the channel type that determines the implementation to use.
         /// </summary>
-        [Required]
-        [StringLength(32, MinimumLength = 1)]
-        public FixedString32Bytes ChannelType { get; init; }
+        public AlertChannelType ChannelType { get; init; }
 
         /// <summary>
         /// Gets whether this channel is enabled for alert processing.
@@ -39,7 +33,6 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the minimum alert severity level that this channel will process.
         /// Alerts below this level are filtered out before reaching this channel.
         /// </summary>
-        [Required]
         public AlertSeverity MinimumSeverity { get; init; } = AlertSeverity.Info;
 
         /// <summary>
@@ -52,14 +45,12 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the message format template for this channel.
         /// Supports placeholders: {Timestamp}, {Severity}, {Source}, {Message}, {Tag}, {CorrelationId}.
         /// </summary>
-        [StringLength(512)]
         public string MessageFormat { get; init; } = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Severity}] {Source}: {Message}";
 
         /// <summary>
         /// Gets the timestamp format string used in message formatting.
         /// Standard .NET DateTime format strings are supported.
         /// </summary>
-        [StringLength(64)]
         public string TimestampFormat { get; init; } = "yyyy-MM-dd HH:mm:ss.fff";
 
         /// <summary>
@@ -72,28 +63,24 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the maximum number of alerts to include in a single batch.
         /// Only applicable when batch processing is enabled.
         /// </summary>
-        [Range(1, 1000)]
         public int BatchSize { get; init; } = 10;
 
         /// <summary>
         /// Gets the maximum time to wait before flushing a partial batch.
         /// Ensures alerts are not delayed indefinitely waiting for a full batch.
         /// </summary>
-        [Range(1, 3600)]
         public TimeSpan BatchFlushInterval { get; init; } = TimeSpan.FromSeconds(30);
 
         /// <summary>
         /// Gets the retry policy configuration for failed alert deliveries.
         /// Defines how many times and with what delays failed alerts should be retried.
         /// </summary>
-        [Required]
         public RetryPolicyConfig RetryPolicy { get; init; } = RetryPolicyConfig.Default;
 
         /// <summary>
         /// Gets the timeout for individual alert send operations.
         /// Operations exceeding this timeout are considered failed and may be retried.
         /// </summary>
-        [Range(1, 300)]
         public TimeSpan SendTimeout { get; init; } = TimeSpan.FromSeconds(10);
 
         /// <summary>
@@ -106,7 +93,6 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the interval for performing channel health checks.
         /// Health checks verify that the channel can successfully deliver alerts.
         /// </summary>
-        [Range(1, 3600)]
         public TimeSpan HealthCheckInterval { get; init; } = TimeSpan.FromMinutes(5);
 
         /// <summary>
@@ -114,6 +100,12 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Settings are interpreted by the specific channel implementation.
         /// </summary>
         public IReadOnlyDictionary<string, string> Settings { get; init; } = new Dictionary<string, string>();
+
+        /// <summary>
+        /// Gets the strongly-typed channel settings based on the channel type.
+        /// Provides type-safe access to channel-specific configuration options.
+        /// </summary>
+        public IChannelSettings? TypedSettings { get; init; }
 
         /// <summary>
         /// Gets the collection of tags used for alert filtering and routing.
@@ -137,7 +129,6 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the priority level for this channel during alert processing.
         /// Higher priority channels are processed first. Range: 1 (highest) to 1000 (lowest).
         /// </summary>
-        [Range(1, 1000)]
         public int Priority { get; init; } = 500;
 
         /// <summary>
@@ -199,188 +190,6 @@ namespace AhBearStudios.Core.Alerting.Configs
             return true;
         }
 
-        /// <summary>
-        /// Creates a default log channel configuration.
-        /// Suitable for logging alerts to the application log system.
-        /// </summary>
-        /// <param name="name">Optional custom name for the channel.</param>
-        /// <returns>A configured log channel.</returns>
-        public static ChannelConfig CreateLogChannel(string name = "Log")
-        {
-            return new ChannelConfig
-            {
-                Name = name,
-                ChannelType = "Log",
-                IsEnabled = true,
-                MinimumSeverity = AlertSeverity.Info,
-                MaximumSeverity = AlertSeverity.Emergency,
-                MessageFormat = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Severity}] {Source}: {Message}",
-                EnableBatching = false,
-                EnableHealthMonitoring = true,
-                HealthCheckInterval = TimeSpan.FromMinutes(5),
-                SendTimeout = TimeSpan.FromSeconds(5),
-                Priority = 100,
-                IsEmergencyChannel = true
-            };
-        }
-
-        /// <summary>
-        /// Creates a default console channel configuration.
-        /// Suitable for displaying alerts in the application console.
-        /// </summary>
-        /// <param name="name">Optional custom name for the channel.</param>
-        /// <returns>A configured console channel.</returns>
-        public static ChannelConfig CreateConsoleChannel(string name = "Console")
-        {
-            var settings = new Dictionary<string, string>
-            {
-                ["EnableColors"] = "true",
-                ["ColorMap"] = "Info:#00ff00,Warning:#ffff00,Critical:#ff0000,Emergency:#800000"
-            };
-
-            return new ChannelConfig
-            {
-                Name = name,
-                ChannelType = "Console",
-                IsEnabled = true,
-                MinimumSeverity = AlertSeverity.Warning,
-                MaximumSeverity = AlertSeverity.Emergency,
-                MessageFormat = "[{Timestamp:HH:mm:ss.fff}] [{Severity}] {Source}: {Message}",
-                EnableBatching = false,
-                EnableHealthMonitoring = true,
-                HealthCheckInterval = TimeSpan.FromMinutes(10),
-                SendTimeout = TimeSpan.FromSeconds(2),
-                Settings = settings,
-                Priority = 200,
-                IsEmergencyChannel = true
-            };
-        }
-
-        /// <summary>
-        /// Creates a network channel configuration for webhook-based alerts.
-        /// Suitable for sending alerts to external monitoring systems.
-        /// </summary>
-        /// <param name="name">The channel name.</param>
-        /// <param name="endpoint">The webhook endpoint URL.</param>
-        /// <param name="minimumSeverity">The minimum severity level.</param>
-        /// <returns>A configured network channel.</returns>
-        public static ChannelConfig CreateNetworkChannel(string name, string endpoint, AlertSeverity minimumSeverity = AlertSeverity.Critical)
-        {
-            var settings = new Dictionary<string, string>
-            {
-                ["Endpoint"] = endpoint,
-                ["Method"] = "POST",
-                ["ContentType"] = "application/json",
-                ["UserAgent"] = "AhBearStudios-AlertSystem/2.0"
-            };
-
-            return new ChannelConfig
-            {
-                Name = name,
-                ChannelType = "Network",
-                IsEnabled = true,
-                MinimumSeverity = minimumSeverity,
-                MaximumSeverity = AlertSeverity.Emergency,
-                MessageFormat = "{{\"timestamp\":\"{Timestamp:yyyy-MM-ddTHH:mm:ss.fffZ}\",\"severity\":\"{Severity}\",\"source\":\"{Source}\",\"message\":\"{Message}\",\"tag\":\"{Tag}\",\"correlationId\":\"{CorrelationId}\"}}",
-                EnableBatching = true,
-                BatchSize = 10,
-                BatchFlushInterval = TimeSpan.FromMinutes(2),
-                EnableHealthMonitoring = true,
-                HealthCheckInterval = TimeSpan.FromMinutes(3),
-                SendTimeout = TimeSpan.FromSeconds(30),
-                Settings = settings,
-                RetryPolicy = new RetryPolicyConfig
-                {
-                    MaxAttempts = 3,
-                    BaseDelay = TimeSpan.FromSeconds(5),
-                    MaxDelay = TimeSpan.FromMinutes(2),
-                    BackoffMultiplier = 2.0,
-                    JitterEnabled = true
-                },
-                Priority = 300
-            };
-        }
-
-        /// <summary>
-        /// Creates an email channel configuration for email-based alerts.
-        /// Suitable for sending critical alerts to system administrators.
-        /// </summary>
-        /// <param name="name">The channel name.</param>
-        /// <param name="smtpServer">The SMTP server address.</param>
-        /// <param name="fromEmail">The sender email address.</param>
-        /// <param name="toEmails">The recipient email addresses.</param>
-        /// <returns>A configured email channel.</returns>
-        public static ChannelConfig CreateEmailChannel(string name, string smtpServer, string fromEmail, params string[] toEmails)
-        {
-            var settings = new Dictionary<string, string>
-            {
-                ["SmtpServer"] = smtpServer,
-                ["SmtpPort"] = "587",
-                ["EnableSsl"] = "true",
-                ["FromEmail"] = fromEmail,
-                ["ToEmails"] = string.Join(",", toEmails),
-                ["Subject"] = "[ALERT] {Severity} - {Source}",
-                ["UseHtml"] = "true"
-            };
-
-            return new ChannelConfig
-            {
-                Name = name,
-                ChannelType = "Email",
-                IsEnabled = true,
-                MinimumSeverity = AlertSeverity.Critical,
-                MaximumSeverity = AlertSeverity.Emergency,
-                MessageFormat = "<h3>Alert Details</h3><p><strong>Timestamp:</strong> {Timestamp:yyyy-MM-dd HH:mm:ss}</p><p><strong>Severity:</strong> {Severity}</p><p><strong>Source:</strong> {Source}</p><p><strong>Message:</strong> {Message}</p><p><strong>Correlation ID:</strong> {CorrelationId}</p>",
-                EnableBatching = true,
-                BatchSize = 5,
-                BatchFlushInterval = TimeSpan.FromMinutes(5),
-                EnableHealthMonitoring = true,
-                HealthCheckInterval = TimeSpan.FromMinutes(15),
-                SendTimeout = TimeSpan.FromMinutes(1),
-                Settings = settings,
-                RetryPolicy = new RetryPolicyConfig
-                {
-                    MaxAttempts = 2,
-                    BaseDelay = TimeSpan.FromMinutes(1),
-                    MaxDelay = TimeSpan.FromMinutes(10),
-                    BackoffMultiplier = 3.0,
-                    JitterEnabled = false
-                },
-                Priority = 400
-            };
-        }
-
-        /// <summary>
-        /// Creates a Unity console channel configuration for Unity editor/runtime console output.
-        /// </summary>
-        /// <param name="name">Optional custom name for the channel.</param>
-        /// <returns>A configured Unity console channel.</returns>
-        public static ChannelConfig CreateUnityConsoleChannel(string name = "UnityConsole")
-        {
-            var settings = new Dictionary<string, string>
-            {
-                ["UseUnityLog"] = "true",
-                ["EnableStackTrace"] = "true",
-                ["LogTypeMapping"] = "Info:Log,Warning:Warning,Critical:Error,Emergency:Error"
-            };
-
-            return new ChannelConfig
-            {
-                Name = name,
-                ChannelType = "UnityConsole",
-                IsEnabled = true,
-                MinimumSeverity = AlertSeverity.Warning,
-                MaximumSeverity = AlertSeverity.Emergency,
-                MessageFormat = "[{Source}] {Message}",
-                EnableBatching = false,
-                EnableHealthMonitoring = true,
-                HealthCheckInterval = TimeSpan.FromMinutes(10),
-                SendTimeout = TimeSpan.FromSeconds(1),
-                Settings = settings,
-                Priority = 150,
-                IsEmergencyChannel = true
-            };
-        }
     }
 
     /// <summary>
@@ -393,28 +202,24 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the maximum number of retry attempts for failed alert deliveries.
         /// Set to 0 to disable retries entirely.
         /// </summary>
-        [Range(0, 10)]
         public int MaxAttempts { get; init; } = 3;
 
         /// <summary>
         /// Gets the base delay between retry attempts.
         /// Actual delay may be modified by backoff multiplier and jitter.
         /// </summary>
-        [Range(1, 3600)]
         public TimeSpan BaseDelay { get; init; } = TimeSpan.FromSeconds(1);
 
         /// <summary>
         /// Gets the maximum delay between retry attempts.
         /// Prevents exponential backoff from creating excessively long delays.
         /// </summary>
-        [Range(1, 7200)]
         public TimeSpan MaxDelay { get; init; } = TimeSpan.FromMinutes(5);
 
         /// <summary>
         /// Gets the multiplier applied to the delay after each failed attempt.
         /// Values greater than 1.0 implement exponential backoff to reduce system load during failures.
         /// </summary>
-        [Range(1.0, 10.0)]
         public double BackoffMultiplier { get; init; } = 2.0;
 
         /// <summary>
@@ -427,7 +232,6 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the maximum jitter percentage to apply to retry delays.
         /// Jitter is applied as a random percentage of the calculated delay.
         /// </summary>
-        [Range(0.0, 0.5)]
         public double JitterMaxPercentage { get; init; } = 0.1; // 10% jitter
 
         /// <summary>
@@ -498,21 +302,18 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the maximum number of alerts allowed per time window.
         /// This represents the sustained rate that the channel can handle.
         /// </summary>
-        [Range(1, 10000)]
         public int MaxAlertsPerWindow { get; init; } = 100;
 
         /// <summary>
         /// Gets the time window for rate limit calculations.
         /// Rate limits are enforced over rolling windows of this duration.
         /// </summary>
-        [Range(1, 3600)]
         public TimeSpan TimeWindow { get; init; } = TimeSpan.FromMinutes(1);
 
         /// <summary>
         /// Gets the burst capacity for handling alert spikes.
         /// Allows temporary bursts above the sustained rate up to this limit.
         /// </summary>
-        [Range(1, 10000)]
         public int BurstCapacity { get; init; } = 20;
 
         /// <summary>
@@ -525,14 +326,12 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the maximum queue size for delayed alerts when using Queue action.
         /// When queue is full, oldest alerts are dropped to make room for new ones.
         /// </summary>
-        [Range(1, 1000)]
         public int MaxQueueSize { get; init; } = 50;
 
         /// <summary>
         /// Gets the maximum delay for queued alerts before they are dropped.
         /// Prevents indefinite queuing of alerts that may become stale.
         /// </summary>
-        [Range(1, 3600)]
         public TimeSpan MaxQueueDelay { get; init; } = TimeSpan.FromMinutes(5);
 
         /// <summary>

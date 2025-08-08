@@ -10,7 +10,8 @@
       "Bash(cp:*)",
       "Bash(rm:*)",
       "Bash(mv:*)",
-      "Bash(dotnet build:*)"
+      "Bash(dotnet build:*)",
+      "Bash(true)"
     ],
     "deny": []
   }

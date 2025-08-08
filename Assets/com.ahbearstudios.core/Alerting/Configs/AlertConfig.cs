@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using Unity.Collections;
 using AhBearStudios.Core.Alerting.Models;
 
@@ -15,7 +16,6 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the minimum alert severity level that will be processed by the system.
         /// Alerts below this level will be filtered out immediately.
         /// </summary>
-        [Required]
         public AlertSeverity MinimumSeverity { get; init; } = AlertSeverity.Warning;
 
         /// <summary>
@@ -28,7 +28,6 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the default suppression window duration for duplicate alert detection.
         /// Alerts with identical content within this window will be suppressed.
         /// </summary>
-        [Range(1, 3600)]
         public TimeSpan SuppressionWindow { get; init; } = TimeSpan.FromMinutes(5);
 
         /// <summary>
@@ -41,14 +40,12 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the maximum number of concurrent alerts that can be processed simultaneously.
         /// This setting prevents resource exhaustion during alert storms.
         /// </summary>
-        [Range(1, 1000)]
         public int MaxConcurrentAlerts { get; init; } = 100;
 
         /// <summary>
         /// Gets the alert processing timeout for individual alert dispatch operations.
         /// Alerts that exceed this timeout will be logged as failed and potentially retried.
         /// </summary>
-        [Range(1, 300)]
         public TimeSpan ProcessingTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
         /// <summary>
@@ -61,14 +58,12 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the duration for which alert history is retained before automatic cleanup.
         /// Older alerts are automatically purged to prevent unbounded memory growth.
         /// </summary>
-        [Range(1, 8760)] // 1 hour to 1 year
         public TimeSpan HistoryRetention { get; init; } = TimeSpan.FromHours(24);
 
         /// <summary>
         /// Gets the maximum number of alert history entries to retain in memory.
         /// When this limit is reached, oldest entries are removed first (FIFO).
         /// </summary>
-        [Range(100, 100000)]
         public int MaxHistoryEntries { get; init; } = 10000;
 
         /// <summary>
@@ -81,14 +76,12 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the time window for alert aggregation grouping.
         /// Alerts within this window with similar characteristics will be grouped together.
         /// </summary>
-        [Range(1, 3600)]
         public TimeSpan AggregationWindow { get; init; } = TimeSpan.FromMinutes(2);
 
         /// <summary>
         /// Gets the maximum number of alerts that can be aggregated into a single group.
         /// This prevents unbounded aggregation groups during severe alert storms.
         /// </summary>
-        [Range(2, 1000)]
         public int MaxAggregationSize { get; init; } = 50;
 
         /// <summary>
@@ -101,7 +94,6 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the collection of configured alert channels.
         /// Each channel defines how alerts are delivered (log, console, network, etc.).
         /// </summary>
-        [Required]
         public IReadOnlyList<ChannelConfig> Channels { get; init; } = Array.Empty<ChannelConfig>();
 
         /// <summary>
@@ -114,7 +106,6 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the buffer size for alert queue management.
         /// This determines how many alerts can be queued for processing before backpressure is applied.
         /// </summary>
-        [Range(100, 10000)]
         public int AlertBufferSize { get; init; } = 1000;
 
         /// <summary>
@@ -202,45 +193,6 @@ namespace AhBearStudios.Core.Alerting.Configs
             return severity >= minimumSeverity;
         }
 
-        /// <summary>
-        /// Creates a default production-ready configuration with sensible defaults.
-        /// Suitable for most production environments with basic alerting requirements.
-        /// </summary>
-        /// <returns>A default alert configuration.</returns>
-        public static AlertConfig CreateDefault()
-        {
-            return new AlertConfig
-            {
-                MinimumSeverity = AlertSeverity.Warning,
-                EnableSuppression = true,
-                SuppressionWindow = TimeSpan.FromMinutes(5),
-                EnableAsyncProcessing = true,
-                MaxConcurrentAlerts = 100,
-                ProcessingTimeout = TimeSpan.FromSeconds(30),
-                EnableHistory = true,
-                HistoryRetention = TimeSpan.FromHours(24),
-                MaxHistoryEntries = 10000,
-                EnableAggregation = true,
-                AggregationWindow = TimeSpan.FromMinutes(2),
-                MaxAggregationSize = 50,
-                EnableCorrelationTracking = true,
-                AlertBufferSize = 1000,
-                EnableUnityIntegration = true,
-                EnableMetrics = true,
-                EnableCircuitBreakerIntegration = true,
-                Channels = new[]
-                {
-                    ChannelConfig.CreateLogChannel(),
-                    ChannelConfig.CreateConsoleChannel()
-                },
-                SuppressionRules = new[]
-                {
-                    SuppressionConfig.CreateDefaultDuplicateFilter(),
-                    SuppressionConfig.CreateDefaultRateLimit()
-                },
-                EmergencyEscalation = EmergencyEscalationConfig.Default
-            };
-        }
     }
 
     /// <summary>
@@ -259,28 +211,24 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the threshold for triggering emergency escalation based on alert processing failures.
         /// When this percentage of alerts fail to process, emergency mode is activated.
         /// </summary>
-        [Range(0.1, 1.0)]
         public double FailureThreshold { get; init; } = 0.8; // 80% failure rate
 
         /// <summary>
         /// Gets the time window for calculating failure rates.
         /// Failure rates are calculated over this rolling window.
         /// </summary>
-        [Range(1, 3600)]
         public TimeSpan EvaluationWindow { get; init; } = TimeSpan.FromMinutes(5);
 
         /// <summary>
         /// Gets the fallback channel to use during emergency escalation.
         /// This should be the most reliable channel available (typically console or log).
         /// </summary>
-        [Required]
         public FixedString64Bytes FallbackChannel { get; init; } = "Console";
 
         /// <summary>
         /// Gets the minimum delay between emergency escalation attempts.
         /// Prevents rapid-fire emergency escalations that could overwhelm fallback systems.
         /// </summary>
-        [Range(1, 3600)]
         public TimeSpan EscalationCooldown { get; init; } = TimeSpan.FromMinutes(1);
 
         /// <summary>

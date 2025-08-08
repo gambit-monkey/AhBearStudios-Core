@@ -140,6 +140,82 @@
         
         #endregion
         
+        #region Alerting System Messages (1400-1499)
+        
+        /// <summary>
+        /// Type code for alert raised messages.
+        /// Sent when an alert is raised in the system.
+        /// </summary>
+        public const ushort AlertRaised = 1401;
+        
+        /// <summary>
+        /// Type code for alert acknowledged messages.
+        /// Sent when an alert is acknowledged by a user or system.
+        /// </summary>
+        public const ushort AlertAcknowledged = 1402;
+        
+        /// <summary>
+        /// Type code for alert resolved messages.
+        /// Sent when an alert is resolved and no longer active.
+        /// </summary>
+        public const ushort AlertResolved = 1403;
+        
+        /// <summary>
+        /// Type code for alert system health changed messages.
+        /// Sent when alerting system health status changes.
+        /// </summary>
+        public const ushort AlertSystemHealthChanged = 1404;
+        
+        /// <summary>
+        /// Type code for alert suppression messages.
+        /// Sent when alerts are suppressed by filtering rules.
+        /// </summary>
+        public const ushort AlertSuppressed = 1405;
+        
+        /// <summary>
+        /// Type code for alert channel status messages.
+        /// Sent when alert channels change status or fail.
+        /// </summary>
+        public const ushort AlertChannelStatus = 1406;
+        
+        /// <summary>
+        /// Type code for alert statistics messages.
+        /// Sent periodically with alerting system statistics.
+        /// </summary>
+        public const ushort AlertStatistics = 1407;
+
+        /// <summary>
+        /// Type code for channel health changed messages.
+        /// Sent when alert channel health status changes.
+        /// </summary>
+        public const ushort ChannelHealthChanged = 1408;
+
+        /// <summary>
+        /// Type code for alert delivery failed messages.
+        /// Sent when an alert fails to be delivered through a channel.
+        /// </summary>
+        public const ushort AlertDeliveryFailed = 1409;
+
+        /// <summary>
+        /// Type code for filter configuration changed messages.
+        /// Sent when filter configuration is updated.
+        /// </summary>
+        public const ushort FilterConfigurationChanged = 1410;
+
+        /// <summary>
+        /// Type code for filter statistics updated messages.
+        /// Sent when filter statistics are updated.
+        /// </summary>
+        public const ushort FilterStatisticsUpdated = 1411;
+
+        /// <summary>
+        /// Type code for channel configuration changed messages.
+        /// Sent when channel configuration is updated.
+        /// </summary>
+        public const ushort ChannelConfigurationChanged = 1412;
+        
+        #endregion
+        
         #region Range Validation Constants
         
         /// <summary>
@@ -183,6 +259,16 @@
         public const ushort PoolingSystemRangeEnd = 1399;
         
         /// <summary>
+        /// Minimum TypeCode value for alerting system messages.
+        /// </summary>
+        public const ushort AlertingSystemRangeStart = 1400;
+        
+        /// <summary>
+        /// Maximum TypeCode value for alerting system messages.
+        /// </summary>
+        public const ushort AlertingSystemRangeEnd = 1499;
+        
+        /// <summary>
         /// Special TypeCode reserved for testing and validation messages.
         /// </summary>
         public const ushort Reserved_Testing = 65535;
@@ -216,7 +302,7 @@
                 >= LoggingSystemRangeStart and <= LoggingSystemRangeEnd => "Logging System",
                 >= HealthSystemRangeStart and <= HealthSystemRangeEnd => "Health System",
                 >= PoolingSystemRangeStart and <= PoolingSystemRangeEnd => "Pooling System",
-                >= 1400 and <= 1499 => "Alerting System",
+                >= AlertingSystemRangeStart and <= AlertingSystemRangeEnd => "Alerting System",
                 >= 1500 and <= 1599 => "Profiling System",
                 >= 1600 and <= 1699 => "Serialization System",
                 >= 2000 and <= 2999 => "Game System",

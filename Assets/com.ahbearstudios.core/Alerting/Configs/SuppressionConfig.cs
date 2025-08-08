@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
+using ZLinq;
 using Unity.Collections;
 using AhBearStudios.Core.Alerting.Models;
 
@@ -18,8 +17,6 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the unique name identifier for this suppression rule.
         /// Must be unique across all suppression rules in the alert system.
         /// </summary>
-        [Required]
-        [StringLength(64, MinimumLength = 1)]
         public FixedString64Bytes RuleName { get; init; }
 
         /// <summary>
@@ -32,28 +29,24 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the priority of this suppression rule.
         /// Rules with lower numbers have higher priority and are evaluated first.
         /// </summary>
-        [Range(1, 1000)]
         public int Priority { get; init; } = 500;
 
         /// <summary>
         /// Gets the type of suppression rule this configuration represents.
         /// Determines which suppression algorithm and parameters are used.
         /// </summary>
-        [Required]
         public SuppressionType SuppressionType { get; init; }
 
         /// <summary>
         /// Gets the time window for duplicate detection and rate limiting.
         /// Alerts within this window are evaluated for suppression based on rule type.
         /// </summary>
-        [Range(1, 86400)] // 1 second to 1 day
         public TimeSpan SuppressionWindow { get; init; } = TimeSpan.FromMinutes(5);
 
         /// <summary>
         /// Gets the maximum number of alerts allowed within the suppression window.
         /// Applicable to rate limiting and threshold-based suppression rules.
         /// </summary>
-        [Range(1, 10000)]
         public int MaxAlertsInWindow { get; init; } = 10;
 
         /// <summary>
@@ -126,7 +119,6 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the duration for which suppression statistics are retained.
         /// Older statistics are automatically purged to prevent unbounded memory growth.
         /// </summary>
-        [Range(1, 168)] // 1 hour to 1 week
         public TimeSpan StatisticsRetention { get; init; } = TimeSpan.FromHours(24);
 
         /// <summary>
@@ -200,121 +192,6 @@ namespace AhBearStudios.Core.Alerting.Configs
             return true;
         }
 
-        /// <summary>
-        /// Creates a default duplicate filter configuration.
-        /// Suppresses identical alerts within a 5-minute window.
-        /// </summary>
-        /// <param name="name">Optional custom name for the rule.</param>
-        /// <returns>A configured duplicate filter rule.</returns>
-        public static SuppressionConfig CreateDefaultDuplicateFilter(string name = "DuplicateFilter")
-        {
-            return new SuppressionConfig
-            {
-                RuleName = name,
-                IsEnabled = true,
-                Priority = 100,
-                SuppressionType = SuppressionType.Duplicate,
-                SuppressionWindow = TimeSpan.FromMinutes(5),
-                MaxAlertsInWindow = 1,
-                Action = SuppressionAction.Suppress,
-                DuplicateDetection = new DuplicateDetectionConfig
-                {
-                    CompareSource = true,
-                    CompareMessage = true,
-                    CompareSeverity = true,
-                    CompareTag = false,
-                    MessageSimilarityThreshold = 0.95,
-                    IgnoreTimestamps = true
-                },
-                EnableStatistics = true,
-                StatisticsRetention = TimeSpan.FromHours(24)
-            };
-        }
-
-        /// <summary>
-        /// Creates a default rate limit configuration.
-        /// Limits alerts to 10 per minute across all sources.
-        /// </summary>
-        /// <param name="name">Optional custom name for the rule.</param>
-        /// <returns>A configured rate limit rule.</returns>
-        public static SuppressionConfig CreateDefaultRateLimit(string name = "RateLimit")
-        {
-            return new SuppressionConfig
-            {
-                RuleName = name,
-                IsEnabled = true,
-                Priority = 200,
-                SuppressionType = SuppressionType.RateLimit,
-                SuppressionWindow = TimeSpan.FromMinutes(1),
-                MaxAlertsInWindow = 10,
-                Action = SuppressionAction.Queue,
-                EnableStatistics = true,
-                StatisticsRetention = TimeSpan.FromHours(24)
-            };
-        }
-
-        /// <summary>
-        /// Creates a business hours suppression configuration.
-        /// Applies different severity thresholds during business hours vs. after hours.
-        /// </summary>
-        /// <param name="name">Optional custom name for the rule.</param>
-        /// <param name="timeZone">The time zone for business hours calculation.</param>
-        /// <returns>A configured business hours rule.</returns>
-        public static SuppressionConfig CreateBusinessHoursFilter(string name = "BusinessHours", TimeZoneInfo timeZone = null)
-        {
-            return new SuppressionConfig
-            {
-                RuleName = name,
-                IsEnabled = true,
-                Priority = 300,
-                SuppressionType = SuppressionType.BusinessHours,
-                SuppressionWindow = TimeSpan.FromHours(1),
-                MaxAlertsInWindow = int.MaxValue,
-                Action = SuppressionAction.Suppress,
-                BusinessHours = new BusinessHoursConfig
-                {
-                    TimeZone = timeZone ?? TimeZoneInfo.Local,
-                    StartTime = new TimeOnly(9, 0),
-                    EndTime = new TimeOnly(17, 0),
-                    WorkDays = new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday },
-                    BusinessHoursMinimumSeverity = AlertSeverity.Warning,
-                    AfterHoursMinimumSeverity = AlertSeverity.Critical
-                },
-                EnableStatistics = true,
-                StatisticsRetention = TimeSpan.FromDays(7)
-            };
-        }
-
-        /// <summary>
-        /// Creates a threshold-based suppression rule for performance alerts.
-        /// Aggregates performance alerts when they exceed specified thresholds.
-        /// </summary>
-        /// <param name="name">Optional custom name for the rule.</param>
-        /// <param name="source">The performance monitoring source.</param>
-        /// <returns>A configured threshold rule.</returns>
-        public static SuppressionConfig CreatePerformanceThresholdFilter(string name = "PerformanceThreshold", string source = "ProfilerService")
-        {
-            return new SuppressionConfig
-            {
-                RuleName = name,
-                IsEnabled = true,
-                Priority = 400,
-                SuppressionType = SuppressionType.Threshold,
-                SuppressionWindow = TimeSpan.FromMinutes(5),
-                MaxAlertsInWindow = 5,
-                Action = SuppressionAction.Aggregate,
-                ApplicableSources = new[] { (FixedString64Bytes)source },
-                Aggregation = new AggregationConfig
-                {
-                    GroupBy = AggregationGroupBy.Source,
-                    MaxGroupSize = 20,
-                    FlushInterval = TimeSpan.FromMinutes(10),
-                    IncludeStatistics = true
-                },
-                EnableStatistics = true,
-                StatisticsRetention = TimeSpan.FromHours(48)
-            };
-        }
 
         private void ValidateFilterExpressions()
         {
@@ -431,23 +308,21 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// <summary>
         /// Gets the time zone used for business hours calculations.
         /// </summary>
-        [Required]
         public TimeZoneInfo TimeZone { get; init; } = TimeZoneInfo.Local;
 
         /// <summary>
-        /// Gets the start time for business hours (24-hour format).
+        /// Gets the start time for business hours as TimeSpan from midnight (e.g., 9:00 AM = 9 hours).
         /// </summary>
-        public TimeOnly StartTime { get; init; } = new TimeOnly(9, 0);
+        public TimeSpan StartTime { get; init; } = TimeSpan.FromHours(9); // 9:00 AM
 
         /// <summary>
-        /// Gets the end time for business hours (24-hour format).
+        /// Gets the end time for business hours as TimeSpan from midnight (e.g., 5:00 PM = 17 hours).
         /// </summary>
-        public TimeOnly EndTime { get; init; } = new TimeOnly(17, 0);
+        public TimeSpan EndTime { get; init; } = TimeSpan.FromHours(17); // 5:00 PM
 
         /// <summary>
         /// Gets the days of the week considered business days.
         /// </summary>
-        [Required]
         public IReadOnlyList<DayOfWeek> WorkDays { get; init; } = new[]
         {
             DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday
@@ -480,7 +355,7 @@ namespace AhBearStudios.Core.Alerting.Configs
         {
             var localTime = TimeZoneInfo.ConvertTimeFromUtc(timestamp, TimeZone);
             var dateOnly = DateOnly.FromDateTime(localTime);
-            var timeOnly = TimeOnly.FromDateTime(localTime);
+            var timeOfDay = localTime.TimeOfDay;
 
             // Check if it's a holiday
             if (Holidays.Contains(dateOnly))
@@ -491,7 +366,7 @@ namespace AhBearStudios.Core.Alerting.Configs
                 return false;
 
             // Check if it's within business hours
-            return timeOnly >= StartTime && timeOnly <= EndTime;
+            return timeOfDay >= StartTime && timeOfDay <= EndTime;
         }
 
         /// <summary>
@@ -529,8 +404,8 @@ namespace AhBearStudios.Core.Alerting.Configs
         public static BusinessHoursConfig Default => new()
         {
             TimeZone = TimeZoneInfo.Local,
-            StartTime = new TimeOnly(9, 0),
-            EndTime = new TimeOnly(17, 0),
+            StartTime = TimeSpan.FromHours(9), // 9:00 AM
+            EndTime = TimeSpan.FromHours(17), // 5:00 PM
             WorkDays = new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday },
             BusinessHoursMinimumSeverity = AlertSeverity.Warning,
             AfterHoursMinimumSeverity = AlertSeverity.Critical,
@@ -568,7 +443,6 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the similarity threshold for message comparison (0.0 to 1.0).
         /// Messages with similarity above this threshold are considered duplicates.
         /// </summary>
-        [Range(0.0, 1.0)]
         public double MessageSimilarityThreshold { get; init; } = 0.95;
 
         /// <summary>
@@ -633,14 +507,12 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the maximum number of alerts that can be aggregated into a single group.
         /// When this limit is reached, the aggregated alert is immediately dispatched.
         /// </summary>
-        [Range(2, 1000)]
         public int MaxGroupSize { get; init; } = 20;
 
         /// <summary>
         /// Gets the maximum time to wait before flushing a partial aggregation group.
         /// Ensures aggregated alerts are not delayed indefinitely.
         /// </summary>
-        [Range(1, 3600)]
         public TimeSpan FlushInterval { get; init; } = TimeSpan.FromMinutes(5);
 
         /// <summary>
@@ -671,7 +543,6 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the message template for aggregated alerts.
         /// Supports placeholders: {Count}, {GroupKey}, {TimeSpan}, {FirstMessage}, {LastMessage}.
         /// </summary>
-        [StringLength(512)]
         public string MessageTemplate { get; init; } = "Aggregated {Count} alerts from {GroupKey} over {TimeSpan}";
 
         /// <summary>
@@ -759,28 +630,24 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the maximum number of alerts that can be suppressed before triggering escalation.
         /// When this threshold is reached, an escalation alert is generated.
         /// </summary>
-        [Range(1, 10000)]
         public int SuppressionThreshold { get; init; } = 100;
 
         /// <summary>
         /// Gets the time window for evaluating suppression thresholds.
         /// Suppression counts are evaluated over this rolling window.
         /// </summary>
-        [Range(1, 86400)]
         public TimeSpan EvaluationWindow { get; init; } = TimeSpan.FromMinutes(15);
 
         /// <summary>
         /// Gets the escalation channel to use for escalated alerts.
         /// Should be a high-priority channel that bypasses normal suppression rules.
         /// </summary>
-        [StringLength(64)]
         public FixedString64Bytes EscalationChannel { get; init; } = "Emergency";
 
         /// <summary>
         /// Gets the message template for escalation alerts.
         /// Supports placeholders: {SuppressedCount}, {TimeWindow}, {RuleName}, {Severity}.
         /// </summary>
-        [StringLength(512)]
         public string EscalationMessageTemplate { get; init; } = "Escalation: {SuppressedCount} alerts suppressed by {RuleName} in {TimeWindow}";
 
         /// <summary>
@@ -793,7 +660,6 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the minimum delay between escalation alerts for the same rule.
         /// Prevents rapid-fire escalations that could overwhelm the escalation channel.
         /// </summary>
-        [Range(1, 3600)]
         public TimeSpan EscalationCooldown { get; init; } = TimeSpan.FromMinutes(10);
 
         /// <summary>

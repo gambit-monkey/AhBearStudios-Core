@@ -1,5 +1,5 @@
 ﻿using System.Collections.Generic;
-using System.Linq;
+using ZLinq;
 using Unity.Collections;
 using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Alerting.Models;
@@ -50,12 +50,75 @@ namespace AhBearStudios.Core.Alerting.Builders
         public AlertConfigBuilder()
         {
             // Initialize with basic default channels
-            _channels.Add(ChannelConfig.CreateLogChannel());
-            _channels.Add(ChannelConfig.CreateConsoleChannel());
+            _channels.Add(new ChannelConfig
+            {
+                Name = "Log",
+                ChannelType = AlertChannelType.Log,
+                IsEnabled = true,
+                MinimumSeverity = AlertSeverity.Info,
+                MaximumSeverity = AlertSeverity.Emergency,
+                MessageFormat = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Severity}] {Source}: {Message}",
+                EnableBatching = false,
+                EnableHealthMonitoring = true,
+                HealthCheckInterval = TimeSpan.FromMinutes(5),
+                SendTimeout = TimeSpan.FromSeconds(5),
+                Priority = 100,
+                IsEmergencyChannel = true,
+                TypedSettings = LogChannelSettings.Default
+            });
+
+            _channels.Add(new ChannelConfig
+            {
+                Name = "Console",
+                ChannelType = AlertChannelType.Console,
+                IsEnabled = true,
+                MinimumSeverity = AlertSeverity.Warning,
+                MaximumSeverity = AlertSeverity.Emergency,
+                MessageFormat = "[{Timestamp:HH:mm:ss.fff}] [{Severity}] {Source}: {Message}",
+                EnableBatching = false,
+                EnableHealthMonitoring = true,
+                HealthCheckInterval = TimeSpan.FromMinutes(10),
+                SendTimeout = TimeSpan.FromSeconds(2),
+                Priority = 200,
+                IsEmergencyChannel = true,
+                TypedSettings = ConsoleChannelSettings.Default
+            });
 
             // Initialize with basic suppression rules
-            _suppressionRules.Add(SuppressionConfig.CreateDefaultDuplicateFilter());
-            _suppressionRules.Add(SuppressionConfig.CreateDefaultRateLimit());
+            _suppressionRules.Add(new SuppressionConfig
+            {
+                RuleName = "DuplicateFilter",
+                IsEnabled = true,
+                Priority = 100,
+                SuppressionType = SuppressionType.Duplicate,
+                SuppressionWindow = TimeSpan.FromMinutes(5),
+                MaxAlertsInWindow = 1,
+                Action = SuppressionAction.Suppress,
+                DuplicateDetection = new DuplicateDetectionConfig
+                {
+                    CompareSource = true,
+                    CompareMessage = true,
+                    CompareSeverity = true,
+                    CompareTag = false,
+                    MessageSimilarityThreshold = 0.95,
+                    IgnoreTimestamps = true
+                },
+                EnableStatistics = true,
+                StatisticsRetention = TimeSpan.FromHours(24)
+            });
+
+            _suppressionRules.Add(new SuppressionConfig
+            {
+                RuleName = "RateLimit",
+                IsEnabled = true,
+                Priority = 200,
+                SuppressionType = SuppressionType.RateLimit,
+                SuppressionWindow = TimeSpan.FromMinutes(1),
+                MaxAlertsInWindow = 10,
+                Action = SuppressionAction.Queue,
+                EnableStatistics = true,
+                StatisticsRetention = TimeSpan.FromHours(24)
+            });
         }
 
         #endregion
@@ -283,10 +346,21 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// <inheritdoc />
         public IAlertConfigBuilder WithLogChannel(string name = "Log", AlertSeverity minimumSeverity = AlertSeverity.Info, bool enabled = true)
         {
-            var config = ChannelConfig.CreateLogChannel(name) with
+            var config = new ChannelConfig
             {
+                Name = name,
+                ChannelType = AlertChannelType.Log,
+                IsEnabled = enabled,
                 MinimumSeverity = minimumSeverity,
-                IsEnabled = enabled
+                MaximumSeverity = AlertSeverity.Emergency,
+                MessageFormat = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Severity}] {Source}: {Message}",
+                EnableBatching = false,
+                EnableHealthMonitoring = true,
+                HealthCheckInterval = TimeSpan.FromMinutes(5),
+                SendTimeout = TimeSpan.FromSeconds(5),
+                Priority = 100,
+                IsEmergencyChannel = true,
+                TypedSettings = LogChannelSettings.Default
             };
             return WithChannel(config);
         }
@@ -294,10 +368,21 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// <inheritdoc />
         public IAlertConfigBuilder WithConsoleChannel(string name = "Console", AlertSeverity minimumSeverity = AlertSeverity.Warning, bool enabled = true)
         {
-            var config = ChannelConfig.CreateConsoleChannel(name) with
+            var config = new ChannelConfig
             {
+                Name = name,
+                ChannelType = AlertChannelType.Console,
+                IsEnabled = enabled,
                 MinimumSeverity = minimumSeverity,
-                IsEnabled = enabled
+                MaximumSeverity = AlertSeverity.Emergency,
+                MessageFormat = "[{Timestamp:HH:mm:ss.fff}] [{Severity}] {Source}: {Message}",
+                EnableBatching = false,
+                EnableHealthMonitoring = true,
+                HealthCheckInterval = TimeSpan.FromMinutes(10),
+                SendTimeout = TimeSpan.FromSeconds(2),
+                Priority = 200,
+                IsEmergencyChannel = true,
+                TypedSettings = ConsoleChannelSettings.Default
             };
             return WithChannel(config);
         }
@@ -310,9 +395,38 @@ namespace AhBearStudios.Core.Alerting.Builders
             if (string.IsNullOrWhiteSpace(endpoint))
                 throw new ArgumentException("Endpoint cannot be null or whitespace.", nameof(endpoint));
 
-            var config = ChannelConfig.CreateNetworkChannel(name, endpoint, minimumSeverity) with
+            var networkSettings = new NetworkChannelSettings
             {
-                IsEnabled = enabled
+                Endpoint = endpoint,
+                Method = HttpMethod.Post,
+                ContentType = "application/json",
+                UserAgent = "AhBearStudios-AlertSystem/2.0"
+            };
+
+            var config = new ChannelConfig
+            {
+                Name = name,
+                ChannelType = AlertChannelType.Network,
+                IsEnabled = enabled,
+                MinimumSeverity = minimumSeverity,
+                MaximumSeverity = AlertSeverity.Emergency,
+                MessageFormat = "{{\"timestamp\":\"{Timestamp:yyyy-MM-ddTHH:mm:ss.fffZ}\",\"severity\":\"{Severity}\",\"source\":\"{Source}\",\"message\":\"{Message}\",\"tag\":\"{Tag}\",\"correlationId\":\"{CorrelationId}\"}}",
+                EnableBatching = true,
+                BatchSize = 10,
+                BatchFlushInterval = TimeSpan.FromMinutes(2),
+                EnableHealthMonitoring = true,
+                HealthCheckInterval = TimeSpan.FromMinutes(3),
+                SendTimeout = TimeSpan.FromSeconds(30),
+                RetryPolicy = new RetryPolicyConfig
+                {
+                    MaxAttempts = 3,
+                    BaseDelay = TimeSpan.FromSeconds(5),
+                    MaxDelay = TimeSpan.FromMinutes(2),
+                    BackoffMultiplier = 2.0,
+                    JitterEnabled = true
+                },
+                Priority = 300,
+                TypedSettings = networkSettings
             };
             return WithChannel(config);
         }
@@ -329,10 +443,41 @@ namespace AhBearStudios.Core.Alerting.Builders
             if (toEmails == null || toEmails.Length == 0)
                 throw new ArgumentException("At least one recipient email must be provided.", nameof(toEmails));
 
-            var config = ChannelConfig.CreateEmailChannel(name, smtpServer, fromEmail, toEmails) with
+            var emailSettings = new EmailChannelSettings
             {
+                SmtpServer = smtpServer,
+                SmtpPort = 587,
+                EnableSsl = true,
+                FromEmail = fromEmail,
+                ToEmails = toEmails.AsValueEnumerable().ToList(),
+                Subject = "[ALERT] {Severity} - {Source}",
+                UseHtml = true
+            };
+
+            var config = new ChannelConfig
+            {
+                Name = name,
+                ChannelType = AlertChannelType.Email,
+                IsEnabled = enabled,
                 MinimumSeverity = minimumSeverity,
-                IsEnabled = enabled
+                MaximumSeverity = AlertSeverity.Emergency,
+                MessageFormat = "<h3>Alert Details</h3><p><strong>Timestamp:</strong> {Timestamp:yyyy-MM-dd HH:mm:ss}</p><p><strong>Severity:</strong> {Severity}</p><p><strong>Source:</strong> {Source}</p><p><strong>Message:</strong> {Message}</p><p><strong>Correlation ID:</strong> {CorrelationId}</p>",
+                EnableBatching = true,
+                BatchSize = 5,
+                BatchFlushInterval = TimeSpan.FromMinutes(5),
+                EnableHealthMonitoring = true,
+                HealthCheckInterval = TimeSpan.FromMinutes(15),
+                SendTimeout = TimeSpan.FromMinutes(1),
+                RetryPolicy = new RetryPolicyConfig
+                {
+                    MaxAttempts = 2,
+                    BaseDelay = TimeSpan.FromMinutes(1),
+                    MaxDelay = TimeSpan.FromMinutes(10),
+                    BackoffMultiplier = 3.0,
+                    JitterEnabled = false
+                },
+                Priority = 400,
+                TypedSettings = emailSettings
             };
             return WithChannel(config);
         }
@@ -340,10 +485,21 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// <inheritdoc />
         public IAlertConfigBuilder WithUnityConsoleChannel(string name = "UnityConsole", AlertSeverity minimumSeverity = AlertSeverity.Warning, bool enabled = true)
         {
-            var config = ChannelConfig.CreateUnityConsoleChannel(name) with
+            var config = new ChannelConfig
             {
+                Name = name,
+                ChannelType = AlertChannelType.UnityConsole,
+                IsEnabled = enabled,
                 MinimumSeverity = minimumSeverity,
-                IsEnabled = enabled
+                MaximumSeverity = AlertSeverity.Emergency,
+                MessageFormat = "[{Source}] {Message}",
+                EnableBatching = false,
+                EnableHealthMonitoring = true,
+                HealthCheckInterval = TimeSpan.FromMinutes(10),
+                SendTimeout = TimeSpan.FromSeconds(1),
+                Priority = 150,
+                IsEmergencyChannel = true,
+                TypedSettings = UnityChannelSettings.Default
             };
             return WithChannel(config);
         }
@@ -406,10 +562,26 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// <inheritdoc />
         public IAlertConfigBuilder WithDuplicateFilter(string name = "DuplicateFilter", TimeSpan? window = null, bool enabled = true)
         {
-            var config = SuppressionConfig.CreateDefaultDuplicateFilter(name) with
+            var config = new SuppressionConfig
             {
+                RuleName = name,
                 IsEnabled = enabled,
-                SuppressionWindow = window ?? TimeSpan.FromMinutes(5)
+                Priority = 100,
+                SuppressionType = SuppressionType.Duplicate,
+                SuppressionWindow = window ?? TimeSpan.FromMinutes(5),
+                MaxAlertsInWindow = 1,
+                Action = SuppressionAction.Suppress,
+                DuplicateDetection = new DuplicateDetectionConfig
+                {
+                    CompareSource = true,
+                    CompareMessage = true,
+                    CompareSeverity = true,
+                    CompareTag = false,
+                    MessageSimilarityThreshold = 0.95,
+                    IgnoreTimestamps = true
+                },
+                EnableStatistics = true,
+                StatisticsRetention = TimeSpan.FromHours(24)
             };
             return WithSuppressionRule(config);
         }
@@ -420,11 +592,17 @@ namespace AhBearStudios.Core.Alerting.Builders
             if (maxAlerts <= 0)
                 throw new ArgumentException("Max alerts must be greater than zero.", nameof(maxAlerts));
 
-            var config = SuppressionConfig.CreateDefaultRateLimit(name) with
+            var config = new SuppressionConfig
             {
+                RuleName = name,
                 IsEnabled = enabled,
+                Priority = 200,
+                SuppressionType = SuppressionType.RateLimit,
+                SuppressionWindow = window ?? TimeSpan.FromMinutes(1),
                 MaxAlertsInWindow = maxAlerts,
-                SuppressionWindow = window ?? TimeSpan.FromMinutes(1)
+                Action = SuppressionAction.Queue,
+                EnableStatistics = true,
+                StatisticsRetention = TimeSpan.FromHours(24)
             };
             return WithSuppressionRule(config);
         }
@@ -432,9 +610,26 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// <inheritdoc />
         public IAlertConfigBuilder WithBusinessHoursFilter(string name = "BusinessHours", TimeZoneInfo timeZone = null, bool enabled = true)
         {
-            var config = SuppressionConfig.CreateBusinessHoursFilter(name, timeZone) with
+            var config = new SuppressionConfig
             {
-                IsEnabled = enabled
+                RuleName = name,
+                IsEnabled = enabled,
+                Priority = 300,
+                SuppressionType = SuppressionType.BusinessHours,
+                SuppressionWindow = TimeSpan.FromHours(1),
+                MaxAlertsInWindow = int.MaxValue,
+                Action = SuppressionAction.Suppress,
+                BusinessHours = new BusinessHoursConfig
+                {
+                    TimeZone = timeZone ?? TimeZoneInfo.Local,
+                    StartTime = TimeSpan.FromHours(9),
+                    EndTime = TimeSpan.FromHours(17),
+                    WorkDays = new[] { DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday, DayOfWeek.Thursday, DayOfWeek.Friday },
+                    BusinessHoursMinimumSeverity = AlertSeverity.Warning,
+                    AfterHoursMinimumSeverity = AlertSeverity.Critical
+                },
+                EnableStatistics = true,
+                StatisticsRetention = TimeSpan.FromDays(7)
             };
             return WithSuppressionRule(config);
         }
@@ -851,9 +1046,9 @@ namespace AhBearStudios.Core.Alerting.Builders
                 EnableUnityIntegration = _enableUnityIntegration,
                 EnableMetrics = _enableMetrics,
                 EnableCircuitBreakerIntegration = _enableCircuitBreakerIntegration,
-                Channels = _channels.ToList().AsReadOnly(),
-                SuppressionRules = _suppressionRules.ToList().AsReadOnly(),
-                SourceSeverityOverrides = _sourceSeverityOverrides.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+                Channels = _channels.AsValueEnumerable().ToList().AsReadOnly(),
+                SuppressionRules = _suppressionRules.AsValueEnumerable().ToList().AsReadOnly(),
+                SourceSeverityOverrides = _sourceSeverityOverrides.AsValueEnumerable().ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
                 EmergencyEscalation = _emergencyEscalation
             };
 
@@ -930,133 +1125,4 @@ namespace AhBearStudios.Core.Alerting.Builders
         #endregion
     }
 
-    /// <summary>
-    /// Specialized builder implementation for configuring alert channels with fluent syntax.
-    /// Provides advanced channel configuration capabilities and validation.
-    /// </summary>
-    internal sealed class ChannelConfigBuilder : IChannelConfigBuilder
-    {
-        private readonly List<ChannelConfig> _channels;
-
-        /// <summary>
-        /// Initializes a new instance of the ChannelConfigBuilder.
-        /// </summary>
-        /// <param name="channels">The channel list to modify</param>
-        public ChannelConfigBuilder(List<ChannelConfig> channels)
-        {
-            _channels = channels ?? throw new ArgumentNullException(nameof(channels));
-        }
-
-        /// <inheritdoc />
-        public IChannelConfigBuilder AddChannel<TChannel>(Action<TChannel> configAction) where TChannel : ChannelConfig, new()
-        {
-            if (configAction == null)
-                throw new ArgumentNullException(nameof(configAction));
-
-            var channel = new TChannel();
-            configAction(channel);
-            channel.Validate();
-
-            // Remove existing channel with the same name
-            _channels.RemoveAll(c => c.Name.Equals(channel.Name));
-            _channels.Add(channel);
-            return this;
-        }
-
-        /// <inheritdoc />
-        public IChannelConfigBuilder AddChannel(ChannelConfig channelConfig)
-        {
-            if (channelConfig == null)
-                throw new ArgumentNullException(nameof(channelConfig));
-
-            channelConfig.Validate();
-
-            // Remove existing channel with the same name
-            _channels.RemoveAll(c => c.Name.Equals(channelConfig.Name));
-            _channels.Add(channelConfig);
-            return this;
-        }
-
-        /// <inheritdoc />
-        public IChannelConfigBuilder RemoveChannel(string channelName)
-        {
-            if (string.IsNullOrWhiteSpace(channelName))
-                throw new ArgumentException("Channel name cannot be null or whitespace.", nameof(channelName));
-
-            _channels.RemoveAll(c => c.Name.ToString().Equals(channelName, StringComparison.OrdinalIgnoreCase));
-            return this;
-        }
-
-        /// <inheritdoc />
-        public IChannelConfigBuilder ClearChannels()
-        {
-            _channels.Clear();
-            return this;
-        }
-    }
-
-    /// <summary>
-    /// Specialized builder implementation for configuring suppression rules with fluent syntax.
-    /// Provides advanced suppression rule configuration capabilities and validation.
-    /// </summary>
-    internal sealed class SuppressionConfigBuilder : ISuppressionConfigBuilder
-    {
-        private readonly List<SuppressionConfig> _suppressionRules;
-
-        /// <summary>
-        /// Initializes a new instance of the SuppressionConfigBuilder.
-        /// </summary>
-        /// <param name="suppressionRules">The suppression rules list to modify</param>
-        public SuppressionConfigBuilder(List<SuppressionConfig> suppressionRules)
-        {
-            _suppressionRules = suppressionRules ?? throw new ArgumentNullException(nameof(suppressionRules));
-        }
-
-        /// <inheritdoc />
-        public ISuppressionConfigBuilder AddRule<TRule>(Action<TRule> configAction) where TRule : SuppressionConfig, new()
-        {
-            if (configAction == null)
-                throw new ArgumentNullException(nameof(configAction));
-
-            var rule = new TRule();
-            configAction(rule);
-            rule.Validate();
-
-            // Remove existing rule with the same name
-            _suppressionRules.RemoveAll(r => r.RuleName.Equals(rule.RuleName));
-            _suppressionRules.Add(rule);
-            return this;
-        }
-
-        /// <inheritdoc />
-        public ISuppressionConfigBuilder AddRule(SuppressionConfig suppressionConfig)
-        {
-            if (suppressionConfig == null)
-                throw new ArgumentNullException(nameof(suppressionConfig));
-
-            suppressionConfig.Validate();
-
-            // Remove existing rule with the same name
-            _suppressionRules.RemoveAll(r => r.RuleName.Equals(suppressionConfig.RuleName));
-            _suppressionRules.Add(suppressionConfig);
-            return this;
-        }
-
-        /// <inheritdoc />
-        public ISuppressionConfigBuilder RemoveRule(string ruleName)
-        {
-            if (string.IsNullOrWhiteSpace(ruleName))
-                throw new ArgumentException("Rule name cannot be null or whitespace.", nameof(ruleName));
-
-            _suppressionRules.RemoveAll(r => r.RuleName.ToString().Equals(ruleName, StringComparison.OrdinalIgnoreCase));
-            return this;
-        }
-
-        /// <inheritdoc />
-        public ISuppressionConfigBuilder ClearRules()
-        {
-            _suppressionRules.Clear();
-            return this;
-        }
-    }
 }
