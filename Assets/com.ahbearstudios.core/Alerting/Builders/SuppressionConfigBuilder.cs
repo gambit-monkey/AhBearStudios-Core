@@ -8,7 +8,7 @@ namespace AhBearStudios.Core.Alerting.Builders
     /// Specialized builder implementation for configuring suppression rules with fluent syntax.
     /// Provides advanced suppression rule configuration capabilities and validation.
     /// </summary>
-    internal sealed class SuppressionConfigBuilder
+    internal sealed class SuppressionConfigBuilder : ISuppressionConfigBuilder
     {
         private readonly List<SuppressionConfig> _suppressionRules;
 
@@ -24,7 +24,7 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// <summary>
         /// Adds a suppression rule configuration with fluent syntax.
         /// </summary>
-        public SuppressionConfigBuilder AddRule<TRule>(Action<TRule> configAction) where TRule : SuppressionConfig, new()
+        public ISuppressionConfigBuilder AddRule<TRule>(Action<TRule> configAction) where TRule : SuppressionConfig, new()
         {
             if (configAction == null)
                 throw new ArgumentNullException(nameof(configAction));
@@ -42,7 +42,7 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// <summary>
         /// Adds a suppression rule configuration with fluent syntax.
         /// </summary>
-        public SuppressionConfigBuilder AddRule(SuppressionConfig suppressionConfig)
+        public ISuppressionConfigBuilder AddRule(SuppressionConfig suppressionConfig)
         {
             if (suppressionConfig == null)
                 throw new ArgumentNullException(nameof(suppressionConfig));
@@ -58,7 +58,7 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// <summary>
         /// Adds a suppression rule configuration with fluent syntax.
         /// </summary>
-        public SuppressionConfigBuilder RemoveRule(string ruleName)
+        public ISuppressionConfigBuilder RemoveRule(string ruleName)
         {
             if (string.IsNullOrWhiteSpace(ruleName))
                 throw new ArgumentException("Rule name cannot be null or whitespace.", nameof(ruleName));
@@ -70,7 +70,7 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// <summary>
         /// Adds a suppression rule configuration with fluent syntax.
         /// </summary>
-        public SuppressionConfigBuilder ClearRules()
+        public ISuppressionConfigBuilder ClearRules()
         {
             _suppressionRules.Clear();
             return this;

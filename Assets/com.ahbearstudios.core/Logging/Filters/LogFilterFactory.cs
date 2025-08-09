@@ -4,7 +4,7 @@ using AhBearStudios.Core.Common.Models;
 using Unity.Collections;
 using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Models;
-using FilterMode = AhBearStudios.Core.Logging.Configs.FilterMode;
+using FilterMode = AhBearStudios.Core.Logging.Models.FilterMode;
 
 namespace AhBearStudios.Core.Logging.Filters
 {

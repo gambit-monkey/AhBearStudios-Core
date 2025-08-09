@@ -40,5 +40,11 @@ public enum AlertChannelType : byte
     /// Unity notification-based alert channel for in-game notifications.
     /// Suitable for runtime alerts visible to users within Unity applications.
     /// </summary>
-    UnityNotification = 5
+    UnityNotification = 5,
+
+    /// <summary>
+    /// File-based alert channel that writes alerts directly to disk files.
+    /// Suitable for persistent storage, archiving, and offline analysis.
+    /// </summary>
+    File = 6
 }

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AhBearStudios.Core.Alerting.Configs;
 using Unity.Collections;
 using Cysharp.Threading.Tasks;
 using ZLinq;
@@ -41,7 +42,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// </summary>
         public async UniTask<IAlertFilter> CreateFilterAsync(FilterType filterType, FixedString64Bytes name, int priority = 100)
         {
-            var configuration = ExtendedFilterConfiguration.Default(filterType, name, priority);
+            var configuration = FilterConfiguration.DefaultFor(filterType, name, priority);
             return await CreateAndConfigureFilterAsync(configuration);
         }
 
@@ -69,7 +70,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             var validationResult = ValidateFilterConfiguration(configuration);
             if (!validationResult.IsValid)
             {
-                throw new ArgumentException($"Invalid filter configuration: {string.Join(", ", validationResult.Errors.Select(e => e.Message))}", nameof(configuration));
+                throw new ArgumentException($"Invalid filter configuration: {string.Join(", ", validationResult.Errors.ZSelect(e => e.Message))}", nameof(configuration));
             }
 
             var startTime = DateTime.UtcNow;
@@ -158,7 +159,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 Priority = priority,
                 Settings = new Dictionary<string, object>
                 {
-                    ["AllowedSources"] = allowedSources.ToList(),
+                    ["AllowedSources"] = allowedSources.ZToList(),
                     ["UseWhitelist"] = useWhitelist,
                     ["CaseSensitive"] = false
                 }
@@ -216,7 +217,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 Priority = priority,
                 Settings = new Dictionary<string, object>
                 {
-                    ["Patterns"] = patterns.ToList(),
+                    ["Patterns"] = patterns.ZToList(),
                     ["Action"] = action,
                     ["CaseSensitive"] = false,
                     ["UseRegex"] = false
@@ -246,7 +247,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 Priority = priority,
                 Settings = new Dictionary<string, object>
                 {
-                    ["TimeRanges"] = allowedTimeRanges.ToList(),
+                    ["TimeRanges"] = allowedTimeRanges.ZToList(),
                     ["Timezone"] = timezone?.Id ?? TimeZoneInfo.Utc.Id
                 }
             };
@@ -266,7 +267,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             if (childFilters == null)
                 throw new ArgumentNullException(nameof(childFilters));
 
-            var childFiltersList = childFilters.ToList();
+            var childFiltersList = childFilters.ZToList();
             if (childFiltersList.Count == 0)
                 throw new ArgumentException("At least one child filter is required", nameof(childFilters));
 
@@ -297,7 +298,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 throw new ArgumentNullException(nameof(configurations));
 
             var filters = new List<IAlertFilter>();
-            var tasks = configurations.Select(config => CreateFilterSafely(config, correlationId));
+            var tasks = configurations.ZSelect(config => CreateFilterSafely(config, correlationId));
             var results = await UniTask.WhenAll(tasks);
 
             foreach (var result in results)
@@ -344,7 +345,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// <summary>
         /// Creates filters optimized for production environments.
         /// </summary>
-        public async UniTask<IAlertFilter> CreateProductionFiltersAsync()
+        public async UniTask<IEnumerable<IAlertFilter>> CreateProductionFiltersAsync()
         {
             var filters = new List<IAlertFilter>();
 
@@ -438,7 +439,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                     break;
             }
 
-            return errors.Any()
+            return errors.ZAny()
                 ? ValidationResult.Failure(errors, "AlertFilterFactory")
                 : ValidationResult.Success("AlertFilterFactory");
         }
@@ -448,7 +449,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// </summary>
         public FilterConfiguration GetDefaultConfiguration(FilterType filterType)
         {
-            return ExtendedFilterConfiguration.Default(filterType, $"Default{filterType}", 100);
+            return FilterConfiguration.DefaultFor(filterType, $"Default{filterType}", 100);
         }
 
         /// <summary>
@@ -475,7 +476,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             if (settings == null)
                 throw new ArgumentNullException(nameof(settings));
 
-            var config = ExtendedFilterConfiguration.Default(filterType, name);
+            var config = FilterConfiguration.DefaultFor(filterType, name);
 
             // Override with provided settings
             if (settings.TryGetValue("IsEnabled", out var enabledValue))
@@ -531,14 +532,19 @@ namespace AhBearStudios.Core.Alerting.Factories
                 : AlertSeverity.Information;
 
             await UniTask.CompletedTask;
-            return new SeverityAlertFilter(config.Name.ToString(), minimumSeverity);
+            var allowCriticalAlways = config.Settings.TryGetValue("AllowCriticalAlways", out var criticalValue)
+                && criticalValue is bool critical
+                ? critical
+                : true;
+
+            return new SeverityAlertFilter(minimumSeverity, allowCriticalAlways);
         }
 
         private async UniTask<IAlertFilter> CreateSourceFilterInternal(FilterConfiguration config)
         {
             var allowedSources = config.Settings.TryGetValue("AllowedSources", out var sourcesValue)
                 && sourcesValue is IEnumerable<string> sources
-                ? sources.ToList()
+                ? sources.ZToList()
                 : new List<string> { "*" };
 
             await UniTask.CompletedTask;
@@ -560,7 +566,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         {
             var patterns = config.Settings.TryGetValue("Patterns", out var patternsValue)
                 && patternsValue is IEnumerable<string> patternList
-                ? patternList.ToList()
+                ? patternList.ZToList()
                 : new List<string>();
 
             await UniTask.CompletedTask;
@@ -571,7 +577,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         {
             var timeRanges = config.Settings.TryGetValue("TimeRanges", out var rangesValue)
                 && rangesValue is IEnumerable<TimeRange> ranges
-                ? ranges.ToList()
+                ? ranges.ZToList()
                 : new List<TimeRange> { TimeRange.Always() };
 
             await UniTask.CompletedTask;
@@ -582,7 +588,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         {
             var childFilters = config.Settings.TryGetValue("ChildFilters", out var filtersValue)
                 && filtersValue is IEnumerable<IAlertFilter> filters
-                ? filters.ToList()
+                ? filters.ZToList()
                 : new List<IAlertFilter>();
 
             var logicalOperator = config.Settings.TryGetValue("LogicalOperator", out var operatorValue)
@@ -700,7 +706,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         {
             if (!settings.ContainsKey("ChildFilters"))
                 errors.Add(new ValidationError("Composite filter requires ChildFilters setting"));
-            else if (settings["ChildFilters"] is IEnumerable<IAlertFilter> filters && !filters.Any())
+            else if (settings["ChildFilters"] is IEnumerable<IAlertFilter> filters && !filters.ZAny())
                 errors.Add(new ValidationError("Composite filter requires at least one child filter"));
         }
 
@@ -719,227 +725,4 @@ namespace AhBearStudios.Core.Alerting.Factories
         #endregion
     }
 
-    #region Additional Filter Implementations
-
-    /// <summary>
-    /// Content-based alert filter that matches message patterns.
-    /// </summary>
-    internal sealed class ContentAlertFilter : BaseAlertFilter
-    {
-        private readonly List<string> _patterns;
-
-        public ContentAlertFilter(string name, IEnumerable<string> patterns) : base(name)
-        {
-            _patterns = patterns?.ToList() ?? new List<string>();
-        }
-
-        public override bool CanHandle(Alert alert) => alert != null;
-
-        public override FilterResult Evaluate(Alert alert, FilterContext context)
-        {
-            var message = alert.Message.ToString();
-            
-            foreach (var pattern in _patterns)
-            {
-                if (MatchesPattern(message, pattern))
-                {
-                    return FilterResult.Suppress(alert, $"Content matched pattern: {pattern}");
-                }
-            }
-
-            return FilterResult.Allow(alert, "No content patterns matched");
-        }
-
-        private static bool MatchesPattern(string text, string pattern)
-        {
-            if (string.IsNullOrEmpty(pattern) || pattern == "*")
-                return true;
-
-            if (!pattern.Contains('*'))
-                return text.Contains(pattern, StringComparison.OrdinalIgnoreCase);
-
-            var parts = pattern.Split('*', StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length == 0)
-                return true;
-
-            var currentIndex = 0;
-            foreach (var part in parts)
-            {
-                var index = text.IndexOf(part, currentIndex, StringComparison.OrdinalIgnoreCase);
-                if (index == -1)
-                    return false;
-                currentIndex = index + part.Length;
-            }
-
-            return true;
-        }
-    }
-
-    /// <summary>
-    /// Time-based alert filter that allows alerts during specific time ranges.
-    /// </summary>
-    internal sealed class TimeBasedAlertFilter : BaseAlertFilter
-    {
-        private readonly List<TimeRange> _allowedTimeRanges;
-        private readonly TimeZoneInfo _timezone;
-
-        public TimeBasedAlertFilter(string name, IEnumerable<TimeRange> timeRanges, TimeZoneInfo timezone = null) : base(name)
-        {
-            _allowedTimeRanges = timeRanges?.ToList() ?? new List<TimeRange> { TimeRange.Always() };
-            _timezone = timezone ?? TimeZoneInfo.Utc;
-        }
-
-        public override bool CanHandle(Alert alert) => alert != null;
-
-        public override FilterResult Evaluate(Alert alert, FilterContext context)
-        {
-            var currentTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, _timezone);
-            
-            foreach (var timeRange in _allowedTimeRanges)
-            {
-                if (timeRange.Contains(currentTime))
-                {
-                    return FilterResult.Allow(alert, $"Within allowed time range");
-                }
-            }
-
-            return FilterResult.Suppress(alert, "Outside allowed time ranges");
-        }
-    }
-
-    /// <summary>
-    /// Composite alert filter that combines multiple child filters.
-    /// </summary>
-    internal sealed class CompositeAlertFilter : BaseAlertFilter
-    {
-        private readonly List<IAlertFilter> _childFilters;
-        private readonly LogicalOperator _logicalOperator;
-
-        public CompositeAlertFilter(string name, IEnumerable<IAlertFilter> childFilters, LogicalOperator logicalOperator) : base(name)
-        {
-            _childFilters = childFilters?.ToList() ?? new List<IAlertFilter>();
-            _logicalOperator = logicalOperator;
-        }
-
-        public override bool CanHandle(Alert alert) => alert != null && _childFilters.Any();
-
-        public override FilterResult Evaluate(Alert alert, FilterContext context)
-        {
-            var results = new List<FilterResult>();
-            
-            foreach (var childFilter in _childFilters)
-            {
-                if (!childFilter.IsEnabled || !childFilter.CanHandle(alert))
-                    continue;
-
-                var result = childFilter.Evaluate(alert, context);
-                results.Add(result);
-            }
-
-            if (results.Count == 0)
-                return FilterResult.Allow(alert, "No applicable child filters");
-
-            return _logicalOperator switch
-            {
-                LogicalOperator.And => EvaluateAnd(alert, results),
-                LogicalOperator.Or => EvaluateOr(alert, results),
-                LogicalOperator.Xor => EvaluateXor(alert, results),
-                LogicalOperator.Not => EvaluateNot(alert, results),
-                _ => FilterResult.Allow(alert, "Unknown logical operator")
-            };
-        }
-
-        private FilterResult EvaluateAnd(Alert alert, List<FilterResult> results)
-        {
-            return results.All(r => r.Decision == FilterDecision.Allow)
-                ? FilterResult.Allow(alert, "All child filters allowed")
-                : FilterResult.Suppress(alert, "One or more child filters suppressed");
-        }
-
-        private FilterResult EvaluateOr(Alert alert, List<FilterResult> results)
-        {
-            return results.Any(r => r.Decision == FilterDecision.Allow)
-                ? FilterResult.Allow(alert, "At least one child filter allowed")
-                : FilterResult.Suppress(alert, "All child filters suppressed");
-        }
-
-        private FilterResult EvaluateXor(Alert alert, List<FilterResult> results)
-        {
-            var allowCount = results.Count(r => r.Decision == FilterDecision.Allow);
-            return allowCount == 1
-                ? FilterResult.Allow(alert, "Exactly one child filter allowed")
-                : FilterResult.Suppress(alert, $"{allowCount} child filters allowed (expected 1)");
-        }
-
-        private FilterResult EvaluateNot(Alert alert, List<FilterResult> results)
-        {
-            return results.All(r => r.Decision != FilterDecision.Allow)
-                ? FilterResult.Allow(alert, "All child filters were suppressed (NOT)")
-                : FilterResult.Suppress(alert, "One or more child filters allowed (NOT)");
-        }
-    }
-
-    /// <summary>
-    /// Tag-based alert filter.
-    /// </summary>
-    internal sealed class TagAlertFilter : BaseAlertFilter
-    {
-        public TagAlertFilter(string name) : base(name) { }
-
-        public override bool CanHandle(Alert alert) => alert != null;
-
-        public override FilterResult Evaluate(Alert alert, FilterContext context)
-        {
-            // Implementation would check alert tags
-            return FilterResult.Allow(alert, "Tag filter placeholder");
-        }
-    }
-
-    /// <summary>
-    /// Correlation ID-based alert filter.
-    /// </summary>
-    internal sealed class CorrelationAlertFilter : BaseAlertFilter
-    {
-        public CorrelationAlertFilter(string name) : base(name) { }
-
-        public override bool CanHandle(Alert alert) => alert != null;
-
-        public override FilterResult Evaluate(Alert alert, FilterContext context)
-        {
-            // Implementation would check correlation IDs
-            return FilterResult.Allow(alert, "Correlation filter placeholder");
-        }
-    }
-
-    /// <summary>
-    /// Pass-through filter that allows all alerts.
-    /// </summary>
-    internal sealed class PassThroughAlertFilter : BaseAlertFilter
-    {
-        public PassThroughAlertFilter(string name) : base(name) { }
-
-        public override bool CanHandle(Alert alert) => true;
-
-        public override FilterResult Evaluate(Alert alert, FilterContext context)
-        {
-            return FilterResult.Allow(alert, "Pass-through filter");
-        }
-    }
-
-    /// <summary>
-    /// Block filter that suppresses all alerts.
-    /// </summary>
-    internal sealed class BlockAlertFilter : BaseAlertFilter
-    {
-        public BlockAlertFilter(string name) : base(name) { }
-
-        public override bool CanHandle(Alert alert) => true;
-
-        public override FilterResult Evaluate(Alert alert, FilterContext context)
-        {
-            return FilterResult.Suppress(alert, "Block filter");
-        }
-    }
-
-    #endregion
 }

@@ -8,7 +8,7 @@ namespace AhBearStudios.Core.Alerting.Builders
     /// Specialized builder implementation for configuring alert channels with fluent syntax.
     /// Provides advanced channel configuration capabilities and validation.
     /// </summary>
-    internal sealed class ChannelConfigBuilder
+    internal sealed class ChannelConfigBuilder : IChannelConfigBuilder
     {
         private readonly List<ChannelConfig> _channels;
 
@@ -24,7 +24,7 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// <summary>
         /// Adds a channel configuration with fluent syntax.
         /// </summary>
-        public ChannelConfigBuilder AddChannel<TChannel>(Action<TChannel> configAction) where TChannel : ChannelConfig, new()
+        public IChannelConfigBuilder AddChannel<TChannel>(Action<TChannel> configAction) where TChannel : ChannelConfig, new()
         {
             if (configAction == null)
                 throw new ArgumentNullException(nameof(configAction));
@@ -42,7 +42,7 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// <summary>
         /// Adds a channel configuration with fluent syntax.
         /// </summary>
-        public ChannelConfigBuilder AddChannel(ChannelConfig channelConfig)
+        public IChannelConfigBuilder AddChannel(ChannelConfig channelConfig)
         {
             if (channelConfig == null)
                 throw new ArgumentNullException(nameof(channelConfig));
@@ -58,7 +58,7 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// <summary>
         /// Adds a channel configuration with fluent syntax.
         /// </summary>
-        public ChannelConfigBuilder RemoveChannel(string channelName)
+        public IChannelConfigBuilder RemoveChannel(string channelName)
         {
             if (string.IsNullOrWhiteSpace(channelName))
                 throw new ArgumentException("Channel name cannot be null or whitespace.", nameof(channelName));
@@ -70,7 +70,7 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// <summary>
         /// Adds a channel configuration with fluent syntax.
         /// </summary>
-        public ChannelConfigBuilder ClearChannels()
+        public IChannelConfigBuilder ClearChannels()
         {
             _channels.Clear();
             return this;

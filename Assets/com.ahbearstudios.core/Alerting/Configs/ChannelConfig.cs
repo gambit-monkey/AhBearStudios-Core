@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using Unity.Collections;
+using ZLinq;
 using AhBearStudios.Core.Alerting.Models;
 
 namespace AhBearStudios.Core.Alerting.Configs
@@ -146,8 +147,8 @@ namespace AhBearStudios.Core.Alerting.Configs
             if (Name.IsEmpty)
                 throw new InvalidOperationException("Channel name cannot be empty.");
 
-            if (ChannelType.IsEmpty)
-                throw new InvalidOperationException("Channel type cannot be empty.");
+            if (!Enum.IsDefined(typeof(AlertChannelType), ChannelType))
+                throw new InvalidOperationException("Channel type is not valid.");
 
             if (MinimumSeverity > MaximumSeverity)
                 throw new InvalidOperationException("Minimum severity cannot be greater than maximum severity.");
@@ -181,10 +182,10 @@ namespace AhBearStudios.Core.Alerting.Configs
             if (alert.Severity < MinimumSeverity || alert.Severity > MaximumSeverity)
                 return false;
 
-            if (IgnoredSources.Count > 0 && IgnoredSources.Contains(alert.Source))
+            if (IgnoredSources.Count > 0 && IgnoredSources.AsValueEnumerable().Contains(alert.Source))
                 return false;
 
-            if (AllowedTags.Count > 0 && !AllowedTags.Contains(alert.Tag))
+            if (AllowedTags.Count > 0 && !AllowedTags.AsValueEnumerable().Any(tag => tag.ToString().Equals(alert.Tag.ToString())))
                 return false;
 
             return true;

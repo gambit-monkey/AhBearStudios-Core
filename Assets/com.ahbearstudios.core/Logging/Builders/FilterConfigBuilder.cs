@@ -5,7 +5,7 @@ using System.Text.RegularExpressions;
 using AhBearStudios.Core.Common.Models;
 using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Logging.Models;
-using FilterMode = AhBearStudios.Core.Logging.Configs.FilterMode;
+using FilterMode = AhBearStudios.Core.Logging.Models.FilterMode;
 
 namespace AhBearStudios.Core.Logging.Builders
 {

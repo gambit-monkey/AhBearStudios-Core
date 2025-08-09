@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using AhBearStudios.Core.Common.Models;
 using AhBearStudios.Core.Logging.Models;
+using FilterMode = AhBearStudios.Core.Logging.Models.FilterMode;
 
 namespace AhBearStudios.Core.Logging.Configs
 {
@@ -448,69 +449,6 @@ namespace AhBearStudios.Core.Logging.Configs
             return errors.Count > 0 
                 ? ValidationResult.Failure(errors, Name, warnings)
                 : ValidationResult.Success(Name, warnings);
-        }
-    }
-
-    /// <summary>
-    /// Defines the mode for filter operations.
-    /// </summary>
-    public enum FilterMode
-    {
-        /// <summary>
-        /// Include messages that match the filter criteria.
-        /// </summary>
-        Include,
-
-        /// <summary>
-        /// Exclude messages that match the filter criteria.
-        /// </summary>
-        Exclude
-    }
-
-    /// <summary>
-    /// Represents a time range for filtering.
-    /// </summary>
-    public readonly record struct TimeRange
-    {
-        /// <summary>
-        /// Gets the start time of the range.
-        /// </summary>
-        public DateTime StartTime { get; }
-
-        /// <summary>
-        /// Gets the end time of the range.
-        /// </summary>
-        public DateTime EndTime { get; }
-
-        /// <summary>
-        /// Gets whether the time range is valid.
-        /// </summary>
-        public bool IsValid => StartTime <= EndTime;
-
-        /// <summary>
-        /// Gets the duration of the time range.
-        /// </summary>
-        public TimeSpan Duration => EndTime - StartTime;
-
-        /// <summary>
-        /// Initializes a new instance of the TimeRange struct.
-        /// </summary>
-        /// <param name="startTime">The start time</param>
-        /// <param name="endTime">The end time</param>
-        public TimeRange(DateTime startTime, DateTime endTime)
-        {
-            StartTime = startTime;
-            EndTime = endTime;
-        }
-
-        /// <summary>
-        /// Determines if the given time is within this range.
-        /// </summary>
-        /// <param name="time">The time to check</param>
-        /// <returns>True if the time is within the range</returns>
-        public bool Contains(DateTime time)
-        {
-            return time >= StartTime && time <= EndTime;
         }
     }
 }

@@ -1,8 +1,7 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
-using Unity.Collections;
 using Cysharp.Threading.Tasks;
+using Unity.Collections;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Common.Models;
@@ -11,32 +10,26 @@ using AhBearStudios.Core.Messaging;
 namespace AhBearStudios.Core.Alerting.Channels
 {
     /// <summary>
-    /// Simple test channel for unit testing scenarios.
-    /// Stores alerts in memory for verification.
+    /// Null object pattern channel that discards all alerts.
     /// </summary>
-    internal sealed class TestAlertChannel : BaseAlertChannel
+    internal sealed class NullAlertChannel : BaseAlertChannel
     {
-        private readonly List<Alert> _sentAlerts = new List<Alert>();
+        public override FixedString64Bytes Name => "NullChannel";
 
-        public IReadOnlyList<Alert> SentAlerts => _sentAlerts;
-        public override FixedString64Bytes Name { get; } = "TestChannel";
-
-        public TestAlertChannel(IMessageBusService messageBusService = null) : base(messageBusService)
+        public NullAlertChannel(IMessageBusService messageBusService) : base(messageBusService)
         {
             MinimumSeverity = AlertSeverity.Debug;
         }
 
         protected override bool SendAlertCore(Alert alert, Guid correlationId)
         {
-            _sentAlerts.Add(alert);
-            return true;
+            return true; // Always succeeds by doing nothing
         }
 
         protected override async UniTask<bool> SendAlertAsyncCore(Alert alert, Guid correlationId, CancellationToken cancellationToken)
         {
-            _sentAlerts.Add(alert);
             await UniTask.CompletedTask;
-            return true;
+            return true; // Always succeeds by doing nothing
         }
 
         protected override async UniTask<ChannelHealthResult> TestHealthAsyncCore(Guid correlationId, CancellationToken cancellationToken)
@@ -44,7 +37,7 @@ namespace AhBearStudios.Core.Alerting.Channels
             var startTime = DateTime.UtcNow;
             await UniTask.CompletedTask;
             var duration = DateTime.UtcNow - startTime;
-            return ChannelHealthResult.Healthy("Test channel always healthy", duration);
+            return ChannelHealthResult.Healthy("Null channel always healthy", duration);
         }
 
         protected override async UniTask<bool> InitializeAsyncCore(ChannelConfig config, Guid correlationId)
@@ -62,18 +55,13 @@ namespace AhBearStudios.Core.Alerting.Channels
                 IsEnabled = true,
                 MinimumSeverity = AlertSeverity.Debug,
                 MaximumSeverity = AlertSeverity.Emergency,
-                MessageFormat = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Severity}] [{Source}] {Message}",
+                MessageFormat = "",
                 EnableBatching = false,
-                EnableHealthMonitoring = true,
-                HealthCheckInterval = TimeSpan.FromMinutes(1),
-                SendTimeout = TimeSpan.FromSeconds(1),
-                Priority = 10
+                EnableHealthMonitoring = false,
+                HealthCheckInterval = TimeSpan.FromHours(1),
+                SendTimeout = TimeSpan.FromMilliseconds(1),
+                Priority = 0
             };
-        }
-
-        public override void ResetStatistics(Guid correlationId = default)
-        {
-            _sentAlerts.Clear();
         }
     }
 }

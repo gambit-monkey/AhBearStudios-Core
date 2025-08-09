@@ -1,8 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
-using Unity.Collections;
 using Cysharp.Threading.Tasks;
+using Unity.Collections;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Common.Models;
@@ -11,30 +12,46 @@ using AhBearStudios.Core.Messaging;
 namespace AhBearStudios.Core.Alerting.Channels
 {
     /// <summary>
-    /// Simple test channel for unit testing scenarios.
-    /// Stores alerts in memory for verification.
+    /// Memory-based alert channel for testing and debugging.
     /// </summary>
-    internal sealed class TestAlertChannel : BaseAlertChannel
+    internal sealed class MemoryAlertChannel : BaseAlertChannel
     {
-        private readonly List<Alert> _sentAlerts = new List<Alert>();
+        private readonly Queue<Alert> _storedAlerts;
+        private readonly int _maxStoredAlerts;
 
-        public IReadOnlyList<Alert> SentAlerts => _sentAlerts;
-        public override FixedString64Bytes Name { get; } = "TestChannel";
+        public override FixedString64Bytes Name => "MemoryChannel";
+        public IReadOnlyCollection<Alert> StoredAlerts => _storedAlerts.ToList();
 
-        public TestAlertChannel(IMessageBusService messageBusService = null) : base(messageBusService)
+        public MemoryAlertChannel(IMessageBusService messageBusService, int maxStoredAlerts = 1000) : base(messageBusService)
         {
+            _maxStoredAlerts = maxStoredAlerts;
+            _storedAlerts = new Queue<Alert>(maxStoredAlerts);
             MinimumSeverity = AlertSeverity.Debug;
         }
 
         protected override bool SendAlertCore(Alert alert, Guid correlationId)
         {
-            _sentAlerts.Add(alert);
+            lock (_storedAlerts)
+            {
+                while (_storedAlerts.Count >= _maxStoredAlerts)
+                    _storedAlerts.Dequeue();
+                
+                _storedAlerts.Enqueue(alert);
+            }
+            
             return true;
         }
 
         protected override async UniTask<bool> SendAlertAsyncCore(Alert alert, Guid correlationId, CancellationToken cancellationToken)
         {
-            _sentAlerts.Add(alert);
+            lock (_storedAlerts)
+            {
+                while (_storedAlerts.Count >= _maxStoredAlerts)
+                    _storedAlerts.Dequeue();
+                
+                _storedAlerts.Enqueue(alert);
+            }
+            
             await UniTask.CompletedTask;
             return true;
         }
@@ -44,7 +61,7 @@ namespace AhBearStudios.Core.Alerting.Channels
             var startTime = DateTime.UtcNow;
             await UniTask.CompletedTask;
             var duration = DateTime.UtcNow - startTime;
-            return ChannelHealthResult.Healthy("Test channel always healthy", duration);
+            return ChannelHealthResult.Healthy($"Memory channel healthy: {_storedAlerts.Count}/{_maxStoredAlerts} stored", duration);
         }
 
         protected override async UniTask<bool> InitializeAsyncCore(ChannelConfig config, Guid correlationId)
@@ -67,13 +84,17 @@ namespace AhBearStudios.Core.Alerting.Channels
                 EnableHealthMonitoring = true,
                 HealthCheckInterval = TimeSpan.FromMinutes(1),
                 SendTimeout = TimeSpan.FromSeconds(1),
-                Priority = 10
+                Priority = 50
             };
         }
 
         public override void ResetStatistics(Guid correlationId = default)
         {
-            _sentAlerts.Clear();
+            base.ResetStatistics(correlationId);
+            lock (_storedAlerts)
+            {
+                _storedAlerts.Clear();
+            }
         }
     }
 }

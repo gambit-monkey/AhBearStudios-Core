@@ -42,8 +42,8 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// </summary>
         public async UniTask<IAlertChannel> CreateChannelAsync(AlertChannelType channelType, FixedString64Bytes name, ILoggingService loggingService = null)
         {
-            var configuration = ExtendedChannelConfiguration.Default(channelType, name);
-            return await CreateAndConfigureChannelAsync(configuration.ToChannelConfig(), loggingService ?? _loggingService);
+            var configuration = GetDefaultConfiguration(channelType) with { Name = name };
+            return await CreateAndConfigureChannelAsync(configuration, loggingService ?? _loggingService);
         }
 
         /// <summary>
@@ -70,7 +70,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             var validationResult = ValidateChannelConfiguration(configuration);
             if (!validationResult.IsValid)
             {
-                throw new ArgumentException($"Invalid channel configuration: {string.Join(", ", validationResult.Errors.Select(e => e.Message))}", nameof(configuration));
+                throw new ArgumentException($"Invalid channel configuration: {string.Join(", ", validationResult.Errors.ZSelect(e => e.Message))}", nameof(configuration));
             }
 
             var startTime = DateTime.UtcNow;
@@ -136,7 +136,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 {
                     IncludeContext = includeContext,
                     IncludeStackTrace = includeStackTrace,
-                    LogPrefix = "[ALERT]"
+                    LogCategory = "Alerts"
                 }
             };
 
@@ -152,18 +152,17 @@ namespace AhBearStudios.Core.Alerting.Factories
             bool useColors = true,
             bool includeTimestamp = true)
         {
-            var configuration = new ChannelConfiguration
+            var configuration = new ChannelConfig
             {
-                Type = "Console",
                 Name = name,
+                ChannelType = AlertChannelType.Console,
                 IsEnabled = true,
                 MinimumSeverity = minimumSeverity,
-                MaxAlertsPerSecond = 100,
-                Settings = new Dictionary<string, object>
+                TypedSettings = new ConsoleChannelSettings
                 {
-                    ["UseColors"] = useColors,
-                    ["IncludeTimestamp"] = includeTimestamp,
-                    ["ExpandContext"] = false
+                    EnableColors = useColors,
+                    IncludeTimestamps = includeTimestamp,
+                    IncludeSource = true
                 }
             };
 
@@ -183,21 +182,20 @@ namespace AhBearStudios.Core.Alerting.Factories
             if (string.IsNullOrEmpty(filePath))
                 throw new ArgumentException("File path cannot be null or empty", nameof(filePath));
 
-            var configuration = new ChannelConfiguration
+            var configuration = new ChannelConfig
             {
-                Type = "File",
                 Name = name,
+                ChannelType = AlertChannelType.File,
                 IsEnabled = true,
                 MinimumSeverity = minimumSeverity,
-                MaxAlertsPerSecond = 500,
-                Settings = new Dictionary<string, object>
+                TypedSettings = new FileChannelSettings
                 {
-                    ["FilePath"] = filePath,
-                    ["MaxFileSize"] = maxFileSize,
-                    ["MaxBackupFiles"] = maxBackupFiles,
-                    ["AutoFlush"] = true,
-                    ["IncludeTimestamp"] = true,
-                    ["DateFormat"] = "yyyy-MM-dd HH:mm:ss.fff"
+                    FilePath = filePath,
+                    MaxFileSize = maxFileSize,
+                    MaxBackupFiles = maxBackupFiles,
+                    AutoFlush = true,
+                    IncludeTimestamp = true,
+                    DateFormat = "yyyy-MM-dd HH:mm:ss.fff"
                 }
             };
 
@@ -212,18 +210,17 @@ namespace AhBearStudios.Core.Alerting.Factories
             AlertSeverity minimumSeverity = AlertSeverity.Debug,
             int maxStoredAlerts = 1000)
         {
-            var configuration = new ChannelConfiguration
+            var configuration = new ChannelConfig
             {
-                Type = "Memory",
                 Name = name,
+                ChannelType = AlertChannelType.Memory,
                 IsEnabled = true,
                 MinimumSeverity = minimumSeverity,
-                MaxAlertsPerSecond = 1000,
-                Settings = new Dictionary<string, object>
+                TypedSettings = new MemoryChannelSettings
                 {
-                    ["MaxStoredAlerts"] = maxStoredAlerts,
-                    ["CircularBuffer"] = true,
-                    ["PreserveOrder"] = true
+                    MaxStoredAlerts = maxStoredAlerts,
+                    CircularBuffer = true,
+                    PreserveOrder = true
                 }
             };
 
@@ -234,7 +231,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// Creates multiple channels from a collection of configurations.
         /// </summary>
         public async UniTask<IEnumerable<IAlertChannel>> CreateChannelsAsync(
-            IEnumerable<ChannelConfiguration> configurations,
+            IEnumerable<ChannelConfig> configurations,
             ILoggingService loggingService = null,
             Guid correlationId = default)
         {
@@ -242,7 +239,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 throw new ArgumentNullException(nameof(configurations));
 
             var channels = new List<IAlertChannel>();
-            var tasks = configurations.Select(config => CreateChannelSafely(config, loggingService ?? _loggingService, correlationId));
+            var tasks = configurations.ZSelect(config => CreateChannelSafely(config, loggingService ?? _loggingService, correlationId));
             var results = await UniTask.WhenAll(tasks);
 
             foreach (var result in results)
@@ -346,7 +343,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             channels.Add(memoryChannel);
 
             // Test null channel for performance testing
-            var nullChannel = await CreateChannelAsync(ChannelType.Null, "TestNull");
+            var nullChannel = await CreateChannelAsync(AlertChannelType.Network, "TestNull");
             channels.Add(nullChannel);
 
             return channels;
@@ -355,7 +352,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// <summary>
         /// Validates a channel configuration before creation.
         /// </summary>
-        public ValidationResult ValidateChannelConfiguration(ChannelConfiguration configuration)
+        public ValidationResult ValidateChannelConfiguration(ChannelConfig configuration)
         {
             if (configuration == null)
                 return ValidationResult.Failure(new[] { new ValidationError("Configuration cannot be null") }, "AlertChannelFactory");
@@ -363,37 +360,34 @@ namespace AhBearStudios.Core.Alerting.Factories
             var errors = new List<ValidationError>();
 
             // Validate basic properties
-            if (string.IsNullOrEmpty(configuration.Type))
-                errors.Add(new ValidationError("Channel type cannot be null or empty"));
+            if (configuration.ChannelType == 0)
+                errors.Add(new ValidationError("Channel type must be specified"));
 
             if (configuration.Name.IsEmpty)
                 errors.Add(new ValidationError("Channel name cannot be empty"));
-
-            if (configuration.MaxAlertsPerSecond <= 0)
-                errors.Add(new ValidationError("MaxAlertsPerSecond must be greater than 0"));
 
             // Validate type-specific settings
             var channelType = DetermineChannelType(configuration);
             switch (channelType)
             {
-                case ChannelType.File:
-                    if (!configuration.Settings.ContainsKey("FilePath") || 
-                        string.IsNullOrEmpty(configuration.Settings["FilePath"]?.ToString()))
+                case AlertChannelType.File:
+                    if (configuration.TypedSettings is not FileChannelSettings fileSettings || 
+                        string.IsNullOrEmpty(fileSettings.FilePath))
                     {
                         errors.Add(new ValidationError("File channel requires FilePath setting"));
                     }
                     break;
 
-                case ChannelType.Memory:
-                    if (configuration.Settings.ContainsKey("MaxStoredAlerts"))
+                case AlertChannelType.Memory:
+                    if (configuration.TypedSettings is MemoryChannelSettings memorySettings &&
+                        memorySettings.MaxStoredAlerts <= 0)
                     {
-                        if (!int.TryParse(configuration.Settings["MaxStoredAlerts"].ToString(), out var maxStored) || maxStored <= 0)
-                            errors.Add(new ValidationError("Memory channel MaxStoredAlerts must be a positive integer"));
+                        errors.Add(new ValidationError("Memory channel MaxStoredAlerts must be a positive integer"));
                     }
                     break;
             }
 
-            return errors.Any()
+            return errors.ZAny()
                 ? ValidationResult.Failure(errors, "AlertChannelFactory")
                 : ValidationResult.Success("AlertChannelFactory");
         }
@@ -401,15 +395,66 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// <summary>
         /// Gets the default configuration for a specific channel type.
         /// </summary>
-        public ChannelConfiguration GetDefaultConfiguration(ChannelType channelType)
+        public ChannelConfig GetDefaultConfiguration(AlertChannelType channelType)
         {
-            return ExtendedChannelConfiguration.Default(channelType, $"Default{channelType}");
+            return channelType switch
+            {
+                AlertChannelType.Log => new ChannelConfig
+                {
+                    Name = $"Default{channelType}",
+                    ChannelType = channelType,
+                    IsEnabled = true,
+                    MinimumSeverity = AlertSeverity.Info,
+                    MaximumSeverity = AlertSeverity.Emergency,
+                    MessageFormat = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Severity}] {Source}: {Message}",
+                    TypedSettings = LogChannelSettings.Default
+                },
+                AlertChannelType.Console => new ChannelConfig
+                {
+                    Name = $"Default{channelType}",
+                    ChannelType = channelType,
+                    IsEnabled = true,
+                    MinimumSeverity = AlertSeverity.Info,
+                    MaximumSeverity = AlertSeverity.Emergency,
+                    MessageFormat = "[{Timestamp:HH:mm:ss.fff}] [{Severity}] {Source}: {Message}",
+                    TypedSettings = ConsoleChannelSettings.Default
+                },
+                AlertChannelType.Network => new ChannelConfig
+                {
+                    Name = $"Default{channelType}",
+                    ChannelType = channelType,
+                    IsEnabled = true,
+                    MinimumSeverity = AlertSeverity.Critical,
+                    MaximumSeverity = AlertSeverity.Emergency,
+                    MessageFormat = "{\"timestamp\":\"{Timestamp:yyyy-MM-ddTHH:mm:ss.fffZ}\",\"severity\":\"{Severity}\",\"source\":\"{Source}\",\"message\":\"{Message}\",\"tag\":\"{Tag}\",\"correlationId\":\"{CorrelationId}\"}",
+                    EnableBatching = true,
+                    BatchSize = 10
+                },
+                AlertChannelType.UnityConsole => new ChannelConfig
+                {
+                    Name = $"Default{channelType}",
+                    ChannelType = channelType,
+                    IsEnabled = true,
+                    MinimumSeverity = AlertSeverity.Warning,
+                    MaximumSeverity = AlertSeverity.Emergency,
+                    MessageFormat = "[{Source}] {Message}",
+                    TypedSettings = UnityChannelSettings.Default
+                },
+                _ => new ChannelConfig
+                {
+                    Name = $"Default{channelType}",
+                    ChannelType = channelType,
+                    IsEnabled = true,
+                    MinimumSeverity = AlertSeverity.Info,
+                    MaximumSeverity = AlertSeverity.Emergency
+                }
+            };
         }
 
         /// <summary>
         /// Gets all supported channel types.
         /// </summary>
-        public IEnumerable<ChannelType> GetSupportedChannelTypes()
+        public IEnumerable<AlertChannelType> GetSupportedChannelTypes()
         {
             return _channelCreators.Keys;
         }
@@ -417,7 +462,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// <summary>
         /// Checks if a channel type is supported by this factory.
         /// </summary>
-        public bool IsChannelTypeSupported(ChannelType channelType)
+        public bool IsChannelTypeSupported(AlertChannelType channelType)
         {
             return _channelCreators.ContainsKey(channelType);
         }
@@ -425,62 +470,49 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// <summary>
         /// Creates configuration from a dictionary of settings.
         /// </summary>
-        public ChannelConfiguration CreateConfigurationFromSettings(ChannelType channelType, FixedString64Bytes name, Dictionary<string, object> settings)
+        public ChannelConfig CreateConfigurationFromSettings(AlertChannelType channelType, FixedString64Bytes name, Dictionary<string, object> settings)
         {
             if (settings == null)
                 throw new ArgumentNullException(nameof(settings));
 
-            var config = ExtendedChannelConfiguration.Default(channelType, name);
+            var config = GetDefaultConfiguration(channelType) with { Name = name };
+            var configBuilder = config with { };
 
             // Override with provided settings
             if (settings.TryGetValue("IsEnabled", out var enabledValue))
             {
                 if (bool.TryParse(enabledValue.ToString(), out var enabled))
-                    config.IsEnabled = enabled;
+                    configBuilder = configBuilder with { IsEnabled = enabled };
             }
 
             if (settings.TryGetValue("MinimumSeverity", out var severityValue))
             {
                 if (Enum.TryParse<AlertSeverity>(severityValue.ToString(), out var severity))
-                    config.MinimumSeverity = severity;
+                    configBuilder = configBuilder with { MinimumSeverity = severity };
             }
 
-            if (settings.TryGetValue("MaxAlertsPerSecond", out var rateValue))
-            {
-                if (int.TryParse(rateValue.ToString(), out var rate))
-                    config.MaxAlertsPerSecond = rate;
-            }
-
-            // Merge channel-specific settings
-            foreach (var setting in settings)
-            {
-                if (!config.Settings.ContainsKey(setting.Key))
-                    config.Settings[setting.Key] = setting.Value;
-                else
-                    config.Settings[setting.Key] = setting.Value; // Override default
-            }
-
-            return config;
+            return configBuilder;
         }
+
 
         #endregion
 
         #region Private Helper Methods
 
-        private Dictionary<ChannelType, Func<ChannelConfiguration, ILoggingService, UniTask<IAlertChannel>>> InitializeChannelCreators()
+        private Dictionary<AlertChannelType, Func<ChannelConfig, ILoggingService, UniTask<IAlertChannel>>> InitializeChannelCreators()
         {
-            return new Dictionary<ChannelType, Func<ChannelConfiguration, ILoggingService, UniTask<IAlertChannel>>>
+            return new Dictionary<AlertChannelType, Func<ChannelConfig, ILoggingService, UniTask<IAlertChannel>>>
             {
-                [ChannelType.Logging] = CreateLoggingChannelInternal,
-                [ChannelType.Console] = CreateConsoleChannelInternal,
-                [ChannelType.File] = CreateFileChannelInternal,
-                [ChannelType.Memory] = CreateMemoryChannelInternal,
-                [ChannelType.UnityDebug] = CreateUnityDebugChannelInternal,
-                [ChannelType.Null] = CreateNullChannelInternal
+                [AlertChannelType.Log] = CreateLoggingChannelInternal,
+                [AlertChannelType.Console] = CreateConsoleChannelInternal,
+                [AlertChannelType.File] = CreateFileChannelInternal,
+                [AlertChannelType.Memory] = CreateMemoryChannelInternal,
+                [AlertChannelType.UnityConsole] = CreateUnityDebugChannelInternal,
+                [AlertChannelType.Network] = CreateNullChannelInternal
             };
         }
 
-        private async UniTask<IAlertChannel> CreateLoggingChannelInternal(ChannelConfiguration config, ILoggingService loggingService)
+        private async UniTask<IAlertChannel> CreateLoggingChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
             if (loggingService == null)
                 throw new ArgumentException("Logging channel requires ILoggingService", nameof(loggingService));
@@ -489,75 +521,51 @@ namespace AhBearStudios.Core.Alerting.Factories
             return new LogAlertChannel(loggingService);
         }
 
-        private async UniTask<IAlertChannel> CreateConsoleChannelInternal(ChannelConfiguration config, ILoggingService loggingService)
+        private async UniTask<IAlertChannel> CreateConsoleChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
             await UniTask.CompletedTask;
             return new ConsoleAlertChannel();
         }
 
-        private async UniTask<IAlertChannel> CreateFileChannelInternal(ChannelConfiguration config, ILoggingService loggingService)
+        private async UniTask<IAlertChannel> CreateFileChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
-            var filePath = config.Settings.TryGetValue("FilePath", out var pathValue) 
-                ? pathValue.ToString() 
-                : "alerts.log";
+            var filePath = (config.TypedSettings as FileChannelSettings)?.FilePath ?? "alerts.log";
 
             await UniTask.CompletedTask;
             return new FileAlertChannel(filePath);
         }
 
-        private async UniTask<IAlertChannel> CreateMemoryChannelInternal(ChannelConfiguration config, ILoggingService loggingService)
+        private async UniTask<IAlertChannel> CreateMemoryChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
-            var maxAlerts = config.Settings.TryGetValue("MaxStoredAlerts", out var maxValue)
-                && int.TryParse(maxValue.ToString(), out var max)
-                ? max
-                : 1000;
+            var maxAlerts = (config.TypedSettings as MemoryChannelSettings)?.MaxStoredAlerts ?? 1000;
 
             await UniTask.CompletedTask;
             return new MemoryAlertChannel(maxAlerts);
         }
 
-        private async UniTask<IAlertChannel> CreateUnityDebugChannelInternal(ChannelConfiguration config, ILoggingService loggingService)
+        private async UniTask<IAlertChannel> CreateUnityDebugChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
             await UniTask.CompletedTask;
             return new UnityDebugAlertChannel();
         }
 
-        private async UniTask<IAlertChannel> CreateNullChannelInternal(ChannelConfiguration config, ILoggingService loggingService)
+        private async UniTask<IAlertChannel> CreateNullChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
             await UniTask.CompletedTask;
             return new NullAlertChannel();
         }
 
-        private ChannelType DetermineChannelType(ChannelConfiguration configuration)
+        private AlertChannelType DetermineChannelType(ChannelConfig configuration)
         {
-            if (Enum.TryParse<ChannelType>(configuration.Type, true, out var channelType))
-                return channelType;
-
-            // Fallback mapping for string types
-            return configuration.Type.ToLowerInvariant() switch
-            {
-                "log" or "logging" => ChannelType.Logging,
-                "console" => ChannelType.Console,
-                "file" => ChannelType.File,
-                "memory" => ChannelType.Memory,
-                "unity" or "unitydebug" => ChannelType.UnityDebug,
-                "null" or "discard" => ChannelType.Null,
-                _ => throw new ArgumentException($"Unknown channel type: {configuration.Type}")
-            };
+            return configuration.ChannelType;
         }
 
-        private ChannelConfig CreateChannelConfig(ChannelConfiguration configuration)
+        private ChannelConfig CreateChannelConfig(ChannelConfig configuration)
         {
-            return new ChannelConfig
-            {
-                Name = configuration.Name.ToString(),
-                IsEnabled = configuration.IsEnabled,
-                MinimumSeverity = configuration.MinimumSeverity,
-                Settings = new Dictionary<string, object>(configuration.Settings)
-            };
+            return configuration; // Already the correct type
         }
 
-        private async UniTask<ChannelCreationResult> CreateChannelSafely(ChannelConfiguration configuration, ILoggingService loggingService, Guid correlationId)
+        private async UniTask<ChannelCreationResult> CreateChannelSafely(ChannelConfig configuration, ILoggingService loggingService, Guid correlationId)
         {
             var startTime = DateTime.UtcNow;
             
@@ -587,170 +595,4 @@ namespace AhBearStudios.Core.Alerting.Factories
         #endregion
     }
 
-    #region Additional Channel Implementations
-
-    /// <summary>
-    /// File-based alert channel that writes alerts to disk.
-    /// </summary>
-    internal sealed class FileAlertChannel : BaseAlertChannel
-    {
-        private readonly string _filePath;
-
-        public FileAlertChannel(string filePath) : base("FileChannel")
-        {
-            _filePath = filePath ?? throw new ArgumentNullException(nameof(filePath));
-            MinimumSeverity = AlertSeverity.Information;
-        }
-
-        protected override async UniTask<bool> SendAlertInternalAsync(Alert alert, Guid correlationId)
-        {
-            try
-            {
-                var message = FormatAlert(alert);
-                await System.IO.File.AppendAllTextAsync(_filePath, message + Environment.NewLine);
-                return true;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        protected override async UniTask<HealthCheckResult> PerformHealthCheckAsync(Guid correlationId)
-        {
-            try
-            {
-                var directory = System.IO.Path.GetDirectoryName(_filePath);
-                if (!System.IO.Directory.Exists(directory))
-                    System.IO.Directory.CreateDirectory(directory);
-
-                // Test write access
-                await System.IO.File.WriteAllTextAsync(_filePath + ".healthcheck", "test");
-                System.IO.File.Delete(_filePath + ".healthcheck");
-                
-                await UniTask.CompletedTask;
-                return HealthCheckResult.Healthy($"File channel healthy: {_filePath}");
-            }
-            catch (Exception ex)
-            {
-                return HealthCheckResult.Unhealthy($"File channel unhealthy: {ex.Message}");
-            }
-        }
-
-        private string FormatAlert(Alert alert)
-        {
-            return $"[{alert.Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{alert.Severity}] [{alert.Source}] {alert.Message}";
-        }
-    }
-
-    /// <summary>
-    /// Memory-based alert channel for testing and debugging.
-    /// </summary>
-    internal sealed class MemoryAlertChannel : BaseAlertChannel
-    {
-        private readonly Queue<Alert> _storedAlerts;
-        private readonly int _maxStoredAlerts;
-
-        public IReadOnlyCollection<Alert> StoredAlerts => _storedAlerts.ToList();
-
-        public MemoryAlertChannel(int maxStoredAlerts = 1000) : base("MemoryChannel")
-        {
-            _maxStoredAlerts = maxStoredAlerts;
-            _storedAlerts = new Queue<Alert>(maxStoredAlerts);
-            MinimumSeverity = AlertSeverity.Debug;
-        }
-
-        protected override async UniTask<bool> SendAlertInternalAsync(Alert alert, Guid correlationId)
-        {
-            lock (_storedAlerts)
-            {
-                while (_storedAlerts.Count >= _maxStoredAlerts)
-                    _storedAlerts.Dequeue();
-                
-                _storedAlerts.Enqueue(alert);
-            }
-            
-            await UniTask.CompletedTask;
-            return true;
-        }
-
-        protected override async UniTask<HealthCheckResult> PerformHealthCheckAsync(Guid correlationId)
-        {
-            await UniTask.CompletedTask;
-            return HealthCheckResult.Healthy($"Memory channel healthy: {_storedAlerts.Count}/{_maxStoredAlerts} stored");
-        }
-
-        public override void ResetStatistics(Guid correlationId = default)
-        {
-            base.ResetStatistics(correlationId);
-            lock (_storedAlerts)
-            {
-                _storedAlerts.Clear();
-            }
-        }
-    }
-
-    /// <summary>
-    /// Unity Debug.Log-based alert channel.
-    /// </summary>
-    internal sealed class UnityDebugAlertChannel : BaseAlertChannel
-    {
-        public UnityDebugAlertChannel() : base("UnityDebugChannel")
-        {
-            MinimumSeverity = AlertSeverity.Information;
-        }
-
-        protected override async UniTask<bool> SendAlertInternalAsync(Alert alert, Guid correlationId)
-        {
-            var message = $"[ALERT] [{alert.Source}] {alert.Message}";
-            
-            switch (alert.Severity)
-            {
-                case AlertSeverity.Critical:
-                case AlertSeverity.Error:
-                    UnityEngine.Debug.LogError(message);
-                    break;
-                case AlertSeverity.Warning:
-                    UnityEngine.Debug.LogWarning(message);
-                    break;
-                default:
-                    UnityEngine.Debug.Log(message);
-                    break;
-            }
-            
-            await UniTask.CompletedTask;
-            return true;
-        }
-
-        protected override async UniTask<HealthCheckResult> PerformHealthCheckAsync(Guid correlationId)
-        {
-            await UniTask.CompletedTask;
-            return HealthCheckResult.Healthy("Unity Debug channel always healthy");
-        }
-    }
-
-    /// <summary>
-    /// Null object pattern channel that discards all alerts.
-    /// </summary>
-    internal sealed class NullAlertChannel : BaseAlertChannel
-    {
-        public NullAlertChannel() : base("NullChannel")
-        {
-            MinimumSeverity = AlertSeverity.Debug;
-        }
-
-        protected override async UniTask<bool> SendAlertInternalAsync(Alert alert, Guid correlationId)
-        {
-            await UniTask.CompletedTask;
-            return true; // Always succeeds by doing nothing
-        }
-
-        protected override async UniTask<HealthCheckResult> PerformHealthCheckAsync(Guid correlationId)
-        {
-            await UniTask.CompletedTask;
-            return HealthCheckResult.Healthy("Null channel always healthy");
-        }
-    }
-
-    #endregion
 }

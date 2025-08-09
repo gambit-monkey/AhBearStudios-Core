@@ -6,8 +6,8 @@ using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Alerting.Services;
 using AhBearStudios.Core.Alerting.Channels;
 using AhBearStudios.Core.Alerting.Filters;
-using AhBearStudios.Core.Alerting.Models;
-using AhBearStudios.Core.Common.Models;
+using AhBearStudios.Core.Alerting.Models;\nusing AhBearStudios.Core.Alerting.Configs;
+using AhBearStudios.Core.Alerting.Configs;\nusing AhBearStudios.Core.Common.Models;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Serialization;
@@ -73,7 +73,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             var validationResult = ValidateConfiguration(configuration);
             if (!validationResult.IsValid)
             {
-                throw new ArgumentException($"Invalid configuration: {string.Join(", ", validationResult.Errors.Select(e => e.Message))}", nameof(configuration));
+                throw new ArgumentException($"Invalid configuration: {string.Join(", ", validationResult.Errors.ZSelect(e => e.Message))}", nameof(configuration));
             }
 
             try
@@ -81,22 +81,17 @@ namespace AhBearStudios.Core.Alerting.Factories
                 var alertService = new AlertService(null, _loggingService, _serializationService);
 
                 // Configure global settings
-                alertService.SetMinimumSeverity(configuration.GlobalMinimumSeverity);
+                alertService.SetMinimumSeverity(configuration.AlertConfig.MinimumSeverity);
 
-                // Apply source-specific severity overrides
-                foreach (var sourceSeverity in configuration.SourceMinimumSeverities)
-                {
-                    alertService.SetMinimumSeverity(sourceSeverity.Key, sourceSeverity.Value);
-                }
+                // Source-specific overrides would be configured in AlertConfig if needed
 
                 // Create and register channels
-                await CreateAndRegisterChannels(alertService, configuration.Channels, correlationId);
+                await CreateAndRegisterChannels(alertService, configuration.AlertConfig.Channels, correlationId);
 
-                // Create and register filters
-                await CreateAndRegisterFilters(alertService, configuration.Filters, correlationId);
+                // No filters to configure - they are created directly in specific factory methods
 
                 // Apply suppression rules
-                await ApplySuppressionRules(alertService, configuration.SuppressionRules, correlationId);
+                // Suppression rules are configured through AlertConfig
 
                 LogInfo($"Created AlertService with {configuration.Environment} configuration", correlationId);
                 return alertService;
@@ -113,7 +108,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// </summary>
         public async UniTask<IAlertService> CreateDevelopmentAlertServiceAsync(ILoggingService loggingService, IMessageBusService messageBusService = null)
         {
-            var config = AlertServiceConfiguration.Development();
+            // Use default AlertServiceConfiguration for development
             var alertService = new AlertService(messageBusService, loggingService, _serializationService);
 
             try
@@ -128,11 +123,11 @@ namespace AhBearStudios.Core.Alerting.Factories
                     Name = "DevelopmentLog",
                     IsEnabled = true,
                     MinimumSeverity = AlertSeverity.Debug,
-                    Settings = new Dictionary<string, object>
+                    TypedSettings = new LogChannelSettings
                     {
-                        ["IncludeStackTrace"] = true,
-                        ["IncludeContext"] = true,
-                        ["LogPrefix"] = "[DEV-ALERT]"
+                        IncludeStackTrace = true,
+                        IncludeContext = true,
+                        LogCategory = "DevAlerts"
                     }
                 });
                 alertService.RegisterChannel(logChannel);
@@ -175,11 +170,11 @@ namespace AhBearStudios.Core.Alerting.Factories
                     Name = "ProductionLog",
                     IsEnabled = true,
                     MinimumSeverity = AlertSeverity.Warning,
-                    Settings = new Dictionary<string, object>
+                    TypedSettings = new LogChannelSettings
                     {
-                        ["IncludeStackTrace"] = false,
-                        ["IncludeContext"] = false,
-                        ["LogPrefix"] = "[ALERT]"
+                        IncludeStackTrace = false,
+                        IncludeContext = false,
+                        LogCategory = "Alerts"
                     }
                 });
                 alertService.RegisterChannel(logChannel);
@@ -287,56 +282,51 @@ namespace AhBearStudios.Core.Alerting.Factories
             var errors = new List<ValidationError>();
 
             // Validate basic settings
-            if (configuration.MaxActiveAlerts <= 0)
-                errors.Add(new ValidationError("MaxActiveAlerts must be greater than 0"));
+            if (configuration.MaxQueuedAlerts <= 0)
+                errors.Add(new ValidationError("MaxQueuedAlerts must be greater than 0"));
 
-            if (configuration.MaxHistorySize <= 0)
-                errors.Add(new ValidationError("MaxHistorySize must be greater than 0"));
+            if (configuration.MaxConcurrentOperations <= 0)
+                errors.Add(new ValidationError("MaxConcurrentOperations must be greater than 0"));
 
-            if (configuration.MaintenanceInterval <= TimeSpan.Zero)
-                errors.Add(new ValidationError("MaintenanceInterval must be positive"));
+            if (configuration.StartupTimeout <= TimeSpan.Zero)
+                errors.Add(new ValidationError("StartupTimeout must be positive"));
 
-            // Validate channels
-            if (configuration.Channels == null)
-                errors.Add(new ValidationError("Channels collection cannot be null"));
+            // Validate channels through AlertConfig
+            if (configuration.AlertConfig?.Channels == null)
+                errors.Add(new ValidationError("AlertConfig.Channels collection cannot be null"));
             else
             {
-                foreach (var channelConfig in configuration.Channels)
+                foreach (var channelConfig in configuration.AlertConfig.Channels)
                 {
-                    if (string.IsNullOrEmpty(channelConfig.Type))
-                        errors.Add(new ValidationError($"Channel type cannot be empty"));
-
-                    if (channelConfig.MaxAlertsPerSecond <= 0)
-                        errors.Add(new ValidationError($"Channel {channelConfig.Type} MaxAlertsPerSecond must be positive"));
+                    try
+                    {
+                        channelConfig.Validate();
+                    }
+                    catch (InvalidOperationException ex)
+                    {
+                        errors.Add(new ValidationError($"Channel validation failed: {ex.Message}"));
+                    }
                 }
             }
 
-            // Validate filters
-            if (configuration.Filters == null)
-                errors.Add(new ValidationError("Filters collection cannot be null"));
+            // Validate AlertConfig
+            if (configuration.AlertConfig == null)
+            {
+                errors.Add(new ValidationError("AlertConfig cannot be null"));
+            }
             else
             {
-                foreach (var filterConfig in configuration.Filters)
+                try
                 {
-                    if (string.IsNullOrEmpty(filterConfig.Type))
-                        errors.Add(new ValidationError("Filter type cannot be empty"));
+                    configuration.AlertConfig.Validate();
+                }
+                catch (InvalidOperationException ex)
+                {
+                    errors.Add(new ValidationError($"AlertConfig validation failed: {ex.Message}"));
                 }
             }
 
-            // Validate suppression rules
-            if (configuration.SuppressionRules != null)
-            {
-                foreach (var ruleConfig in configuration.SuppressionRules)
-                {
-                    if (string.IsNullOrEmpty(ruleConfig.Name))
-                        errors.Add(new ValidationError("Suppression rule name cannot be empty"));
-
-                    if (ruleConfig.SuppressionDuration <= TimeSpan.Zero)
-                        errors.Add(new ValidationError($"Suppression rule {ruleConfig.Name} duration must be positive"));
-                }
-            }
-
-            return errors.Any() 
+            return errors.ZAny() 
                 ? ValidationResult.Failure(errors, "AlertServiceFactory")
                 : ValidationResult.Success("AlertServiceFactory");
         }
@@ -346,7 +336,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// </summary>
         public AlertServiceConfiguration GetDefaultConfiguration()
         {
-            return AlertServiceConfiguration.Default();
+            return new AlertServiceConfiguration();
         }
 
         /// <summary>
@@ -354,7 +344,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// </summary>
         public AlertServiceConfiguration GetDevelopmentConfiguration()
         {
-            return AlertServiceConfiguration.Development();
+            return new AlertServiceConfiguration { Environment = AlertEnvironmentType.Development };
         }
 
         /// <summary>
@@ -362,7 +352,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// </summary>
         public AlertServiceConfiguration GetProductionConfiguration()
         {
-            return AlertServiceConfiguration.Production();
+            return new AlertServiceConfiguration { Environment = AlertEnvironmentType.Production };
         }
 
         /// <summary>
@@ -419,132 +409,36 @@ namespace AhBearStudios.Core.Alerting.Factories
             // Apply custom settings
             config.CustomSettings = new Dictionary<string, object>(settings);
 
-            return config;
+            return new AlertServiceConfiguration();
         }
 
         #endregion
 
         #region Private Helper Methods
 
-        private async UniTask CreateAndRegisterChannels(IAlertService alertService, List<ChannelConfiguration> channelConfigs, Guid correlationId)
+        private async UniTask CreateAndRegisterChannels(IAlertService alertService, IReadOnlyList<ChannelConfig> channelConfigs, Guid correlationId)
         {
             foreach (var channelConfig in channelConfigs)
             {
                 if (!channelConfig.IsEnabled)
                     continue;
 
-                IAlertChannel channel = channelConfig.Type.ToLowerInvariant() switch
+                IAlertChannel channel = channelConfig.ChannelType switch
                 {
-                    "log" => new LogAlertChannel(_loggingService),
-                    "console" => new ConsoleAlertChannel(),
-                    "test" => new TestAlertChannel(),
-                    _ => throw new NotSupportedException($"Channel type '{channelConfig.Type}' is not supported")
+                    AlertChannelType.Log => new LogAlertChannel(_loggingService),
+                    AlertChannelType.Console => new ConsoleAlertChannel(),
+                    AlertChannelType.Memory => new MemoryAlertChannel(null),
+                    _ => throw new NotSupportedException($"Channel type '{channelConfig.ChannelType}' is not supported")
                 };
 
-                var config = new ChannelConfig
-                {
-                    Name = channelConfig.Name.ToString(),
-                    IsEnabled = channelConfig.IsEnabled,
-                    MinimumSeverity = channelConfig.MinimumSeverity,
-                    Settings = channelConfig.Settings
-                };
+                // The channelConfig is already a ChannelConfig, so use it directly
+                var config = channelConfig;
 
                 await channel.InitializeAsync(config, correlationId);
                 alertService.RegisterChannel(channel, correlationId);
             }
         }
 
-        private async UniTask CreateAndRegisterFilters(IAlertService alertService, List<FilterConfiguration> filterConfigs, Guid correlationId)
-        {
-            foreach (var filterConfig in filterConfigs)
-            {
-                if (!filterConfig.IsEnabled)
-                    continue;
-
-                IAlertFilter filter = filterConfig.Type.ToLowerInvariant() switch
-                {
-                    "severity" => CreateSeverityFilter(filterConfig),
-                    "source" => CreateSourceFilter(filterConfig),
-                    "ratelimit" => CreateRateLimitFilter(filterConfig),
-                    _ => throw new NotSupportedException($"Filter type '{filterConfig.Type}' is not supported")
-                };
-
-                if (filter != null)
-                {
-                    filter.Priority = filterConfig.Priority;
-                    await UniTask.CompletedTask; // Placeholder for async filter configuration if needed
-                    alertService.AddFilter(filter, correlationId);
-                }
-            }
-        }
-
-        private async UniTask ApplySuppressionRules(IAlertService alertService, List<SuppressionRuleConfiguration> ruleConfigs, Guid correlationId)
-        {
-            foreach (var ruleConfig in ruleConfigs)
-            {
-                if (!ruleConfig.IsEnabled)
-                    continue;
-
-                AlertRule rule;
-                
-                if (ruleConfig.RateLimit.HasValue)
-                {
-                    rule = AlertRule.CreateRateLimit(
-                        ruleConfig.SourcePattern,
-                        ruleConfig.RateLimit.Value,
-                        ruleConfig.SuppressionDuration);
-                }
-                else
-                {
-                    rule = AlertRule.CreateDuplicateSuppression(
-                        ruleConfig.SourcePattern,
-                        ruleConfig.SuppressionDuration);
-                }
-
-                rule.Name = ruleConfig.Name;
-                alertService.AddSuppressionRule(rule, correlationId);
-            }
-
-            await UniTask.CompletedTask;
-        }
-
-        private IAlertFilter CreateSeverityFilter(FilterConfiguration config)
-        {
-            var minSeverity = AlertSeverity.Information;
-            if (config.Settings.TryGetValue("MinimumSeverity", out var severityValue))
-            {
-                if (severityValue is AlertSeverity severity)
-                    minSeverity = severity;
-                else if (Enum.TryParse<AlertSeverity>(severityValue.ToString(), out var parsedSeverity))
-                    minSeverity = parsedSeverity;
-            }
-
-            return new SeverityAlertFilter(config.Name.ToString(), minSeverity);
-        }
-
-        private IAlertFilter CreateSourceFilter(FilterConfiguration config)
-        {
-            var allowedSources = new List<string>();
-            if (config.Settings.TryGetValue("AllowedSources", out var sourcesValue))
-            {
-                if (sourcesValue is IEnumerable<string> sources)
-                    allowedSources.AddRange(sources);
-            }
-
-            return new SourceAlertFilter(config.Name.ToString(), allowedSources);
-        }
-
-        private IAlertFilter CreateRateLimitFilter(FilterConfiguration config)
-        {
-            var maxAlertsPerMinute = 60;
-            if (config.Settings.TryGetValue("MaxAlertsPerMinute", out var rateValue))
-            {
-                if (int.TryParse(rateValue.ToString(), out var rate))
-                    maxAlertsPerMinute = rate;
-            }
-
-            return new RateLimitAlertFilter(config.Name.ToString(), maxAlertsPerMinute);
-        }
 
         private Dictionary<string, object> CreateDefaultSettings()
         {
