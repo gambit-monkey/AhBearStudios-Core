@@ -387,7 +387,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                     break;
             }
 
-            return errors.ZAny()
+        return errors.ZAny()
                 ? ValidationResult.Failure(errors, "AlertChannelFactory")
                 : ValidationResult.Success("AlertChannelFactory");
         }

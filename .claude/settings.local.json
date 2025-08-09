@@ -1,18 +1,75 @@
 {
+  "enableAllProjectMcpServers": false,
   "permissions": {
     "allow": [
       "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "WebFetch(domain:docs.unity3d.com)",
       "Bash(rg:*)",
       "Bash(find:*)",
       "Bash(mkdir:*)",
       "Bash(grep:*)",
-      "Bash(dotnet test:*)",
+      "Bash(dotnet:*)",
+      "Bash(unity:*)",
+      "Bash(git:*)",
       "Bash(cp:*)",
       "Bash(rm:*)",
       "Bash(mv:*)",
-      "Bash(dotnet build:*)",
       "Bash(true)"
     ],
     "deny": []
+  },
+  "projectContext": {
+    "type": "unity-game",
+    "primaryLanguage": "csharp",
+    "targetFramework": "netstandard2.1",
+    "unityVersion": "2022.3 LTS",
+    "frameworks": [
+      "unity",
+      "reflex-di",
+      "unitask",
+      "zlinq",
+      "memorypack"
+    ]
+  },
+  "codeGeneration": {
+    "preferredPatterns": [
+      "builder-config-factory-service",
+      "functional-organization",
+      "dependency-injection",
+      "unity-component-system"
+    ],
+    "avoidPatterns": [
+      "enterprise-patterns",
+      "over-abstraction",
+      "separate-interface-namespaces",
+      "heavy-orms",
+      "complex-event-buses"
+    ]
+  },
+  "performance": {
+    "targetFPS": 60,
+    "frameBudgetMs": 16.67,
+    "mobileOptimization": true,
+    "prioritizePerformance": true
+  },
+  "fileExclusions": {
+    "searchExclude": [
+      "*.meta",
+      "*.asset",
+      "*.prefab",
+      "*.unity",
+      "*.mat",
+      "*.anim",
+      "*.controller",
+      "Library/**",
+      "Temp/**",
+      "Logs/**",
+      "obj/**",
+      "Build/**",
+      "Builds/**",
+      ".vs/**",
+      "*.csproj.user"
+    ]
   }
 }
