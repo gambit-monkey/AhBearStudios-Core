@@ -6,8 +6,9 @@ using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Alerting.Services;
 using AhBearStudios.Core.Alerting.Channels;
 using AhBearStudios.Core.Alerting.Filters;
-using AhBearStudios.Core.Alerting.Models;\nusing AhBearStudios.Core.Alerting.Configs;
-using AhBearStudios.Core.Alerting.Configs;\nusing AhBearStudios.Core.Common.Models;
+using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Alerting.Configs;
+using AhBearStudios.Core.Common.Models;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Serialization;
@@ -49,7 +50,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 var alertService = new AlertService(messageBusService, loggingService ?? _loggingService, _serializationService);
                 
                 // Add default logging channel
-                var logChannel = new LogAlertChannel(loggingService ?? _loggingService);
+                var logChannel = new LogAlertChannel(loggingService ?? _loggingService, messageBusService);
                 alertService.RegisterChannel(logChannel);
 
                 LogInfo("Created AlertService with default configuration");
@@ -73,7 +74,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             var validationResult = ValidateConfiguration(configuration);
             if (!validationResult.IsValid)
             {
-                throw new ArgumentException($"Invalid configuration: {string.Join(", ", validationResult.Errors.ZSelect(e => e.Message))}", nameof(configuration));
+                throw new ArgumentException($"Invalid configuration: {string.Join(", ", validationResult.Errors.AsValueEnumerable().Select(e => e.Message))}", nameof(configuration));
             }
 
             try
@@ -117,7 +118,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 alertService.SetMinimumSeverity(AlertSeverity.Debug);
 
                 // Add development channels
-                var logChannel = new LogAlertChannel(loggingService);
+                var logChannel = new LogAlertChannel(loggingService, messageBusService);
                 await logChannel.InitializeAsync(new ChannelConfig
                 {
                     Name = "DevelopmentLog",
@@ -133,7 +134,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 alertService.RegisterChannel(logChannel);
 
                 // Add development filters
-                var severityFilter = SeverityAlertFilter.CreateForDevelopment();
+                var severityFilter = new SeverityAlertFilter(AlertSeverity.Debug, true);
                 alertService.AddFilter(severityFilter);
 
                 LogInfo("Created development AlertService configuration");
@@ -164,7 +165,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 alertService.SetMinimumSeverity(AlertSeverity.Warning);
 
                 // Add production channels
-                var logChannel = new LogAlertChannel(loggingService);
+                var logChannel = new LogAlertChannel(loggingService, messageBusService);
                 await logChannel.InitializeAsync(new ChannelConfig
                 {
                     Name = "ProductionLog",
@@ -180,12 +181,15 @@ namespace AhBearStudios.Core.Alerting.Factories
                 alertService.RegisterChannel(logChannel);
 
                 // Add production filters
-                var severityFilter = SeverityAlertFilter.CreateForProduction();
+                var severityFilter = new SeverityAlertFilter(AlertSeverity.Warning, true);
                 alertService.AddFilter(severityFilter);
 
                 // Add production suppression rules
-                alertService.AddSuppressionRule(AlertRule.CreateRateLimit("*", 50, TimeSpan.FromMinutes(1)));
-                alertService.AddSuppressionRule(AlertRule.CreateDuplicateSuppression("*", TimeSpan.FromSeconds(30)));
+                var rateLimitRule = AlertRule.CreateRateLimitRule("ProductionRateLimit", "*", 50, 60);
+                alertService.AddSuppressionRule(rateLimitRule, "ProductionFactory");
+                
+                var suppressionRule = AlertRule.CreateSuppressionRule("ProductionSuppression", "*", 30);
+                alertService.AddSuppressionRule(suppressionRule, "ProductionFactory");
 
                 LogInfo("Created production AlertService configuration");
                 return alertService;
@@ -249,7 +253,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 // Register custom filters
                 foreach (var filter in filters)
                 {
-                    alertService.AddFilter(filter, correlationId);
+                    alertService.AddFilter(filter, correlationId.ToString());
                 }
 
                 // Apply custom suppression rules
@@ -288,7 +292,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             if (configuration.MaxConcurrentOperations <= 0)
                 errors.Add(new ValidationError("MaxConcurrentOperations must be greater than 0"));
 
-            if (configuration.StartupTimeout <= TimeSpan.Zero)
+            if (configuration.StartupTimeout <= System.TimeSpan.Zero)
                 errors.Add(new ValidationError("StartupTimeout must be positive"));
 
             // Validate channels through AlertConfig
@@ -326,7 +330,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 }
             }
 
-            return errors.ZAny() 
+            return errors.AsValueEnumerable().Any() 
                 ? ValidationResult.Failure(errors, "AlertServiceFactory")
                 : ValidationResult.Success("AlertServiceFactory");
         }
@@ -403,7 +407,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             if (settings.TryGetValue("MaintenanceIntervalMinutes", out var intervalValue))
             {
                 if (double.TryParse(intervalValue.ToString(), out var intervalMinutes))
-                    config.MaintenanceInterval = TimeSpan.FromMinutes(intervalMinutes);
+                    config.MaintenanceInterval = System.TimeSpan.FromMinutes(intervalMinutes);
             }
 
             // Apply custom settings
@@ -425,9 +429,9 @@ namespace AhBearStudios.Core.Alerting.Factories
 
                 IAlertChannel channel = channelConfig.ChannelType switch
                 {
-                    AlertChannelType.Log => new LogAlertChannel(_loggingService),
+                    AlertChannelType.Log => new LogAlertChannel(_loggingService, null),
                     AlertChannelType.Console => new ConsoleAlertChannel(),
-                    AlertChannelType.Memory => new MemoryAlertChannel(null),
+                    AlertChannelType.Memory => new MemoryAlertChannel(null, 1000),
                     _ => throw new NotSupportedException($"Channel type '{channelConfig.ChannelType}' is not supported")
                 };
 
@@ -445,7 +449,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             return new Dictionary<string, object>
             {
                 ["Environment"] = AlertEnvironmentType.Production,
-                ["GlobalMinimumSeverity"] = AlertSeverity.Information,
+                ["GlobalMinimumSeverity"] = AlertSeverity.Info,
                 ["IsEnabled"] = true,
                 ["MaxActiveAlerts"] = 1000,
                 ["MaxHistorySize"] = 5000,

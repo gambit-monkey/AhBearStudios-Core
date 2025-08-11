@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using ZLinq;
 using Unity.Collections;
+using UnityEngine;
 using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Alerting.Channels;
 using AhBearStudios.Core.Alerting.Models;
@@ -16,12 +17,16 @@ namespace AhBearStudios.Core.Alerting.Factories
     /// Concrete implementation of IAlertChannelFactory for creating and configuring alert channel instances.
     /// Supports various channel types including logging, console, file, memory, and Unity-specific channels.
     /// Designed for Unity game development with comprehensive configuration and validation support.
+    /// Thread-safe and optimized for production use.
     /// </summary>
-    public sealed class AlertChannelFactory : IAlertChannelFactory
+    public sealed class AlertChannelFactory : IAlertChannelFactory, IDisposable
     {
         private readonly ILoggingService _loggingService;
         private readonly ISerializationService _serializationService;
         private readonly Dictionary<AlertChannelType, Func<ChannelConfig, ILoggingService, UniTask<IAlertChannel>>> _channelCreators;
+        private readonly object _channelLock = new object();
+        private readonly List<IAlertChannel> _createdChannels = new List<IAlertChannel>();
+        private bool _disposed;
 
         /// <summary>
         /// Initializes a new instance of the AlertChannelFactory class.
@@ -42,6 +47,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// </summary>
         public async UniTask<IAlertChannel> CreateChannelAsync(AlertChannelType channelType, FixedString64Bytes name, ILoggingService loggingService = null)
         {
+            ThrowIfDisposed();
             var configuration = GetDefaultConfiguration(channelType) with { Name = name };
             return await CreateAndConfigureChannelAsync(configuration, loggingService ?? _loggingService);
         }
@@ -64,13 +70,15 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// </summary>
         public async UniTask<IAlertChannel> CreateAndConfigureChannelAsync(ChannelConfig configuration, ILoggingService loggingService = null, Guid correlationId = default)
         {
+            ThrowIfDisposed();
+            
             if (configuration == null)
                 throw new ArgumentNullException(nameof(configuration));
 
             var validationResult = ValidateChannelConfiguration(configuration);
             if (!validationResult.IsValid)
             {
-                throw new ArgumentException($"Invalid channel configuration: {string.Join(", ", validationResult.Errors.ZSelect(e => e.Message))}", nameof(configuration));
+                throw new ArgumentException($"Invalid channel configuration: {string.Join(", ", validationResult.Errors.AsValueEnumerable().Select(e => e.Message))}", nameof(configuration));
             }
 
             var startTime = DateTime.UtcNow;
@@ -102,6 +110,12 @@ namespace AhBearStudios.Core.Alerting.Factories
 
                 var creationTime = DateTime.UtcNow - startTime;
                 LogInfo($"Created and configured channel '{configuration.Name}' of type '{channelType}' in {creationTime.TotalMilliseconds:F2}ms", correlationId);
+                
+                // Track the channel for disposal
+                lock (_channelLock)
+                {
+                    _createdChannels.Add(channel);
+                }
                 
                 return channel;
             }
@@ -239,7 +253,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 throw new ArgumentNullException(nameof(configurations));
 
             var channels = new List<IAlertChannel>();
-            var tasks = configurations.ZSelect(config => CreateChannelSafely(config, loggingService ?? _loggingService, correlationId));
+            var tasks = configurations.AsValueEnumerable().Select(config => CreateChannelSafely(config, loggingService ?? _loggingService, correlationId));
             var results = await UniTask.WhenAll(tasks);
 
             foreach (var result in results)
@@ -350,6 +364,56 @@ namespace AhBearStudios.Core.Alerting.Factories
         }
 
         /// <summary>
+        /// Creates channels configured for emergency escalation scenarios.
+        /// </summary>
+        public async UniTask<IEnumerable<IAlertChannel>> CreateEmergencyChannelsAsync(ILoggingService loggingService)
+        {
+            if (loggingService == null)
+                throw new ArgumentNullException(nameof(loggingService));
+
+            var channels = new List<IAlertChannel>();
+
+            // Emergency logging channel - always logs everything
+            var logChannel = await CreateLoggingChannelAsync(
+                "EmergencyLog",
+                loggingService,
+                AlertSeverity.Critical,
+                includeContext: true,
+                includeStackTrace: true);
+            channels.Add(logChannel);
+
+            // Emergency console channel - immediate visibility
+            var consoleChannel = await CreateConsoleChannelAsync(
+                "EmergencyConsole",
+                AlertSeverity.Critical,
+                useColors: true,
+                includeTimestamp: true);
+            channels.Add(consoleChannel);
+
+            // Emergency file channel - persistent storage
+            var emergencyLogPath = System.IO.Path.Combine(
+                Application.persistentDataPath,
+                "emergency_alerts.log");
+            
+            var fileChannel = await CreateFileChannelAsync(
+                "EmergencyFile",
+                emergencyLogPath,
+                AlertSeverity.Critical,
+                maxFileSize: 104857600, // 100MB for emergency logs
+                maxBackupFiles: 20);
+            channels.Add(fileChannel);
+
+            // Emergency memory channel - for immediate retrieval
+            var memoryChannel = await CreateMemoryChannelAsync(
+                "EmergencyMemory",
+                AlertSeverity.Critical,
+                maxStoredAlerts: 5000);
+            channels.Add(memoryChannel);
+
+            return channels;
+        }
+
+        /// <summary>
         /// Validates a channel configuration before creation.
         /// </summary>
         public ValidationResult ValidateChannelConfiguration(ChannelConfig configuration)
@@ -376,6 +440,23 @@ namespace AhBearStudios.Core.Alerting.Factories
                     {
                         errors.Add(new ValidationError("File channel requires FilePath setting"));
                     }
+                    else
+                    {
+                        // Validate file path is valid
+                        try
+                        {
+                            var directoryPath = System.IO.Path.GetDirectoryName(fileSettings.FilePath);
+                            if (!string.IsNullOrEmpty(directoryPath) && !System.IO.Directory.Exists(directoryPath))
+                            {
+                                // Try to create the directory to verify the path is valid
+                                System.IO.Directory.CreateDirectory(directoryPath);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            errors.Add(new ValidationError($"Invalid file path: {ex.Message}"));
+                        }
+                    }
                     break;
 
                 case AlertChannelType.Memory:
@@ -387,7 +468,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                     break;
             }
 
-        return errors.ZAny()
+        return errors.AsValueEnumerable().Any()
                 ? ValidationResult.Failure(errors, "AlertChannelFactory")
                 : ValidationResult.Success("AlertChannelFactory");
         }
@@ -440,6 +521,25 @@ namespace AhBearStudios.Core.Alerting.Factories
                     MessageFormat = "[{Source}] {Message}",
                     TypedSettings = UnityChannelSettings.Default
                 },
+                AlertChannelType.File => new ChannelConfig
+                {
+                    Name = $"Default{channelType}",
+                    ChannelType = channelType,
+                    IsEnabled = true,
+                    MinimumSeverity = AlertSeverity.Info,
+                    MaximumSeverity = AlertSeverity.Emergency,
+                    MessageFormat = "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff}] [{Severity}] {Source}: {Message}",
+                    TypedSettings = FileChannelSettings.Default
+                },
+                AlertChannelType.Memory => new ChannelConfig
+                {
+                    Name = $"Default{channelType}",
+                    ChannelType = channelType,
+                    IsEnabled = true,
+                    MinimumSeverity = AlertSeverity.Debug,
+                    MaximumSeverity = AlertSeverity.Emergency,
+                    TypedSettings = MemoryChannelSettings.Default
+                },
                 _ => new ChannelConfig
                 {
                     Name = $"Default{channelType}",
@@ -489,6 +589,29 @@ namespace AhBearStudios.Core.Alerting.Factories
             {
                 if (Enum.TryParse<AlertSeverity>(severityValue.ToString(), out var severity))
                     configBuilder = configBuilder with { MinimumSeverity = severity };
+            }
+
+            if (settings.TryGetValue("MaximumSeverity", out var maxSeverityValue))
+            {
+                if (Enum.TryParse<AlertSeverity>(maxSeverityValue.ToString(), out var maxSeverity))
+                    configBuilder = configBuilder with { MaximumSeverity = maxSeverity };
+            }
+
+            if (settings.TryGetValue("MessageFormat", out var formatValue))
+            {
+                configBuilder = configBuilder with { MessageFormat = formatValue.ToString() };
+            }
+
+            if (settings.TryGetValue("EnableBatching", out var batchingValue))
+            {
+                if (bool.TryParse(batchingValue.ToString(), out var batching))
+                    configBuilder = configBuilder with { EnableBatching = batching };
+            }
+
+            if (settings.TryGetValue("BatchSize", out var batchSizeValue))
+            {
+                if (int.TryParse(batchSizeValue.ToString(), out var batchSize))
+                    configBuilder = configBuilder with { BatchSize = batchSize };
             }
 
             return configBuilder;
@@ -590,6 +713,61 @@ namespace AhBearStudios.Core.Alerting.Factories
         private void LogError(string message, Guid correlationId = default)
         {
             _loggingService?.LogError($"[AlertChannelFactory] {message}", correlationId.ToString(), "AlertChannelFactory");
+        }
+
+        private void ThrowIfDisposed()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(AlertChannelFactory));
+        }
+
+        #endregion
+
+        #region IDisposable Implementation
+
+        /// <summary>
+        /// Disposes of all created channels and releases resources.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_disposed)
+                return;
+
+            lock (_channelLock)
+            {
+                foreach (var channel in _createdChannels)
+                {
+                    try
+                    {
+                        if (channel is IDisposable disposableChannel)
+                        {
+                            disposableChannel.Dispose();
+                        }
+                        else
+                        {
+                            // Attempt to shut down the channel gracefully
+                            _ = channel.ShutdownAsync().AsTask();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        LogError($"Failed to dispose channel: {ex.Message}");
+                    }
+                }
+
+                _createdChannels.Clear();
+            }
+
+            _disposed = true;
+            GC.SuppressFinalize(this);
+        }
+
+        /// <summary>
+        /// Finalizer to ensure resources are released.
+        /// </summary>
+        ~AlertChannelFactory()
+        {
+            Dispose();
         }
 
         #endregion

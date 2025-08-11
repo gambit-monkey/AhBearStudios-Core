@@ -12,7 +12,7 @@ namespace AhBearStudios.Core.Alerting.Filters
     /// </summary>
     public sealed class SeverityAlertFilter : BaseAlertFilter
     {
-        private AlertSeverity _minimumSeverity = AlertSeverity.Information;
+        private AlertSeverity _minimumSeverity = AlertSeverity.Info;
         private readonly Dictionary<string, AlertSeverity> _sourceOverrides = new Dictionary<string, AlertSeverity>();
         private bool _allowCriticalAlways = true;
         
@@ -44,7 +44,7 @@ namespace AhBearStudios.Core.Alerting.Filters
         /// </summary>
         /// <param name="minimumSeverity">Minimum severity level</param>
         /// <param name="allowCriticalAlways">Whether to always allow critical alerts</param>
-        public SeverityAlertFilter(AlertSeverity minimumSeverity = AlertSeverity.Information, bool allowCriticalAlways = true)
+        public SeverityAlertFilter(AlertSeverity minimumSeverity = AlertSeverity.Info, bool allowCriticalAlways = true)
         {
             _minimumSeverity = minimumSeverity;
             _allowCriticalAlways = allowCriticalAlways;

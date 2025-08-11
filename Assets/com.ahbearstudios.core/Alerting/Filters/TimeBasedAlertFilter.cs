@@ -16,7 +16,7 @@ namespace AhBearStudios.Core.Alerting.Filters
 
         public TimeBasedAlertFilter(string name, IEnumerable<TimeRange> timeRanges, TimeZoneInfo timezone = null) : base(name)
         {
-            _allowedTimeRanges = timeRanges?.ZToList() ?? new List<TimeRange> { TimeRange.Always() };
+            _allowedTimeRanges = timeRanges?.AsValueEnumerable().ToList() ?? new List<TimeRange> { TimeRange.Always() };
             _timezone = timezone ?? TimeZoneInfo.Utc;
         }
 

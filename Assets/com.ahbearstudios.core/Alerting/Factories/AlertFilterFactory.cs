@@ -70,7 +70,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             var validationResult = ValidateFilterConfiguration(configuration);
             if (!validationResult.IsValid)
             {
-                throw new ArgumentException($"Invalid filter configuration: {string.Join(", ", validationResult.Errors.ZSelect(e => e.Message))}", nameof(configuration));
+                throw new ArgumentException($"Invalid filter configuration: {string.Join(", ", validationResult.Errors.AsValueEnumerable().Select(e => e.Message))}", nameof(configuration));
             }
 
             var startTime = DateTime.UtcNow;
@@ -159,7 +159,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 Priority = priority,
                 Settings = new Dictionary<string, object>
                 {
-                    ["AllowedSources"] = allowedSources.ZToList(),
+                    ["AllowedSources"] = allowedSources.AsValueEnumerable().ToList(),
                     ["UseWhitelist"] = useWhitelist,
                     ["CaseSensitive"] = false
                 }
@@ -217,7 +217,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 Priority = priority,
                 Settings = new Dictionary<string, object>
                 {
-                    ["Patterns"] = patterns.ZToList(),
+                    ["Patterns"] = patterns.AsValueEnumerable().ToList(),
                     ["Action"] = action,
                     ["CaseSensitive"] = false,
                     ["UseRegex"] = false
@@ -247,7 +247,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 Priority = priority,
                 Settings = new Dictionary<string, object>
                 {
-                    ["TimeRanges"] = allowedTimeRanges.ZToList(),
+                    ["TimeRanges"] = allowedTimeRanges.AsValueEnumerable().ToList(),
                     ["Timezone"] = timezone?.Id ?? TimeZoneInfo.Utc.Id
                 }
             };
@@ -267,7 +267,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             if (childFilters == null)
                 throw new ArgumentNullException(nameof(childFilters));
 
-            var childFiltersList = childFilters.ZToList();
+            var childFiltersList = childFilters.AsValueEnumerable().ToList();
             if (childFiltersList.Count == 0)
                 throw new ArgumentException("At least one child filter is required", nameof(childFilters));
 
@@ -298,7 +298,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 throw new ArgumentNullException(nameof(configurations));
 
             var filters = new List<IAlertFilter>();
-            var tasks = configurations.ZSelect(config => CreateFilterSafely(config, correlationId));
+            var tasks = configurations.AsValueEnumerable().Select(config => CreateFilterSafely(config, correlationId));
             var results = await UniTask.WhenAll(tasks);
 
             foreach (var result in results)
@@ -439,7 +439,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                     break;
             }
 
-            return errors.ZAny()
+            return errors.AsValueEnumerable().Any()
                 ? ValidationResult.Failure(errors, "AlertFilterFactory")
                 : ValidationResult.Success("AlertFilterFactory");
         }
@@ -529,7 +529,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             var minimumSeverity = config.Settings.TryGetValue("MinimumSeverity", out var severityValue)
                 && severityValue is AlertSeverity severity
                 ? severity
-                : AlertSeverity.Information;
+                : AlertSeverity.Info;
 
             await UniTask.CompletedTask;
             var allowCriticalAlways = config.Settings.TryGetValue("AllowCriticalAlways", out var criticalValue)
@@ -544,7 +544,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         {
             var allowedSources = config.Settings.TryGetValue("AllowedSources", out var sourcesValue)
                 && sourcesValue is IEnumerable<string> sources
-                ? sources.ZToList()
+                ? sources.AsValueEnumerable().ToList()
                 : new List<string> { "*" };
 
             await UniTask.CompletedTask;
@@ -566,7 +566,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         {
             var patterns = config.Settings.TryGetValue("Patterns", out var patternsValue)
                 && patternsValue is IEnumerable<string> patternList
-                ? patternList.ZToList()
+                ? patternList.AsValueEnumerable().ToList()
                 : new List<string>();
 
             await UniTask.CompletedTask;
@@ -577,7 +577,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         {
             var timeRanges = config.Settings.TryGetValue("TimeRanges", out var rangesValue)
                 && rangesValue is IEnumerable<TimeRange> ranges
-                ? ranges.ZToList()
+                ? ranges.AsValueEnumerable().ToList()
                 : new List<TimeRange> { TimeRange.Always() };
 
             await UniTask.CompletedTask;
@@ -588,7 +588,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         {
             var childFilters = config.Settings.TryGetValue("ChildFilters", out var filtersValue)
                 && filtersValue is IEnumerable<IAlertFilter> filters
-                ? filters.ZToList()
+                ? filters.AsValueEnumerable().ToList()
                 : new List<IAlertFilter>();
 
             var logicalOperator = config.Settings.TryGetValue("LogicalOperator", out var operatorValue)
@@ -706,7 +706,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         {
             if (!settings.ContainsKey("ChildFilters"))
                 errors.Add(new ValidationError("Composite filter requires ChildFilters setting"));
-            else if (settings["ChildFilters"] is IEnumerable<IAlertFilter> filters && !filters.ZAny())
+            else if (settings["ChildFilters"] is IEnumerable<IAlertFilter> filters && !filters.AsValueEnumerable().Any())
                 errors.Add(new ValidationError("Composite filter requires at least one child filter"));
         }
 

@@ -226,7 +226,7 @@ namespace AhBearStudios.Core.Alerting.Messages
                 AlertSeverity.Critical => MessagePriority.High,     // Lower than original Critical
                 AlertSeverity.Error => MessagePriority.Normal,     // Lower than original High
                 AlertSeverity.Warning => MessagePriority.Low,      // Lower than original Normal
-                AlertSeverity.Information => MessagePriority.VeryLow,
+                AlertSeverity.Info => MessagePriority.VeryLow,
                 AlertSeverity.Debug => MessagePriority.VeryLow,
                 _ => MessagePriority.Low
             };
