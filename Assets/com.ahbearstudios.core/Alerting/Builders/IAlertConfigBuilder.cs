@@ -279,6 +279,47 @@ namespace AhBearStudios.Core.Alerting.Builders
         IAlertConfigBuilder WithSuppressionRules(Action<ISuppressionConfigBuilder> suppressionBuilder);
 
         /// <summary>
+        /// Configures alert filters using a fluent builder pattern.
+        /// Provides access to a specialized builder for comprehensive filter configuration scenarios.
+        /// </summary>
+        /// <param name="filterBuilder">Action to configure filters using the specialized builder</param>
+        /// <returns>The builder instance for method chaining</returns>
+        IAlertConfigBuilder WithFilters(Action<IFilterConfigBuilder> filterBuilder);
+
+        /// <summary>
+        /// Adds a severity filter with specific configuration.
+        /// Convenience method for filtering alerts by severity level.
+        /// </summary>
+        /// <param name="name">The filter name (optional, defaults to "SeverityFilter")</param>
+        /// <param name="minimumSeverity">The minimum severity level to allow</param>
+        /// <param name="allowCriticalAlways">Whether to always allow critical alerts (optional, defaults to true)</param>
+        /// <param name="priority">Filter priority (optional, defaults to 10)</param>
+        /// <returns>The builder instance for method chaining</returns>
+        IAlertConfigBuilder WithSeverityFilter(string name = "SeverityFilter", AlertSeverity minimumSeverity = AlertSeverity.Info, bool allowCriticalAlways = true, int priority = 10);
+
+        /// <summary>
+        /// Adds a source filter with specific configuration.
+        /// Convenience method for filtering alerts by source patterns.
+        /// </summary>
+        /// <param name="name">The filter name (optional, defaults to "SourceFilter")</param>
+        /// <param name="sources">Source patterns to match</param>
+        /// <param name="useWhitelist">Whether to use whitelist (true) or blacklist (false) mode (optional, defaults to true)</param>
+        /// <param name="priority">Filter priority (optional, defaults to 20)</param>
+        /// <returns>The builder instance for method chaining</returns>
+        IAlertConfigBuilder WithSourceFilter(string name = "SourceFilter", IEnumerable<string> sources = null, bool useWhitelist = true, int priority = 20);
+
+        /// <summary>
+        /// Adds a rate limiting filter with specific configuration.
+        /// Convenience method for limiting alert rates per source pattern.
+        /// </summary>
+        /// <param name="name">The filter name (optional, defaults to "RateLimitFilter")</param>
+        /// <param name="maxAlertsPerMinute">Maximum alerts allowed per minute (optional, defaults to 60)</param>
+        /// <param name="sourcePattern">Source pattern to match (optional, defaults to "*")</param>
+        /// <param name="priority">Filter priority (optional, defaults to 30)</param>
+        /// <returns>The builder instance for method chaining</returns>
+        IAlertConfigBuilder WithRateLimitFilter(string name = "RateLimitFilter", int maxAlertsPerMinute = 60, string sourcePattern = "*", int priority = 30);
+
+        /// <summary>
         /// Adds a default duplicate filter rule to prevent duplicate alerts.
         /// Convenience method for common duplicate suppression scenarios.
         /// </summary>
@@ -414,6 +455,13 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// </summary>
         /// <returns>A list of validation errors, empty if configuration is valid</returns>
         IReadOnlyList<string> Validate();
+
+        /// <summary>
+        /// Gets the current list of configured filters.
+        /// Provides read-only access to the filter configurations for inspection.
+        /// </summary>
+        /// <returns>Read-only list of filter configurations</returns>
+        IReadOnlyList<FilterConfiguration> GetFilters();
 
         /// <summary>
         /// Builds the final AlertConfig from the current builder state.

@@ -98,7 +98,7 @@ namespace AhBearStudios.Core.Alerting.Filters
         /// <summary>
         /// Gets the reason for the filter decision.
         /// </summary>
-        public FixedString256Bytes Reason { get; init; }
+        public FixedString512Bytes Reason { get; init; }
 
         /// <summary>
         /// Gets any modifications to be applied to the alert.

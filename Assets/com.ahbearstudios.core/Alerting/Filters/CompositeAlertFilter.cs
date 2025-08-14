@@ -14,11 +14,11 @@ namespace AhBearStudios.Core.Alerting.Filters
 
         public CompositeAlertFilter(string name, IEnumerable<IAlertFilter> childFilters, LogicalOperator logicalOperator) : base(name)
         {
-            _childFilters = childFilters?.ZToList() ?? new List<IAlertFilter>();
+            _childFilters = childFilters?.AsValueEnumerable().ToList() ?? new List<IAlertFilter>();
             _logicalOperator = logicalOperator;
         }
 
-        public override bool CanHandle(Alert alert) => alert != null && _childFilters.ZAny();
+        public override bool CanHandle(Alert alert) => alert != null && _childFilters.AsValueEnumerable().Any();
 
         public override FilterResult Evaluate(Alert alert, FilterContext context)
         {
@@ -48,21 +48,21 @@ namespace AhBearStudios.Core.Alerting.Filters
 
         private FilterResult EvaluateAnd(Alert alert, List<FilterResult> results)
         {
-            return results.ZAll(r => r.Decision == FilterDecision.Allow)
+            return results.AsValueEnumerable().All(r => r.Decision == FilterDecision.Allow)
                 ? FilterResult.Allow(alert, "All child filters allowed")
                 : FilterResult.Suppress(alert, "One or more child filters suppressed");
         }
 
         private FilterResult EvaluateOr(Alert alert, List<FilterResult> results)
         {
-            return results.ZAny(r => r.Decision == FilterDecision.Allow)
+            return results.AsValueEnumerable().Any(r => r.Decision == FilterDecision.Allow)
                 ? FilterResult.Allow(alert, "At least one child filter allowed")
                 : FilterResult.Suppress(alert, "All child filters suppressed");
         }
 
         private FilterResult EvaluateXor(Alert alert, List<FilterResult> results)
         {
-            var allowCount = results.ZCount(r => r.Decision == FilterDecision.Allow);
+            var allowCount = results.AsValueEnumerable().Count(r => r.Decision == FilterDecision.Allow);
             return allowCount == 1
                 ? FilterResult.Allow(alert, "Exactly one child filter allowed")
                 : FilterResult.Suppress(alert, $"{allowCount} child filters allowed (expected 1)");
@@ -70,7 +70,7 @@ namespace AhBearStudios.Core.Alerting.Filters
 
         private FilterResult EvaluateNot(Alert alert, List<FilterResult> results)
         {
-            return results.ZAll(r => r.Decision != FilterDecision.Allow)
+            return results.AsValueEnumerable().All(r => r.Decision != FilterDecision.Allow)
                 ? FilterResult.Allow(alert, "All child filters were suppressed (NOT)")
                 : FilterResult.Suppress(alert, "One or more child filters allowed (NOT)");
         }

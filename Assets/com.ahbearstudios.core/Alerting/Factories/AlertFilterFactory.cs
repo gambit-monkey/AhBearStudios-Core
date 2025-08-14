@@ -547,8 +547,13 @@ namespace AhBearStudios.Core.Alerting.Factories
                 ? sources.AsValueEnumerable().ToList()
                 : new List<string> { "*" };
 
+            var useWhitelist = config.Settings.TryGetValue("UseWhitelist", out var whitelistValue)
+                && bool.TryParse(whitelistValue.ToString(), out var whitelist)
+                ? whitelist
+                : true;
+
             await UniTask.CompletedTask;
-            return new SourceAlertFilter(config.Name.ToString(), allowedSources);
+            return new SourceAlertFilter(config.Name.ToString(), allowedSources, useWhitelist);
         }
 
         private async UniTask<IAlertFilter> CreateRateLimitFilterInternal(FilterConfiguration config)

@@ -15,7 +15,7 @@ namespace AhBearStudios.Core.Alerting.Filters
 
         public ContentAlertFilter(string name, IEnumerable<string> patterns) : base(name)
         {
-            _patterns = patterns?.ZToList() ?? new List<string>();
+            _patterns = patterns?.AsValueEnumerable().ToList() ?? new List<string>();
         }
 
         public override bool CanHandle(Alert alert) => alert != null;

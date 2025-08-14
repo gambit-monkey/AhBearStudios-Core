@@ -1,5 +1,8 @@
 using System;
 using Unity.Collections;
+using AhBearStudios.Core.Pooling;
+using AhBearStudios.Core.Pooling.Models;
+using AhBearStudios.Core.HealthChecking.Models;
 
 namespace AhBearStudios.Core.Alerting.Models
 {
@@ -8,7 +11,7 @@ namespace AhBearStudios.Core.Alerting.Models
     /// Serialization is handled through ISerializationService for efficient persistence and network transmission.
     /// Designed for Unity game development with Job System and Burst compatibility.
     /// </summary>
-    public sealed partial record Alert : IDisposable, IPoolable
+    public sealed partial record Alert : IDisposable, IPooledObject
     {
         /// <summary>
         /// Unique identifier for this alert instance.
@@ -255,14 +258,164 @@ namespace AhBearStudios.Core.Alerting.Models
             return this with { Count = Count + 1 };
         }
 
+        #region IPooledObject Implementation
+
         /// <summary>
-        /// Resets the alert for pooling reuse (IPoolable implementation).
+        /// Pool information for this alert instance.
+        /// </summary>
+        public string PoolName { get; set; }
+        public Guid PoolId { get; set; }
+        public DateTime LastUsed { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public long UseCount { get; set; }
+        public TimeSpan TotalActiveTime { get; set; }
+        public DateTime LastValidationTime { get; set; }
+        public int Priority { get; set; }
+        public int ValidationErrorCount { get; set; }
+        public bool CorruptionDetected { get; set; }
+        public int ConsecutiveFailures { get; set; }
+
+        /// <summary>
+        /// Called when the alert is retrieved from the pool.
+        /// </summary>
+        public void OnGet()
+        {
+            LastUsed = DateTime.UtcNow;
+            UseCount++;
+        }
+
+        /// <summary>
+        /// Called when the alert is returned to the pool.
+        /// </summary>
+        public void OnReturn()
+        {
+            // Since Alert is a record, we can't truly reset mutable properties
+            // This is more for tracking purposes
+            var activeTime = DateTime.UtcNow - LastUsed;
+            TotalActiveTime = TotalActiveTime.Add(activeTime);
+        }
+
+        /// <summary>
+        /// Resets the alert for pooling reuse.
         /// </summary>
         public void Reset()
         {
             // For records, reset is conceptual - actual pooling would create new instances
-            // This method supports the IPoolable contract for documentation
+            // This method supports the IPooledObject contract
+            ValidationErrorCount = 0;
+            ConsecutiveFailures = 0;
+            CorruptionDetected = false;
         }
+
+        /// <summary>
+        /// Validates that the alert is in a valid state for use.
+        /// </summary>
+        public bool IsValid()
+        {
+            return !Message.IsEmpty && 
+                   !Source.IsEmpty && 
+                   Id != Guid.Empty &&
+                   !CorruptionDetected;
+        }
+
+        /// <summary>
+        /// Gets the estimated memory usage of this alert in bytes.
+        /// </summary>
+        public long GetEstimatedMemoryUsage()
+        {
+            // Approximate size calculation
+            long size = 0;
+            size += 16 * 2; // Two GUIDs (Id, CorrelationId)
+            size += 512; // Message FixedString512Bytes
+            size += 64; // Source FixedString64Bytes
+            size += 32; // Tag FixedString32Bytes
+            size += 8 * 3; // Three longs (timestamps)
+            size += 64 * 2; // AcknowledgedBy, ResolvedBy
+            size += 4; // Count int
+            size += 1; // State byte
+            size += Context != null ? 1024 : 0; // Estimate for context
+            return size;
+        }
+
+        /// <summary>
+        /// Gets the health status of this pooled alert.
+        /// </summary>
+        public HealthStatus GetHealthStatus()
+        {
+            if (CorruptionDetected)
+                return HealthStatus.Unhealthy;
+            if (ValidationErrorCount > 5)
+                return HealthStatus.Degraded;
+            return HealthStatus.Healthy;
+        }
+
+        /// <summary>
+        /// Determines if this alert can currently be pooled.
+        /// </summary>
+        public bool CanBePooled()
+        {
+            return !CorruptionDetected && ValidationErrorCount < 10;
+        }
+
+        /// <summary>
+        /// Determines if this alert should trigger a circuit breaker.
+        /// </summary>
+        public bool ShouldCircuitBreak()
+        {
+            return ConsecutiveFailures > 3 || CorruptionDetected;
+        }
+
+        /// <summary>
+        /// Checks if this alert has a critical issue that requires alerting.
+        /// </summary>
+        public bool HasCriticalIssue()
+        {
+            return CorruptionDetected || 
+                   (Severity == AlertSeverity.Critical && State == AlertState.Active);
+        }
+
+        /// <summary>
+        /// Gets an alert message describing any critical issues.
+        /// </summary>
+        public FixedString512Bytes? GetAlertMessage()
+        {
+            if (CorruptionDetected)
+                return new FixedString512Bytes("Alert object corruption detected");
+            if (HasCriticalIssue())
+                return Message;
+            return null;
+        }
+
+        /// <summary>
+        /// Gets comprehensive diagnostic information about this alert.
+        /// </summary>
+        public PooledObjectDiagnostics GetDiagnosticInfo()
+        {
+            return new PooledObjectDiagnostics
+            {
+                ObjectType = nameof(Alert),
+                PoolName = PoolName,
+                PoolId = PoolId,
+                CreatedAt = CreatedAt,
+                LastUsed = LastUsed,
+                UseCount = UseCount,
+                TotalActiveTime = TotalActiveTime,
+                ValidationErrorCount = ValidationErrorCount,
+                CorruptionDetected = CorruptionDetected,
+                EstimatedMemoryUsage = GetEstimatedMemoryUsage(),
+                HealthStatus = GetHealthStatus(),
+                AdditionalData = new Dictionary<string, object>
+                {
+                    ["AlertId"] = Id,
+                    ["Severity"] = Severity,
+                    ["Source"] = Source.ToString(),
+                    ["State"] = State,
+                    ["Count"] = Count
+                }
+            };
+        }
+
+        #endregion
 
         /// <summary>
         /// Disposes resources associated with this alert.
@@ -307,16 +460,5 @@ namespace AhBearStudios.Core.Alerting.Models
         /// Alert has been suppressed by filtering rules.
         /// </summary>
         Suppressed = 3
-    }
-
-    /// <summary>
-    /// Interface for poolable objects in the alert system.
-    /// </summary>
-    public interface IPoolable
-    {
-        /// <summary>
-        /// Resets the object state for reuse from pool.
-        /// </summary>
-        void Reset();
     }
 }

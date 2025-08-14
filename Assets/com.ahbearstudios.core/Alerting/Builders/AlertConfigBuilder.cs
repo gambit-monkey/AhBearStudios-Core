@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using ZLinq;
 using Unity.Collections;
 using AhBearStudios.Core.Alerting.Configs;
@@ -36,6 +37,7 @@ namespace AhBearStudios.Core.Alerting.Builders
 
         private readonly List<ChannelConfig> _channels = new();
         private readonly List<SuppressionConfig> _suppressionRules = new();
+        private readonly List<FilterConfiguration> _filters = new();
         private readonly Dictionary<FixedString64Bytes, AlertSeverity> _sourceSeverityOverrides = new();
         private EmergencyEscalationConfig _emergencyEscalation = EmergencyEscalationConfig.Default;
 
@@ -636,6 +638,78 @@ namespace AhBearStudios.Core.Alerting.Builders
 
         #endregion
 
+        #region Filter Configuration Methods
+
+        /// <inheritdoc />
+        public IAlertConfigBuilder WithFilters(Action<IFilterConfigBuilder> filterBuilder)
+        {
+            if (filterBuilder == null)
+                throw new ArgumentNullException(nameof(filterBuilder));
+
+            var builder = new FilterConfigBuilder();
+            filterBuilder(builder);
+            var filters = builder.Build();
+            
+            _filters.Clear();
+            foreach (var filter in filters)
+            {
+                _filters.Add(filter);
+            }
+            
+            return this;
+        }
+
+        /// <inheritdoc />
+        public IAlertConfigBuilder WithSeverityFilter(string name = "SeverityFilter", AlertSeverity minimumSeverity = AlertSeverity.Info, bool allowCriticalAlways = true, int priority = 10)
+        {
+            var builder = new FilterConfigBuilder();
+            builder.AddSeverityFilter(name, minimumSeverity, allowCriticalAlways, priority);
+            var filters = builder.Build();
+            
+            // Remove existing filter with same name
+            _filters.RemoveAll(f => f.Name == name);
+            _filters.AddRange(filters);
+            
+            return this;
+        }
+
+        /// <inheritdoc />
+        public IAlertConfigBuilder WithSourceFilter(string name = "SourceFilter", IEnumerable<string> sources = null, bool useWhitelist = true, int priority = 20)
+        {
+            var builder = new FilterConfigBuilder();
+            var sourceList = sources?.AsValueEnumerable().ToList() ?? new List<string> { "*" };
+            builder.AddSourceFilter(name, sourceList, useWhitelist, caseSensitive: false, useRegex: false, priority);
+            var filters = builder.Build();
+            
+            // Remove existing filter with same name
+            _filters.RemoveAll(f => f.Name == name);
+            _filters.AddRange(filters);
+            
+            return this;
+        }
+
+        /// <inheritdoc />
+        public IAlertConfigBuilder WithRateLimitFilter(string name = "RateLimitFilter", int maxAlertsPerMinute = 60, string sourcePattern = "*", int priority = 30)
+        {
+            var builder = new FilterConfigBuilder();
+            builder.AddRateLimitFilter(name, maxAlertsPerMinute, sourcePattern, burstSize: 10, priority);
+            var filters = builder.Build();
+            
+            // Remove existing filter with same name
+            _filters.RemoveAll(f => f.Name == name);
+            _filters.AddRange(filters);
+            
+            return this;
+        }
+
+        /// <inheritdoc />
+        public IReadOnlyList<FilterConfiguration> GetFilters()
+        {
+            return _filters.AsReadOnly();
+        }
+
+        #endregion
+
         #region Source Override Methods
 
         /// <inheritdoc />
@@ -1048,6 +1122,7 @@ namespace AhBearStudios.Core.Alerting.Builders
                 EnableCircuitBreakerIntegration = _enableCircuitBreakerIntegration,
                 Channels = _channels.AsValueEnumerable().ToList().AsReadOnly(),
                 SuppressionRules = _suppressionRules.AsValueEnumerable().ToList().AsReadOnly(),
+                Filters = _filters.AsValueEnumerable().ToList().AsReadOnly(),
                 SourceSeverityOverrides = _sourceSeverityOverrides.AsValueEnumerable().ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
                 EmergencyEscalation = _emergencyEscalation
             };
@@ -1082,6 +1157,7 @@ namespace AhBearStudios.Core.Alerting.Builders
 
             _channels.Clear();
             _suppressionRules.Clear();
+            _filters.Clear();
             _sourceSeverityOverrides.Clear();
 
             return this;
@@ -1114,6 +1190,7 @@ namespace AhBearStudios.Core.Alerting.Builders
 
             clone._channels.AddRange(_channels);
             clone._suppressionRules.AddRange(_suppressionRules);
+            clone._filters.AddRange(_filters);
             foreach (var kvp in _sourceSeverityOverrides)
             {
                 clone._sourceSeverityOverrides[kvp.Key] = kvp.Value;

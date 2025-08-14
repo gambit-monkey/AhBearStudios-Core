@@ -103,6 +103,12 @@ namespace AhBearStudios.Core.Alerting.Configs
         public IReadOnlyList<SuppressionConfig> SuppressionRules { get; init; } = Array.Empty<SuppressionConfig>();
 
         /// <summary>
+        /// Gets the collection of alert filters for comprehensive alert processing.
+        /// Filters are evaluated in priority order to determine which alerts should be processed.
+        /// </summary>
+        public IReadOnlyList<FilterConfiguration> Filters { get; init; } = Array.Empty<FilterConfiguration>();
+
+        /// <summary>
         /// Gets the buffer size for alert queue management.
         /// This determines how many alerts can be queued for processing before backpressure is applied.
         /// </summary>
@@ -171,6 +177,12 @@ namespace AhBearStudios.Core.Alerting.Configs
             foreach (var rule in SuppressionRules)
             {
                 rule.Validate();
+            }
+
+            // Validate all filters
+            foreach (var filter in Filters)
+            {
+                filter.Validate();
             }
 
             // Validate emergency escalation

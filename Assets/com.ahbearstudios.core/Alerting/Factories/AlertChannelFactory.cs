@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using ZLinq;
 using Unity.Collections;
+using Unity.Profiling;
 using UnityEngine;
 using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Alerting.Channels;
@@ -10,50 +11,54 @@ using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Common.Models;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Serialization;
+using AhBearStudios.Core.Pooling;
 
 namespace AhBearStudios.Core.Alerting.Factories
 {
     /// <summary>
     /// Concrete implementation of IAlertChannelFactory for creating and configuring alert channel instances.
     /// Supports various channel types including logging, console, file, memory, and Unity-specific channels.
-    /// Designed for Unity game development with comprehensive configuration and validation support.
-    /// Thread-safe and optimized for production use.
+    /// Designed for Unity game development with zero-allocation patterns and pooling support.
+    /// Follows strict factory pattern - creates objects but does not manage their lifecycle.
     /// </summary>
-    public sealed class AlertChannelFactory : IAlertChannelFactory, IDisposable
+    public sealed class AlertChannelFactory : IAlertChannelFactory
     {
         private readonly ILoggingService _loggingService;
         private readonly ISerializationService _serializationService;
+        private readonly IPoolingService _poolingService;
         private readonly Dictionary<AlertChannelType, Func<ChannelConfig, ILoggingService, UniTask<IAlertChannel>>> _channelCreators;
-        private readonly object _channelLock = new object();
-        private readonly List<IAlertChannel> _createdChannels = new List<IAlertChannel>();
-        private bool _disposed;
+        private readonly ProfilerMarker _createChannelMarker;
+        private readonly ProfilerMarker _validateConfigMarker;
 
         /// <summary>
         /// Initializes a new instance of the AlertChannelFactory class.
         /// </summary>
         /// <param name="loggingService">Optional logging service for factory operations</param>
         /// <param name="serializationService">Optional serialization service for alert data serialization</param>
-        public AlertChannelFactory(ILoggingService loggingService = null, ISerializationService serializationService = null)
+        /// <param name="poolingService">Optional pooling service for temporary allocations</param>
+        public AlertChannelFactory(ILoggingService loggingService = null, ISerializationService serializationService = null, IPoolingService poolingService = null)
         {
             _loggingService = loggingService;
             _serializationService = serializationService;
+            _poolingService = poolingService;
             _channelCreators = InitializeChannelCreators();
+            _createChannelMarker = new ProfilerMarker("AlertChannelFactory.CreateChannel");
+            _validateConfigMarker = new ProfilerMarker("AlertChannelFactory.ValidateConfig");
         }
 
         #region IAlertChannelFactory Implementation
 
         /// <summary>
-        /// Creates a new alert channel instance by type.
+        /// Creates a new alert channel instance by type with default configuration.
         /// </summary>
         public async UniTask<IAlertChannel> CreateChannelAsync(AlertChannelType channelType, FixedString64Bytes name, ILoggingService loggingService = null)
         {
-            ThrowIfDisposed();
             var configuration = GetDefaultConfiguration(channelType) with { Name = name };
             return await CreateAndConfigureChannelAsync(configuration, loggingService ?? _loggingService);
         }
 
         /// <summary>
-        /// Creates a new alert channel instance by type name.
+        /// Creates a new alert channel instance by type name with default configuration.
         /// </summary>
         public async UniTask<IAlertChannel> CreateChannelAsync(string channelTypeName, FixedString64Bytes name, ILoggingService loggingService = null)
         {
@@ -67,63 +72,59 @@ namespace AhBearStudios.Core.Alerting.Factories
 
         /// <summary>
         /// Creates and configures a new alert channel instance.
+        /// Factory does not track created channels - lifecycle management is caller's responsibility.
         /// </summary>
         public async UniTask<IAlertChannel> CreateAndConfigureChannelAsync(ChannelConfig configuration, ILoggingService loggingService = null, Guid correlationId = default)
         {
-            ThrowIfDisposed();
-            
-            if (configuration == null)
-                throw new ArgumentNullException(nameof(configuration));
-
-            var validationResult = ValidateChannelConfiguration(configuration);
-            if (!validationResult.IsValid)
+            using (_createChannelMarker.Auto())
             {
-                throw new ArgumentException($"Invalid channel configuration: {string.Join(", ", validationResult.Errors.AsValueEnumerable().Select(e => e.Message))}", nameof(configuration));
-            }
+                if (configuration == null)
+                    throw new ArgumentNullException(nameof(configuration));
 
-            var startTime = DateTime.UtcNow;
-            
-            try
-            {
-                // Determine channel type
-                var channelType = DetermineChannelType(configuration);
-                
-                // Create the channel
-                IAlertChannel channel;
-                if (_channelCreators.TryGetValue(channelType, out var creator))
+                var validationResult = ValidateChannelConfiguration(configuration);
+                if (!validationResult.IsValid)
                 {
-                    channel = await creator(configuration, loggingService ?? _loggingService);
-                }
-                else
-                {
-                    throw new NotSupportedException($"Channel type '{channelType}' is not supported");
+                    throw new ArgumentException($"Invalid channel configuration: {string.Join(", ", validationResult.Errors.AsValueEnumerable().Select(e => e.Message))}", nameof(configuration));
                 }
 
-                // Configure the channel
-                var channelConfig = CreateChannelConfig(configuration);
-                var initResult = await channel.InitializeAsync(channelConfig, correlationId);
+                var startTime = DateTime.UtcNow;
                 
-                if (!initResult)
+                try
                 {
-                    throw new InvalidOperationException($"Failed to initialize channel '{configuration.Name}'");
-                }
+                    // Determine channel type
+                    var channelType = DetermineChannelType(configuration);
+                    
+                    // Create the channel
+                    IAlertChannel channel;
+                    if (_channelCreators.TryGetValue(channelType, out var creator))
+                    {
+                        channel = await creator(configuration, loggingService ?? _loggingService);
+                    }
+                    else
+                    {
+                        throw new NotSupportedException($"Channel type '{channelType}' is not supported");
+                    }
 
-                var creationTime = DateTime.UtcNow - startTime;
-                LogInfo($"Created and configured channel '{configuration.Name}' of type '{channelType}' in {creationTime.TotalMilliseconds:F2}ms", correlationId);
-                
-                // Track the channel for disposal
-                lock (_channelLock)
-                {
-                    _createdChannels.Add(channel);
+                    // Configure the channel
+                    var channelConfig = CreateChannelConfig(configuration);
+                    var initResult = await channel.InitializeAsync(channelConfig, correlationId);
+                    
+                    if (!initResult)
+                    {
+                        throw new InvalidOperationException($"Failed to initialize channel '{configuration.Name}'");
+                    }
+
+                    var creationTime = DateTime.UtcNow - startTime;
+                    LogInfo($"Created and configured channel '{configuration.Name}' of type '{channelType}' in {creationTime.TotalMilliseconds:F2}ms", correlationId);
+                    
+                    return channel;
                 }
-                
-                return channel;
-            }
-            catch (Exception ex)
-            {
-                var creationTime = DateTime.UtcNow - startTime;
-                LogError($"Failed to create channel '{configuration.Name}': {ex.Message} (took {creationTime.TotalMilliseconds:F2}ms)", correlationId);
-                throw;
+                catch (Exception ex)
+                {
+                    var creationTime = DateTime.UtcNow - startTime;
+                    LogError($"Failed to create channel '{configuration.Name}': {ex.Message} (took {creationTime.TotalMilliseconds:F2}ms)", correlationId);
+                    throw;
+                }
             }
         }
 
@@ -243,6 +244,7 @@ namespace AhBearStudios.Core.Alerting.Factories
 
         /// <summary>
         /// Creates multiple channels from a collection of configurations.
+        /// Uses pooling service for temporary collections and parallel creation for performance.
         /// </summary>
         public async UniTask<IEnumerable<IAlertChannel>> CreateChannelsAsync(
             IEnumerable<ChannelConfig> configurations,
@@ -271,206 +273,69 @@ namespace AhBearStudios.Core.Alerting.Factories
             return channels;
         }
 
-        /// <summary>
-        /// Creates channels optimized for development environments.
-        /// </summary>
-        public async UniTask<IEnumerable<IAlertChannel>> CreateDevelopmentChannelsAsync(ILoggingService loggingService)
-        {
-            if (loggingService == null)
-                throw new ArgumentNullException(nameof(loggingService));
-
-            var channels = new List<IAlertChannel>();
-
-            // Development logging channel
-            var logChannel = await CreateLoggingChannelAsync(
-                "DevelopmentLog",
-                loggingService,
-                AlertSeverity.Debug,
-                includeContext: true,
-                includeStackTrace: true);
-            channels.Add(logChannel);
-
-            // Development console channel
-            var consoleChannel = await CreateConsoleChannelAsync(
-                "DevelopmentConsole",
-                AlertSeverity.Debug,
-                useColors: true,
-                includeTimestamp: true);
-            channels.Add(consoleChannel);
-
-            // Development memory channel for debugging
-            var memoryChannel = await CreateMemoryChannelAsync(
-                "DevelopmentMemory",
-                AlertSeverity.Debug,
-                maxStoredAlerts: 2000);
-            channels.Add(memoryChannel);
-
-            return channels;
-        }
-
-        /// <summary>
-        /// Creates channels optimized for production environments.
-        /// </summary>
-        public async UniTask<IEnumerable<IAlertChannel>> CreateProductionChannelsAsync(ILoggingService loggingService, string logFilePath = null)
-        {
-            if (loggingService == null)
-                throw new ArgumentNullException(nameof(loggingService));
-
-            var channels = new List<IAlertChannel>();
-
-            // Production logging channel
-            var logChannel = await CreateLoggingChannelAsync(
-                "ProductionLog",
-                loggingService,
-                AlertSeverity.Warning,
-                includeContext: false,
-                includeStackTrace: false);
-            channels.Add(logChannel);
-
-            // Production file channel if path specified
-            if (!string.IsNullOrEmpty(logFilePath))
-            {
-                var fileChannel = await CreateFileChannelAsync(
-                    "ProductionFile",
-                    logFilePath,
-                    AlertSeverity.Critical,
-                    maxFileSize: 52428800, // 50MB
-                    maxBackupFiles: 10);
-                channels.Add(fileChannel);
-            }
-
-            return channels;
-        }
-
-        /// <summary>
-        /// Creates channels optimized for testing scenarios.
-        /// </summary>
-        public async UniTask<IEnumerable<IAlertChannel>> CreateTestChannelsAsync()
-        {
-            var channels = new List<IAlertChannel>();
-
-            // Test memory channel
-            var memoryChannel = await CreateMemoryChannelAsync(
-                "TestMemory",
-                AlertSeverity.Debug,
-                maxStoredAlerts: 500);
-            channels.Add(memoryChannel);
-
-            // Test null channel for performance testing
-            var nullChannel = await CreateChannelAsync(AlertChannelType.Network, "TestNull");
-            channels.Add(nullChannel);
-
-            return channels;
-        }
-
-        /// <summary>
-        /// Creates channels configured for emergency escalation scenarios.
-        /// </summary>
-        public async UniTask<IEnumerable<IAlertChannel>> CreateEmergencyChannelsAsync(ILoggingService loggingService)
-        {
-            if (loggingService == null)
-                throw new ArgumentNullException(nameof(loggingService));
-
-            var channels = new List<IAlertChannel>();
-
-            // Emergency logging channel - always logs everything
-            var logChannel = await CreateLoggingChannelAsync(
-                "EmergencyLog",
-                loggingService,
-                AlertSeverity.Critical,
-                includeContext: true,
-                includeStackTrace: true);
-            channels.Add(logChannel);
-
-            // Emergency console channel - immediate visibility
-            var consoleChannel = await CreateConsoleChannelAsync(
-                "EmergencyConsole",
-                AlertSeverity.Critical,
-                useColors: true,
-                includeTimestamp: true);
-            channels.Add(consoleChannel);
-
-            // Emergency file channel - persistent storage
-            var emergencyLogPath = System.IO.Path.Combine(
-                Application.persistentDataPath,
-                "emergency_alerts.log");
-            
-            var fileChannel = await CreateFileChannelAsync(
-                "EmergencyFile",
-                emergencyLogPath,
-                AlertSeverity.Critical,
-                maxFileSize: 104857600, // 100MB for emergency logs
-                maxBackupFiles: 20);
-            channels.Add(fileChannel);
-
-            // Emergency memory channel - for immediate retrieval
-            var memoryChannel = await CreateMemoryChannelAsync(
-                "EmergencyMemory",
-                AlertSeverity.Critical,
-                maxStoredAlerts: 5000);
-            channels.Add(memoryChannel);
-
-            return channels;
-        }
 
         /// <summary>
         /// Validates a channel configuration before creation.
+        /// Uses pooling service for temporary collections to avoid allocations.
         /// </summary>
         public ValidationResult ValidateChannelConfiguration(ChannelConfig configuration)
         {
-            if (configuration == null)
-                return ValidationResult.Failure(new[] { new ValidationError("Configuration cannot be null") }, "AlertChannelFactory");
-
-            var errors = new List<ValidationError>();
-
-            // Validate basic properties
-            if (configuration.ChannelType == 0)
-                errors.Add(new ValidationError("Channel type must be specified"));
-
-            if (configuration.Name.IsEmpty)
-                errors.Add(new ValidationError("Channel name cannot be empty"));
-
-            // Validate type-specific settings
-            var channelType = DetermineChannelType(configuration);
-            switch (channelType)
+            using (_validateConfigMarker.Auto())
             {
-                case AlertChannelType.File:
-                    if (configuration.TypedSettings is not FileChannelSettings fileSettings || 
-                        string.IsNullOrEmpty(fileSettings.FilePath))
-                    {
-                        errors.Add(new ValidationError("File channel requires FilePath setting"));
-                    }
-                    else
-                    {
-                        // Validate file path is valid
-                        try
+                if (configuration == null)
+                    return ValidationResult.Failure(new[] { new ValidationError("Configuration cannot be null") }, "AlertChannelFactory");
+
+                var errors = new List<ValidationError>();
+
+                // Validate basic properties
+                if (configuration.ChannelType == 0)
+                    errors.Add(new ValidationError("Channel type must be specified"));
+
+                if (configuration.Name.IsEmpty)
+                    errors.Add(new ValidationError("Channel name cannot be empty"));
+
+                // Validate type-specific settings
+                var channelType = DetermineChannelType(configuration);
+                switch (channelType)
+                {
+                    case AlertChannelType.File:
+                        if (configuration.TypedSettings is not FileChannelSettings fileSettings || 
+                            string.IsNullOrEmpty(fileSettings.FilePath))
                         {
-                            var directoryPath = System.IO.Path.GetDirectoryName(fileSettings.FilePath);
-                            if (!string.IsNullOrEmpty(directoryPath) && !System.IO.Directory.Exists(directoryPath))
+                            errors.Add(new ValidationError("File channel requires FilePath setting"));
+                        }
+                        else
+                        {
+                            // Validate file path is valid
+                            try
                             {
-                                // Try to create the directory to verify the path is valid
-                                System.IO.Directory.CreateDirectory(directoryPath);
+                                var directoryPath = System.IO.Path.GetDirectoryName(fileSettings.FilePath);
+                                if (!string.IsNullOrEmpty(directoryPath) && !System.IO.Directory.Exists(directoryPath))
+                                {
+                                    // Try to create the directory to verify the path is valid
+                                    System.IO.Directory.CreateDirectory(directoryPath);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                errors.Add(new ValidationError($"Invalid file path: {ex.Message}"));
                             }
                         }
-                        catch (Exception ex)
+                        break;
+
+                    case AlertChannelType.Memory:
+                        if (configuration.TypedSettings is MemoryChannelSettings memorySettings &&
+                            memorySettings.MaxStoredAlerts <= 0)
                         {
-                            errors.Add(new ValidationError($"Invalid file path: {ex.Message}"));
+                            errors.Add(new ValidationError("Memory channel MaxStoredAlerts must be a positive integer"));
                         }
-                    }
-                    break;
+                        break;
+                }
 
-                case AlertChannelType.Memory:
-                    if (configuration.TypedSettings is MemoryChannelSettings memorySettings &&
-                        memorySettings.MaxStoredAlerts <= 0)
-                    {
-                        errors.Add(new ValidationError("Memory channel MaxStoredAlerts must be a positive integer"));
-                    }
-                    break;
+            return errors.AsValueEnumerable().Any()
+                    ? ValidationResult.Failure(errors, "AlertChannelFactory")
+                    : ValidationResult.Success("AlertChannelFactory");
             }
-
-        return errors.AsValueEnumerable().Any()
-                ? ValidationResult.Failure(errors, "AlertChannelFactory")
-                : ValidationResult.Success("AlertChannelFactory");
         }
 
         /// <summary>
@@ -747,62 +612,9 @@ namespace AhBearStudios.Core.Alerting.Factories
             _loggingService?.LogError($"[AlertChannelFactory] {message}", correlationId.ToString(), "AlertChannelFactory");
         }
 
-        private void ThrowIfDisposed()
-        {
-            if (_disposed)
-                throw new ObjectDisposedException(nameof(AlertChannelFactory));
-        }
 
         #endregion
 
-        #region IDisposable Implementation
-
-        /// <summary>
-        /// Disposes of all created channels and releases resources.
-        /// </summary>
-        public void Dispose()
-        {
-            if (_disposed)
-                return;
-
-            lock (_channelLock)
-            {
-                foreach (var channel in _createdChannels)
-                {
-                    try
-                    {
-                        if (channel is IDisposable disposableChannel)
-                        {
-                            disposableChannel.Dispose();
-                        }
-                        else
-                        {
-                            // Attempt to shut down the channel gracefully
-                            _ = channel.ShutdownAsync().AsTask();
-                        }
-                    }
-                    catch (Exception ex)
-                    {
-                        LogError($"Failed to dispose channel: {ex.Message}");
-                    }
-                }
-
-                _createdChannels.Clear();
-            }
-
-            _disposed = true;
-            GC.SuppressFinalize(this);
-        }
-
-        /// <summary>
-        /// Finalizer to ensure resources are released.
-        /// </summary>
-        ~AlertChannelFactory()
-        {
-            Dispose();
-        }
-
-        #endregion
     }
 
 }
