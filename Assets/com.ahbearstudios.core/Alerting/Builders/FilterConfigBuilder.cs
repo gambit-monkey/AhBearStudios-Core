@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Unity.Collections;
 using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Common.Models;
 using AhBearStudios.Core.Pooling;
 using ZLinq;
 
@@ -407,7 +408,7 @@ namespace AhBearStudios.Core.Alerting.Builders
             foreach (var filter in toRemove)
             {
                 _filters.Remove(filter);
-                _filtersByName.Remove(filter.Name);
+                _filtersByName.Remove(filter.Name.ToString());
             }
 
             return this;
@@ -513,11 +514,11 @@ namespace AhBearStudios.Core.Alerting.Builders
                 try
                 {
                     filter.Validate();
-                    results[filter.Name] = FilterValidationResult.Valid();
+                    results[filter.Name.ToString()] = FilterValidationResult.Valid();
                 }
                 catch (InvalidOperationException ex)
                 {
-                    results[filter.Name] = FilterValidationResult.Invalid(new[] { ex.Message });
+                    results[filter.Name.ToString()] = FilterValidationResult.Invalid(new[] { ex.Message });
                 }
             }
 
@@ -560,7 +561,7 @@ namespace AhBearStudios.Core.Alerting.Builders
                 .Where(kvp => !kvp.Value.IsValid)
                 .ToList();
 
-            if (invalidFilters.Any())
+            if (invalidFilters.AsValueEnumerable().Any())
             {
                 var errorMessages = invalidFilters
                     .AsValueEnumerable()
@@ -587,13 +588,13 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// </summary>
         private IFilterConfigBuilder AddFilterInternal(FilterConfiguration config)
         {
-            if (_filtersByName.ContainsKey(config.Name))
+            if (_filtersByName.ContainsKey(config.Name.ToString()))
             {
                 throw new InvalidOperationException($"A filter with name '{config.Name}' already exists");
             }
 
             _filters.Add(config);
-            _filtersByName[config.Name] = config;
+            _filtersByName[config.Name.ToString()] = config;
             
             return this;
         }
@@ -607,7 +608,7 @@ namespace AhBearStudios.Core.Alerting.Builders
             if (index >= 0)
             {
                 _filters[index] = newConfig;
-                _filtersByName[newConfig.Name] = newConfig;
+                _filtersByName[newConfig.Name.ToString()] = newConfig;
             }
         }
 

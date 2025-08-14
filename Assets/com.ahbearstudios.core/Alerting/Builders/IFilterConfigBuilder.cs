@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Unity.Collections;
 using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Common.Models;
 
 namespace AhBearStudios.Core.Alerting.Builders
 {

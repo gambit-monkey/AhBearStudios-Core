@@ -115,33 +115,6 @@ namespace AhBearStudios.Core.Alerting.Factories
             ILoggingService loggingService = null,
             Guid correlationId = default);
 
-        /// <summary>
-        /// Creates channels optimized for development environments.
-        /// </summary>
-        /// <param name="loggingService">Logging service for log channel</param>
-        /// <returns>UniTask with collection of development channels</returns>
-        UniTask<IEnumerable<IAlertChannel>> CreateDevelopmentChannelsAsync(ILoggingService loggingService);
-
-        /// <summary>
-        /// Creates channels optimized for production environments.
-        /// </summary>
-        /// <param name="loggingService">Logging service for log channel</param>
-        /// <param name="logFilePath">Optional log file path</param>
-        /// <returns>UniTask with collection of production channels</returns>
-        UniTask<IEnumerable<IAlertChannel>> CreateProductionChannelsAsync(ILoggingService loggingService, string logFilePath = null);
-
-        /// <summary>
-        /// Creates channels optimized for testing scenarios.
-        /// </summary>
-        /// <returns>UniTask with collection of test channels</returns>
-        UniTask<IEnumerable<IAlertChannel>> CreateTestChannelsAsync();
-
-        /// <summary>
-        /// Creates channels configured for emergency escalation scenarios.
-        /// </summary>
-        /// <param name="loggingService">Logging service for emergency log channel</param>
-        /// <returns>UniTask with collection of emergency channels</returns>
-        UniTask<IEnumerable<IAlertChannel>> CreateEmergencyChannelsAsync(ILoggingService loggingService);
 
         /// <summary>
         /// Validates a channel configuration before creation.

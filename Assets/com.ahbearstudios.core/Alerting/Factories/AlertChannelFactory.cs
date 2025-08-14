@@ -12,6 +12,7 @@ using AhBearStudios.Core.Common.Models;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Serialization;
 using AhBearStudios.Core.Pooling;
+using AhBearStudios.Core.Messaging;
 
 namespace AhBearStudios.Core.Alerting.Factories
 {
@@ -26,6 +27,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         private readonly ILoggingService _loggingService;
         private readonly ISerializationService _serializationService;
         private readonly IPoolingService _poolingService;
+        private readonly IMessageBusService _messageBusService;
         private readonly Dictionary<AlertChannelType, Func<ChannelConfig, ILoggingService, UniTask<IAlertChannel>>> _channelCreators;
         private readonly ProfilerMarker _createChannelMarker;
         private readonly ProfilerMarker _validateConfigMarker;
@@ -36,11 +38,13 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// <param name="loggingService">Optional logging service for factory operations</param>
         /// <param name="serializationService">Optional serialization service for alert data serialization</param>
         /// <param name="poolingService">Optional pooling service for temporary allocations</param>
-        public AlertChannelFactory(ILoggingService loggingService = null, ISerializationService serializationService = null, IPoolingService poolingService = null)
+        /// <param name="messageBusService">Optional message bus service for channel event publishing</param>
+        public AlertChannelFactory(ILoggingService loggingService = null, ISerializationService serializationService = null, IPoolingService poolingService = null, IMessageBusService messageBusService = null)
         {
             _loggingService = loggingService;
             _serializationService = serializationService;
             _poolingService = poolingService;
+            _messageBusService = messageBusService;
             _channelCreators = InitializeChannelCreators();
             _createChannelMarker = new ProfilerMarker("AlertChannelFactory.CreateChannel");
             _validateConfigMarker = new ProfilerMarker("AlertChannelFactory.ValidateConfig");
@@ -527,52 +531,48 @@ namespace AhBearStudios.Core.Alerting.Factories
             if (loggingService == null)
                 throw new ArgumentException("Logging channel requires ILoggingService", nameof(loggingService));
 
-            return UniTask.FromResult<IAlertChannel>(new LogAlertChannel(loggingService));
+            return UniTask.FromResult<IAlertChannel>(new LogAlertChannel(loggingService, _messageBusService));
         }
 
         private UniTask<IAlertChannel> CreateConsoleChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
-            return UniTask.FromResult<IAlertChannel>(new ConsoleAlertChannel());
+            return UniTask.FromResult<IAlertChannel>(new ConsoleAlertChannel(_messageBusService));
         }
 
         private UniTask<IAlertChannel> CreateFileChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
             var filePath = (config.TypedSettings as FileChannelSettings)?.FilePath ?? "alerts.log";
 
-            return UniTask.FromResult<IAlertChannel>(new FileAlertChannel(filePath));
+            return UniTask.FromResult<IAlertChannel>(new FileAlertChannel(filePath, _messageBusService));
         }
 
         private UniTask<IAlertChannel> CreateMemoryChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
             var maxAlerts = (config.TypedSettings as MemoryChannelSettings)?.MaxStoredAlerts ?? 1000;
 
-            return UniTask.FromResult<IAlertChannel>(new MemoryAlertChannel(maxAlerts));
+            return UniTask.FromResult<IAlertChannel>(new MemoryAlertChannel(_messageBusService, maxAlerts));
         }
 
         private UniTask<IAlertChannel> CreateUnityDebugChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
-            return UniTask.FromResult<IAlertChannel>(new UnityDebugAlertChannel());
+            return UniTask.FromResult<IAlertChannel>(new UnityDebugAlertChannel(_messageBusService));
         }
 
         private UniTask<IAlertChannel> CreateUnityNotificationChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
-            // Unity Notification channel implementation - for now use NullAlertChannel as placeholder
-            // TODO: Implement UnityNotificationAlertChannel when Unity notification system is integrated
-            return UniTask.FromResult<IAlertChannel>(new NullAlertChannel());
+            return UniTask.FromResult<IAlertChannel>(new UnityNotificationAlertChannel(_messageBusService));
         }
 
         private UniTask<IAlertChannel> CreateNetworkChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
-            // Network channel implementation - for now use NullAlertChannel as placeholder
-            // TODO: Implement NetworkAlertChannel for HTTP/webhook delivery
-            return UniTask.FromResult<IAlertChannel>(new NullAlertChannel());
+            return UniTask.FromResult<IAlertChannel>(new NetworkAlertChannel(_messageBusService, _serializationService));
         }
 
         private UniTask<IAlertChannel> CreateEmailChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
             // Email channel implementation - for now use NullAlertChannel as placeholder
             // TODO: Implement EmailAlertChannel for SMTP delivery
-            return UniTask.FromResult<IAlertChannel>(new NullAlertChannel());
+            return UniTask.FromResult<IAlertChannel>(new NullAlertChannel(_messageBusService));
         }
 
         private AlertChannelType DetermineChannelType(ChannelConfig configuration)

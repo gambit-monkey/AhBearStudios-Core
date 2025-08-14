@@ -59,8 +59,9 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// Creates a minimal AlertService for testing scenarios.
         /// Uses in-memory channels and minimal filtering.
         /// </summary>
+        /// <param name="messageBusService">Message bus service for testing</param>
         /// <returns>Test-configured AlertService</returns>
-        IAlertService CreateTestAlertService();
+        IAlertService CreateTestAlertService(IMessageBusService messageBusService = null);
 
         /// <summary>
         /// Creates an AlertService with custom channels and filters.

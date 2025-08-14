@@ -147,7 +147,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 // Register custom filters
                 foreach (var filter in filters)
                 {
-                    alertService.AddFilter(filter, correlationId.ToString());
+                    alertService.AddFilter(filter, correlationId);
                 }
 
                 // Apply custom suppression rules
@@ -245,6 +245,102 @@ namespace AhBearStudios.Core.Alerting.Factories
 
 
         /// <summary>
+        /// Creates a pre-configured AlertService for development environments.
+        /// </summary>
+        public async UniTask<IAlertService> CreateDevelopmentAlertServiceAsync(ILoggingService loggingService, IMessageBusService messageBusService = null)
+        {
+            var config = GetDevelopmentConfiguration();
+            return await CreateAlertServiceAsync(config, Guid.NewGuid());
+        }
+
+        /// <summary>
+        /// Creates a pre-configured AlertService for production environments.
+        /// </summary>
+        public async UniTask<IAlertService> CreateProductionAlertServiceAsync(ILoggingService loggingService, IMessageBusService messageBusService)
+        {
+            var config = GetProductionConfiguration();
+            return await CreateAlertServiceAsync(config, Guid.NewGuid());
+        }
+
+        /// <summary>
+        /// Creates a minimal AlertService for testing scenarios.
+        /// </summary>
+        public IAlertService CreateTestAlertService(IMessageBusService messageBusService = null)
+        {
+            return CreateAlertService(messageBusService);
+        }
+
+        /// <summary>
+        /// Gets configuration optimized for development environments.
+        /// </summary>
+        public AlertServiceConfiguration GetDevelopmentConfiguration()
+        {
+            return new AlertServiceConfiguration
+            {
+                Environment = AlertEnvironmentType.Development,
+                GlobalMinimumSeverity = AlertSeverity.Debug,
+                IsEnabled = true,
+                MaxActiveAlerts = 5000,
+                MaxHistorySize = 10000,
+                MaintenanceInterval = TimeSpan.FromMinutes(10),
+                AlertConfig = new AlertConfig
+                {
+                    MinimumSeverity = AlertSeverity.Debug,
+                    EnableSuppression = true,
+                    SuppressionWindow = TimeSpan.FromMinutes(2),
+                    EnableAsyncProcessing = false,
+                    MaxConcurrentAlerts = 50,
+                    ProcessingTimeout = TimeSpan.FromSeconds(10),
+                    EnableHistory = true,
+                    HistoryRetention = TimeSpan.FromHours(8),
+                    MaxHistoryEntries = 5000,
+                    EnableAggregation = false,
+                    EnableCorrelationTracking = true,
+                    AlertBufferSize = 500,
+                    EnableUnityIntegration = true,
+                    EnableMetrics = true,
+                    EnableCircuitBreakerIntegration = false
+                }
+            };
+        }
+
+        /// <summary>
+        /// Gets configuration optimized for production environments.
+        /// </summary>
+        public AlertServiceConfiguration GetProductionConfiguration()
+        {
+            return new AlertServiceConfiguration
+            {
+                Environment = AlertEnvironmentType.Production,
+                GlobalMinimumSeverity = AlertSeverity.Warning,
+                IsEnabled = true,
+                MaxActiveAlerts = 20000,
+                MaxHistorySize = 50000,
+                MaintenanceInterval = TimeSpan.FromMinutes(5),
+                AlertConfig = new AlertConfig
+                {
+                    MinimumSeverity = AlertSeverity.Warning,
+                    EnableSuppression = true,
+                    SuppressionWindow = TimeSpan.FromMinutes(5),
+                    EnableAsyncProcessing = true,
+                    MaxConcurrentAlerts = 200,
+                    ProcessingTimeout = TimeSpan.FromSeconds(30),
+                    EnableHistory = true,
+                    HistoryRetention = TimeSpan.FromHours(48),
+                    MaxHistoryEntries = 20000,
+                    EnableAggregation = true,
+                    AggregationWindow = TimeSpan.FromMinutes(2),
+                    MaxAggregationSize = 100,
+                    EnableCorrelationTracking = true,
+                    AlertBufferSize = 2000,
+                    EnableUnityIntegration = false,
+                    EnableMetrics = true,
+                    EnableCircuitBreakerIntegration = true
+                }
+            };
+        }
+
+        /// <summary>
         /// Creates configuration from a dictionary of settings.
         /// </summary>
         public AlertServiceConfiguration CreateConfigurationFromSettings(Dictionary<string, object> settings)
@@ -298,7 +394,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             // Apply custom settings
             config.CustomSettings = new Dictionary<string, object>(settings);
 
-            return new AlertServiceConfiguration();
+            return config;
         }
 
         #endregion
@@ -315,7 +411,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 IAlertChannel channel = channelConfig.ChannelType switch
                 {
                     AlertChannelType.Log => new LogAlertChannel(_loggingService, null),
-                    AlertChannelType.Console => new ConsoleAlertChannel(),
+                    AlertChannelType.Console => new ConsoleAlertChannel(null),
                     AlertChannelType.Memory => new MemoryAlertChannel(null, 1000),
                     _ => throw new NotSupportedException($"Channel type '{channelConfig.ChannelType}' is not supported")
                 };

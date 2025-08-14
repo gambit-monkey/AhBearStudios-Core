@@ -125,6 +125,7 @@ namespace AhBearStudios.Core.Alerting.Factories
         {
             var configuration = new FilterConfiguration
             {
+                FilterType = FilterType.Severity,
                 Type = "Severity",
                 Name = name,
                 IsEnabled = true,
@@ -153,6 +154,7 @@ namespace AhBearStudios.Core.Alerting.Factories
 
             var configuration = new FilterConfiguration
             {
+                FilterType = FilterType.Source,
                 Type = "Source",
                 Name = name,
                 IsEnabled = true,
@@ -182,6 +184,7 @@ namespace AhBearStudios.Core.Alerting.Factories
 
             var configuration = new FilterConfiguration
             {
+                FilterType = FilterType.RateLimit,
                 Type = "RateLimit",
                 Name = name,
                 IsEnabled = true,
@@ -211,6 +214,7 @@ namespace AhBearStudios.Core.Alerting.Factories
 
             var configuration = new FilterConfiguration
             {
+                FilterType = FilterType.Content,
                 Type = "Content",
                 Name = name,
                 IsEnabled = true,
@@ -241,6 +245,7 @@ namespace AhBearStudios.Core.Alerting.Factories
 
             var configuration = new FilterConfiguration
             {
+                FilterType = FilterType.TimeBased,
                 Type = "TimeBased",
                 Name = name,
                 IsEnabled = true,
@@ -273,6 +278,7 @@ namespace AhBearStudios.Core.Alerting.Factories
 
             var configuration = new FilterConfiguration
             {
+                FilterType = FilterType.Composite,
                 Type = "Composite",
                 Name = name,
                 IsEnabled = true,
@@ -303,7 +309,7 @@ namespace AhBearStudios.Core.Alerting.Factories
 
             foreach (var result in results)
             {
-                if (result.Success)
+                if (result.IsSuccessful)
                 {
                     filters.Add(result.Filter);
                 }
@@ -476,31 +482,43 @@ namespace AhBearStudios.Core.Alerting.Factories
             if (settings == null)
                 throw new ArgumentNullException(nameof(settings));
 
-            var config = FilterConfiguration.DefaultFor(filterType, name);
+            var defaultConfig = FilterConfiguration.DefaultFor(filterType, name);
 
-            // Override with provided settings
+            // Extract override values
+            var enabled = defaultConfig.IsEnabled;
             if (settings.TryGetValue("IsEnabled", out var enabledValue))
             {
-                if (bool.TryParse(enabledValue.ToString(), out var enabled))
-                    config.IsEnabled = enabled;
+                if (bool.TryParse(enabledValue.ToString(), out var parsedEnabled))
+                    enabled = parsedEnabled;
             }
 
+            var priority = defaultConfig.Priority;
             if (settings.TryGetValue("Priority", out var priorityValue))
             {
-                if (int.TryParse(priorityValue.ToString(), out var priority))
-                    config.Priority = priority;
+                if (int.TryParse(priorityValue.ToString(), out var parsedPriority))
+                    priority = parsedPriority;
             }
 
             // Merge filter-specific settings
+            var mergedSettings = new Dictionary<string, object>(defaultConfig.Settings);
             foreach (var setting in settings)
             {
-                if (!config.Settings.ContainsKey(setting.Key))
-                    config.Settings[setting.Key] = setting.Value;
-                else
-                    config.Settings[setting.Key] = setting.Value; // Override default
+                if (setting.Key != "IsEnabled" && setting.Key != "Priority")
+                {
+                    mergedSettings[setting.Key] = setting.Value;
+                }
             }
 
-            return config;
+            // Create new configuration with merged settings
+            return new FilterConfiguration
+            {
+                Name = name,
+                FilterType = filterType,
+                Type = filterType.ToString(),
+                IsEnabled = enabled,
+                Priority = priority,
+                Settings = mergedSettings
+            };
         }
 
         #endregion

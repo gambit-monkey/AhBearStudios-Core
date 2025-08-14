@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Unity.Collections;
 using Cysharp.Threading.Tasks;
@@ -9,6 +10,8 @@ using AhBearStudios.Core.Alerting.Filters;
 using AhBearStudios.Core.Common.Models;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Serialization;
+using AhBearStudios.Core.Messaging;
+using Unity.Profiling;
 
 namespace AhBearStudios.Core.Alerting.Services
 {
@@ -25,6 +28,7 @@ namespace AhBearStudios.Core.Alerting.Services
         private readonly Dictionary<string, FilterPerformanceData> _filterPerformance = new Dictionary<string, FilterPerformanceData>();
         private readonly ILoggingService _loggingService;
         private readonly ISerializationService _serializationService;
+        private readonly IMessageBusService _messageBusService;
         
         private volatile bool _isEnabled = true;
         private volatile bool _isDisposed;
@@ -33,6 +37,10 @@ namespace AhBearStudios.Core.Alerting.Services
         private DateTime _lastHealthCheck = DateTime.UtcNow;
         private readonly TimeSpan _healthCheckInterval = TimeSpan.FromMinutes(5);
         private readonly TimeSpan _performanceReportInterval = TimeSpan.FromMinutes(1);
+
+        // Performance monitoring
+        private static readonly ProfilerMarker _processAlertMarker = new ProfilerMarker("AlertFilterService.ProcessAlert");
+        private static readonly ProfilerMarker _filterEvaluationMarker = new ProfilerMarker("AlertFilterService.FilterEvaluation");
 
         /// <summary>
         /// Gets whether the filter manager is enabled.
@@ -67,16 +75,47 @@ namespace AhBearStudios.Core.Alerting.Services
             }
         }
 
+        #region Events
+
+        /// <summary>
+        /// Raised when a filter is registered with the service.
+        /// </summary>
+        public event EventHandler<FilterEventArgs> FilterRegistered;
+
+        /// <summary>
+        /// Raised when a filter is unregistered from the service.
+        /// </summary>
+        public event EventHandler<FilterEventArgs> FilterUnregistered;
+
+        /// <summary>
+        /// Raised when a filter's configuration is changed.
+        /// </summary>
+        public event EventHandler<FilterEventArgs> FilterConfigurationChanged;
+
+        /// <summary>
+        /// Raised when a filter encounters an evaluation error.
+        /// </summary>
+        public event EventHandler<FilterEventArgs> FilterEvaluationError;
+
+        /// <summary>
+        /// Raised when a filter performance alert is triggered.
+        /// </summary>
+        public event EventHandler<FilterPerformanceEventArgs> FilterPerformanceAlert;
+
+        #endregion
+
 
         /// <summary>
         /// Initializes a new instance of the AlertFilterService class.
         /// </summary>
         /// <param name="loggingService">Optional logging service for internal logging</param>
         /// <param name="serializationService">Optional serialization service for alert data serialization</param>
-        public AlertFilterService(ILoggingService loggingService = null, ISerializationService serializationService = null)
+        /// <param name="messageBusService">Optional message bus service for event publishing</param>
+        public AlertFilterService(ILoggingService loggingService = null, ISerializationService serializationService = null, IMessageBusService messageBusService = null)
         {
             _loggingService = loggingService;
             _serializationService = serializationService;
+            _messageBusService = messageBusService;
             
             // Set up performance monitoring timer
             _performanceTimer = new Timer(MonitorPerformance, null, _performanceReportInterval, _performanceReportInterval);
@@ -108,7 +147,7 @@ namespace AhBearStudios.Core.Alerting.Services
                 lock (_syncLock)
                 {
                     // Check if filter already exists
-                    if (_filters.Any(f => f.Name.ToString() == filterName))
+                    if (_filters.AsValueEnumerable().Any(f => f.Name.ToString() == filterName))
                     {
                         LogWarning($"Filter already registered: {filterName}", correlationId);
                         return false;
@@ -145,8 +184,7 @@ namespace AhBearStudios.Core.Alerting.Services
                     };
                 }
 
-                // Subscribe to filter events
-                SubscribeToFilterEvents(filter);
+                // Note: Filter events are now published via IMessage pattern, not traditional events
 
                 // Raise event
                 FilterRegistered?.Invoke(this, new FilterEventArgs(
@@ -188,8 +226,7 @@ namespace AhBearStudios.Core.Alerting.Services
                     _filterPerformance.Remove(filterName);
                 }
 
-                // Unsubscribe from events
-                UnsubscribeFromFilterEvents(filter);
+                // Note: Filter events are now published via IMessage pattern, not traditional events
 
                 // Dispose filter
                 filter.Dispose();
@@ -261,19 +298,21 @@ namespace AhBearStudios.Core.Alerting.Services
         /// <returns>Filter chain result</returns>
         public FilterChainResult ProcessAlert(Alert alert, FilterContext context = default, Guid correlationId = default)
         {
-            if (!IsEnabled || alert == null)
-                return FilterChainResult.Allow(alert, "Filter manager disabled");
-
-            var startTime = DateTime.UtcNow;
-            var currentAlert = alert;
-            var appliedFilters = new List<FilterApplicationResult>();
-            var effectiveContext = context.CorrelationId == default 
-                ? FilterContext.WithCorrelation(correlationId) 
-                : context;
-
-            try
+            using (_processAlertMarker.Auto())
             {
-                var enabledFilters = GetEnabledFilters();
+                if (!IsEnabled || alert == null)
+                    return FilterChainResult.Allow(alert, "Filter manager disabled");
+
+                var startTime = DateTime.UtcNow;
+                var currentAlert = alert;
+                var appliedFilters = new List<FilterApplicationResult>();
+                var effectiveContext = context.CorrelationId == default 
+                    ? FilterContext.WithCorrelation(correlationId) 
+                    : context;
+
+                try
+                {
+                    var enabledFilters = GetEnabledFilters();
                 
                 foreach (var filter in enabledFilters)
                 {
@@ -296,7 +335,11 @@ namespace AhBearStudios.Core.Alerting.Services
                         }
 
                         // Evaluate alert against filter
-                        var filterResult = filter.Evaluate(currentAlert, effectiveContext);
+                        FilterResult filterResult;
+                        using (_filterEvaluationMarker.Auto())
+                        {
+                            filterResult = filter.Evaluate(currentAlert, effectiveContext);
+                        }
                         var filterDuration = DateTime.UtcNow - filterStartTime;
 
                         // Update performance tracking
@@ -365,16 +408,17 @@ namespace AhBearStudios.Core.Alerting.Services
                     }
                 }
 
-                // All filters passed or modified alert
-                var totalDuration = DateTime.UtcNow - startTime;
-                LogDebug($"Alert processed through {appliedFilters.Count} filters in {totalDuration.TotalMilliseconds:F2}ms", correlationId);
-                
-                return FilterChainResult.Allow(currentAlert, "Passed all filters", appliedFilters);
-            }
-            catch (Exception ex)
-            {
-                LogError($"Critical error in filter chain processing: {ex.Message}", correlationId);
-                return FilterChainResult.Allow(alert, "Filter chain error - allowing alert", appliedFilters);
+                    // All filters passed or modified alert
+                    var totalDuration = DateTime.UtcNow - startTime;
+                    LogDebug($"Alert processed through {appliedFilters.Count} filters in {totalDuration.TotalMilliseconds:F2}ms", correlationId);
+                    
+                    return FilterChainResult.Allow(currentAlert, "Passed all filters", appliedFilters);
+                }
+                catch (Exception ex)
+                {
+                    LogError($"Critical error in filter chain processing: {ex.Message}", correlationId);
+                    return FilterChainResult.Allow(alert, "Filter chain error - allowing alert", appliedFilters);
+                }
             }
         }
 
@@ -390,7 +434,7 @@ namespace AhBearStudios.Core.Alerting.Services
             if (alerts == null)
                 return Array.Empty<FilterChainResult>();
 
-            return alerts.Select(alert => ProcessAlert(alert, context, correlationId)).ToList();
+            return alerts.AsValueEnumerable().Select(alert => ProcessAlert(alert, context, correlationId)).ToList();
         }
 
         #endregion
@@ -599,29 +643,9 @@ namespace AhBearStudios.Core.Alerting.Services
 
         #region Private Methods
 
-        private void SubscribeToFilterEvents(IAlertFilter filter)
-        {
-            filter.ConfigurationChanged += OnFilterConfigurationChanged;
-            filter.StatisticsUpdated += OnFilterStatisticsUpdated;
-        }
-
-        private void UnsubscribeFromFilterEvents(IAlertFilter filter)
-        {
-            filter.ConfigurationChanged -= OnFilterConfigurationChanged;
-            filter.StatisticsUpdated -= OnFilterStatisticsUpdated;
-        }
-
-        private void OnFilterConfigurationChanged(object sender, FilterConfigurationChangedEventArgs e)
-        {
-            FilterConfigurationChanged?.Invoke(this, new FilterEventArgs(
-                e.FilterName, FilterEventType.ConfigurationChanged, e.CorrelationId, "AlertFilterService"));
-        }
-
-        private void OnFilterStatisticsUpdated(object sender, FilterStatisticsUpdatedEventArgs e)
-        {
-            // Update internal performance tracking based on filter statistics
-            UpdateFilterPerformanceFromStatistics(e.FilterName.ToString(), e.Statistics);
-        }
+        // Filter events are now handled via IMessage pattern - see IAlertFilter interface
+        // FilterConfigurationChangedMessage and FilterStatisticsUpdatedMessage
+        // are published through IMessageBusService
 
         private void UpdateFilterPerformance(string filterName, FilterDecision decision, TimeSpan duration)
         {
@@ -820,7 +844,6 @@ namespace AhBearStudios.Core.Alerting.Services
                 {
                     try
                     {
-                        UnsubscribeFromFilterEvents(filter);
                         filter.Dispose();
                     }
                     catch (Exception ex)
