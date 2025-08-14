@@ -46,5 +46,11 @@ public enum AlertChannelType : byte
     /// File-based alert channel that writes alerts directly to disk files.
     /// Suitable for persistent storage, archiving, and offline analysis.
     /// </summary>
-    File = 6
+    File = 6,
+    
+    /// <summary>
+    /// Memory-based alert channel that stores alerts in volatile memory.
+    /// Suitable for temporary, fast-access alert storage during runtime.
+    /// </summary>
+    Memory = 7
 }

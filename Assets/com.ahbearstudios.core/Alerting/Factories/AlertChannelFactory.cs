@@ -253,12 +253,12 @@ namespace AhBearStudios.Core.Alerting.Factories
                 throw new ArgumentNullException(nameof(configurations));
 
             var channels = new List<IAlertChannel>();
-            var tasks = configurations.AsValueEnumerable().Select(config => CreateChannelSafely(config, loggingService ?? _loggingService, correlationId));
+            var tasks = configurations.AsValueEnumerable().Select(config => CreateChannelSafely(config, loggingService ?? _loggingService, correlationId)).ToArray();
             var results = await UniTask.WhenAll(tasks);
 
             foreach (var result in results)
             {
-                if (result.Success)
+                if (result.IsSuccessful)
                 {
                     channels.Add(result.Channel);
                 }
@@ -333,7 +333,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 var fileChannel = await CreateFileChannelAsync(
                     "ProductionFile",
                     logFilePath,
-                    AlertSeverity.Error,
+                    AlertSeverity.Critical,
                     maxFileSize: 52428800, // 50MB
                     maxBackupFiles: 10);
                 channels.Add(fileChannel);
@@ -540,6 +540,26 @@ namespace AhBearStudios.Core.Alerting.Factories
                     MaximumSeverity = AlertSeverity.Emergency,
                     TypedSettings = MemoryChannelSettings.Default
                 },
+                AlertChannelType.Email => new ChannelConfig
+                {
+                    Name = $"Default{channelType}",
+                    ChannelType = channelType,
+                    IsEnabled = true,
+                    MinimumSeverity = AlertSeverity.Critical,
+                    MaximumSeverity = AlertSeverity.Emergency,
+                    MessageFormat = "[{Timestamp:yyyy-MM-dd HH:mm:ss}] [{Severity}] {Source}: {Message}",
+                    EnableBatching = true,
+                    BatchSize = 5
+                },
+                AlertChannelType.UnityNotification => new ChannelConfig
+                {
+                    Name = $"Default{channelType}",
+                    ChannelType = channelType,
+                    IsEnabled = true,
+                    MinimumSeverity = AlertSeverity.Warning,
+                    MaximumSeverity = AlertSeverity.Emergency,
+                    MessageFormat = "[{Source}] {Message}"
+                },
                 _ => new ChannelConfig
                 {
                     Name = $"Default{channelType}",
@@ -631,51 +651,63 @@ namespace AhBearStudios.Core.Alerting.Factories
                 [AlertChannelType.File] = CreateFileChannelInternal,
                 [AlertChannelType.Memory] = CreateMemoryChannelInternal,
                 [AlertChannelType.UnityConsole] = CreateUnityDebugChannelInternal,
-                [AlertChannelType.Network] = CreateNullChannelInternal
+                [AlertChannelType.UnityNotification] = CreateUnityNotificationChannelInternal,
+                [AlertChannelType.Network] = CreateNetworkChannelInternal,
+                [AlertChannelType.Email] = CreateEmailChannelInternal
             };
         }
 
-        private async UniTask<IAlertChannel> CreateLoggingChannelInternal(ChannelConfig config, ILoggingService loggingService)
+        private UniTask<IAlertChannel> CreateLoggingChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
             if (loggingService == null)
                 throw new ArgumentException("Logging channel requires ILoggingService", nameof(loggingService));
 
-            await UniTask.CompletedTask;
-            return new LogAlertChannel(loggingService);
+            return UniTask.FromResult<IAlertChannel>(new LogAlertChannel(loggingService));
         }
 
-        private async UniTask<IAlertChannel> CreateConsoleChannelInternal(ChannelConfig config, ILoggingService loggingService)
+        private UniTask<IAlertChannel> CreateConsoleChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
-            await UniTask.CompletedTask;
-            return new ConsoleAlertChannel();
+            return UniTask.FromResult<IAlertChannel>(new ConsoleAlertChannel());
         }
 
-        private async UniTask<IAlertChannel> CreateFileChannelInternal(ChannelConfig config, ILoggingService loggingService)
+        private UniTask<IAlertChannel> CreateFileChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
             var filePath = (config.TypedSettings as FileChannelSettings)?.FilePath ?? "alerts.log";
 
-            await UniTask.CompletedTask;
-            return new FileAlertChannel(filePath);
+            return UniTask.FromResult<IAlertChannel>(new FileAlertChannel(filePath));
         }
 
-        private async UniTask<IAlertChannel> CreateMemoryChannelInternal(ChannelConfig config, ILoggingService loggingService)
+        private UniTask<IAlertChannel> CreateMemoryChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
             var maxAlerts = (config.TypedSettings as MemoryChannelSettings)?.MaxStoredAlerts ?? 1000;
 
-            await UniTask.CompletedTask;
-            return new MemoryAlertChannel(maxAlerts);
+            return UniTask.FromResult<IAlertChannel>(new MemoryAlertChannel(maxAlerts));
         }
 
-        private async UniTask<IAlertChannel> CreateUnityDebugChannelInternal(ChannelConfig config, ILoggingService loggingService)
+        private UniTask<IAlertChannel> CreateUnityDebugChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
-            await UniTask.CompletedTask;
-            return new UnityDebugAlertChannel();
+            return UniTask.FromResult<IAlertChannel>(new UnityDebugAlertChannel());
         }
 
-        private async UniTask<IAlertChannel> CreateNullChannelInternal(ChannelConfig config, ILoggingService loggingService)
+        private UniTask<IAlertChannel> CreateUnityNotificationChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {
-            await UniTask.CompletedTask;
-            return new NullAlertChannel();
+            // Unity Notification channel implementation - for now use NullAlertChannel as placeholder
+            // TODO: Implement UnityNotificationAlertChannel when Unity notification system is integrated
+            return UniTask.FromResult<IAlertChannel>(new NullAlertChannel());
+        }
+
+        private UniTask<IAlertChannel> CreateNetworkChannelInternal(ChannelConfig config, ILoggingService loggingService)
+        {
+            // Network channel implementation - for now use NullAlertChannel as placeholder
+            // TODO: Implement NetworkAlertChannel for HTTP/webhook delivery
+            return UniTask.FromResult<IAlertChannel>(new NullAlertChannel());
+        }
+
+        private UniTask<IAlertChannel> CreateEmailChannelInternal(ChannelConfig config, ILoggingService loggingService)
+        {
+            // Email channel implementation - for now use NullAlertChannel as placeholder
+            // TODO: Implement EmailAlertChannel for SMTP delivery
+            return UniTask.FromResult<IAlertChannel>(new NullAlertChannel());
         }
 
         private AlertChannelType DetermineChannelType(ChannelConfig configuration)
