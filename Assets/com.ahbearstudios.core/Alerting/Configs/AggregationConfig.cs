@@ -1,5 +1,6 @@
 using System;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Common.Models;
 
 namespace AhBearStudios.Core.Alerting.Configs
 {

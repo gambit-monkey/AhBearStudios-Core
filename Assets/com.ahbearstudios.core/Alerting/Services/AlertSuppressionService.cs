@@ -14,7 +14,7 @@ namespace AhBearStudios.Core.Alerting.Services
     /// Manages time-based suppression, rate limiting, and duplicate alert consolidation.
     /// Designed for Unity game development with zero-allocation patterns and high performance.
     /// </summary>
-    public sealed class AlertSuppressionService : IDisposable
+    public sealed class AlertSuppressionService : IAlertSuppressionService
     {
         private readonly object _syncLock = new object();
         private readonly Dictionary<string, SuppressionEntry> _suppressedAlerts = new Dictionary<string, SuppressionEntry>();

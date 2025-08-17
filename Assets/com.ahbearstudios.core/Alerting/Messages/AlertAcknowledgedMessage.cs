@@ -223,9 +223,12 @@ namespace AhBearStudios.Core.Alerting.Messages
         {
             return severity switch
             {
-                AlertSeverity.Critical => MessagePriority.High,     // Lower than original Critical
-                AlertSeverity.Error => MessagePriority.Normal,     // Lower than original High
-                AlertSeverity.Warning => MessagePriority.Low,      // Lower than original Normal
+                AlertSeverity.Emergency => MessagePriority.Critical,   // Highest priority
+                AlertSeverity.Critical => MessagePriority.High,        // Lower than original Critical
+                AlertSeverity.High => MessagePriority.Normal,          // Lower than original High
+                AlertSeverity.Warning => MessagePriority.Low,          // Lower than original Normal
+                AlertSeverity.Medium => MessagePriority.Low,           // Lower priority
+                AlertSeverity.Low => MessagePriority.VeryLow,          // Lowest priority
                 AlertSeverity.Info => MessagePriority.VeryLow,
                 AlertSeverity.Debug => MessagePriority.VeryLow,
                 _ => MessagePriority.Low

@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Alerting.Messages;
+using AhBearStudios.Core.Messaging;
 
 namespace AhBearStudios.Core.Alerting.Filters
 {
@@ -13,6 +15,7 @@ namespace AhBearStudios.Core.Alerting.Filters
     public abstract class BaseAlertFilter : IAlertFilter
     {
         private readonly object _syncLock = new object();
+        private readonly IMessageBusService _messageBusService;
         private volatile bool _isEnabled = true;
         private volatile bool _isDisposed;
         private FilterStatistics _statistics = FilterStatistics.Empty;
@@ -42,6 +45,14 @@ namespace AhBearStudios.Core.Alerting.Filters
         /// </summary>
         public FilterStatistics Statistics => _statistics;
 
+        /// <summary>
+        /// Initializes a new instance of the BaseAlertFilter class.
+        /// </summary>
+        /// <param name="messageBusService">Message bus service for publishing filter events</param>
+        protected BaseAlertFilter(IMessageBusService messageBusService)
+        {
+            _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
+        }
 
         /// <summary>
         /// Evaluates whether an alert should be allowed through the filter.
@@ -109,23 +120,50 @@ namespace AhBearStudios.Core.Alerting.Filters
             var previousConfig = _configuration;
             _configuration = configuration ?? new Dictionary<string, object>();
 
+            // Handle common properties
+            if (_configuration.TryGetValue("Priority", out var priorityValue))
+            {
+                if (int.TryParse(priorityValue.ToString(), out var priority))
+                {
+                    Priority = priority;
+                }
+            }
+
             // Apply configuration
             var result = ConfigureCore(_configuration, correlationId);
             
             if (result)
             {
-                ConfigurationChanged?.Invoke(this, new FilterConfigurationChangedEventArgs
-                {
-                    FilterName = Name,
-                    PreviousConfiguration = previousConfig,
-                    NewConfiguration = _configuration,
-                    CorrelationId = correlationId
-                });
+                var message = FilterConfigurationChangedMessage.Create(
+                    filterName: Name,
+                    changeSummary: "Filter configuration updated successfully",
+                    previousConfig: previousConfig,
+                    newConfig: _configuration,
+                    wasSuccessful: true,
+                    isEnabled: IsEnabled,
+                    priority: Priority,
+                    source: "BaseAlertFilter",
+                    correlationId: correlationId);
+                
+                _messageBusService.PublishMessage(message);
             }
             else
             {
                 // Rollback on failure
                 _configuration = previousConfig;
+                
+                var failureMessage = FilterConfigurationChangedMessage.Create(
+                    filterName: Name,
+                    changeSummary: "Filter configuration update failed",
+                    previousConfig: previousConfig,
+                    newConfig: _configuration,
+                    wasSuccessful: false,
+                    isEnabled: IsEnabled,
+                    priority: Priority,
+                    source: "BaseAlertFilter",
+                    correlationId: correlationId);
+                
+                _messageBusService.PublishMessage(failureMessage);
             }
 
             return result;
@@ -156,12 +194,13 @@ namespace AhBearStudios.Core.Alerting.Filters
                 ResetCore(correlationId);
             }
 
-            StatisticsUpdated?.Invoke(this, new FilterStatisticsUpdatedEventArgs
-            {
-                FilterName = Name,
-                Statistics = _statistics,
-                CorrelationId = correlationId
-            });
+            var message = FilterStatisticsUpdatedMessage.Create(
+                filterName: Name,
+                statistics: _statistics,
+                source: "BaseAlertFilter",
+                correlationId: correlationId);
+            
+            _messageBusService.PublishMessage(message);
         }
 
         /// <summary>

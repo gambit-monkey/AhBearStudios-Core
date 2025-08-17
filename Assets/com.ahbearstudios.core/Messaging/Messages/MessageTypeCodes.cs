@@ -138,6 +138,30 @@
         /// </summary>
         public const ushort CircuitBreakerStateChanged = 1304;
         
+        /// <summary>
+        /// Type code for pool object retrieved messages.
+        /// Sent when an object is retrieved from a pool.
+        /// </summary>
+        public const ushort PoolObjectRetrieved = 1305;
+        
+        /// <summary>
+        /// Type code for pool object returned messages.
+        /// Sent when an object is returned to a pool.
+        /// </summary>
+        public const ushort PoolObjectReturned = 1306;
+        
+        /// <summary>
+        /// Type code for pool capacity reached messages.
+        /// Sent when a pool reaches its capacity limits.
+        /// </summary>
+        public const ushort PoolCapacityReached = 1307;
+        
+        /// <summary>
+        /// Type code for pool validation issues messages.
+        /// Sent when pool validation detects issues.
+        /// </summary>
+        public const ushort PoolValidationIssues = 1308;
+        
         #endregion
         
         #region Alerting System Messages (1400-1499)
@@ -213,6 +237,42 @@
         /// Sent when channel configuration is updated.
         /// </summary>
         public const ushort ChannelConfigurationChanged = 1412;
+
+        /// <summary>
+        /// Type code for channel registered messages.
+        /// Sent when a channel is registered with the alert service.
+        /// </summary>
+        public const ushort ChannelRegistered = 1413;
+
+        /// <summary>
+        /// Type code for channel unregistered messages.
+        /// Sent when a channel is unregistered from the alert service.
+        /// </summary>
+        public const ushort ChannelUnregistered = 1414;
+
+        /// <summary>
+        /// Type code for alert service health check messages.
+        /// Sent when comprehensive health checks are performed.
+        /// </summary>
+        public const ushort AlertServiceHealthCheck = 1415;
+
+        /// <summary>
+        /// Type code for alert service configuration updated messages.
+        /// Sent when service configuration is hot-reloaded.
+        /// </summary>
+        public const ushort AlertServiceConfigurationUpdated = 1416;
+
+        /// <summary>
+        /// Type code for emergency mode status messages.
+        /// Sent when emergency mode is enabled or disabled.
+        /// </summary>
+        public const ushort EmergencyModeStatus = 1417;
+
+        /// <summary>
+        /// Type code for bulk operation completed messages.
+        /// Sent when bulk alert operations complete.
+        /// </summary>
+        public const ushort BulkOperationCompleted = 1418;
         
         #endregion
         

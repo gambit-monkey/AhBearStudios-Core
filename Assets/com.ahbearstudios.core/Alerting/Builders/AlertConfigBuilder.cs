@@ -1133,6 +1133,28 @@ namespace AhBearStudios.Core.Alerting.Builders
             return config;
         }
 
+        /// <summary>
+        /// Builds an AlertServiceConfiguration that wraps the AlertConfig for service-level configuration.
+        /// </summary>
+        /// <returns>A complete AlertServiceConfiguration instance</returns>
+        public AlertServiceConfiguration BuildServiceConfiguration()
+        {
+            var alertConfig = Build();
+            
+            return new AlertServiceConfiguration
+            {
+                AlertConfig = alertConfig,
+                ServiceEnabled = true,
+                ServiceTimeout = _processingTimeout,
+                MaxRetryAttempts = 3,
+                RetryDelay = TimeSpan.FromSeconds(1),
+                EnableHealthChecking = true,
+                HealthCheckInterval = TimeSpan.FromMinutes(1),
+                EnablePerformanceMetrics = _enableMetrics,
+                MetricsCollectionInterval = TimeSpan.FromSeconds(30)
+            };
+        }
+
         /// <inheritdoc />
         public IAlertConfigBuilder Reset()
         {

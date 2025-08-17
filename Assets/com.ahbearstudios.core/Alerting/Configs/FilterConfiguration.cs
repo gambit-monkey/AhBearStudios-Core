@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Common.Models;
 
 namespace AhBearStudios.Core.Alerting.Configs
 {
@@ -46,29 +47,6 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// </summary>
         public IReadOnlyDictionary<string, object> Settings { get; init; } = new Dictionary<string, object>();
 
-        /// <summary>
-        /// Gets the performance settings for this filter.
-        /// Controls monitoring, timeouts, and optimization behavior.
-        /// </summary>
-        public FilterPerformanceSettings PerformanceSettings { get; init; } = new FilterPerformanceSettings();
-
-        /// <summary>
-        /// Gets the error handling settings for this filter.
-        /// Defines behavior when filter processing encounters errors.
-        /// </summary>
-        public FilterErrorHandling ErrorHandling { get; init; } = new FilterErrorHandling();
-
-        /// <summary>
-        /// Gets the collection of tags used for filter grouping and management.
-        /// Filters can be organized and controlled using tags.
-        /// </summary>
-        public IReadOnlyList<FixedString64Bytes> Tags { get; init; } = Array.Empty<FixedString64Bytes>();
-
-        /// <summary>
-        /// Gets additional metadata for this filter configuration.
-        /// Used for documentation, categorization, and management purposes.
-        /// </summary>
-        public IReadOnlyDictionary<string, string> Metadata { get; init; } = new Dictionary<string, string>();
 
         /// <summary>
         /// Validates the filter configuration for correctness and consistency.
@@ -88,8 +66,6 @@ namespace AhBearStudios.Core.Alerting.Configs
             if (Settings == null)
                 throw new InvalidOperationException("Filter settings cannot be null.");
 
-            PerformanceSettings?.Validate();
-            ErrorHandling?.Validate();
 
             // Validate type-specific settings
             ValidateTypeSpecificSettings();
@@ -229,7 +205,7 @@ namespace AhBearStudios.Core.Alerting.Configs
                 },
                 FilterType.TimeBased => new Dictionary<string, object>
                 {
-                    ["TimeRanges"] = new[] { Common.Models.TimeRange.Always() },
+                    ["TimeRanges"] = new[] { TimeRange.Always() },
                     ["Timezone"] = "UTC"
                 },
                 FilterType.Tag => new Dictionary<string, object>

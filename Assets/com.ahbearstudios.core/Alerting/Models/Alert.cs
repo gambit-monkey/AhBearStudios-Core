@@ -1,17 +1,15 @@
 using System;
 using Unity.Collections;
-using AhBearStudios.Core.Pooling;
-using AhBearStudios.Core.Pooling.Models;
-using AhBearStudios.Core.HealthChecking.Models;
 
 namespace AhBearStudios.Core.Alerting.Models
 {
     /// <summary>
-    /// Core alert data structure using Unity.Collections for high-performance, zero-allocation patterns.
+    /// Immutable alert data structure using Unity.Collections for high-performance, zero-allocation patterns.
     /// Serialization is handled through ISerializationService for efficient persistence and network transmission.
     /// Designed for Unity game development with Job System and Burst compatibility.
+    /// Lifecycle management is handled by IPoolingService, not the Alert itself.
     /// </summary>
-    public sealed partial record Alert : IDisposable, IPooledObject
+    public sealed record Alert : IDisposable
     {
         /// <summary>
         /// Unique identifier for this alert instance.
@@ -123,29 +121,14 @@ namespace AhBearStudios.Core.Alerting.Models
         public bool IsResolved => State == AlertState.Resolved;
 
         /// <summary>
-        /// Initializes alert properties for pooled object reuse.
-        /// Follows zero-allocation patterns for game performance.
+        /// Gets whether this alert has a critical issue requiring immediate attention.
         /// </summary>
-        /// <param name="message">Alert message</param>
-        /// <param name="severity">Alert severity</param>
-        /// <param name="source">Source system</param>
-        /// <param name="tag">Optional tag</param>
-        /// <param name="correlationId">Correlation ID</param>
-        /// <param name="operationId">Operation ID</param>
-        /// <param name="context">Optional context</param>
-        public void Initialize(
-            string message,
-            AlertSeverity severity,
-            FixedString64Bytes source,
-            FixedString32Bytes tag = default,
-            Guid correlationId = default,
-            Guid operationId = default,
-            AlertContext context = default)
+        public bool HasCriticalIssue()
         {
-            // Note: This method supports the pooling pattern, but since Alert is a record,
-            // actual initialization would require creating a new instance in practice.
-            // This method serves as documentation for the expected initialization pattern.
+            return (Severity == AlertSeverity.Critical || Severity == AlertSeverity.Emergency) && 
+                   State == AlertState.Active;
         }
+
 
         /// <summary>
         /// Creates a new alert with the specified parameters.
@@ -258,72 +241,26 @@ namespace AhBearStudios.Core.Alerting.Models
             return this with { Count = Count + 1 };
         }
 
-        #region IPooledObject Implementation
 
         /// <summary>
-        /// Pool information for this alert instance.
+        /// Validates that the alert is in a valid state.
+        /// Used by pooling containers for validation.
         /// </summary>
-        public string PoolName { get; set; }
-        public Guid PoolId { get; set; }
-        public DateTime LastUsed { get; set; }
-        public DateTime CreatedAt { get; set; }
-        public long UseCount { get; set; }
-        public TimeSpan TotalActiveTime { get; set; }
-        public DateTime LastValidationTime { get; set; }
-        public int Priority { get; set; }
-        public int ValidationErrorCount { get; set; }
-        public bool CorruptionDetected { get; set; }
-        public int ConsecutiveFailures { get; set; }
-
-        /// <summary>
-        /// Called when the alert is retrieved from the pool.
-        /// </summary>
-        public void OnGet()
-        {
-            LastUsed = DateTime.UtcNow;
-            UseCount++;
-        }
-
-        /// <summary>
-        /// Called when the alert is returned to the pool.
-        /// </summary>
-        public void OnReturn()
-        {
-            // Since Alert is a record, we can't truly reset mutable properties
-            // This is more for tracking purposes
-            var activeTime = DateTime.UtcNow - LastUsed;
-            TotalActiveTime = TotalActiveTime.Add(activeTime);
-        }
-
-        /// <summary>
-        /// Resets the alert for pooling reuse.
-        /// </summary>
-        public void Reset()
-        {
-            // For records, reset is conceptual - actual pooling would create new instances
-            // This method supports the IPooledObject contract
-            ValidationErrorCount = 0;
-            ConsecutiveFailures = 0;
-            CorruptionDetected = false;
-        }
-
-        /// <summary>
-        /// Validates that the alert is in a valid state for use.
-        /// </summary>
+        /// <returns>True if the alert has valid required data</returns>
         public bool IsValid()
         {
             return !Message.IsEmpty && 
                    !Source.IsEmpty && 
-                   Id != Guid.Empty &&
-                   !CorruptionDetected;
+                   Id != Guid.Empty;
         }
 
         /// <summary>
         /// Gets the estimated memory usage of this alert in bytes.
+        /// Used by pooling system for memory management.
         /// </summary>
+        /// <returns>Estimated memory footprint in bytes</returns>
         public long GetEstimatedMemoryUsage()
         {
-            // Approximate size calculation
             long size = 0;
             size += 16 * 2; // Two GUIDs (Id, CorrelationId)
             size += 512; // Message FixedString512Bytes
@@ -338,91 +275,10 @@ namespace AhBearStudios.Core.Alerting.Models
         }
 
         /// <summary>
-        /// Gets the health status of this pooled alert.
-        /// </summary>
-        public HealthStatus GetHealthStatus()
-        {
-            if (CorruptionDetected)
-                return HealthStatus.Unhealthy;
-            if (ValidationErrorCount > 5)
-                return HealthStatus.Degraded;
-            return HealthStatus.Healthy;
-        }
-
-        /// <summary>
-        /// Determines if this alert can currently be pooled.
-        /// </summary>
-        public bool CanBePooled()
-        {
-            return !CorruptionDetected && ValidationErrorCount < 10;
-        }
-
-        /// <summary>
-        /// Determines if this alert should trigger a circuit breaker.
-        /// </summary>
-        public bool ShouldCircuitBreak()
-        {
-            return ConsecutiveFailures > 3 || CorruptionDetected;
-        }
-
-        /// <summary>
-        /// Checks if this alert has a critical issue that requires alerting.
-        /// </summary>
-        public bool HasCriticalIssue()
-        {
-            return CorruptionDetected || 
-                   (Severity == AlertSeverity.Critical && State == AlertState.Active);
-        }
-
-        /// <summary>
-        /// Gets an alert message describing any critical issues.
-        /// </summary>
-        public FixedString512Bytes? GetAlertMessage()
-        {
-            if (CorruptionDetected)
-                return new FixedString512Bytes("Alert object corruption detected");
-            if (HasCriticalIssue())
-                return Message;
-            return null;
-        }
-
-        /// <summary>
-        /// Gets comprehensive diagnostic information about this alert.
-        /// </summary>
-        public PooledObjectDiagnostics GetDiagnosticInfo()
-        {
-            return new PooledObjectDiagnostics
-            {
-                ObjectType = nameof(Alert),
-                PoolName = PoolName,
-                PoolId = PoolId,
-                CreatedAt = CreatedAt,
-                LastUsed = LastUsed,
-                UseCount = UseCount,
-                TotalActiveTime = TotalActiveTime,
-                ValidationErrorCount = ValidationErrorCount,
-                CorruptionDetected = CorruptionDetected,
-                EstimatedMemoryUsage = GetEstimatedMemoryUsage(),
-                HealthStatus = GetHealthStatus(),
-                AdditionalData = new Dictionary<string, object>
-                {
-                    ["AlertId"] = Id,
-                    ["Severity"] = Severity,
-                    ["Source"] = Source.ToString(),
-                    ["State"] = State,
-                    ["Count"] = Count
-                }
-            };
-        }
-
-        #endregion
-
-        /// <summary>
         /// Disposes resources associated with this alert.
         /// </summary>
         public void Dispose()
         {
-            // Dispose any context resources if needed
             Context?.Dispose();
         }
 

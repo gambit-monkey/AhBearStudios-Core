@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Unity.Collections;
 using Unity.Profiling;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Messaging;
 using ZLinq;
 using Cysharp.Threading.Tasks;
 
@@ -73,10 +74,11 @@ namespace AhBearStudios.Core.Alerting.Filters
         /// <summary>
         /// Initializes a new instance of the SourceAlertFilter class.
         /// </summary>
+        /// <param name="messageBusService">Message bus service for publishing filter events</param>
         /// <param name="name">Filter name</param>
         /// <param name="allowedSources">Initial allowed sources</param>
         /// <param name="useWhitelist">Whether to use whitelist mode</param>
-        public SourceAlertFilter(string name = "SourceFilter", IEnumerable<string> allowedSources = null, bool useWhitelist = true)
+        public SourceAlertFilter(IMessageBusService messageBusService, string name = "SourceFilter", IEnumerable<string> allowedSources = null, bool useWhitelist = true) : base(messageBusService)
         {
             _allowedSources = new HashSet<FixedString64Bytes>();
             _blockedSources = new HashSet<FixedString64Bytes>();

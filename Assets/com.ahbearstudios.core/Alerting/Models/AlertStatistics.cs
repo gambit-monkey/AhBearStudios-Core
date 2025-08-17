@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
-using Unity.Collections;
+using System.Linq;
+using AhBearStudios.Core.Common.Models;
+using ZLinq;
 
 namespace AhBearStudios.Core.Alerting.Models
 {
@@ -9,7 +11,7 @@ namespace AhBearStudios.Core.Alerting.Models
     /// Provides detailed metrics about alert processing, channel performance, and system health.
     /// Designed for Unity game development with zero-allocation patterns. Serialization is handled through ISerializationService.
     /// </summary>
-    public sealed partial record AlertStatistics : IDisposable
+    public readonly record struct AlertStatistics
     {
         /// <summary>
         /// Gets the timestamp when these statistics were last updated.
@@ -79,12 +81,12 @@ namespace AhBearStudios.Core.Alerting.Models
         /// <summary>
         /// Gets statistics for registered alert channels.
         /// </summary>
-        public Dictionary<string, ChannelPerformanceStats> ChannelStatistics { get; init; } = new();
+        public IReadOnlyList<ChannelMetrics> ChannelStatistics { get; init; } = Array.Empty<ChannelMetrics>();
 
         /// <summary>
         /// Gets statistics for active alert filters.
         /// </summary>
-        public Dictionary<string, FilterPerformanceStats> FilterStatistics { get; init; } = new();
+        public IReadOnlyList<AlertFilterMetrics> FilterStatistics { get; init; } = Array.Empty<AlertFilterMetrics>();
 
         /// <summary>
         /// Gets the top alert sources by volume.
@@ -126,10 +128,28 @@ namespace AhBearStudios.Core.Alerting.Models
         public double SystemHealthScore => CalculateHealthScore();
 
         /// <summary>
+        /// Initializes a new instance of the AlertStatistics struct.
+        /// </summary>
+        public AlertStatistics()
+        {
+            TotalAlertsProcessed = 0;
+            TotalAlertsDelivered = 0;
+            TotalAlertsFailedDelivery = 0;
+            TotalAlertsSuppressed = 0;
+            CurrentActiveAlerts = 0;
+            CurrentAcknowledgedAlerts = 0;
+            AlertsPerSecond = 0;
+            AverageProcessingTimeMs = 0;
+            MaxProcessingTimeMs = 0;
+            AverageDeliveryTimeMs = 0;
+            MaxDeliveryTimeMs = 0;
+        }
+
+        /// <summary>
         /// Creates empty statistics.
         /// </summary>
         /// <returns>Empty statistics instance</returns>
-        public static AlertStatistics Empty => new AlertStatistics();
+        public static AlertStatistics Empty => new();
 
         /// <summary>
         /// Creates statistics with current timestamp.
@@ -162,14 +182,11 @@ namespace AhBearStudios.Core.Alerting.Models
         }
 
         /// <summary>
-        /// Updates statistics with new values.
+        /// Creates a copy with updated timestamp.
         /// </summary>
-        /// <param name="updates">Dictionary of field updates</param>
         /// <returns>Updated statistics instance</returns>
-        public AlertStatistics Update(Dictionary<string, object> updates)
+        public AlertStatistics WithUpdatedTimestamp()
         {
-            // This would be implemented with reflection or explicit property updates
-            // For now, return this instance
             return this with { LastUpdated = DateTime.UtcNow };
         }
 
@@ -181,6 +198,17 @@ namespace AhBearStudios.Core.Alerting.Models
         public AlertStatistics Merge(AlertStatistics other)
         {
             if (other == null) return this;
+
+            var mergedChannelStats = ChannelStatistics.Concat(other.ChannelStatistics).ToList();
+            var mergedFilterStats = FilterStatistics.Concat(other.FilterStatistics).ToList();
+            var mergedTopSources = TopAlertSources.AsValueEnumerable()
+                .Concat(other.TopAlertSources.AsValueEnumerable())
+                .GroupBy(kvp => kvp.Key)
+                .ToDictionary(g => g.Key, g => g.AsValueEnumerable().Sum(kvp => kvp.Value));
+            var mergedFrequentTags = FrequentAlertTags.AsValueEnumerable()
+                .Concat(other.FrequentAlertTags.AsValueEnumerable())
+                .GroupBy(kvp => kvp.Key)
+                .ToDictionary(g => g.Key, g => g.AsValueEnumerable().Sum(kvp => kvp.Value));
 
             return new AlertStatistics
             {
@@ -197,6 +225,10 @@ namespace AhBearStudios.Core.Alerting.Models
                 AverageDeliveryTimeMs = (AverageDeliveryTimeMs + other.AverageDeliveryTimeMs) / 2,
                 MaxDeliveryTimeMs = Math.Max(MaxDeliveryTimeMs, other.MaxDeliveryTimeMs),
                 SeverityBreakdown = SeverityBreakdown.Merge(other.SeverityBreakdown),
+                ChannelStatistics = mergedChannelStats,
+                FilterStatistics = mergedFilterStats,
+                TopAlertSources = mergedTopSources,
+                FrequentAlertTags = mergedFrequentTags,
                 ResourceUsage = ResourceUsage.Merge(other.ResourceUsage),
                 Errors = Errors.Merge(other.Errors)
             };
@@ -254,16 +286,6 @@ Avg Delivery Time: {AverageDeliveryTimeMs:F1}ms
 System Health Score: {SystemHealthScore:F1}/100";
         }
 
-        /// <summary>
-        /// Disposes resources associated with these statistics.
-        /// </summary>
-        public void Dispose()
-        {
-            ChannelStatistics?.Clear();
-            FilterStatistics?.Clear();
-            TopAlertSources?.Clear();
-            FrequentAlertTags?.Clear();
-        }
     }
 
 }

@@ -134,8 +134,8 @@ namespace AhBearStudios.Core.Alerting.Channels
                 retryCount++;
                 if (retryCount <= _maxRetries)
                 {
-                    var delayMs = (int)Math.Pow(2, retryCount) * 1000; // Exponential backoff
-                    await UniTask.Delay(delayMs, cancellationToken);
+                    var delayMs = (int)(Math.Pow(2, retryCount) * 1000); // Exponential backoff
+                    await UniTask.Delay(TimeSpan.FromMilliseconds(delayMs), cancellationToken: cancellationToken);
                 }
             }
 
@@ -184,7 +184,7 @@ namespace AhBearStudios.Core.Alerting.Channels
                 }
                 else
                 {
-                    return ChannelHealthResult.Degraded($"Network endpoint returned HTTP {response.StatusCode}");
+                    return ChannelHealthResult.Unhealthy($"Network endpoint returned HTTP {response.StatusCode}");
                 }
             }
             catch (OperationCanceledException)

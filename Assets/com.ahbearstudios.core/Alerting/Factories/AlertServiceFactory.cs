@@ -18,9 +18,9 @@ using AhBearStudios.Core.Pooling;
 namespace AhBearStudios.Core.Alerting.Factories
 {
     /// <summary>
-    /// Concrete implementation of IAlertServiceFactory for creating and configuring AlertService instances.
-    /// Designed for Unity game development with zero-allocation patterns and pooling support.
-    /// Follows strict factory pattern - creates objects but does not manage their lifecycle.
+    /// Simple factory for creating AlertService instances following CLAUDE.md guidelines.
+    /// Factory focuses on creation only - complexity is handled by builders, validation by validators.
+    /// Does not manage object lifecycle - caller responsibility.
     /// </summary>
     public sealed class AlertServiceFactory : IAlertServiceFactory
     {
@@ -28,8 +28,6 @@ namespace AhBearStudios.Core.Alerting.Factories
         private readonly ISerializationService _serializationService;
         private readonly IPoolingService _poolingService;
         private readonly Dictionary<string, object> _defaultSettings;
-        private readonly ProfilerMarker _createServiceMarker;
-        private readonly ProfilerMarker _validateConfigMarker;
 
         /// <summary>
         /// Initializes a new instance of the AlertServiceFactory class.
@@ -43,8 +41,6 @@ namespace AhBearStudios.Core.Alerting.Factories
             _serializationService = serializationService;
             _poolingService = poolingService;
             _defaultSettings = CreateDefaultSettings();
-            _createServiceMarker = new ProfilerMarker("AlertServiceFactory.CreateService");
-            _validateConfigMarker = new ProfilerMarker("AlertServiceFactory.ValidateConfig");
         }
 
         #region IAlertServiceFactory Implementation
@@ -74,55 +70,29 @@ namespace AhBearStudios.Core.Alerting.Factories
 
         /// <summary>
         /// Creates a new AlertService instance with specific configuration.
-        /// Factory does not track created services - lifecycle management is caller's responsibility.
+        /// Simple creation only - assumes configuration is pre-validated by builder.
         /// </summary>
         public async UniTask<IAlertService> CreateAlertServiceAsync(AlertServiceConfiguration configuration, Guid correlationId = default)
         {
-            using (_createServiceMarker.Auto())
-            {
-                if (configuration == null)
-                    throw new ArgumentNullException(nameof(configuration));
+            if (configuration == null)
+                throw new ArgumentNullException(nameof(configuration));
 
-                var validationResult = ValidateConfiguration(configuration);
-                if (!validationResult.IsValid)
-                {
-                    throw new ArgumentException($"Invalid configuration: {string.Join(", ", validationResult.Errors.AsValueEnumerable().Select(e => e.Message))}", nameof(configuration));
-                }
-
-                var startTime = DateTime.UtcNow;
-                
-                try
-                {
-                    var alertService = new AlertService(null, _loggingService, _serializationService);
-
-                    // Configure global settings
-                    alertService.SetMinimumSeverity(configuration.AlertConfig.MinimumSeverity);
-
-                    // Create and register channels
-                    await CreateAndRegisterChannels(alertService, configuration.AlertConfig.Channels, correlationId);
-
-                    var creationTime = DateTime.UtcNow - startTime;
-                    LogInfo($"Created AlertService with {configuration.Environment} configuration in {creationTime.TotalMilliseconds:F2}ms", correlationId);
-                    return alertService;
-                }
-                catch (Exception ex)
-                {
-                    var creationTime = DateTime.UtcNow - startTime;
-                    LogError($"Failed to create configured AlertService: {ex.Message} (took {creationTime.TotalMilliseconds:F2}ms)", correlationId);
-                    throw;
-                }
-            }
+            var alertService = new AlertService(null, _loggingService, _serializationService);
+            alertService.SetMinimumSeverity(configuration.AlertConfig.MinimumSeverity);
+            await CreateAndRegisterChannels(alertService, configuration.AlertConfig.Channels, correlationId);
+            
+            LogInfo($"Created AlertService with {configuration.Environment} configuration", correlationId);
+            return alertService;
         }
 
 
         /// <summary>
         /// Creates an AlertService with custom channels and filters.
-        /// Uses pooling service for temporary collections and parallel setup for performance.
+        /// Simple creation only - assumes channels and filters are pre-configured.
         /// </summary>
         public async UniTask<IAlertService> CreateCustomAlertServiceAsync(
             IEnumerable<IAlertChannel> channels,
             IEnumerable<IAlertFilter> filters,
-            IEnumerable<AlertRule> suppressionRules = null,
             IMessageBusService messageBusService = null,
             ILoggingService loggingService = null,
             Guid correlationId = default)
@@ -132,108 +102,19 @@ namespace AhBearStudios.Core.Alerting.Factories
             if (filters == null)
                 throw new ArgumentNullException(nameof(filters));
 
-            var startTime = DateTime.UtcNow;
-            
-            try
-            {
-                var alertService = new AlertService(messageBusService, loggingService ?? _loggingService, _serializationService);
+            var alertService = new AlertService(messageBusService, loggingService ?? _loggingService, _serializationService);
+            var correlationIdString = correlationId == default ? default(FixedString64Bytes) : new FixedString64Bytes(correlationId.ToString());
 
-                // Register custom channels
-                foreach (var channel in channels)
-                {
-                    alertService.RegisterChannel(channel, correlationId);
-                }
+            foreach (var channel in channels)
+                alertService.RegisterChannel(channel, correlationIdString);
 
-                // Register custom filters
-                foreach (var filter in filters)
-                {
-                    alertService.AddFilter(filter, correlationId);
-                }
+            foreach (var filter in filters)
+                alertService.AddFilter(filter, correlationIdString);
 
-                // Apply custom suppression rules
-                if (suppressionRules != null)
-                {
-                    foreach (var rule in suppressionRules)
-                    {
-                        alertService.AddSuppressionRule(rule, correlationId);
-                    }
-                }
-
-                var creationTime = DateTime.UtcNow - startTime;
-                LogInfo($"Created custom AlertService configuration in {creationTime.TotalMilliseconds:F2}ms", correlationId);
-                return alertService;
-            }
-            catch (Exception ex)
-            {
-                var creationTime = DateTime.UtcNow - startTime;
-                LogError($"Failed to create custom AlertService: {ex.Message} (took {creationTime.TotalMilliseconds:F2}ms)", correlationId);
-                throw;
-            }
+            LogInfo("Created custom AlertService configuration", correlationId);
+            return alertService;
         }
 
-        /// <summary>
-        /// Validates an alert service configuration before creation.
-        /// Uses pooling service for temporary collections to avoid allocations.
-        /// </summary>
-        public ValidationResult ValidateConfiguration(AlertServiceConfiguration configuration)
-        {
-            using (_validateConfigMarker.Auto())
-            {
-                if (configuration == null)
-                    return ValidationResult.Failure(new[] { new ValidationError("Configuration cannot be null") }, "AlertServiceFactory");
-
-                var errors = new List<ValidationError>();
-
-                // Validate basic settings
-                if (configuration.MaxQueuedAlerts <= 0)
-                    errors.Add(new ValidationError("MaxQueuedAlerts must be greater than 0"));
-
-                if (configuration.MaxConcurrentOperations <= 0)
-                    errors.Add(new ValidationError("MaxConcurrentOperations must be greater than 0"));
-
-                if (configuration.StartupTimeout <= System.TimeSpan.Zero)
-                    errors.Add(new ValidationError("StartupTimeout must be positive"));
-
-                // Validate channels through AlertConfig
-                if (configuration.AlertConfig?.Channels == null)
-                    errors.Add(new ValidationError("AlertConfig.Channels collection cannot be null"));
-                else
-                {
-                    foreach (var channelConfig in configuration.AlertConfig.Channels)
-                    {
-                        try
-                        {
-                            channelConfig.Validate();
-                        }
-                        catch (InvalidOperationException ex)
-                        {
-                            errors.Add(new ValidationError($"Channel validation failed: {ex.Message}"));
-                        }
-                    }
-                }
-
-                // Validate AlertConfig
-                if (configuration.AlertConfig == null)
-                {
-                    errors.Add(new ValidationError("AlertConfig cannot be null"));
-                }
-                else
-                {
-                    try
-                    {
-                        configuration.AlertConfig.Validate();
-                    }
-                    catch (InvalidOperationException ex)
-                    {
-                        errors.Add(new ValidationError($"AlertConfig validation failed: {ex.Message}"));
-                    }
-                }
-
-                return errors.AsValueEnumerable().Any() 
-                    ? ValidationResult.Failure(errors, "AlertServiceFactory")
-                    : ValidationResult.Success("AlertServiceFactory");
-            }
-        }
 
         /// <summary>
         /// Gets the default configuration for alert services.
@@ -278,11 +159,16 @@ namespace AhBearStudios.Core.Alerting.Factories
             return new AlertServiceConfiguration
             {
                 Environment = AlertEnvironmentType.Development,
-                GlobalMinimumSeverity = AlertSeverity.Debug,
-                IsEnabled = true,
-                MaxActiveAlerts = 5000,
-                MaxHistorySize = 10000,
-                MaintenanceInterval = TimeSpan.FromMinutes(10),
+                EnableUnityIntegration = true,
+                EnableMetrics = true,
+                EnableTelemetry = true,
+                MaxConcurrentOperations = 50,
+                MaxQueuedAlerts = 5000,
+                StartupTimeout = TimeSpan.FromSeconds(30),
+                ShutdownTimeout = TimeSpan.FromSeconds(10),
+                HealthCheckInterval = TimeSpan.FromMinutes(1),
+                MetricsInterval = TimeSpan.FromSeconds(30),
+                MaxMemoryUsageMB = 50,
                 AlertConfig = new AlertConfig
                 {
                     MinimumSeverity = AlertSeverity.Debug,
@@ -312,11 +198,16 @@ namespace AhBearStudios.Core.Alerting.Factories
             return new AlertServiceConfiguration
             {
                 Environment = AlertEnvironmentType.Production,
-                GlobalMinimumSeverity = AlertSeverity.Warning,
-                IsEnabled = true,
-                MaxActiveAlerts = 20000,
-                MaxHistorySize = 50000,
-                MaintenanceInterval = TimeSpan.FromMinutes(5),
+                EnableUnityIntegration = false,
+                EnableMetrics = true,
+                EnableTelemetry = true,
+                MaxConcurrentOperations = 200,
+                MaxQueuedAlerts = 20000,
+                StartupTimeout = TimeSpan.FromSeconds(60),
+                ShutdownTimeout = TimeSpan.FromSeconds(30),
+                HealthCheckInterval = TimeSpan.FromMinutes(1),
+                MetricsInterval = TimeSpan.FromSeconds(30),
+                MaxMemoryUsageMB = 200,
                 AlertConfig = new AlertConfig
                 {
                     MinimumSeverity = AlertSeverity.Warning,
@@ -342,60 +233,49 @@ namespace AhBearStudios.Core.Alerting.Factories
 
         /// <summary>
         /// Creates configuration from a dictionary of settings.
+        /// Simple creation only - assumes settings are pre-validated.
         /// </summary>
         public AlertServiceConfiguration CreateConfigurationFromSettings(Dictionary<string, object> settings)
         {
             if (settings == null)
                 throw new ArgumentNullException(nameof(settings));
 
-            var config = new AlertServiceConfiguration();
-
-            // Parse environment
-            if (settings.TryGetValue("Environment", out var envValue))
+            // Start with default settings
+            var configBuilder = new Dictionary<string, object>(_defaultSettings);
+            
+            // Override with provided settings
+            foreach (var setting in settings)
             {
-                if (Enum.TryParse<AlertEnvironmentType>(envValue.ToString(), out var environment))
-                    config.Environment = environment;
+                configBuilder[setting.Key] = setting.Value;
             }
 
-            // Parse global minimum severity
-            if (settings.TryGetValue("GlobalMinimumSeverity", out var severityValue))
+            // Build configuration using safe type conversion
+            var config = new AlertServiceConfiguration
             {
-                if (Enum.TryParse<AlertSeverity>(severityValue.ToString(), out var severity))
-                    config.GlobalMinimumSeverity = severity;
-            }
+                Environment = GetValueOrDefault<AlertEnvironmentType>(configBuilder, "Environment", AlertEnvironmentType.Production),
+                EnableUnityIntegration = GetValueOrDefault<bool>(configBuilder, "EnableUnityIntegration", true),
+                EnableMetrics = GetValueOrDefault<bool>(configBuilder, "EnableMetrics", true),
+                EnableTelemetry = GetValueOrDefault<bool>(configBuilder, "EnableTelemetry", true),
+                MaxConcurrentOperations = GetValueOrDefault<int>(configBuilder, "MaxConcurrentOperations", 50),
+                MaxQueuedAlerts = GetValueOrDefault<int>(configBuilder, "MaxQueuedAlerts", 1000),
+                MaxMemoryUsageMB = GetValueOrDefault<int>(configBuilder, "MaxMemoryUsageMB", 100),
+                StartupTimeout = GetValueOrDefault<TimeSpan>(configBuilder, "StartupTimeout", TimeSpan.FromSeconds(30)),
+                ShutdownTimeout = GetValueOrDefault<TimeSpan>(configBuilder, "ShutdownTimeout", TimeSpan.FromSeconds(10)),
+                HealthCheckInterval = GetValueOrDefault<TimeSpan>(configBuilder, "HealthCheckInterval", TimeSpan.FromMinutes(1)),
+                MetricsInterval = GetValueOrDefault<TimeSpan>(configBuilder, "MetricsInterval", TimeSpan.FromSeconds(30))
+            };
 
-            // Parse enabled flag
-            if (settings.TryGetValue("IsEnabled", out var enabledValue))
-            {
-                if (bool.TryParse(enabledValue.ToString(), out var enabled))
-                    config.IsEnabled = enabled;
-            }
-
-            // Parse numeric settings
-            if (settings.TryGetValue("MaxActiveAlerts", out var maxActiveValue))
-            {
-                if (int.TryParse(maxActiveValue.ToString(), out var maxActive))
-                    config.MaxActiveAlerts = maxActive;
-            }
-
-            if (settings.TryGetValue("MaxHistorySize", out var maxHistoryValue))
-            {
-                if (int.TryParse(maxHistoryValue.ToString(), out var maxHistory))
-                    config.MaxHistorySize = maxHistory;
-            }
-
-            // Parse maintenance interval
-            if (settings.TryGetValue("MaintenanceIntervalMinutes", out var intervalValue))
-            {
-                if (double.TryParse(intervalValue.ToString(), out var intervalMinutes))
-                    config.MaintenanceInterval = System.TimeSpan.FromMinutes(intervalMinutes);
-            }
-
-            // Apply custom settings
-            config.CustomSettings = new Dictionary<string, object>(settings);
-
+            LogInfo("Created configuration from settings");
             return config;
         }
+
+        private T GetValueOrDefault<T>(Dictionary<string, object> settings, string key, T defaultValue)
+        {
+            if (settings.TryGetValue(key, out var value) && value is T typedValue)
+                return typedValue;
+            return defaultValue;
+        }
+
 
         #endregion
 
@@ -403,6 +283,9 @@ namespace AhBearStudios.Core.Alerting.Factories
 
         private async UniTask CreateAndRegisterChannels(IAlertService alertService, IReadOnlyList<ChannelConfig> channelConfigs, Guid correlationId)
         {
+            // Convert Guid correlationId to FixedString64Bytes for interface compatibility
+            var correlationIdString = correlationId == default ? default(FixedString64Bytes) : new FixedString64Bytes(correlationId.ToString());
+
             foreach (var channelConfig in channelConfigs)
             {
                 if (!channelConfig.IsEnabled)
@@ -420,7 +303,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 var config = channelConfig;
 
                 await channel.InitializeAsync(config, correlationId);
-                alertService.RegisterChannel(channel, correlationId);
+                alertService.RegisterChannel(channel, correlationIdString);
             }
         }
 
@@ -430,11 +313,12 @@ namespace AhBearStudios.Core.Alerting.Factories
             return new Dictionary<string, object>
             {
                 ["Environment"] = AlertEnvironmentType.Production,
-                ["GlobalMinimumSeverity"] = AlertSeverity.Info,
-                ["IsEnabled"] = true,
-                ["MaxActiveAlerts"] = 1000,
-                ["MaxHistorySize"] = 5000,
-                ["MaintenanceIntervalMinutes"] = 5.0
+                ["EnableUnityIntegration"] = true,
+                ["EnableMetrics"] = true,
+                ["EnableTelemetry"] = true,
+                ["MaxConcurrentOperations"] = 50,
+                ["MaxQueuedAlerts"] = 1000,
+                ["MaxMemoryUsageMB"] = 100
             };
         }
 

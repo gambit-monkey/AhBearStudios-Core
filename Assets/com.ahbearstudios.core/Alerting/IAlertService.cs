@@ -6,6 +6,8 @@ using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Alerting.Channels;
 using AhBearStudios.Core.Alerting.Filters;
+using AhBearStudios.Core.Alerting.Services;
+using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Common.Models;
 
 namespace AhBearStudios.Core.Alerting
@@ -15,16 +17,53 @@ namespace AhBearStudios.Core.Alerting
     /// with correlation tracking and comprehensive system integration.
     /// Follows the AhBearStudios Core Architecture foundation system pattern.
     /// Designed for Unity game development with Job System and Burst compatibility.
+    /// 
+    /// Production-ready features:
+    /// - Integrated channel, filter, and suppression services
+    /// - Health monitoring and diagnostics
+    /// - Configuration hot-reload capabilities
+    /// - Emergency failover and circuit breaker patterns
+    /// - Comprehensive metrics and performance monitoring
+    /// - Bulk operations for high-throughput scenarios
     /// </summary>
     public interface IAlertService : IDisposable
     {
-        // Configuration and runtime state properties
+        #region Core Properties and State
+        
         /// <summary>
-        /// Gets whether the alerting service is enabled.
+        /// Gets whether the alerting service is enabled and operational.
         /// </summary>
         bool IsEnabled { get; }
+        
+        /// <summary>
+        /// Gets whether the service is healthy and functioning normally.
+        /// </summary>
+        bool IsHealthy { get; }
+        
+        /// <summary>
+        /// Gets the current service configuration.
+        /// </summary>
+        AlertServiceConfiguration Configuration { get; }
+        
+        /// <summary>
+        /// Gets the integrated channel service for advanced channel management.
+        /// </summary>
+        IAlertChannelService ChannelService { get; }
+        
+        /// <summary>
+        /// Gets the integrated filter service for sophisticated filtering.
+        /// </summary>
+        IAlertFilterService FilterService { get; }
+        
+        /// <summary>
+        /// Gets the integrated suppression service for deduplication and rate limiting.
+        /// </summary>
+        IAlertSuppressionService SuppressionService { get; }
 
-        // Core alerting methods with Unity.Collections v2 correlation tracking
+        #endregion
+
+        #region Core Alert Operations
+        
         /// <summary>
         /// Raises an alert with correlation tracking.
         /// </summary>
@@ -134,20 +173,6 @@ namespace AhBearStudios.Core.Alerting
         /// <returns>True if filter was removed</returns>
         bool RemoveFilter(FixedString64Bytes filterName, FixedString64Bytes correlationId = default);
 
-        /// <summary>
-        /// Adds a suppression rule for alert filtering.
-        /// </summary>
-        /// <param name="rule">Alert rule to add</param>
-        /// <param name="correlationId">Correlation ID for tracking</param>
-        void AddSuppressionRule(AlertRule rule, FixedString64Bytes correlationId = default);
-
-        /// <summary>
-        /// Removes a suppression rule.
-        /// </summary>
-        /// <param name="ruleName">Name of rule to remove</param>
-        /// <param name="correlationId">Correlation ID for tracking</param>
-        /// <returns>True if rule was removed</returns>
-        bool RemoveSuppressionRule(FixedString64Bytes ruleName, FixedString64Bytes correlationId = default);
 
         // Alert management
         /// <summary>
@@ -177,7 +202,122 @@ namespace AhBearStudios.Core.Alerting
         /// <param name="correlationId">Correlation ID for tracking</param>
         void ResolveAlert(Guid alertId, FixedString64Bytes correlationId = default);
 
-        // Statistics and monitoring
+        #endregion
+
+        #region Bulk Operations
+        
+        /// <summary>
+        /// Raises multiple alerts in a single batch operation for performance.
+        /// </summary>
+        /// <param name="alerts">Collection of alerts to raise</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>UniTask representing the batch operation</returns>
+        UniTask RaiseAlertsAsync(IEnumerable<Alert> alerts, Guid correlationId = default);
+        
+        /// <summary>
+        /// Acknowledges multiple alerts by their IDs.
+        /// </summary>
+        /// <param name="alertIds">Collection of alert IDs to acknowledge</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>UniTask representing the batch operation</returns>
+        UniTask AcknowledgeAlertsAsync(IEnumerable<Guid> alertIds, Guid correlationId = default);
+        
+        /// <summary>
+        /// Resolves multiple alerts by their IDs.
+        /// </summary>
+        /// <param name="alertIds">Collection of alert IDs to resolve</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>UniTask representing the batch operation</returns>
+        UniTask ResolveAlertsAsync(IEnumerable<Guid> alertIds, Guid correlationId = default);
+
+        #endregion
+
+        #region Configuration Management
+        
+        /// <summary>
+        /// Updates the service configuration with hot-reload capability.
+        /// </summary>
+        /// <param name="configuration">New configuration to apply</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>UniTask with configuration update result</returns>
+        UniTask<bool> UpdateConfigurationAsync(AlertServiceConfiguration configuration, Guid correlationId = default);
+        
+        /// <summary>
+        /// Reloads configuration from the original source.
+        /// </summary>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>UniTask representing the reload operation</returns>
+        UniTask ReloadConfigurationAsync(Guid correlationId = default);
+        
+        /// <summary>
+        /// Gets the default configuration for the current environment.
+        /// </summary>
+        /// <returns>Default configuration</returns>
+        AlertServiceConfiguration GetDefaultConfiguration();
+
+        #endregion
+
+        #region Health Monitoring and Diagnostics
+        
+        /// <summary>
+        /// Performs a comprehensive health check of the alerting system.
+        /// </summary>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>UniTask with comprehensive health report</returns>
+        UniTask<AlertSystemHealthReport> PerformHealthCheckAsync(Guid correlationId = default);
+        
+        /// <summary>
+        /// Gets detailed diagnostic information about the alerting system.
+        /// </summary>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>Comprehensive diagnostic report</returns>
+        AlertSystemDiagnostics GetDiagnostics(Guid correlationId = default);
+        
+        /// <summary>
+        /// Gets performance metrics for all subsystems.
+        /// </summary>
+        /// <returns>Comprehensive performance metrics</returns>
+        AlertSystemPerformanceMetrics GetPerformanceMetrics();
+        
+        /// <summary>
+        /// Resets all performance metrics and statistics.
+        /// </summary>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        void ResetMetrics(Guid correlationId = default);
+
+        #endregion
+
+        #region Emergency Operations
+        
+        /// <summary>
+        /// Enables emergency mode, bypassing filters and suppression for critical alerts.
+        /// </summary>
+        /// <param name="reason">Reason for enabling emergency mode</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        void EnableEmergencyMode(string reason, Guid correlationId = default);
+        
+        /// <summary>
+        /// Disables emergency mode and restores normal operations.
+        /// </summary>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        void DisableEmergencyMode(Guid correlationId = default);
+        
+        /// <summary>
+        /// Gets whether emergency mode is currently active.
+        /// </summary>
+        bool IsEmergencyModeActive { get; }
+        
+        /// <summary>
+        /// Performs emergency escalation for failed alert delivery.
+        /// </summary>
+        /// <param name="alert">Alert that failed to deliver</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>UniTask representing the escalation operation</returns>
+        UniTask PerformEmergencyEscalationAsync(Alert alert, Guid correlationId = default);
+
+        #endregion
+
+        #region Statistics and Monitoring
         /// <summary>
         /// Gets current alerting statistics for monitoring.
         /// </summary>
@@ -203,6 +343,33 @@ namespace AhBearStudios.Core.Alerting
         /// <param name="correlationId">Correlation ID for tracking</param>
         /// <returns>UniTask representing the flush operation</returns>
         UniTask FlushAsync(FixedString64Bytes correlationId = default);
+
+        #endregion
+
+        #region Service Control
+        
+        /// <summary>
+        /// Starts the alerting service and all subsystems.
+        /// </summary>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>UniTask representing the startup operation</returns>
+        UniTask StartAsync(Guid correlationId = default);
+        
+        /// <summary>
+        /// Stops the alerting service and all subsystems gracefully.
+        /// </summary>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>UniTask representing the shutdown operation</returns>
+        UniTask StopAsync(Guid correlationId = default);
+        
+        /// <summary>
+        /// Restarts the alerting service with current configuration.
+        /// </summary>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>UniTask representing the restart operation</returns>
+        UniTask RestartAsync(Guid correlationId = default);
+
+        #endregion
 
         // Message bus integration for system integration
         // Events have been replaced with IMessage pattern for better decoupling

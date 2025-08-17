@@ -79,10 +79,10 @@ namespace AhBearStudios.Core.Alerting.Filters
         /// <returns>Filter diagnostic information</returns>
         FilterDiagnostics GetDiagnostics();
 
-        // Message bus integration for filter events
-        // Events have been replaced with IMessage pattern for better decoupling
-        // FilterConfigurationChangedMessage and FilterStatisticsUpdatedMessage
-        // are published through IMessageBusService
+        // Filter state changes are communicated through IMessage pattern:
+        // - FilterConfigurationChangedMessage: Published when filter configuration changes
+        // - FilterStatisticsUpdatedMessage: Published when filter statistics are updated
+        // Messages are published through IMessageBusService for better decoupling
     }
 
     /// <summary>
@@ -437,50 +437,4 @@ namespace AhBearStudios.Core.Alerting.Filters
         public IReadOnlyList<double> RecentEvaluationTimes { get; init; }
     }
 
-    /// <summary>
-    /// Event arguments for filter configuration changes.
-    /// </summary>
-    public sealed class FilterConfigurationChangedEventArgs : EventArgs
-    {
-        /// <summary>
-        /// Gets the filter name.
-        /// </summary>
-        public FixedString64Bytes FilterName { get; init; }
-
-        /// <summary>
-        /// Gets the previous configuration.
-        /// </summary>
-        public Dictionary<string, object> PreviousConfiguration { get; init; }
-
-        /// <summary>
-        /// Gets the new configuration.
-        /// </summary>
-        public Dictionary<string, object> NewConfiguration { get; init; }
-
-        /// <summary>
-        /// Gets the correlation ID for tracking.
-        /// </summary>
-        public Guid CorrelationId { get; init; }
-    }
-
-    /// <summary>
-    /// Event arguments for filter statistics updates.
-    /// </summary>
-    public sealed class FilterStatisticsUpdatedEventArgs : EventArgs
-    {
-        /// <summary>
-        /// Gets the filter name.
-        /// </summary>
-        public FixedString64Bytes FilterName { get; init; }
-
-        /// <summary>
-        /// Gets the updated statistics.
-        /// </summary>
-        public FilterStatistics Statistics { get; init; }
-
-        /// <summary>
-        /// Gets the correlation ID for tracking.
-        /// </summary>
-        public Guid CorrelationId { get; init; }
-    }
 }

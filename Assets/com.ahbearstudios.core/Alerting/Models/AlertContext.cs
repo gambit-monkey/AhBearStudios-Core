@@ -2,8 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.Alerting.Models
-{
+namespace AhBearStudios.Core.Alerting.Models;
     /// <summary>
     /// Zero-allocation context container for alert contextual information.
     /// Uses Unity.Collections for high-performance with minimal memory overhead.
@@ -152,5 +151,3 @@ namespace AhBearStudios.Core.Alerting.Models
             }
         }
     }
-
-}

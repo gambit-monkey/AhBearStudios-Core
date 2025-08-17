@@ -6,12 +6,13 @@ using AhBearStudios.Core.Alerting.Filters;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Common.Models;
+using FilterAction = AhBearStudios.Core.Common.Models.FilterAction;
 
 namespace AhBearStudios.Core.Alerting.Factories
 {
     /// <summary>
-    /// Factory interface for creating and configuring alert filter instances.
-    /// Provides abstraction for dependency injection and testing scenarios.
+    /// Simple factory interface for creating alert filter instances.
+    /// Follows CLAUDE.md guidelines - creation only, no validation or lifecycle management.
     /// Supports various filter types including severity, source, rate limiting, and custom filters.
     /// </summary>
     public interface IAlertFilterFactory
@@ -154,12 +155,6 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// <returns>UniTask with collection of test filters</returns>
         UniTask<IEnumerable<IAlertFilter>> CreateTestFiltersAsync();
 
-        /// <summary>
-        /// Validates a filter configuration before creation.
-        /// </summary>
-        /// <param name="configuration">Configuration to validate</param>
-        /// <returns>Validation result</returns>
-        ValidationResult ValidateFilterConfiguration(FilterConfiguration configuration);
 
         /// <summary>
         /// Gets the default configuration for a specific filter type.

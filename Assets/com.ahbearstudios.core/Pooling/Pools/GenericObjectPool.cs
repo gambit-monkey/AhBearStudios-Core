@@ -1,9 +1,13 @@
 using System.Collections.Concurrent;
 using System.Threading;
 using Unity.Profiling;
+using Unity.Collections;
+using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Pooling.Strategies;
+using AhBearStudios.Core.Pooling.Messages;
+using AhBearStudios.Core.Messaging;
 
 namespace AhBearStudios.Core.Pooling.Pools
 {
@@ -21,6 +25,7 @@ namespace AhBearStudios.Core.Pooling.Pools
         private readonly IPoolingStrategy _strategy;
         private readonly PoolStatistics _statistics;
         private readonly Timer _maintenanceTimer;
+        private readonly IMessageBusService _messageBusService;
         private readonly object _statsLock = new object();
         private readonly ProfilerMarker _getMarker;
         private readonly ProfilerMarker _returnMarker;
@@ -38,10 +43,15 @@ namespace AhBearStudios.Core.Pooling.Pools
         /// Initializes a new GenericObjectPool instance.
         /// </summary>
         /// <param name="configuration">Pool configuration</param>
+        /// <param name="messageBusService">Message bus service for publishing events</param>
         /// <param name="strategy">Pooling strategy to use</param>
-        public GenericObjectPool(PoolConfiguration configuration, IPoolingStrategy strategy = null)
+        public GenericObjectPool(
+            PoolConfiguration configuration, 
+            IMessageBusService messageBusService = null,
+            IPoolingStrategy strategy = null)
         {
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _messageBusService = messageBusService; // Optional - can be null
             _strategy = strategy ?? new DefaultPoolingStrategy();
             _objects = new ConcurrentQueue<T>();
             _statistics = new PoolStatistics { CreatedAt = DateTime.UtcNow };
@@ -158,7 +168,9 @@ namespace AhBearStudios.Core.Pooling.Pools
                 Interlocked.Increment(ref _activeCount);
                 Interlocked.Increment(ref _totalGets);
                 
-                ObjectCreated?.Invoke(item);
+                // Publish object retrieved message if message bus is available
+                PublishObjectRetrievedMessage(item);
+                
                 return item;
             }
         }
@@ -192,7 +204,8 @@ namespace AhBearStudios.Core.Pooling.Pools
                 Interlocked.Decrement(ref _activeCount);
                 Interlocked.Increment(ref _totalReturns);
                 
-                ObjectReturned?.Invoke(item);
+                // Publish object returned message if message bus is available
+                PublishObjectReturnedMessage(item);
             }
         }
 
@@ -286,20 +299,62 @@ namespace AhBearStudios.Core.Pooling.Pools
             }
         }
 
+        #region Message Publishing
+        
         /// <summary>
-        /// Raised when a new object is created for the pool.
+        /// Publishes a message when an object is retrieved from the pool.
         /// </summary>
-        public event Action<T> ObjectCreated;
-
+        private void PublishObjectRetrievedMessage(T item)
+        {
+            if (_messageBusService == null) return;
+            
+            try
+            {
+                var message = PoolObjectRetrievedMessage.Create(
+                    poolName: new FixedString64Bytes(Name),
+                    objectTypeName: new FixedString64Bytes(typeof(T).Name),
+                    poolId: Guid.NewGuid(), // Pool doesn't have a persistent ID
+                    objectId: item.PoolId,
+                    poolSizeAfter: Count,
+                    activeObjectsAfter: ActiveCount
+                );
+                
+                _messageBusService.PublishAsync(message).Forget();
+            }
+            catch
+            {
+                // Swallow exceptions to avoid disrupting pool operations
+            }
+        }
+        
         /// <summary>
-        /// Raised when an object is returned to the pool.
+        /// Publishes a message when an object is returned to the pool.
         /// </summary>
-        public event Action<T> ObjectReturned;
-
-        /// <summary>
-        /// Raised when an object is destroyed.
-        /// </summary>
-        public event Action<T> ObjectDestroyed;
+        private void PublishObjectReturnedMessage(T item)
+        {
+            if (_messageBusService == null) return;
+            
+            try
+            {
+                var message = PoolObjectReturnedMessage.Create(
+                    poolName: new FixedString64Bytes(Name),
+                    objectTypeName: new FixedString64Bytes(typeof(T).Name),
+                    poolId: Guid.NewGuid(), // Pool doesn't have a persistent ID
+                    objectId: item.PoolId,
+                    poolSizeAfter: Count,
+                    activeObjectsAfter: ActiveCount,
+                    wasValidOnReturn: item.IsValid()
+                );
+                
+                _messageBusService.PublishAsync(message).Forget();
+            }
+            catch
+            {
+                // Swallow exceptions to avoid disrupting pool operations
+            }
+        }
+        
+        #endregion
 
         /// <summary>
         /// Creates a new object for the pool.
@@ -333,7 +388,9 @@ namespace AhBearStudios.Core.Pooling.Pools
                 }
                 
                 Interlocked.Decrement(ref _totalCount);
-                ObjectDestroyed?.Invoke(item);
+                
+                // Could publish object destroyed message here if needed
+                // For now, we're focusing on the main events from IPoolingService
             }
             catch
             {

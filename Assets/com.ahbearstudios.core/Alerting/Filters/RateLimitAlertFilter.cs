@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Profiling;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Messaging;
 using ZLinq;
 using Cysharp.Threading.Tasks;
 
@@ -62,9 +63,10 @@ namespace AhBearStudios.Core.Alerting.Filters
         /// <summary>
         /// Initializes a new instance of the RateLimitAlertFilter class.
         /// </summary>
+        /// <param name="messageBusService">Message bus service for publishing filter events</param>
         /// <param name="maxAlertsPerMinute">Maximum alerts allowed per minute</param>
         /// <param name="sourcePattern">Source pattern to match</param>
-        public RateLimitAlertFilter(int maxAlertsPerMinute = 60, string sourcePattern = "*")
+        public RateLimitAlertFilter(IMessageBusService messageBusService, int maxAlertsPerMinute = 60, string sourcePattern = "*") : base(messageBusService)
         {
             _maxAlertsPerMinute = Math.Max(1, maxAlertsPerMinute);
             _sourcePattern = sourcePattern ?? "*";

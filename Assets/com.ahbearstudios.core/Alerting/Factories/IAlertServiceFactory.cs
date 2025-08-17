@@ -68,7 +68,6 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// </summary>
         /// <param name="channels">Collection of channels to register</param>
         /// <param name="filters">Collection of filters to register</param>
-        /// <param name="suppressionRules">Collection of suppression rules</param>
         /// <param name="messageBusService">Message bus service</param>
         /// <param name="loggingService">Logging service</param>
         /// <param name="correlationId">Correlation ID for tracking</param>
@@ -76,17 +75,10 @@ namespace AhBearStudios.Core.Alerting.Factories
         UniTask<IAlertService> CreateCustomAlertServiceAsync(
             IEnumerable<IAlertChannel> channels,
             IEnumerable<IAlertFilter> filters,
-            IEnumerable<AlertRule> suppressionRules = null,
             IMessageBusService messageBusService = null,
             ILoggingService loggingService = null,
             Guid correlationId = default);
 
-        /// <summary>
-        /// Validates an alert service configuration before creation.
-        /// </summary>
-        /// <param name="configuration">Configuration to validate</param>
-        /// <returns>Validation result</returns>
-        ValidationResult ValidateConfiguration(AlertServiceConfiguration configuration);
 
         /// <summary>
         /// Gets the default configuration for alert services.

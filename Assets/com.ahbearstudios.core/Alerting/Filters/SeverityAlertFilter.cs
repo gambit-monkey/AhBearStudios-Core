@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Messaging;
 
 namespace AhBearStudios.Core.Alerting.Filters
 {
@@ -42,9 +43,10 @@ namespace AhBearStudios.Core.Alerting.Filters
         /// <summary>
         /// Initializes a new instance of the SeverityAlertFilter class.
         /// </summary>
+        /// <param name="messageBusService">Message bus service for publishing filter events</param>
         /// <param name="minimumSeverity">Minimum severity level</param>
         /// <param name="allowCriticalAlways">Whether to always allow critical alerts</param>
-        public SeverityAlertFilter(AlertSeverity minimumSeverity = AlertSeverity.Info, bool allowCriticalAlways = true)
+        public SeverityAlertFilter(IMessageBusService messageBusService, AlertSeverity minimumSeverity = AlertSeverity.Info, bool allowCriticalAlways = true) : base(messageBusService)
         {
             _minimumSeverity = minimumSeverity;
             _allowCriticalAlways = allowCriticalAlways;
@@ -309,18 +311,18 @@ namespace AhBearStudios.Core.Alerting.Filters
         /// <param name="minimumSeverity">Minimum severity level</param>
         /// <param name="allowCriticalAlways">Whether to always allow critical alerts</param>
         /// <returns>Configured severity filter</returns>
-        public static SeverityAlertFilter Create(AlertSeverity minimumSeverity, bool allowCriticalAlways = true)
+        public static SeverityAlertFilter Create(IMessageBusService messageBusService, AlertSeverity minimumSeverity, bool allowCriticalAlways = true)
         {
-            return new SeverityAlertFilter(minimumSeverity, allowCriticalAlways);
+            return new SeverityAlertFilter(messageBusService, minimumSeverity, allowCriticalAlways);
         }
 
         /// <summary>
         /// Creates a severity filter for development environments (allows all severities).
         /// </summary>
         /// <returns>Development-configured severity filter</returns>
-        public static SeverityAlertFilter CreateForDevelopment()
+        public static SeverityAlertFilter CreateForDevelopment(IMessageBusService messageBusService)
         {
-            return new SeverityAlertFilter(AlertSeverity.Debug, true)
+            return new SeverityAlertFilter(messageBusService, AlertSeverity.Debug, true)
             {
                 Priority = 5 // Lower priority in development
             };
@@ -330,9 +332,9 @@ namespace AhBearStudios.Core.Alerting.Filters
         /// Creates a severity filter for production environments (stricter filtering).
         /// </summary>
         /// <returns>Production-configured severity filter</returns>
-        public static SeverityAlertFilter CreateForProduction()
+        public static SeverityAlertFilter CreateForProduction(IMessageBusService messageBusService)
         {
-            return new SeverityAlertFilter(AlertSeverity.Warning, true)
+            return new SeverityAlertFilter(messageBusService, AlertSeverity.Warning, true)
             {
                 Priority = 10 // Higher priority in production
             };
@@ -345,10 +347,11 @@ namespace AhBearStudios.Core.Alerting.Filters
         /// <param name="sourceOverrides">Source-specific severity overrides</param>
         /// <returns>Configured severity filter with overrides</returns>
         public static SeverityAlertFilter CreateWithOverrides(
+            IMessageBusService messageBusService,
             AlertSeverity minimumSeverity, 
             Dictionary<string, AlertSeverity> sourceOverrides)
         {
-            var filter = new SeverityAlertFilter(minimumSeverity);
+            var filter = new SeverityAlertFilter(messageBusService, minimumSeverity);
             
             if (sourceOverrides != null)
             {

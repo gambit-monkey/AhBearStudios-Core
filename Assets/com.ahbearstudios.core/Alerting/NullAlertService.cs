@@ -106,17 +106,6 @@ namespace AhBearStudios.Core.Alerting
             return false;
         }
 
-        /// <inheritdoc />
-        public void AddSuppressionRule(AlertRule rule, FixedString64Bytes correlationId = default)
-        {
-            // No-op
-        }
-
-        /// <inheritdoc />
-        public bool RemoveSuppressionRule(FixedString64Bytes ruleName, FixedString64Bytes correlationId = default)
-        {
-            return false;
-        }
 
         /// <inheritdoc />
         public IEnumerable<Alert> GetActiveAlerts()

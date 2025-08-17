@@ -1,8 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace AhBearStudios.Core.Alerting.Models
-{
+namespace AhBearStudios.Core.Alerting.Models;
     /// <summary>
     /// Performance metrics for alerts.
     /// </summary>
@@ -33,4 +32,3 @@ namespace AhBearStudios.Core.Alerting.Models
         /// </summary>
         public TimeSpan Duration => new TimeSpan(DurationTicks);
     }
-}

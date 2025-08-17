@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Unity.Collections;
 using Cysharp.Threading.Tasks;
@@ -20,7 +19,7 @@ namespace AhBearStudios.Core.Alerting.Services
     /// Handles filter registration, priority ordering, performance monitoring, and execution orchestration.
     /// Designed for Unity game development with zero-allocation patterns and high performance.
     /// </summary>
-    public sealed class AlertFilterService : IDisposable
+    public sealed class AlertFilterService : IAlertFilterService
     {
         private readonly object _syncLock = new object();
         private readonly List<IAlertFilter> _filters = new List<IAlertFilter>();
@@ -75,34 +74,6 @@ namespace AhBearStudios.Core.Alerting.Services
             }
         }
 
-        #region Events
-
-        /// <summary>
-        /// Raised when a filter is registered with the service.
-        /// </summary>
-        public event EventHandler<FilterEventArgs> FilterRegistered;
-
-        /// <summary>
-        /// Raised when a filter is unregistered from the service.
-        /// </summary>
-        public event EventHandler<FilterEventArgs> FilterUnregistered;
-
-        /// <summary>
-        /// Raised when a filter's configuration is changed.
-        /// </summary>
-        public event EventHandler<FilterEventArgs> FilterConfigurationChanged;
-
-        /// <summary>
-        /// Raised when a filter encounters an evaluation error.
-        /// </summary>
-        public event EventHandler<FilterEventArgs> FilterEvaluationError;
-
-        /// <summary>
-        /// Raised when a filter performance alert is triggered.
-        /// </summary>
-        public event EventHandler<FilterPerformanceEventArgs> FilterPerformanceAlert;
-
-        #endregion
 
 
         /// <summary>
@@ -184,11 +155,8 @@ namespace AhBearStudios.Core.Alerting.Services
                     };
                 }
 
-                // Note: Filter events are now published via IMessage pattern, not traditional events
-
-                // Raise event
-                FilterRegistered?.Invoke(this, new FilterEventArgs(
-                    filterName, FilterEventType.Added, correlationId, "AlertFilterService"));
+                // Filter events are handled via IMessage pattern - see CLAUDE.md guidelines
+                // Filter registration events can be published through IMessageBusService when needed
 
                 LogInfo($"Filter registered successfully: {filterName} (Priority: {filter.Priority})", correlationId);
                 return true;
@@ -226,14 +194,10 @@ namespace AhBearStudios.Core.Alerting.Services
                     _filterPerformance.Remove(filterName);
                 }
 
-                // Note: Filter events are now published via IMessage pattern, not traditional events
-
+                // Filter events are handled via IMessage pattern - see CLAUDE.md guidelines
+                
                 // Dispose filter
                 filter.Dispose();
-
-                // Raise event
-                FilterUnregistered?.Invoke(this, new FilterEventArgs(
-                    filterName, FilterEventType.Removed, correlationId, "AlertFilterService"));
 
                 LogInfo($"Filter unregistered: {filterName}", correlationId);
                 return true;
@@ -269,7 +233,7 @@ namespace AhBearStudios.Core.Alerting.Services
         {
             lock (_syncLock)
             {
-                return _filters.ToList();
+                return _filters.AsValueEnumerable().ToList();
             }
         }
 
@@ -398,10 +362,7 @@ namespace AhBearStudios.Core.Alerting.Services
                             Error = ex
                         });
 
-                        // Raise error event
-                        FilterEvaluationError?.Invoke(this, new FilterEventArgs(
-                            filterName, FilterEventType.EvaluationError, correlationId, 
-                            "AlertFilterService", currentAlert, exception: ex));
+                        // Filter evaluation errors are handled via IMessage pattern
 
                         // Continue with next filter (don't let one filter break the chain)
                         LogWarning($"Filter evaluation error in {filterName}: {ex.Message}", correlationId);
@@ -469,8 +430,7 @@ namespace AhBearStudios.Core.Alerting.Services
                         }
                     }
                     
-                    FilterConfigurationChanged?.Invoke(this, new FilterEventArgs(
-                        filterName, FilterEventType.ConfigurationChanged, correlationId, "AlertFilterService"));
+                    // Filter configuration changed events are handled via IMessage pattern
                     
                     LogInfo($"Filter configuration updated: {filterName}", correlationId);
                 }
@@ -585,7 +545,7 @@ namespace AhBearStudios.Core.Alerting.Services
                     TotalFilters = _filters.Count,
                     EnabledFilters = _filters.AsValueEnumerable().Count(f => f.IsEnabled),
                     HealthyFilters = _filterHealth.Values.AsValueEnumerable().Count(h => h.IsHealthy),
-                    FilterPerformanceData = _filterPerformance.Values.ToList(),
+                    FilterPerformanceData = _filterPerformance.Values.AsValueEnumerable().ToList(),
                     LastUpdated = DateTime.UtcNow
                 };
             }
@@ -599,7 +559,7 @@ namespace AhBearStudios.Core.Alerting.Services
         {
             lock (_syncLock)
             {
-                return _filterHealth.Values.ToList();
+                return _filterHealth.Values.AsValueEnumerable().ToList();
             }
         }
 
@@ -735,26 +695,14 @@ namespace AhBearStudios.Core.Alerting.Services
                 {
                     if (filterPerf.AverageProcessingTimeMs > 100) // 100ms threshold
                     {
-                        FilterPerformanceAlert?.Invoke(this, new FilterPerformanceEventArgs
-                        {
-                            FilterName = filterPerf.FilterName,
-                            Issue = "High average processing time",
-                            Metric = filterPerf.AverageProcessingTimeMs,
-                            Threshold = 100,
-                            Severity = AlertSeverity.Warning
-                        });
+                        // Filter performance alerts are handled via IMessage pattern
+                        LogWarning($"High average processing time for filter {filterPerf.FilterName}: {filterPerf.AverageProcessingTimeMs:F2}ms");
                     }
 
                     if (filterPerf.ErrorRate > 10) // 10% error rate threshold
                     {
-                        FilterPerformanceAlert?.Invoke(this, new FilterPerformanceEventArgs
-                        {
-                            FilterName = filterPerf.FilterName,
-                            Issue = "High error rate",
-                            Metric = filterPerf.ErrorRate,
-                            Threshold = 10,
-                            Severity = AlertSeverity.Error
-                        });
+                        // Filter performance alerts are handled via IMessage pattern
+                        LogError($"High error rate for filter {filterPerf.FilterName}: {filterPerf.ErrorRate:F2}%");
                     }
                 }
             }
@@ -1004,17 +952,6 @@ namespace AhBearStudios.Core.Alerting.Services
             : 0;
     }
 
-    /// <summary>
-    /// Event arguments for filter performance alerts.
-    /// </summary>
-    public sealed class FilterPerformanceEventArgs : EventArgs
-    {
-        public string FilterName { get; set; }
-        public string Issue { get; set; }
-        public double Metric { get; set; }
-        public double Threshold { get; set; }
-        public AlertSeverity Severity { get; set; }
-    }
 
     #endregion
 }

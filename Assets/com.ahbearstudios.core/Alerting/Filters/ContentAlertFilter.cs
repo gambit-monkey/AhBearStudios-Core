@@ -2,7 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using ZLinq;
+using Unity.Collections;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Messaging;
 
 namespace AhBearStudios.Core.Alerting.Filters
 {
@@ -12,15 +14,22 @@ namespace AhBearStudios.Core.Alerting.Filters
     internal sealed class ContentAlertFilter : BaseAlertFilter
     {
         private readonly List<string> _patterns;
+        private readonly FixedString64Bytes _name;
 
-        public ContentAlertFilter(string name, IEnumerable<string> patterns) : base(name)
+        /// <summary>
+        /// Gets the unique name identifier for this filter.
+        /// </summary>
+        public override FixedString64Bytes Name => _name;
+
+        public ContentAlertFilter(IMessageBusService messageBusService, string name = "ContentFilter", IEnumerable<string> patterns = null) : base(messageBusService)
         {
+            _name = new FixedString64Bytes(name);
             _patterns = patterns?.AsValueEnumerable().ToList() ?? new List<string>();
         }
 
-        public override bool CanHandle(Alert alert) => alert != null;
+        protected override bool CanHandleCore(Alert alert) => alert != null;
 
-        public override FilterResult Evaluate(Alert alert, FilterContext context)
+        protected override FilterResult EvaluateCore(Alert alert, FilterContext context)
         {
             var message = alert.Message.ToString();
             
@@ -28,11 +37,11 @@ namespace AhBearStudios.Core.Alerting.Filters
             {
                 if (MatchesPattern(message, pattern))
                 {
-                    return FilterResult.Suppress(alert, $"Content matched pattern: {pattern}");
+                    return FilterResult.Suppress($"Content matched pattern: {pattern}");
                 }
             }
 
-            return FilterResult.Allow(alert, "No content patterns matched");
+            return FilterResult.Allow("No content patterns matched");
         }
 
         private static bool MatchesPattern(string text, string pattern)
@@ -57,6 +66,30 @@ namespace AhBearStudios.Core.Alerting.Filters
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Core implementation of configuration application.
+        /// </summary>
+        protected override bool ConfigureCore(Dictionary<string, object> configuration, Guid correlationId)
+        {
+            if (configuration == null) return true;
+
+            if (configuration.TryGetValue("Patterns", out var patternsObj) && patternsObj is IEnumerable<string> patterns)
+            {
+                _patterns.Clear();
+                _patterns.AddRange(patterns);
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Core implementation of configuration validation.
+        /// </summary>
+        protected override FilterValidationResult ValidateConfigurationCore(Dictionary<string, object> configuration)
+        {
+            return FilterValidationResult.Valid();
         }
     }
 }

@@ -6,30 +6,35 @@ using Cysharp.Threading.Tasks;
 using ZLinq;
 using AhBearStudios.Core.Alerting.Filters;
 using AhBearStudios.Core.Alerting.Models;
-using AhBearStudios.Core.Common.Models;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Serialization;
+using AhBearStudios.Core.Common.Models;
+using FilterAction = AhBearStudios.Core.Common.Models.FilterAction;
+using AhBearStudios.Core.Messaging;
 
 namespace AhBearStudios.Core.Alerting.Factories
 {
     /// <summary>
-    /// Concrete implementation of IAlertFilterFactory for creating and configuring alert filter instances.
-    /// Supports various filter types including severity, source, rate limiting, content, and composite filters.
-    /// Designed for Unity game development with comprehensive configuration and validation support.
+    /// Simple factory for creating alert filter instances following CLAUDE.md guidelines.
+    /// Factory focuses on creation only - complexity is handled by builders, validation by validators.
+    /// Designed for Unity game development with zero-allocation patterns.
     /// </summary>
     public sealed class AlertFilterFactory : IAlertFilterFactory
     {
         private readonly ILoggingService _loggingService;
         private readonly ISerializationService _serializationService;
+        private readonly IMessageBusService _messageBusService;
         private readonly Dictionary<FilterType, Func<FilterConfiguration, UniTask<IAlertFilter>>> _filterCreators;
 
         /// <summary>
         /// Initializes a new instance of the AlertFilterFactory class.
         /// </summary>
+        /// <param name="messageBusService">Message bus service for filter communication</param>
         /// <param name="loggingService">Optional logging service for factory operations</param>
         /// <param name="serializationService">Optional serialization service for alert data serialization</param>
-        public AlertFilterFactory(ILoggingService loggingService = null, ISerializationService serializationService = null)
+        public AlertFilterFactory(IMessageBusService messageBusService, ILoggingService loggingService = null, ISerializationService serializationService = null)
         {
+            _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             _loggingService = loggingService;
             _serializationService = serializationService;
             _filterCreators = InitializeFilterCreators();
@@ -61,57 +66,29 @@ namespace AhBearStudios.Core.Alerting.Factories
 
         /// <summary>
         /// Creates and configures a new alert filter instance.
+        /// Simple creation only - assumes configuration is already validated by builder.
         /// </summary>
         public async UniTask<IAlertFilter> CreateAndConfigureFilterAsync(FilterConfiguration configuration, Guid correlationId = default)
         {
             if (configuration == null)
                 throw new ArgumentNullException(nameof(configuration));
 
-            var validationResult = ValidateFilterConfiguration(configuration);
-            if (!validationResult.IsValid)
-            {
-                throw new ArgumentException($"Invalid filter configuration: {string.Join(", ", validationResult.Errors.AsValueEnumerable().Select(e => e.Message))}", nameof(configuration));
-            }
-
-            var startTime = DateTime.UtcNow;
+            var filterType = DetermineFilterType(configuration);
             
-            try
+            if (!_filterCreators.TryGetValue(filterType, out var creator))
+                throw new NotSupportedException($"Filter type '{filterType}' is not supported");
+
+            var filter = await creator(configuration);
+            
+            var settingsWithPriority = new Dictionary<string, object>(configuration.Settings)
             {
-                // Determine filter type
-                var filterType = DetermineFilterType(configuration);
-                
-                // Create the filter
-                IAlertFilter filter;
-                if (_filterCreators.TryGetValue(filterType, out var creator))
-                {
-                    filter = await creator(configuration);
-                }
-                else
-                {
-                    throw new NotSupportedException($"Filter type '{filterType}' is not supported");
-                }
-
-                // Configure the filter
-                var configResult = filter.Configure(configuration.Settings, correlationId);
-                if (!configResult)
-                {
-                    throw new InvalidOperationException($"Failed to configure filter '{configuration.Name}'");
-                }
-
-                // Set priority
-                filter.Priority = configuration.Priority;
-
-                var creationTime = DateTime.UtcNow - startTime;
-                LogInfo($"Created and configured filter '{configuration.Name}' of type '{filterType}' in {creationTime.TotalMilliseconds:F2}ms", correlationId);
-                
-                return filter;
-            }
-            catch (Exception ex)
-            {
-                var creationTime = DateTime.UtcNow - startTime;
-                LogError($"Failed to create filter '{configuration.Name}': {ex.Message} (took {creationTime.TotalMilliseconds:F2}ms)", correlationId);
-                throw;
-            }
+                ["Priority"] = configuration.Priority
+            };
+            
+            filter.Configure(settingsWithPriority, correlationId);
+            LogInfo($"Created filter '{configuration.Name}' of type '{filterType}'", correlationId);
+            
+            return filter;
         }
 
         /// <summary>
@@ -295,6 +272,7 @@ namespace AhBearStudios.Core.Alerting.Factories
 
         /// <summary>
         /// Creates multiple filters from a collection of configurations.
+        /// Simple batch creation - assumes all configurations are pre-validated.
         /// </summary>
         public async UniTask<IEnumerable<IAlertFilter>> CreateFiltersAsync(
             IEnumerable<FilterConfiguration> configurations,
@@ -303,23 +281,8 @@ namespace AhBearStudios.Core.Alerting.Factories
             if (configurations == null)
                 throw new ArgumentNullException(nameof(configurations));
 
-            var filters = new List<IAlertFilter>();
-            var tasks = configurations.AsValueEnumerable().Select(config => CreateFilterSafely(config, correlationId));
-            var results = await UniTask.WhenAll(tasks);
-
-            foreach (var result in results)
-            {
-                if (result.IsSuccessful)
-                {
-                    filters.Add(result.Filter);
-                }
-                else
-                {
-                    LogError($"Failed to create filter: {result.Error}", correlationId);
-                }
-            }
-
-            return filters;
+            var tasks = configurations.AsValueEnumerable().Select(config => CreateAndConfigureFilterAsync(config, correlationId)).ToArray();
+            return await UniTask.WhenAll(tasks);
         }
 
         /// <summary>
@@ -396,59 +359,6 @@ namespace AhBearStudios.Core.Alerting.Factories
             return filters;
         }
 
-        /// <summary>
-        /// Validates a filter configuration before creation.
-        /// </summary>
-        public ValidationResult ValidateFilterConfiguration(FilterConfiguration configuration)
-        {
-            if (configuration == null)
-                return ValidationResult.Failure(new[] { new ValidationError("Configuration cannot be null") }, "AlertFilterFactory");
-
-            var errors = new List<ValidationError>();
-
-            // Validate basic properties
-            if (string.IsNullOrEmpty(configuration.Type))
-                errors.Add(new ValidationError("Filter type cannot be null or empty"));
-
-            if (configuration.Name.IsEmpty)
-                errors.Add(new ValidationError("Filter name cannot be empty"));
-
-            if (configuration.Priority < 0)
-                errors.Add(new ValidationError("Filter priority cannot be negative"));
-
-            // Validate type-specific settings
-            var filterType = DetermineFilterType(configuration);
-            switch (filterType)
-            {
-                case FilterType.Severity:
-                    ValidateSeverityFilterSettings(configuration.Settings, errors);
-                    break;
-
-                case FilterType.Source:
-                    ValidateSourceFilterSettings(configuration.Settings, errors);
-                    break;
-
-                case FilterType.RateLimit:
-                    ValidateRateLimitFilterSettings(configuration.Settings, errors);
-                    break;
-
-                case FilterType.Content:
-                    ValidateContentFilterSettings(configuration.Settings, errors);
-                    break;
-
-                case FilterType.TimeBased:
-                    ValidateTimeBasedFilterSettings(configuration.Settings, errors);
-                    break;
-
-                case FilterType.Composite:
-                    ValidateCompositeFilterSettings(configuration.Settings, errors);
-                    break;
-            }
-
-            return errors.AsValueEnumerable().Any()
-                ? ValidationResult.Failure(errors, "AlertFilterFactory")
-                : ValidationResult.Success("AlertFilterFactory");
-        }
 
         /// <summary>
         /// Gets the default configuration for a specific filter type.
@@ -549,13 +459,14 @@ namespace AhBearStudios.Core.Alerting.Factories
                 ? severity
                 : AlertSeverity.Info;
 
-            await UniTask.CompletedTask;
             var allowCriticalAlways = config.Settings.TryGetValue("AllowCriticalAlways", out var criticalValue)
                 && criticalValue is bool critical
                 ? critical
                 : true;
 
-            return new SeverityAlertFilter(minimumSeverity, allowCriticalAlways);
+            await UniTask.CompletedTask;
+
+            return new SeverityAlertFilter(_messageBusService, minimumSeverity, allowCriticalAlways);
         }
 
         private async UniTask<IAlertFilter> CreateSourceFilterInternal(FilterConfiguration config)
@@ -571,7 +482,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 : true;
 
             await UniTask.CompletedTask;
-            return new SourceAlertFilter(config.Name.ToString(), allowedSources, useWhitelist);
+            return new SourceAlertFilter(_messageBusService, config.Name.ToString(), allowedSources, useWhitelist);
         }
 
         private async UniTask<IAlertFilter> CreateRateLimitFilterInternal(FilterConfiguration config)
@@ -582,7 +493,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 : 60;
 
             await UniTask.CompletedTask;
-            return new RateLimitAlertFilter(config.Name.ToString(), maxAlertsPerMinute);
+            return new RateLimitAlertFilter(_messageBusService, maxAlertsPerMinute);
         }
 
         private async UniTask<IAlertFilter> CreateContentFilterInternal(FilterConfiguration config)
@@ -593,7 +504,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 : new List<string>();
 
             await UniTask.CompletedTask;
-            return new ContentAlertFilter(config.Name.ToString(), patterns);
+            return new ContentAlertFilter(_messageBusService, config.Name.ToString(), patterns);
         }
 
         private async UniTask<IAlertFilter> CreateTimeBasedFilterInternal(FilterConfiguration config)
@@ -604,7 +515,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 : new List<TimeRange> { TimeRange.Always() };
 
             await UniTask.CompletedTask;
-            return new TimeBasedAlertFilter(config.Name.ToString(), timeRanges);
+            return new TimeBasedAlertFilter(_messageBusService, config.Name.ToString(), timeRanges);
         }
 
         private async UniTask<IAlertFilter> CreateCompositeFilterInternal(FilterConfiguration config)
@@ -620,31 +531,31 @@ namespace AhBearStudios.Core.Alerting.Factories
                 : LogicalOperator.And;
 
             await UniTask.CompletedTask;
-            return new CompositeAlertFilter(config.Name.ToString(), childFilters, logicalOperator);
+            return new CompositeAlertFilter(_messageBusService, config.Name.ToString(), childFilters, logicalOperator);
         }
 
         private async UniTask<IAlertFilter> CreateTagFilterInternal(FilterConfiguration config)
         {
             await UniTask.CompletedTask;
-            return new TagAlertFilter(config.Name.ToString());
+            return new TagAlertFilter(_messageBusService, config.Name.ToString());
         }
 
         private async UniTask<IAlertFilter> CreateCorrelationFilterInternal(FilterConfiguration config)
         {
             await UniTask.CompletedTask;
-            return new CorrelationAlertFilter(config.Name.ToString());
+            return new CorrelationAlertFilter(_messageBusService, config.Name.ToString());
         }
 
         private async UniTask<IAlertFilter> CreatePassThroughFilterInternal(FilterConfiguration config)
         {
             await UniTask.CompletedTask;
-            return new PassThroughAlertFilter(config.Name.ToString());
+            return new PassThroughAlertFilter(_messageBusService, config.Name.ToString());
         }
 
         private async UniTask<IAlertFilter> CreateBlockFilterInternal(FilterConfiguration config)
         {
             await UniTask.CompletedTask;
-            return new BlockAlertFilter(config.Name.ToString());
+            return new BlockAlertFilter(_messageBusService, config.Name.ToString());
         }
 
         private FilterType DetermineFilterType(FilterConfiguration configuration)
@@ -669,71 +580,7 @@ namespace AhBearStudios.Core.Alerting.Factories
             };
         }
 
-        private async UniTask<FilterCreationResult> CreateFilterSafely(FilterConfiguration configuration, Guid correlationId)
-        {
-            var startTime = DateTime.UtcNow;
-            
-            try
-            {
-                var filter = await CreateAndConfigureFilterAsync(configuration, correlationId);
-                var creationTime = DateTime.UtcNow - startTime;
-                return FilterCreationResult.Success(filter, configuration, creationTime);
-            }
-            catch (Exception ex)
-            {
-                var creationTime = DateTime.UtcNow - startTime;
-                return FilterCreationResult.Failure(ex.Message, configuration, creationTime);
-            }
-        }
 
-        #region Validation Methods
-
-        private void ValidateSeverityFilterSettings(Dictionary<string, object> settings, List<ValidationError> errors)
-        {
-            if (!settings.ContainsKey("MinimumSeverity"))
-                errors.Add(new ValidationError("Severity filter requires MinimumSeverity setting"));
-        }
-
-        private void ValidateSourceFilterSettings(Dictionary<string, object> settings, List<ValidationError> errors)
-        {
-            if (!settings.ContainsKey("AllowedSources"))
-                errors.Add(new ValidationError("Source filter requires AllowedSources setting"));
-        }
-
-        private void ValidateRateLimitFilterSettings(Dictionary<string, object> settings, List<ValidationError> errors)
-        {
-            if (settings.TryGetValue("MaxAlertsPerMinute", out var rateValue))
-            {
-                if (!int.TryParse(rateValue.ToString(), out var rate) || rate <= 0)
-                    errors.Add(new ValidationError("RateLimit filter MaxAlertsPerMinute must be a positive integer"));
-            }
-            else
-            {
-                errors.Add(new ValidationError("RateLimit filter requires MaxAlertsPerMinute setting"));
-            }
-        }
-
-        private void ValidateContentFilterSettings(Dictionary<string, object> settings, List<ValidationError> errors)
-        {
-            if (!settings.ContainsKey("Patterns"))
-                errors.Add(new ValidationError("Content filter requires Patterns setting"));
-        }
-
-        private void ValidateTimeBasedFilterSettings(Dictionary<string, object> settings, List<ValidationError> errors)
-        {
-            if (!settings.ContainsKey("TimeRanges"))
-                errors.Add(new ValidationError("TimeBased filter requires TimeRanges setting"));
-        }
-
-        private void ValidateCompositeFilterSettings(Dictionary<string, object> settings, List<ValidationError> errors)
-        {
-            if (!settings.ContainsKey("ChildFilters"))
-                errors.Add(new ValidationError("Composite filter requires ChildFilters setting"));
-            else if (settings["ChildFilters"] is IEnumerable<IAlertFilter> filters && !filters.AsValueEnumerable().Any())
-                errors.Add(new ValidationError("Composite filter requires at least one child filter"));
-        }
-
-        #endregion
 
         private void LogInfo(string message, Guid correlationId = default)
         {
