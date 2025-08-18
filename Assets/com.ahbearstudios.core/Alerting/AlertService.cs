@@ -282,7 +282,7 @@ namespace AhBearStudios.Core.Alerting
                     }
 
                     // Send to channels
-                    _ = DeliverAlertToChannelsAsync(suppressedAlert).Forget();
+                    DeliverAlertToChannelsAsync(suppressedAlert).Forget();
 
                     // Publish message
                     PublishAlertRaisedMessage(suppressedAlert);
@@ -365,7 +365,7 @@ namespace AhBearStudios.Core.Alerting
                 // Publish message
                 PublishAlertAcknowledgedMessage(acknowledgedAlert);
 
-                LogInfo($"Alert acknowledged: {alertId}", correlationId == default ? alert.CorrelationId : correlationId);
+                LogInfo($"Alert acknowledged: {alertId}", correlationId == default ? alert.CorrelationId : Guid.Parse(correlationId.ToString()));
             }
         }
 
@@ -388,7 +388,7 @@ namespace AhBearStudios.Core.Alerting
                 // Publish message
                 PublishAlertResolvedMessage(resolvedAlert);
 
-                LogInfo($"Alert resolved: {alertId}", correlationId == default ? alert.CorrelationId : correlationId);
+                LogInfo($"Alert resolved: {alertId}", correlationId == default ? alert.CorrelationId : Guid.Parse(correlationId.ToString()));
             }
         }
 
@@ -451,25 +451,25 @@ namespace AhBearStudios.Core.Alerting
                 if (_channelService != null)
                 {
                     // Use integrated channel service
-                    _ = _channelService.RegisterChannelAsync(channel, null, correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString())).Forget();
+                    _channelService.RegisterChannelAsync(channel, null, correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString())).Forget();
                 }
                 else
                 {
                     // Fallback to local collection
                     lock (_syncLock)
                     {
-                        if (!_channels.Any(c => c.Name.ToString() == channel.Name.ToString()))
+                        if (!_channels.AsValueEnumerable().Any(c => c.Name.ToString() == channel.Name.ToString()))
                         {
                             _channels.Add(channel);
                         }
                     }
                 }
                 
-                LogInfo($"Alert channel registered: {channel.Name}", correlationId);
+                LogInfo($"Alert channel registered: {channel.Name}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
             }
             catch (Exception ex)
             {
-                LogError($"Failed to register channel {channel.Name}: {ex.Message}", correlationId);
+                LogError($"Failed to register channel {channel.Name}: {ex.Message}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
             }
         }
 
@@ -484,7 +484,7 @@ namespace AhBearStudios.Core.Alerting
                 {
                     // Use integrated channel service
                     var result = _channelService.UnregisterChannelAsync(channelName, correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString())).GetAwaiter().GetResult();
-                    LogInfo($"Alert channel unregistered: {channelName}", correlationId);
+                    LogInfo($"Alert channel unregistered: {channelName}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
                     return result;
                 }
                 else
@@ -497,7 +497,7 @@ namespace AhBearStudios.Core.Alerting
                         if (channel != null)
                         {
                             _channels.Remove(channel);
-                            LogInfo($"Alert channel unregistered: {channelName}", correlationId);
+                            LogInfo($"Alert channel unregistered: {channelName}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
                             return true;
                         }
                     }
@@ -506,7 +506,7 @@ namespace AhBearStudios.Core.Alerting
             }
             catch (Exception ex)
             {
-                LogError($"Failed to unregister channel {channelName}: {ex.Message}", correlationId);
+                LogError($"Failed to unregister channel {channelName}: {ex.Message}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
                 return false;
             }
         }
@@ -527,7 +527,7 @@ namespace AhBearStudios.Core.Alerting
                     // Fallback to local collection
                     lock (_syncLock)
                     {
-                        return _channels.ToList();
+                        return _channels.AsValueEnumerable().ToList();
                     }
                 }
             }
@@ -561,7 +561,7 @@ namespace AhBearStudios.Core.Alerting
                     // Fallback to local collection
                     lock (_syncLock)
                     {
-                        if (!_filters.Any(f => f.Name.ToString() == filter.Name.ToString()))
+                        if (!_filters.AsValueEnumerable().Any(f => f.Name.ToString() == filter.Name.ToString()))
                         {
                             _filters.Add(filter);
                             _filters.Sort((x, y) => x.Priority.CompareTo(y.Priority));
@@ -569,11 +569,11 @@ namespace AhBearStudios.Core.Alerting
                     }
                 }
                 
-                LogInfo($"Alert filter added: {filter.Name}", correlationId);
+                LogInfo($"Alert filter added: {filter.Name}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
             }
             catch (Exception ex)
             {
-                LogError($"Failed to add filter {filter.Name}: {ex.Message}", correlationId);
+                LogError($"Failed to add filter {filter.Name}: {ex.Message}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
             }
         }
 
@@ -592,7 +592,7 @@ namespace AhBearStudios.Core.Alerting
                     var result = _filterService.UnregisterFilter(nameStr, correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
                     if (result)
                     {
-                        LogInfo($"Alert filter removed: {filterName}", correlationId);
+                        LogInfo($"Alert filter removed: {filterName}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
                     }
                     return result;
                 }
@@ -605,7 +605,7 @@ namespace AhBearStudios.Core.Alerting
                         if (filter != null)
                         {
                             _filters.Remove(filter);
-                            LogInfo($"Alert filter removed: {filterName}", correlationId);
+                            LogInfo($"Alert filter removed: {filterName}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
                             return true;
                         }
                     }
@@ -614,7 +614,7 @@ namespace AhBearStudios.Core.Alerting
             }
             catch (Exception ex)
             {
-                LogError($"Failed to remove filter {filterName}: {ex.Message}", correlationId);
+                LogError($"Failed to remove filter {filterName}: {ex.Message}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
                 return false;
             }
         }
@@ -703,7 +703,7 @@ namespace AhBearStudios.Core.Alerting
                     _activeAlerts.Remove(id);
                 }
 
-                LogDebug($"Maintenance completed: {toRemove.Count} old alerts cleaned up", correlationId);
+                LogDebug($"Maintenance completed: {toRemove.Count} old alerts cleaned up", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
             }
         }
 
@@ -716,7 +716,7 @@ namespace AhBearStudios.Core.Alerting
             var flushTasks = channels.AsValueEnumerable().Select(c => c.FlushAsync(correlationId)).ToList();
             
             await UniTask.WhenAll(flushTasks);
-            LogDebug("All channels flushed", correlationId);
+            LogDebug("All channels flushed", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
         }
 
         #endregion
@@ -857,7 +857,7 @@ namespace AhBearStudios.Core.Alerting
 
                 lock (_syncLock)
                 {
-                    foreach (var filter in _filters)
+                    foreach (var filter in _filters.AsValueEnumerable())
                     {
                         if (!filter.IsEnabled || !filter.CanHandle(currentAlert))
                             continue;
@@ -1003,7 +1003,7 @@ namespace AhBearStudios.Core.Alerting
 
                 await UniTask.RunOnThreadPool(() =>
                 {
-                    foreach (var alertId in alertIds)
+                    foreach (var alertId in alertIds.AsValueEnumerable())
                     {
                         AcknowledgeAlert(alertId, correlationId.ToString());
                     }
@@ -1022,7 +1022,7 @@ namespace AhBearStudios.Core.Alerting
 
                 await UniTask.RunOnThreadPool(() =>
                 {
-                    foreach (var alertId in alertIds)
+                    foreach (var alertId in alertIds.AsValueEnumerable())
                     {
                         ResolveAlert(alertId, correlationId.ToString());
                     }
@@ -1164,7 +1164,7 @@ namespace AhBearStudios.Core.Alerting
         /// </summary>
         public void ResetMetrics(Guid correlationId = default)
         {
-            _performanceMetrics = new AlertSystemPerformanceMetrics();
+            _performanceMetrics = AlertSystemPerformanceMetrics.Create();
             _channelService?.ResetMetrics(correlationId);
             _filterService?.ResetPerformanceMetrics(correlationId);
             _suppressionService?.ResetStatistics();

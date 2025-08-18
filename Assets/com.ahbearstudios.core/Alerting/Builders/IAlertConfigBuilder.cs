@@ -472,6 +472,14 @@ namespace AhBearStudios.Core.Alerting.Builders
         AlertConfig Build();
 
         /// <summary>
+        /// Builds an AlertServiceConfiguration that wraps the AlertConfig for service-level configuration.
+        /// This creates a complete service configuration with all required settings for the AlertService.
+        /// </summary>
+        /// <returns>A complete AlertServiceConfiguration instance</returns>
+        /// <exception cref="InvalidOperationException">Thrown when configuration is invalid</exception>
+        AlertServiceConfiguration BuildServiceConfiguration();
+
+        /// <summary>
         /// Resets the builder to its initial state.
         /// Clears all configuration and returns to default settings.
         /// </summary>

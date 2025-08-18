@@ -1144,14 +1144,27 @@ namespace AhBearStudios.Core.Alerting.Builders
             return new AlertServiceConfiguration
             {
                 AlertConfig = alertConfig,
-                ServiceEnabled = true,
-                ServiceTimeout = _processingTimeout,
-                MaxRetryAttempts = 3,
-                RetryDelay = TimeSpan.FromSeconds(1),
-                EnableHealthChecking = true,
+                ServiceName = "AlertService",
+                StartupTimeout = TimeSpan.FromSeconds(30),
+                ShutdownTimeout = TimeSpan.FromSeconds(10),
+                AutoStart = true,
+                ValidateOnStartup = true,
+                Environment = AlertEnvironmentType.Production,
+                EnableUnityIntegration = _enableUnityIntegration,
+                EnableHealthReporting = true,
                 HealthCheckInterval = TimeSpan.FromMinutes(1),
-                EnablePerformanceMetrics = _enableMetrics,
-                MetricsCollectionInterval = TimeSpan.FromSeconds(30)
+                EnableMetrics = _enableMetrics,
+                MetricsInterval = TimeSpan.FromSeconds(30),
+                EnableTelemetry = false,
+                MaxMemoryUsageMB = 100,
+                MaxConcurrentOperations = 50,
+                MaxQueuedAlerts = 1000,
+                ContinueOnError = true,
+                MaxConsecutiveErrors = 10,
+                ErrorWindow = TimeSpan.FromMinutes(5),
+                LogErrors = true,
+                EscalateCriticalErrors = true,
+                AutoDisposeOnShutdown = true
             };
         }
 
