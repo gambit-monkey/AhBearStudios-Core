@@ -1,6 +1,9 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
+using AhBearStudios.Core.HealthChecking.Checks;
+using Cysharp.Threading.Tasks;
+using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.HealthChecking.Messages;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Logging;
@@ -18,11 +21,37 @@ namespace AhBearStudios.Core.Messaging.HealthChecks
         private readonly IMessageBusService _messageBusService;
         private readonly MessageBusConfig _config;
         private readonly ILoggingService _logger;
+        private HealthCheckConfiguration _configuration;
 
         /// <summary>
         /// Gets the name of this health check.
         /// </summary>
         public FixedString64Bytes Name => "MessageBus";
+
+        /// <summary>
+        /// Gets the description of this health check.
+        /// </summary>
+        public string Description => "Monitors message bus performance, throughput, and system health indicators";
+
+        /// <summary>
+        /// Gets the category of this health check.
+        /// </summary>
+        public HealthCheckCategory Category => HealthCheckCategory.System;
+
+        /// <summary>
+        /// Gets the timeout for this health check.
+        /// </summary>
+        public TimeSpan Timeout => TimeSpan.FromSeconds(30);
+
+        /// <summary>
+        /// Gets the current configuration for this health check.
+        /// </summary>
+        public HealthCheckConfiguration Configuration => _configuration ?? CreateDefaultConfiguration();
+
+        /// <summary>
+        /// Gets the dependencies for this health check.
+        /// </summary>
+        public IEnumerable<FixedString64Bytes> Dependencies => Array.Empty<FixedString64Bytes>();
 
         /// <summary>
         /// Initializes a new instance of the MessageBusHealthCheck class.
@@ -46,17 +75,18 @@ namespace AhBearStudios.Core.Messaging.HealthChecks
         /// </summary>
         /// <param name="cancellationToken">Cancellation token for the operation</param>
         /// <returns>The health check result</returns>
-        public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
+        public async UniTask<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
         {
             try
             {
                 _logger.LogInfo("Starting MessageBus health check");
 
                 var statistics = _messageBusService.GetStatistics();
+                var currentHealthStatus = _messageBusService.GetHealthStatus();
                 var healthData = new Dictionary<string, object>
                 {
                     ["InstanceName"] = statistics.InstanceName.ToString(),
-                    ["IsOperational"] = _messageBusService.IsOperational,
+                    ["HealthStatus"] = currentHealthStatus.ToString(),
                     ["TotalMessagesPublished"] = statistics.TotalMessagesPublished,
                     ["TotalMessagesProcessed"] = statistics.TotalMessagesProcessed,
                     ["TotalMessagesFailed"] = statistics.TotalMessagesFailed,
@@ -70,11 +100,11 @@ namespace AhBearStudios.Core.Messaging.HealthChecks
                     ["FailureRate"] = statistics.FailureRate
                 };
 
-                // Check if service is operational
-                if (!_messageBusService.IsOperational)
+                // Check if service is operational based on health status
+                if (currentHealthStatus == HealthStatus.Unhealthy || currentHealthStatus == HealthStatus.Critical || currentHealthStatus == HealthStatus.Offline)
                 {
-                    _logger.LogError("MessageBus is not operational");
-                    return HealthCheckResult.Unhealthy("Message bus service is not operational", healthData);
+                    _logger.LogError($"MessageBus is not operational: {currentHealthStatus}");
+                    return HealthCheckResult.Unhealthy(Name.ToString(), $"Message bus service is not operational: {currentHealthStatus}", data: healthData);
                 }
 
                 // Check success rate
@@ -82,7 +112,7 @@ namespace AhBearStudios.Core.Messaging.HealthChecks
                 {
                     var message = $"Low success rate: {statistics.SuccessRate:P2}";
                     _logger.LogWarning(message);
-                    return HealthCheckResult.Unhealthy(message, healthData);
+                    return HealthCheckResult.Unhealthy(Name.ToString(), message, data: healthData);
                 }
 
                 // Check queue depth
@@ -91,7 +121,7 @@ namespace AhBearStudios.Core.Messaging.HealthChecks
                     var message =
                         $"Queue depth approaching limit: {statistics.CurrentQueueDepth}/{_config.MaxQueueSize}";
                     _logger.LogWarning(message);
-                    return HealthCheckResult.Degraded(message, healthData);
+                    return HealthCheckResult.Degraded(Name.ToString(), message, data: healthData);
                 }
 
                 // Check processing performance
@@ -99,7 +129,7 @@ namespace AhBearStudios.Core.Messaging.HealthChecks
                 {
                     var message = $"High processing time: {statistics.AverageProcessingTimeMs:F2}ms";
                     _logger.LogWarning(message);
-                    return HealthCheckResult.Degraded(message, healthData);
+                    return HealthCheckResult.Degraded(Name.ToString(), message, data: healthData);
                 }
 
                 // Check dead letter queue
@@ -109,7 +139,7 @@ namespace AhBearStudios.Core.Messaging.HealthChecks
                     var message =
                         $"Dead letter queue filling up: {statistics.DeadLetterQueueSize}/{_config.DeadLetterQueueMaxSize}";
                     _logger.LogWarning(message);
-                    return HealthCheckResult.Degraded(message, healthData);
+                    return HealthCheckResult.Degraded(Name.ToString(), message, data: healthData);
                 }
 
                 // Check for degraded performance indicators
@@ -120,7 +150,7 @@ namespace AhBearStudios.Core.Messaging.HealthChecks
                     var message = "Message bus performance is degraded";
                     _logger.LogInfo(
                         $"{message}: SuccessRate={statistics.SuccessRate:P2}, QueueDepth={statistics.CurrentQueueDepth}, AvgTime={statistics.AverageProcessingTimeMs:F2}ms");
-                    return HealthCheckResult.Degraded(message, healthData);
+                    return HealthCheckResult.Degraded(Name.ToString(), message, data: healthData);
                 }
 
                 // Perform a lightweight functional test
@@ -128,22 +158,75 @@ namespace AhBearStudios.Core.Messaging.HealthChecks
                 if (functionalTestResult != null)
                 {
                     healthData["FunctionalTestError"] = functionalTestResult;
-                    return HealthCheckResult.Degraded($"Functional test failed: {functionalTestResult}", healthData);
+                    return HealthCheckResult.Degraded(Name.ToString(), $"Functional test failed: {functionalTestResult}", data: healthData);
                 }
 
                 _logger.LogInfo("MessageBus health check completed successfully");
-                return HealthCheckResult.Healthy("Message bus is operating normally", healthData);
+                return HealthCheckResult.Healthy(Name.ToString(), "Message bus is operating normally", data: healthData);
             }
             catch (OperationCanceledException)
             {
                 _logger.LogWarning("MessageBus health check was cancelled");
-                return HealthCheckResult.Unhealthy("Health check operation was cancelled");
+                return HealthCheckResult.Unhealthy(Name.ToString(), "Health check operation was cancelled");
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, "MessageBus health check failed");
-                return HealthCheckResult.Unhealthy($"Health check failed: {ex.Message}");
+                _logger.LogException("MessageBus health check failed", ex);
+                return HealthCheckResult.Unhealthy(Name.ToString(), $"Health check failed: {ex.Message}", exception: ex);
             }
+        }
+
+        /// <summary>
+        /// Configures the health check with new configuration settings.
+        /// </summary>
+        /// <param name="configuration">Configuration to apply to this health check</param>
+        public void Configure(HealthCheckConfiguration configuration)
+        {
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _logger.LogInfo("MessageBus health check configuration updated");
+        }
+
+        /// <summary>
+        /// Gets comprehensive metadata about this health check.
+        /// </summary>
+        /// <returns>Dictionary containing metadata about the health check</returns>
+        public Dictionary<string, object> GetMetadata()
+        {
+            return new Dictionary<string, object>
+            {
+                ["Name"] = Name.ToString(),
+                ["Description"] = Description,
+                ["Category"] = Category.ToString(),
+                ["Timeout"] = Timeout.ToString(),
+                ["ConfigurationVersion"] = Configuration?.Version ?? "Default",
+                ["MessageBusInstance"] = _config.InstanceName,
+                ["SupportsRetry"] = _config.RetryFailedMessages,
+                ["SupportsCircuitBreaker"] = _config.UseCircuitBreaker,
+                ["MaxConcurrentHandlers"] = _config.MaxConcurrentHandlers,
+                ["MaxQueueSize"] = _config.MaxQueueSize
+            };
+        }
+
+        /// <summary>
+        /// Creates the default configuration for this health check.
+        /// </summary>
+        /// <returns>Default health check configuration</returns>
+        private HealthCheckConfiguration CreateDefaultConfiguration()
+        {
+            return new HealthCheckConfiguration
+            {
+                Name = Name,
+                DisplayName = "Message Bus Health Check",
+                Description = Description,
+                Enabled = true,
+                Timeout = Timeout,
+                Category = Category,
+                RetryConfig = new RetryConfig
+                {
+                    MaxRetries = 1,
+                    RetryDelay = TimeSpan.FromSeconds(1)
+                }
+            };
         }
 
         /// <summary>
@@ -151,14 +234,14 @@ namespace AhBearStudios.Core.Messaging.HealthChecks
         /// </summary>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Error message if test fails, null if successful</returns>
-        private async Task<string> PerformFunctionalTestAsync(CancellationToken cancellationToken)
+        private async UniTask<string> PerformFunctionalTestAsync(CancellationToken cancellationToken)
         {
             try
             {
                 // Create a simple test message
                 var testMessage = new HealthCheckTestMessage();
                 var messageReceived = false;
-                var tcs = new TaskCompletionSource<bool>();
+                var tcs = new UniTaskCompletionSource<bool>();
 
                 // Set up a test subscription
                 using var subscription = _messageBusService.SubscribeToMessage<HealthCheckTestMessage>(msg =>
@@ -180,7 +263,7 @@ namespace AhBearStudios.Core.Messaging.HealthChecks
 
                 try
                 {
-                    await tcs.Task.WaitAsync(combinedCts.Token);
+                    await tcs.Task.AttachExternalCancellation(combinedCts.Token);
                 }
                 catch (OperationCanceledException)
                 {

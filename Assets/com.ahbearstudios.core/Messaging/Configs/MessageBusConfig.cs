@@ -1,5 +1,8 @@
-﻿using System.Text;
+﻿using System;
+using System.Text;
 using AhBearStudios.Core.Messaging.Builders;
+using AhBearStudios.Core.HealthChecking.Configs;
+using ZLinq;
 
 namespace AhBearStudios.Core.Messaging.Configs
 {
@@ -79,6 +82,16 @@ namespace AhBearStudios.Core.Messaging.Configs
         /// Gets or sets whether to warm up the thread pool on startup.
         /// </summary>
         public bool WarmUpThreadPool { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets whether dead letter queue is enabled for failed messages.
+        /// </summary>
+        public bool DeadLetterQueueEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Gets or sets the maximum size of the dead letter queue.
+        /// </summary>
+        public int DeadLetterQueueMaxSize { get; set; } = 1000;
 
         #endregion
 
@@ -192,6 +205,29 @@ namespace AhBearStudios.Core.Messaging.Configs
         #region Predefined Configurations
 
         /// <summary>
+        /// Gets a default configuration with balanced performance and reliability settings.
+        /// </summary>
+        public static MessageBusConfig Default => new MessageBusConfigBuilder()
+            .WithInstanceName("DefaultMessageBus")
+            .WithAsyncSupport(true)
+            .WithPerformanceMonitoring(true)
+            .WithHealthChecks(true)
+            .WithAlerts(true)
+            .WithRetryPolicy(true, 3, TimeSpan.FromSeconds(1))
+            .WithDeadLetterQueue(true, 1000)
+            .WithCircuitBreaker(true)
+            .WithObjectPooling(true)
+            .WithMaxConcurrentHandlers(Environment.ProcessorCount * 2)
+            .WithMaxQueueSize(10000)
+            .WithHandlerTimeout(TimeSpan.FromSeconds(30))
+            .WithStatisticsUpdateInterval(TimeSpan.FromSeconds(10))
+            .WithHealthCheckInterval(TimeSpan.FromSeconds(30))
+            .WithErrorRateThresholds(0.05, 0.10) // 5% warning, 10% critical
+            .WithQueueSizeThresholds(1000, 5000) // 1000 warning, 5000 critical
+            .WithProcessingTimeThresholds(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(5))
+            .Build();
+
+        /// <summary>
         /// Gets a high-performance configuration optimized for speed.
         /// </summary>
         public static MessageBusConfig HighPerformance => new MessageBusConfigBuilder()
@@ -201,6 +237,7 @@ namespace AhBearStudios.Core.Messaging.Configs
             .WithHealthChecks(true)
             .WithAlerts(false) // Disabled for maximum performance
             .WithRetryPolicy(false) // Disabled for maximum performance
+            .WithDeadLetterQueue(false) // Disabled for maximum performance
             .WithCircuitBreaker(false) // Disabled for maximum performance
             .WithObjectPooling(true)
             .WithMaxConcurrentHandlers(Environment.ProcessorCount * 4)
@@ -222,6 +259,7 @@ namespace AhBearStudios.Core.Messaging.Configs
             .WithHealthChecks(true)
             .WithAlerts(true)
             .WithRetryPolicy(true, 5, TimeSpan.FromSeconds(2))
+            .WithDeadLetterQueue(true, 2000) // Larger DLQ for reliability
             .WithCircuitBreaker(true)
             .WithObjectPooling(true)
             .WithMaxConcurrentHandlers(Environment.ProcessorCount)
@@ -244,6 +282,7 @@ namespace AhBearStudios.Core.Messaging.Configs
             .WithHealthChecks(true)
             .WithAlerts(true)
             .WithRetryPolicy(true, 2, TimeSpan.FromMilliseconds(500))
+            .WithDeadLetterQueue(true, 500) // Smaller DLQ for development
             .WithCircuitBreaker(true)
             .WithObjectPooling(false) // Disabled for easier debugging
             .WithMaxConcurrentHandlers(2)
@@ -311,10 +350,17 @@ namespace AhBearStudios.Core.Messaging.Configs
                     errors.AppendLine("MaxRetryBatchSize must be greater than 0 when retry is enabled");
             }
 
+            // Validate dead letter queue configuration
+            if (DeadLetterQueueEnabled)
+            {
+                if (DeadLetterQueueMaxSize <= 0)
+                    errors.AppendLine("DeadLetterQueueMaxSize must be greater than 0 when dead letter queue is enabled");
+            }
+
             // Validate circuit breaker configuration
             if (UseCircuitBreaker && CircuitBreakerConfig != null)
             {
-                if (!CircuitBreakerConfig.IsValid())
+                if (CircuitBreakerConfig.Validate().AsValueEnumerable().Any())
                     errors.AppendLine("CircuitBreakerConfig is invalid");
             }
 
@@ -377,7 +423,8 @@ namespace AhBearStudios.Core.Messaging.Configs
                    $"Alerts={AlertsEnabled}, " +
                    $"Retry={RetryFailedMessages}, " +
                    $"CircuitBreaker={UseCircuitBreaker}, " +
-                   $"Pooling={UseObjectPooling}";
+                   $"Pooling={UseObjectPooling}, " +
+                   $"DeadLetterQueue={DeadLetterQueueEnabled}";
         }
 
         /// <summary>
@@ -401,15 +448,18 @@ namespace AhBearStudios.Core.Messaging.Configs
                 UseObjectPooling = UseObjectPooling,
                 PreAllocateMemory = PreAllocateMemory,
                 WarmUpThreadPool = WarmUpThreadPool,
+                DeadLetterQueueEnabled = DeadLetterQueueEnabled,
+                DeadLetterQueueMaxSize = DeadLetterQueueMaxSize,
                 MaxRetryAttempts = MaxRetryAttempts,
                 RetryDelay = RetryDelay,
                 RetryInterval = RetryInterval,
                 MaxRetryBatchSize = MaxRetryBatchSize,
                 CircuitBreakerConfig = new CircuitBreakerConfig
                 {
+                    Name = CircuitBreakerConfig.Name,
                     FailureThreshold = CircuitBreakerConfig.FailureThreshold,
-                    OpenTimeout = CircuitBreakerConfig.OpenTimeout,
-                    HalfOpenSuccessThreshold = CircuitBreakerConfig.HalfOpenSuccessThreshold
+                    Timeout = CircuitBreakerConfig.Timeout,
+                    HalfOpenMaxCalls = CircuitBreakerConfig.HalfOpenMaxCalls
                 },
                 CircuitBreakerCheckInterval = CircuitBreakerCheckInterval,
                 StatisticsUpdateInterval = StatisticsUpdateInterval,

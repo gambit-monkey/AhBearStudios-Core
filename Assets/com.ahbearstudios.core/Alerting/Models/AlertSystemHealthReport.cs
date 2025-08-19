@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Unity.Collections;
+using AhBearStudios.Core.HealthChecking.Models;
 
 namespace AhBearStudios.Core.Alerting.Models
 {
@@ -150,7 +151,7 @@ namespace AhBearStudios.Core.Alerting.Models
         public HealthStatus GetHealthStatus()
         {
             if (!ServiceEnabled)
-                return HealthStatus.Disabled;
+                return HealthStatus.Offline;
 
             if (ConsecutiveFailures >= 5)
                 return HealthStatus.Critical;
@@ -163,36 +164,5 @@ namespace AhBearStudios.Core.Alerting.Models
 
             return HealthStatus.Degraded;
         }
-    }
-
-    /// <summary>
-    /// Enumeration of possible health status levels.
-    /// </summary>
-    public enum HealthStatus
-    {
-        /// <summary>
-        /// System is disabled.
-        /// </summary>
-        Disabled,
-
-        /// <summary>
-        /// System is in critical state with major failures.
-        /// </summary>
-        Critical,
-
-        /// <summary>
-        /// System has warnings or minor issues.
-        /// </summary>
-        Warning,
-
-        /// <summary>
-        /// System is operating with reduced functionality.
-        /// </summary>
-        Degraded,
-
-        /// <summary>
-        /// System is healthy and fully operational.
-        /// </summary>
-        Healthy
     }
 }

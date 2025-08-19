@@ -1,5 +1,6 @@
-﻿using System.Collections.Generic;
-using System.Linq;
+﻿using System;
+using System.Collections.Generic;
+using ZLinq;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.HealthChecking;
@@ -87,7 +88,7 @@ namespace AhBearStudios.Core.Messaging.Factories
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"Failed to create message bus '{config.InstanceName}'");
+                _logger.LogException($"Failed to create message bus '{config.InstanceName}'", ex);
                 
                 if (config.AlertsEnabled)
                 {
@@ -207,7 +208,7 @@ namespace AhBearStudios.Core.Messaging.Factories
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"Failed to register health check for message bus '{config.InstanceName}'");
+                _logger.LogException($"Failed to register health check for message bus '{config.InstanceName}'", ex);
                 
                 if (config.AlertsEnabled)
                 {
@@ -234,7 +235,7 @@ namespace AhBearStudios.Core.Messaging.Factories
             if (_profilerService == null) missingDependencies.Add(nameof(IProfilerService));
             if (_poolingService == null) missingDependencies.Add(nameof(IPoolingService));
 
-            if (missingDependencies.Any())
+            if (missingDependencies.AsValueEnumerable().Any())
             {
                 var errorMessage = $"Required dependencies are missing: {string.Join(", ", missingDependencies)}";
                 throw new InvalidOperationException(errorMessage);

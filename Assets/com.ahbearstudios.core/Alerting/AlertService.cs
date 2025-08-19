@@ -17,6 +17,7 @@ using AhBearStudios.Core.Serialization;
 using AhBearStudios.Core.Pooling;
 using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Alerting.Builders;
+using AhBearStudios.Core.Pooling.Models;
 
 namespace AhBearStudios.Core.Alerting
 {
@@ -713,10 +714,11 @@ namespace AhBearStudios.Core.Alerting
         public async UniTask FlushAsync(FixedString64Bytes correlationId = default)
         {
             var channels = GetRegisteredChannels();
-            var flushTasks = channels.AsValueEnumerable().Select(c => c.FlushAsync(correlationId)).ToList();
+            var correlationGuid = correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString());
+            var flushTasks = channels.AsValueEnumerable().Select(c => c.FlushAsync(correlationGuid)).ToList();
             
             await UniTask.WhenAll(flushTasks);
-            LogDebug("All channels flushed", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
+            LogDebug("All channels flushed", correlationGuid);
         }
 
         #endregion
@@ -916,7 +918,7 @@ namespace AhBearStudios.Core.Alerting
             try
             {
                 var message = AlertRaisedMessage.Create(alert, "AlertService", alert.CorrelationId);
-                _messageBusService?.PublishAsync(message).Forget();
+                _messageBusService?.PublishMessageAsync(message).Forget();
             }
             catch (Exception ex)
             {
@@ -929,7 +931,7 @@ namespace AhBearStudios.Core.Alerting
             try
             {
                 var message = AlertAcknowledgedMessage.Create(alert, "AlertService", alert.CorrelationId);
-                _messageBusService?.PublishAsync(message).Forget();
+                _messageBusService?.PublishMessageAsync(message).Forget();
             }
             catch (Exception ex)
             {
@@ -942,7 +944,7 @@ namespace AhBearStudios.Core.Alerting
             try
             {
                 var message = AlertResolvedMessage.Create(alert, "AlertService", alert.CorrelationId);
-                _messageBusService?.PublishAsync(message).Forget();
+                _messageBusService?.PublishMessageAsync(message).Forget();
             }
             catch (Exception ex)
             {
@@ -1098,6 +1100,18 @@ namespace AhBearStudios.Core.Alerting
         {
             using (_healthCheckMarker.Auto())
             {
+                // Check subsystem health first
+                bool channelServiceHealth = false;
+                int healthyChannelCount = 0;
+                
+                if (_channelService != null)
+                {
+                    await _channelService.PerformHealthChecksAsync(correlationId);
+                    channelServiceHealth = _channelService.IsEnabled;
+                    healthyChannelCount = _channelService.HealthyChannelCount;
+                }
+
+                // Create report with all properties in initializer
                 var report = new AlertSystemHealthReport
                 {
                     Timestamp = DateTime.UtcNow,
@@ -1105,16 +1119,10 @@ namespace AhBearStudios.Core.Alerting
                     ServiceEnabled = IsEnabled,
                     EmergencyModeActive = IsEmergencyModeActive,
                     ConsecutiveFailures = _consecutiveFailures,
-                    LastHealthCheck = _lastHealthCheck
+                    LastHealthCheck = _lastHealthCheck,
+                    ChannelServiceHealth = channelServiceHealth,
+                    HealthyChannelCount = healthyChannelCount
                 };
-
-                // Check subsystem health
-                if (_channelService != null)
-                {
-                    await _channelService.PerformHealthChecksAsync(correlationId);
-                    report.ChannelServiceHealth = _channelService.IsEnabled;
-                    report.HealthyChannelCount = _channelService.HealthyChannelCount;
-                }
 
                 _lastHealthCheck = DateTime.UtcNow;
                 LogInfo($"Health check completed - Overall: {report.OverallHealth}", correlationId);
@@ -1256,7 +1264,7 @@ namespace AhBearStudios.Core.Alerting
                 _isEnabled = false;
                 
                 // Flush pending alerts
-                await FlushAsync(correlationId);
+                await FlushAsync(correlationId.ToString());
                 
                 _isStarted = false;
                 LogInfo("Alert service stopped", correlationId);

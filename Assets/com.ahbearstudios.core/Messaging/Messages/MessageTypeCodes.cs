@@ -56,6 +56,46 @@
         /// </summary>
         public const ushort Alert = 1005;
         
+        /// <summary>
+        /// Type code for message bus configuration messages.
+        /// </summary>
+        public const ushort MessageBusConfiguration = 1006;
+        
+        /// <summary>
+        /// Type code for message bus statistics messages.
+        /// </summary>
+        public const ushort MessageBusStatistics = 1007;
+        
+        /// <summary>
+        /// Type code for message bus health status messages.
+        /// </summary>
+        public const ushort MessageBusHealthStatus = 1008;
+        
+        /// <summary>
+        /// Type code for message routing status messages.
+        /// </summary>
+        public const ushort MessageRoutingStatus = 1009;
+        
+        /// <summary>
+        /// Type code for message processing failed messages.
+        /// </summary>
+        public const ushort MessageProcessingFailed = 1010;
+        
+        /// <summary>
+        /// Type code for message published event messages.
+        /// </summary>
+        public const ushort MessagePublished = 1011;
+        
+        /// <summary>
+        /// Type code for message subscriber registered messages.
+        /// </summary>
+        public const ushort MessageSubscriberRegistered = 1012;
+        
+        /// <summary>
+        /// Type code for message subscriber unregistered messages.
+        /// </summary>
+        public const ushort MessageSubscriberUnregistered = 1013;
+        
         #endregion
         
         #region Logging System Messages (1100-1199)

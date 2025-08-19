@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using AhBearStudios.Core.HealthChecking;
 using AhBearStudios.Core.HealthChecking.Models;
 
@@ -17,22 +18,22 @@ public sealed class MessageBusStatistics
     /// <summary>
     /// Gets the total number of messages published.
     /// </summary>
-    public long MessagesPublished { get; init; }
+    public long TotalMessagesPublished { get; init; }
 
     /// <summary>
     /// Gets the total number of messages successfully processed.
     /// </summary>
-    public long MessagesProcessed { get; init; }
+    public long TotalMessagesProcessed { get; init; }
 
     /// <summary>
     /// Gets the total number of messages that failed processing.
     /// </summary>
-    public long MessagesFailed { get; init; }
+    public long TotalMessagesFailed { get; init; }
 
     /// <summary>
-    /// Gets the current number of active subscriptions.
+    /// Gets the current number of active subscribers.
     /// </summary>
-    public int ActiveSubscriptions { get; init; }
+    public int ActiveSubscribers { get; init; }
 
     /// <summary>
     /// Gets the current size of the dead letter queue.
@@ -40,9 +41,9 @@ public sealed class MessageBusStatistics
     public int DeadLetterQueueSize { get; init; }
 
     /// <summary>
-    /// Gets the current size of the retry queue.
+    /// Gets the current number of messages in retry.
     /// </summary>
-    public int RetryQueueSize { get; init; }
+    public int MessagesInRetry { get; init; }
 
     /// <summary>
     /// Gets the current queue depth (pending messages).
@@ -87,5 +88,20 @@ public sealed class MessageBusStatistics
     /// <summary>
     /// Gets the average processing time in milliseconds.
     /// </summary>
-    public double AverageProcessingTime { get; init; }
+    public double AverageProcessingTimeMs { get; init; }
+
+    /// <summary>
+    /// Gets the current messages per second rate.
+    /// </summary>
+    public double MessagesPerSecond { get; init; }
+
+    /// <summary>
+    /// Gets the success rate (0.0 to 1.0).
+    /// </summary>
+    public double SuccessRate { get; init; }
+
+    /// <summary>
+    /// Gets the failure rate (0.0 to 1.0).
+    /// </summary>
+    public double FailureRate { get; init; }
 }

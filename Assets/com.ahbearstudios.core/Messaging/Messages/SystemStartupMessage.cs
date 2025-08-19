@@ -13,7 +13,7 @@ namespace AhBearStudios.Core.Messaging.Messages.SystemMessages
     /// Contains startup metrics, configuration details, and system health information.
     /// Follows AhBearStudios Core Development Guidelines with immutable design and performance optimization.
     /// </summary>
-    [MessageTypeCode(1)]
+    [MessageTypeCode(1001)]
     [MessageCategory("System")]
     [MessageDescription("Indicates that a system or service has completed startup initialization")]
     [MessagePriority(MessagePriority.High)]
@@ -23,7 +23,7 @@ namespace AhBearStudios.Core.Messaging.Messages.SystemMessages
         #region Core Properties
 
         /// <inheritdoc />
-        public override ushort TypeCode => 1;
+        public override ushort TypeCode => 1001;
 
         /// <summary>
         /// Gets the name of the system or service that started up.

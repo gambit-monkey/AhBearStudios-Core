@@ -6,6 +6,8 @@ using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Alerting.Channels;
 using AhBearStudios.Core.Alerting.Filters;
+using AhBearStudios.Core.Alerting.Services;
+using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Common.Models;
 
 namespace AhBearStudios.Core.Alerting
@@ -23,6 +25,24 @@ namespace AhBearStudios.Core.Alerting
 
         /// <inheritdoc />
         public bool IsEnabled => false;
+
+        /// <inheritdoc />
+        public bool IsHealthy => true;
+
+        /// <inheritdoc />
+        public AlertServiceConfiguration Configuration => new AlertServiceConfiguration();
+
+        /// <inheritdoc />
+        public IAlertChannelService ChannelService => null;
+
+        /// <inheritdoc />
+        public IAlertFilterService FilterService => null;
+
+        /// <inheritdoc />
+        public IAlertSuppressionService SuppressionService => null;
+
+        /// <inheritdoc />
+        public bool IsEmergencyModeActive => false;
 
         /// <inheritdoc />
         public void RaiseAlert(string message, AlertSeverity severity, FixedString64Bytes source, 
@@ -151,6 +171,124 @@ namespace AhBearStudios.Core.Alerting
 
         /// <inheritdoc />
         public UniTask FlushAsync(FixedString64Bytes correlationId = default)
+        {
+            return UniTask.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public UniTask RaiseAlertsAsync(IEnumerable<Alert> alerts, Guid correlationId = default)
+        {
+            return UniTask.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public UniTask AcknowledgeAlertsAsync(IEnumerable<Guid> alertIds, Guid correlationId = default)
+        {
+            return UniTask.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public UniTask ResolveAlertsAsync(IEnumerable<Guid> alertIds, Guid correlationId = default)
+        {
+            return UniTask.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public UniTask<bool> UpdateConfigurationAsync(AlertServiceConfiguration configuration, Guid correlationId = default)
+        {
+            return UniTask.FromResult(false);
+        }
+
+        /// <inheritdoc />
+        public UniTask ReloadConfigurationAsync(Guid correlationId = default)
+        {
+            return UniTask.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public AlertServiceConfiguration GetDefaultConfiguration()
+        {
+            return new AlertServiceConfiguration();
+        }
+
+        /// <inheritdoc />
+        public UniTask<AlertSystemHealthReport> PerformHealthCheckAsync(Guid correlationId = default)
+        {
+            var report = new AlertSystemHealthReport
+            {
+                Timestamp = DateTime.UtcNow,
+                OverallHealth = true,
+                ServiceEnabled = false,
+                EmergencyModeActive = false,
+                ConsecutiveFailures = 0,
+                LastHealthCheck = DateTime.UtcNow,
+                ChannelServiceHealth = true,
+                HealthyChannelCount = 0,
+                TotalChannelCount = 0,
+                FilterServiceHealth = true,
+                ActiveFilterCount = 0,
+                SuppressionServiceHealth = true,
+                SuppressionRuleCount = 0,
+                ActiveAlertCount = 0,
+                MemoryUsageBytes = 0,
+                AverageResponseTimeMs = 0,
+                CriticalIssues = new FixedString512Bytes("None"),
+                Warnings = new FixedString512Bytes("Service is disabled"),
+                Recommendations = new FixedString512Bytes("Enable service for alerting functionality")
+            };
+            return UniTask.FromResult(report);
+        }
+
+        /// <inheritdoc />
+        public AlertSystemDiagnostics GetDiagnostics(Guid correlationId = default)
+        {
+            return new AlertSystemDiagnostics();
+        }
+
+        /// <inheritdoc />
+        public AlertSystemPerformanceMetrics GetPerformanceMetrics()
+        {
+            return new AlertSystemPerformanceMetrics();
+        }
+
+        /// <inheritdoc />
+        public void ResetMetrics(Guid correlationId = default)
+        {
+            // No-op
+        }
+
+        /// <inheritdoc />
+        public void EnableEmergencyMode(string reason, Guid correlationId = default)
+        {
+            // No-op
+        }
+
+        /// <inheritdoc />
+        public void DisableEmergencyMode(Guid correlationId = default)
+        {
+            // No-op
+        }
+
+        /// <inheritdoc />
+        public UniTask PerformEmergencyEscalationAsync(Alert alert, Guid correlationId = default)
+        {
+            return UniTask.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public UniTask StartAsync(Guid correlationId = default)
+        {
+            return UniTask.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public UniTask StopAsync(Guid correlationId = default)
+        {
+            return UniTask.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public UniTask RestartAsync(Guid correlationId = default)
         {
             return UniTask.CompletedTask;
         }

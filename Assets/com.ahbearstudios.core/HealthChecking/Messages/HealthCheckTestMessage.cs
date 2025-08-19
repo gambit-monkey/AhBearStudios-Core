@@ -9,7 +9,7 @@ namespace AhBearStudios.Core.HealthChecking.Messages;
 internal sealed record HealthCheckTestMessage : BaseMessage
 {
     /// <inheritdoc />
-    public override ushort TypeCode => 65535; // Reserved for health checks
+    public override ushort TypeCode => MessageTypeCodes.HealthCheckTest;
 
     /// <summary>
     /// Initializes a new instance of the HealthCheckTestMessage class.

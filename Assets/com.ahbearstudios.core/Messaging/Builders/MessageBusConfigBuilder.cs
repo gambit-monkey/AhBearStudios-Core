@@ -1,4 +1,6 @@
-﻿using AhBearStudios.Core.Messaging.Configs;
+﻿using System;
+using AhBearStudios.Core.Messaging.Configs;
+using AhBearStudios.Core.HealthChecking.Configs;
 
 namespace AhBearStudios.Core.Messaging.Builders
 {
@@ -6,7 +8,7 @@ namespace AhBearStudios.Core.Messaging.Builders
     /// Fluent builder for MessageBusConfig with comprehensive validation and defaults.
     /// Follows the Builder pattern from AhBearStudios Core Development Guidelines.
     /// </summary>
-    public sealed class MessageBusConfigBuilder
+    public sealed class MessageBusConfigBuilder : IMessageBusConfigBuilder
     {
         private readonly MessageBusConfig _config;
 
@@ -36,7 +38,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="instanceName">The instance name</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when instanceName is null or empty</exception>
-        public MessageBusConfigBuilder WithInstanceName(string instanceName)
+        public IMessageBusConfigBuilder WithInstanceName(string instanceName)
         {
             if (string.IsNullOrWhiteSpace(instanceName))
                 throw new ArgumentNullException(nameof(instanceName));
@@ -50,7 +52,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// </summary>
         /// <param name="enabled">Whether async support is enabled</param>
         /// <returns>This builder for chaining</returns>
-        public MessageBusConfigBuilder WithAsyncSupport(bool enabled = true)
+        public IMessageBusConfigBuilder WithAsyncSupport(bool enabled = true)
         {
             _config.AsyncSupport = enabled;
             return this;
@@ -62,7 +64,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="maxHandlers">The maximum number of concurrent handlers</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when maxHandlers is less than 1</exception>
-        public MessageBusConfigBuilder WithMaxConcurrentHandlers(int maxHandlers)
+        public IMessageBusConfigBuilder WithMaxConcurrentHandlers(int maxHandlers)
         {
             if (maxHandlers < 1)
                 throw new ArgumentOutOfRangeException(nameof(maxHandlers), "Must be at least 1");
@@ -77,7 +79,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="maxQueueSize">The maximum queue size</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when maxQueueSize is less than 1</exception>
-        public MessageBusConfigBuilder WithMaxQueueSize(int maxQueueSize)
+        public IMessageBusConfigBuilder WithMaxQueueSize(int maxQueueSize)
         {
             if (maxQueueSize < 1)
                 throw new ArgumentOutOfRangeException(nameof(maxQueueSize), "Must be at least 1");
@@ -92,7 +94,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="timeout">The handler timeout</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when timeout is zero or negative</exception>
-        public MessageBusConfigBuilder WithHandlerTimeout(TimeSpan timeout)
+        public IMessageBusConfigBuilder WithHandlerTimeout(TimeSpan timeout)
         {
             if (timeout <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(timeout), "Must be greater than zero");
@@ -110,7 +112,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// </summary>
         /// <param name="enabled">Whether performance monitoring is enabled</param>
         /// <returns>This builder for chaining</returns>
-        public MessageBusConfigBuilder WithPerformanceMonitoring(bool enabled = true)
+        public IMessageBusConfigBuilder WithPerformanceMonitoring(bool enabled = true)
         {
             _config.PerformanceMonitoring = enabled;
             return this;
@@ -121,7 +123,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// </summary>
         /// <param name="enabled">Whether health checks are enabled</param>
         /// <returns>This builder for chaining</returns>
-        public MessageBusConfigBuilder WithHealthChecks(bool enabled = true)
+        public IMessageBusConfigBuilder WithHealthChecks(bool enabled = true)
         {
             _config.HealthChecksEnabled = enabled;
             return this;
@@ -132,7 +134,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// </summary>
         /// <param name="enabled">Whether alerts are enabled</param>
         /// <returns>This builder for chaining</returns>
-        public MessageBusConfigBuilder WithAlerts(bool enabled = true)
+        public IMessageBusConfigBuilder WithAlerts(bool enabled = true)
         {
             _config.AlertsEnabled = enabled;
             return this;
@@ -143,7 +145,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// </summary>
         /// <param name="enabled">Whether object pooling is enabled</param>
         /// <returns>This builder for chaining</returns>
-        public MessageBusConfigBuilder WithObjectPooling(bool enabled = true)
+        public IMessageBusConfigBuilder WithObjectPooling(bool enabled = true)
         {
             _config.UseObjectPooling = enabled;
             return this;
@@ -154,7 +156,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// </summary>
         /// <param name="enabled">Whether to pre-allocate memory</param>
         /// <returns>This builder for chaining</returns>
-        public MessageBusConfigBuilder WithPreAllocateMemory(bool enabled = true)
+        public IMessageBusConfigBuilder WithPreAllocateMemory(bool enabled = true)
         {
             _config.PreAllocateMemory = enabled;
             return this;
@@ -165,7 +167,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// </summary>
         /// <param name="enabled">Whether to warm up the thread pool</param>
         /// <returns>This builder for chaining</returns>
-        public MessageBusConfigBuilder WithWarmUpThreadPool(bool enabled = true)
+        public IMessageBusConfigBuilder WithWarmUpThreadPool(bool enabled = true)
         {
             _config.WarmUpThreadPool = enabled;
             return this;
@@ -183,7 +185,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="delay">Initial delay between retries</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are invalid</exception>
-        public MessageBusConfigBuilder WithRetryPolicy(bool enabled = true, int maxAttempts = 3, TimeSpan? delay = null)
+        public IMessageBusConfigBuilder WithRetryPolicy(bool enabled = true, int maxAttempts = 3, TimeSpan? delay = null)
         {
             _config.RetryFailedMessages = enabled;
 
@@ -209,7 +211,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="interval">The retry processing interval</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when interval is zero or negative</exception>
-        public MessageBusConfigBuilder WithRetryInterval(TimeSpan interval)
+        public IMessageBusConfigBuilder WithRetryInterval(TimeSpan interval)
         {
             if (interval <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(interval), "Must be greater than zero");
@@ -224,12 +226,38 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="batchSize">The maximum retry batch size</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when batchSize is less than 1</exception>
-        public MessageBusConfigBuilder WithMaxRetryBatchSize(int batchSize)
+        public IMessageBusConfigBuilder WithMaxRetryBatchSize(int batchSize)
         {
             if (batchSize < 1)
                 throw new ArgumentOutOfRangeException(nameof(batchSize), "Must be at least 1");
 
             _config.MaxRetryBatchSize = batchSize;
+            return this;
+        }
+
+        #endregion
+
+        #region Dead Letter Queue Configuration
+
+        /// <summary>
+        /// Configures dead letter queue for failed messages.
+        /// </summary>
+        /// <param name="enabled">Whether dead letter queue is enabled</param>
+        /// <param name="maxSize">Maximum size of the dead letter queue</param>
+        /// <returns>This builder for chaining</returns>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when maxSize is invalid</exception>
+        public IMessageBusConfigBuilder WithDeadLetterQueue(bool enabled = true, int maxSize = 1000)
+        {
+            _config.DeadLetterQueueEnabled = enabled;
+
+            if (enabled)
+            {
+                if (maxSize < 1)
+                    throw new ArgumentOutOfRangeException(nameof(maxSize), "Must be at least 1");
+
+                _config.DeadLetterQueueMaxSize = maxSize;
+            }
+
             return this;
         }
 
@@ -246,7 +274,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="halfOpenSuccessThreshold">Successes needed to close circuit</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are invalid</exception>
-        public MessageBusConfigBuilder WithCircuitBreaker(
+        public IMessageBusConfigBuilder WithCircuitBreaker(
             bool enabled = true,
             int failureThreshold = 5,
             TimeSpan? openTimeout = null,
@@ -268,9 +296,10 @@ namespace AhBearStudios.Core.Messaging.Builders
 
                 _config.CircuitBreakerConfig = new CircuitBreakerConfig
                 {
+                    Name = "MessageBus Circuit Breaker",
                     FailureThreshold = failureThreshold,
-                    OpenTimeout = timeout,
-                    HalfOpenSuccessThreshold = halfOpenSuccessThreshold
+                    Timeout = timeout,
+                    HalfOpenMaxCalls = halfOpenSuccessThreshold
                 };
             }
 
@@ -283,7 +312,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="interval">The check interval</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when interval is zero or negative</exception>
-        public MessageBusConfigBuilder WithCircuitBreakerCheckInterval(TimeSpan interval)
+        public IMessageBusConfigBuilder WithCircuitBreakerCheckInterval(TimeSpan interval)
         {
             if (interval <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(interval), "Must be greater than zero");
@@ -302,7 +331,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="interval">The statistics update interval</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when interval is zero or negative</exception>
-        public MessageBusConfigBuilder WithStatisticsUpdateInterval(TimeSpan interval)
+        public IMessageBusConfigBuilder WithStatisticsUpdateInterval(TimeSpan interval)
         {
             if (interval <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(interval), "Must be greater than zero");
@@ -317,7 +346,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="interval">The health check interval</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when interval is zero or negative</exception>
-        public MessageBusConfigBuilder WithHealthCheckInterval(TimeSpan interval)
+        public IMessageBusConfigBuilder WithHealthCheckInterval(TimeSpan interval)
         {
             if (interval <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(interval), "Must be greater than zero");
@@ -333,7 +362,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="criticalThreshold">Critical threshold (0.0 to 1.0)</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when thresholds are invalid</exception>
-        public MessageBusConfigBuilder WithErrorRateThresholds(double warningThreshold, double criticalThreshold)
+        public IMessageBusConfigBuilder WithErrorRateThresholds(double warningThreshold, double criticalThreshold)
         {
             if (warningThreshold < 0 || warningThreshold > 1)
                 throw new ArgumentOutOfRangeException(nameof(warningThreshold), "Must be between 0 and 1");
@@ -356,7 +385,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="criticalThreshold">Critical threshold</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when thresholds are invalid</exception>
-        public MessageBusConfigBuilder WithQueueSizeThresholds(int warningThreshold, int criticalThreshold)
+        public IMessageBusConfigBuilder WithQueueSizeThresholds(int warningThreshold, int criticalThreshold)
         {
             if (warningThreshold < 0)
                 throw new ArgumentOutOfRangeException(nameof(warningThreshold), "Must be non-negative");
@@ -376,7 +405,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="criticalThreshold">Critical threshold</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when thresholds are invalid</exception>
-        public MessageBusConfigBuilder WithProcessingTimeThresholds(TimeSpan warningThreshold, TimeSpan criticalThreshold)
+        public IMessageBusConfigBuilder WithProcessingTimeThresholds(TimeSpan warningThreshold, TimeSpan criticalThreshold)
         {
             if (warningThreshold <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(warningThreshold), "Must be greater than zero");
@@ -399,7 +428,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="maxMemoryPressure">Maximum memory pressure in bytes</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when maxMemoryPressure is less than 1</exception>
-        public MessageBusConfigBuilder WithMaxMemoryPressure(long maxMemoryPressure)
+        public IMessageBusConfigBuilder WithMaxMemoryPressure(long maxMemoryPressure)
         {
             if (maxMemoryPressure < 1)
                 throw new ArgumentOutOfRangeException(nameof(maxMemoryPressure), "Must be at least 1");
@@ -416,7 +445,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// Configures the builder for high-performance scenarios.
         /// </summary>
         /// <returns>This builder for chaining</returns>
-        public MessageBusConfigBuilder ForHighPerformance()
+        public IMessageBusConfigBuilder ForHighPerformance()
         {
             return WithInstanceName("HighPerformanceMessageBus")
                 .WithAsyncSupport(true)
@@ -439,7 +468,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// Configures the builder for reliability-focused scenarios.
         /// </summary>
         /// <returns>This builder for chaining</returns>
-        public MessageBusConfigBuilder ForReliability()
+        public IMessageBusConfigBuilder ForReliability()
         {
             return WithInstanceName("ReliableMessageBus")
                 .WithAsyncSupport(true)
@@ -463,7 +492,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// Configures the builder for development scenarios.
         /// </summary>
         /// <returns>This builder for chaining</returns>
-        public MessageBusConfigBuilder ForDevelopment()
+        public IMessageBusConfigBuilder ForDevelopment()
         {
             return WithInstanceName("DevelopmentMessageBus")
                 .WithAsyncSupport(true)
@@ -493,7 +522,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="configureAction">Action to configure the message bus configSo</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when configureAction is null</exception>
-        public MessageBusConfigBuilder Configure(Action<MessageBusConfig> configureAction)
+        public IMessageBusConfigBuilder Configure(Action<MessageBusConfig> configureAction)
         {
             if (configureAction == null)
                 throw new ArgumentNullException(nameof(configureAction));
@@ -509,7 +538,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="configureAction">Action to apply if condition is true</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when configureAction is null</exception>
-        public MessageBusConfigBuilder When(bool condition, Action<MessageBusConfigBuilder> configureAction)
+        public IMessageBusConfigBuilder When(bool condition, Action<IMessageBusConfigBuilder> configureAction)
         {
             if (configureAction == null)
                 throw new ArgumentNullException(nameof(configureAction));
@@ -529,7 +558,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="configureAction">Action to apply if predicate returns true</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when predicate or configureAction is null</exception>
-        public MessageBusConfigBuilder When(Func<MessageBusConfig, bool> predicate, Action<MessageBusConfigBuilder> configureAction)
+        public IMessageBusConfigBuilder When(Func<MessageBusConfig, bool> predicate, Action<IMessageBusConfigBuilder> configureAction)
         {
             if (predicate == null)
                 throw new ArgumentNullException(nameof(predicate));
@@ -551,7 +580,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="overrideExisting">Whether to override existing values</param>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when otherConfig is null</exception>
-        public MessageBusConfigBuilder MergeFrom(MessageBusConfig otherConfig, bool overrideExisting = false)
+        public IMessageBusConfigBuilder MergeFrom(MessageBusConfig otherConfig, bool overrideExisting = false)
         {
             if (otherConfig == null)
                 throw new ArgumentNullException(nameof(otherConfig));
@@ -584,7 +613,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// </summary>
         /// <returns>This builder for chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when configuration is invalid</exception>
-        public MessageBusConfigBuilder Validate()
+        public IMessageBusConfigBuilder Validate()
         {
             var errors = _config.GetValidationErrors();
             if (!string.IsNullOrEmpty(errors))
@@ -660,7 +689,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="builder">The configuration builder</param>
         /// <param name="targetFrameRate">Target frame rate for Unity optimization</param>
         /// <returns>The builder for chaining</returns>
-        public static MessageBusConfigBuilder ForUnity(this MessageBusConfigBuilder builder, int targetFrameRate = 60)
+        public static IMessageBusConfigBuilder ForUnity(this IMessageBusConfigBuilder builder, int targetFrameRate = 60)
         {
             if (builder == null)
                 throw new ArgumentNullException(nameof(builder));
@@ -686,7 +715,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// </summary>
         /// <param name="builder">The configuration builder</param>
         /// <returns>The builder for chaining</returns>
-        public static MessageBusConfigBuilder ForMobile(this MessageBusConfigBuilder builder)
+        public static IMessageBusConfigBuilder ForMobile(this IMessageBusConfigBuilder builder)
         {
             if (builder == null)
                 throw new ArgumentNullException(nameof(builder));
@@ -706,7 +735,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// </summary>
         /// <param name="builder">The configuration builder</param>
         /// <returns>The builder for chaining</returns>
-        public static MessageBusConfigBuilder ForServer(this MessageBusConfigBuilder builder)
+        public static IMessageBusConfigBuilder ForServer(this IMessageBusConfigBuilder builder)
         {
             if (builder == null)
                 throw new ArgumentNullException(nameof(builder));
@@ -729,7 +758,7 @@ namespace AhBearStudios.Core.Messaging.Builders
         /// <param name="builder">The configuration builder</param>
         /// <param name="environment">The target environment</param>
         /// <returns>The builder for chaining</returns>
-        public static MessageBusConfigBuilder ForEnvironment(this MessageBusConfigBuilder builder, string environment)
+        public static IMessageBusConfigBuilder ForEnvironment(this IMessageBusConfigBuilder builder, string environment)
         {
             if (builder == null)
                 throw new ArgumentNullException(nameof(builder));

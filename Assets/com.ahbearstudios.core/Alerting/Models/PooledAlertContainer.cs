@@ -4,6 +4,7 @@ using Unity.Profiling;
 using AhBearStudios.Core.Pooling;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.HealthChecking.Models;
+using HealthStatus = AhBearStudios.Core.HealthChecking.Models.HealthStatus;
 
 namespace AhBearStudios.Core.Alerting.Models
 {
@@ -87,7 +88,7 @@ namespace AhBearStudios.Core.Alerting.Models
             return baseSize;
         }
 
-        public HealthStatus GetHealthStatus()
+        public AhBearStudios.Core.HealthChecking.Models.HealthStatus GetHealthStatus()
         {
             if (CorruptionDetected)
                 return HealthStatus.Degraded;

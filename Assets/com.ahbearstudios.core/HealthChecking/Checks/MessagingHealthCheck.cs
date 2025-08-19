@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.HealthChecking.Checks;
 using AhBearStudios.Core.HealthChecking.Configs;
+using AhBearStudios.Core.HealthChecking.Messages;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Messaging;
 using Unity.Collections;
@@ -329,13 +330,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
                 timeoutCts.CancelAfter(publishTimeout);
 
                 // Create a test message
-                var testMessage = new HealthCheckTestMessage
-                {
-                    MessageId = Guid.NewGuid(),
-                    Timestamp = DateTime.UtcNow,
-                    Source = Name.ToString(),
-                    TestData = "Publisher functionality test"
-                };
+                var testMessage = new HealthCheckTestMessage();
 
                 // Get publisher and test message publishing
                 var publisher = _messageBusService.GetPublisher<HealthCheckTestMessage>();
@@ -351,7 +346,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
                     Success = true,
                     Duration = stopwatch.Elapsed,
                     Details = $"Message published successfully in {stopwatch.ElapsedMilliseconds}ms - {performanceStatus}",
-                    MessageId = testMessage.MessageId
+                    MessageId = testMessage.Id
                 };
             }
             catch (OperationCanceledException)
@@ -438,13 +433,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
                 timeoutCts.CancelAfter(roundTripTimeout);
 
                 // Create test message with unique identifier
-                var testMessage = new HealthCheckTestMessage
-                {
-                    MessageId = Guid.NewGuid(),
-                    Timestamp = DateTime.UtcNow,
-                    Source = Name.ToString(),
-                    TestData = "Round-trip test message"
-                };
+                var testMessage = new HealthCheckTestMessage();
 
                 // Set up subscriber to receive the test message
                 var subscriber = _messageBusService.GetSubscriber<HealthCheckTestMessage>();
@@ -453,7 +442,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
                 // Subscribe to messages temporarily for this test
                 Action<HealthCheckTestMessage> messageHandler = (msg) =>
                 {
-                    if (msg.MessageId == testMessage.MessageId && msg.Source == Name.ToString())
+                    if (msg.Id == testMessage.Id)
                     {
                         messageReceivedTask.TrySetResult(msg);
                     }
@@ -471,7 +460,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
                     var receivedMessage = await messageReceivedTask.Task.WaitAsync(roundTripTimeout, timeoutCts.Token);
                     
                     messageReceived = true;
-                    receivedMessageId = receivedMessage.MessageId;
+                    receivedMessageId = receivedMessage.Id;
                 }
                 finally
                 {
@@ -490,7 +479,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
                     Details = messageReceived 
                         ? $"Round-trip completed successfully in {stopwatch.ElapsedMilliseconds}ms - {performanceStatus}"
                         : $"Round-trip failed - message not received within {roundTripTimeout.TotalSeconds}s",
-                    MessageId = testMessage.MessageId
+                    MessageId = testMessage.Id
                 };
             }
             catch (OperationCanceledException)
@@ -807,16 +796,6 @@ namespace AhBearStudios.Core.HealthChecking.Checks
         public Exception Exception { get; set; }
     }
 
-    /// <summary>
-    /// Test message used for health check round-trip testing
-    /// </summary>
-    public sealed class HealthCheckTestMessage
-    {
-        public Guid MessageId { get; set; }
-        public DateTime Timestamp { get; set; }
-        public string Source { get; set; }
-        public string TestData { get; set; }
-    }
 
     /// <summary>
     /// Interface for message bus services that provide health check capabilities
