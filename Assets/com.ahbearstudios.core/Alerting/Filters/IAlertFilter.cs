@@ -80,8 +80,8 @@ namespace AhBearStudios.Core.Alerting.Filters
         FilterDiagnostics GetDiagnostics();
 
         // Filter state changes are communicated through IMessage pattern:
-        // - FilterConfigurationChangedMessage: Published when filter configuration changes
-        // - FilterStatisticsUpdatedMessage: Published when filter statistics are updated
+        // - AlertFilterConfigurationChangedMessage: Published when filter configuration changes
+        // - AlertFilterStatisticsUpdatedMessage: Published when filter statistics are updated
         // Messages are published through IMessageBusService for better decoupling
     }
 

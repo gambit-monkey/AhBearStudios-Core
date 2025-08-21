@@ -199,7 +199,7 @@ namespace AhBearStudios.Core.Alerting.Channels
                     var previousHealth = _isHealthy;
                     _isHealthy = result.IsHealthy;
                     
-                    var healthChangedMessage = ChannelHealthChangedMessage.Create(
+                    var healthChangedMessage = AlertChannelHealthChangedMessage.Create(
                         Name,
                         previousHealth,
                         _isHealthy,
@@ -222,7 +222,7 @@ namespace AhBearStudios.Core.Alerting.Channels
                     _isHealthy = false;
                     var result = ChannelHealthResult.Unhealthy($"Health check failed: {ex.Message}", ex, duration);
                     
-                    var healthChangedMessage = ChannelHealthChangedMessage.Create(
+                    var healthChangedMessage = AlertChannelHealthChangedMessage.Create(
                         Name,
                         true,
                         false,
@@ -282,7 +282,7 @@ namespace AhBearStudios.Core.Alerting.Channels
                 {
                     _isEnabled = true;
                     
-                    var configChangedMessage = ChannelConfigurationChangedMessage.Create(
+                    var configChangedMessage = AlertChannelConfigurationChangedMessage.Create(
                         Name,
                         previousConfig,
                         config,

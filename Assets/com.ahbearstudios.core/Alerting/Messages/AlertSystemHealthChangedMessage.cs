@@ -25,7 +25,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; }
+        public ushort TypeCode { get; init; } = MessageTypeCodes.AlertSystemHealthChangedMessage;
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -79,6 +79,25 @@ namespace AhBearStudios.Core.Alerting.Messages
         public long UptimeSeconds { get; init; }
 
         /// <summary>
+        /// Initializes a new instance of the AlertSystemHealthChangedMessage struct.
+        /// </summary>
+        public AlertSystemHealthChangedMessage()
+        {
+            Id = default;
+            TimestampTicks = default;
+            Source = default;
+            Priority = default;
+            CorrelationId = default;
+            PreviousHealthStatus = default;
+            CurrentHealthStatus = default;
+            HealthChangeReason = default;
+            HealthyChannelsCount = default;
+            TotalChannelsCount = default;
+            ActiveAlertsCount = default;
+            UptimeSeconds = default;
+        }
+
+        /// <summary>
         /// Gets the DateTime representation of the message timestamp.
         /// </summary>
         public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
@@ -111,7 +130,7 @@ namespace AhBearStudios.Core.Alerting.Messages
             {
                 Id = Guid.NewGuid(),
                 TimestampTicks = DateTime.UtcNow.Ticks,
-                TypeCode = MessageTypeCodes.AlertSystemHealthChanged,
+                TypeCode = MessageTypeCodes.AlertSystemHealthChangedMessage,
                 Source = source.IsEmpty ? "AlertService" : source,
                 Priority = currentHealth ? MessagePriority.Normal : MessagePriority.High,
                 CorrelationId = correlationId == Guid.Empty ? Guid.NewGuid() : correlationId,

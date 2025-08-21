@@ -26,7 +26,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; }
+        public ushort TypeCode { get; init; } = MessageTypeCodes.AlertRaisedMessage;
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -90,6 +90,27 @@ namespace AhBearStudios.Core.Alerting.Messages
         public int AlertCount { get; init; }
 
         /// <summary>
+        /// Initializes a new instance of the AlertRaisedMessage struct.
+        /// </summary>
+        public AlertRaisedMessage()
+        {
+            Id = default;
+            TimestampTicks = default;
+            Source = default;
+            Priority = default;
+            CorrelationId = default;
+            AlertId = default;
+            AlertMessage = default;
+            AlertSeverity = default;
+            AlertSource = default;
+            AlertTag = default;
+            OperationId = default;
+            AlertTimestampTicks = default;
+            HasContext = default;
+            AlertCount = default;
+        }
+
+        /// <summary>
         /// Gets the DateTime representation of the alert timestamp.
         /// </summary>
         public DateTime AlertTimestamp => new DateTime(AlertTimestampTicks, DateTimeKind.Utc);
@@ -113,7 +134,7 @@ namespace AhBearStudios.Core.Alerting.Messages
             {
                 Id = Guid.NewGuid(),
                 TimestampTicks = DateTime.UtcNow.Ticks,
-                TypeCode = MessageTypeCodes.AlertRaised,
+                TypeCode = MessageTypeCodes.AlertRaisedMessage,
                 Source = source.IsEmpty ? "AlertService" : source,
                 Priority = GetMessagePriority(alert.Severity),
                 CorrelationId = correlationId == default ? alert.CorrelationId : correlationId,
@@ -160,7 +181,7 @@ namespace AhBearStudios.Core.Alerting.Messages
             {
                 Id = Guid.NewGuid(),
                 TimestampTicks = now,
-                TypeCode = MessageTypeCodes.AlertRaised,
+                TypeCode = MessageTypeCodes.AlertRaisedMessage,
                 Source = source.IsEmpty ? "AlertService" : source,
                 Priority = GetMessagePriority(severity),
                 CorrelationId = correlationId == Guid.Empty ? Guid.NewGuid() : correlationId,

@@ -239,7 +239,7 @@ namespace AhBearStudios.Core.Messaging.HealthChecks
             try
             {
                 // Create a simple test message
-                var testMessage = new HealthCheckTestMessage();
+                var testMessage = HealthCheckTestMessage.Create("MessageBusHealthCheck");
                 var messageReceived = false;
                 var tcs = new UniTaskCompletionSource<bool>();
 

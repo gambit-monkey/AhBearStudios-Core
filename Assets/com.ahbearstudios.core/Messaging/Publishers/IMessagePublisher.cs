@@ -1,8 +1,8 @@
 ﻿using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
+using Cysharp.Threading.Tasks;
 
 namespace AhBearStudios.Core.Messaging.Publishers;
 
@@ -26,10 +26,10 @@ namespace AhBearStudios.Core.Messaging.Publishers;
         /// </summary>
         /// <param name="message">The message to publish</param>
         /// <param name="cancellationToken">Cancellation token</param>
-        /// <returns>Task representing the async operation</returns>
+        /// <returns>UniTask representing the async operation</returns>
         /// <exception cref="ArgumentNullException">Thrown when message is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when publisher is disposed</exception>
-        Task PublishAsync(TMessage message, CancellationToken cancellationToken = default);
+        UniTask PublishAsync(TMessage message, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Publishes multiple messages in a batch operation.
@@ -44,10 +44,10 @@ namespace AhBearStudios.Core.Messaging.Publishers;
         /// </summary>
         /// <param name="messages">The messages to publish</param>
         /// <param name="cancellationToken">Cancellation token</param>
-        /// <returns>Task representing the async operation</returns>
+        /// <returns>UniTask representing the async operation</returns>
         /// <exception cref="ArgumentNullException">Thrown when messages is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when publisher is disposed</exception>
-        Task PublishBatchAsync(IEnumerable<TMessage> messages, CancellationToken cancellationToken = default);
+        UniTask PublishBatchAsync(IEnumerable<TMessage> messages, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Publishes a message conditionally based on a predicate.
@@ -65,10 +65,10 @@ namespace AhBearStudios.Core.Messaging.Publishers;
         /// <param name="message">The message to publish</param>
         /// <param name="condition">The async condition that must be true to publish</param>
         /// <param name="cancellationToken">Cancellation token</param>
-        /// <returns>Task containing true if the message was published, false otherwise</returns>
+        /// <returns>UniTask containing true if the message was published, false otherwise</returns>
         /// <exception cref="ArgumentNullException">Thrown when message or condition is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when publisher is disposed</exception>
-        Task<bool> PublishIfAsync(TMessage message, Func<Task<bool>> condition, CancellationToken cancellationToken = default);
+        UniTask<bool> PublishIfAsync(TMessage message, Func<UniTask<bool>> condition, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Publishes a message with a specified delay.
@@ -76,11 +76,11 @@ namespace AhBearStudios.Core.Messaging.Publishers;
         /// <param name="message">The message to publish</param>
         /// <param name="delay">The delay before publishing</param>
         /// <param name="cancellationToken">Cancellation token</param>
-        /// <returns>Task representing the async operation</returns>
+        /// <returns>UniTask representing the async operation</returns>
         /// <exception cref="ArgumentNullException">Thrown when message is null</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when delay is negative</exception>
         /// <exception cref="InvalidOperationException">Thrown when publisher is disposed</exception>
-        Task PublishDelayedAsync(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default);
+        UniTask PublishDelayedAsync(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Gets statistics for this specific publisher.

@@ -1,4 +1,4 @@
-﻿namespace AhBearStudios.Core.com.ahbearstudios.core.Messaging.Models;
+﻿namespace AhBearStudios.Core.Messaging.Models;
 
 /// <summary>
 /// Defines the delivery mode for messages.
@@ -28,5 +28,7 @@ public enum MessageDeliveryMode : byte
     /// <summary>
     /// Batch delivery for high-throughput scenarios.
     /// </summary>
-    Batch = 4
+    Batch = 4,
+    
+    Reliable = 5
 }

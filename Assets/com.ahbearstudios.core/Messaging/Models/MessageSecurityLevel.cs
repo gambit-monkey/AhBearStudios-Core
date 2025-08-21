@@ -1,4 +1,4 @@
-﻿namespace AhBearStudios.Core.com.ahbearstudios.core.Messaging.Models;
+﻿namespace AhBearStudios.Core.Messaging.Models;
 
 /// <summary>
 /// Defines the security level for messages.

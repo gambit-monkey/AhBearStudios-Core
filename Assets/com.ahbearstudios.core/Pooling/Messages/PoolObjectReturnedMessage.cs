@@ -2,6 +2,7 @@ using System;
 using Unity.Collections;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Messaging.Messages;
+using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Pooling;
 
 namespace AhBearStudios.Core.Pooling.Messages
@@ -11,7 +12,7 @@ namespace AhBearStudios.Core.Pooling.Messages
     /// Follows the IMessage pattern from CLAUDE.md guidelines.
     /// Used for monitoring and diagnostics of pool usage.
     /// </summary>
-    public record struct PoolObjectReturnedMessage : IMessage
+    public readonly record struct PoolObjectReturnedMessage : IMessage
     {
         /// <summary>
         /// Gets the unique identifier for this message instance.
@@ -21,7 +22,7 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode => MessageTypeCodes.PoolObjectReturned;
+        public ushort TypeCode { get; init; } = MessageTypeCodes.PoolObjectReturnedMessage;
 
         /// <summary>
         /// Gets the name of the pool to which the object was returned.
@@ -74,6 +75,30 @@ namespace AhBearStudios.Core.Pooling.Messages
         public bool WasValidOnReturn { get; init; }
 
         /// <summary>
+        /// Gets the priority level for message processing.
+        /// </summary>
+        public MessagePriority Priority { get; init; }
+
+        /// <summary>
+        /// Initializes a new instance of the PoolObjectReturnedMessage struct.
+        /// </summary>
+        public PoolObjectReturnedMessage()
+        {
+            Id = default;
+            PoolName = default;
+            ObjectTypeName = default;
+            PoolId = default;
+            ObjectId = default;
+            TimestampTicks = default;
+            PoolSizeAfter = default;
+            ActiveObjectsAfter = default;
+            CorrelationId = default;
+            Source = default;
+            WasValidOnReturn = default;
+            Priority = default;
+        }
+
+        /// <summary>
         /// Gets the DateTime representation of the timestamp.
         /// </summary>
         public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
@@ -105,6 +130,7 @@ namespace AhBearStudios.Core.Pooling.Messages
             return new PoolObjectReturnedMessage
             {
                 Id = Guid.NewGuid(),
+                TypeCode = MessageTypeCodes.PoolObjectReturnedMessage,
                 PoolName = poolName,
                 ObjectTypeName = objectTypeName,
                 PoolId = poolId,
@@ -113,6 +139,7 @@ namespace AhBearStudios.Core.Pooling.Messages
                 PoolSizeAfter = poolSizeAfter,
                 ActiveObjectsAfter = activeObjectsAfter,
                 WasValidOnReturn = wasValidOnReturn,
+                Priority = MessagePriority.Low, // Object return is informational
                 CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
                 Source = source.IsEmpty ? new FixedString64Bytes("PoolingService") : source
             };

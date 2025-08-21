@@ -4,9 +4,12 @@ using ZLinq;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.HealthChecking;
+using AhBearStudios.Core.HealthChecking.Factories;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Messaging.Builders;
 using AhBearStudios.Core.Messaging.Configs;
 using AhBearStudios.Core.Messaging.HealthChecks;
+using AhBearStudios.Core.Messaging.Services;
 using AhBearStudios.Core.Pooling;
 using AhBearStudios.Core.Profiling;
 
@@ -23,6 +26,7 @@ namespace AhBearStudios.Core.Messaging.Factories
         private readonly IAlertService _alertService;
         private readonly IProfilerService _profilerService;
         private readonly IPoolingService _poolingService;
+        private readonly ICircuitBreakerFactory _circuitBreakerFactory;
 
         /// <summary>
         /// Initializes a new instance of the MessageBusFactory class.
@@ -32,19 +36,22 @@ namespace AhBearStudios.Core.Messaging.Factories
         /// <param name="alertService">The alert service</param>
         /// <param name="profilerService">The profiler service</param>
         /// <param name="poolingService">The pooling service</param>
+        /// <param name="circuitBreakerFactory">The circuit breaker factory</param>
         /// <exception cref="ArgumentNullException">Thrown when any required service is null</exception>
         public MessageBusFactory(
             ILoggingService logger,
             IHealthCheckService healthCheckService,
             IAlertService alertService,
             IProfilerService profilerService,
-            IPoolingService poolingService)
+            IPoolingService poolingService,
+            ICircuitBreakerFactory circuitBreakerFactory)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _healthCheckService = healthCheckService ?? throw new ArgumentNullException(nameof(healthCheckService));
             _alertService = alertService ?? throw new ArgumentNullException(nameof(alertService));
             _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             _poolingService = poolingService ?? throw new ArgumentNullException(nameof(poolingService));
+            _circuitBreakerFactory = circuitBreakerFactory ?? throw new ArgumentNullException(nameof(circuitBreakerFactory));
 
             _logger.LogInfo("MessageBusFactory initialized successfully");
         }
@@ -69,13 +76,32 @@ namespace AhBearStudios.Core.Messaging.Factories
                 // Validate configuration
                 ValidateConfiguration(config);
 
-                // Create the message bus service
+                // Create circuit breaker configuration using builder pattern
+                var circuitBreakerConfig = new MessageCircuitBreakerConfigBuilder()
+                    .WithDefaultConfig()
+                    .WithStateChangeMessages(config.AlertsEnabled)
+                    .WithPerformanceMonitoring(config.PerformanceMonitoring)
+                    .Build();
+
+                // Create the message bus service first (without circuit breaker)
                 var messageBusService = new MessageBusService(
                     config,
                     _logger,
+                    null, // circuitBreakerService - will be set after creation
+                    null, // messagePipeAdapter - optional
                     _alertService,
                     _profilerService,
                     _poolingService);
+
+                // Create circuit breaker service with access to the message bus for state changes
+                var circuitBreakerService = new MessageCircuitBreakerService(
+                    circuitBreakerConfig,
+                    _logger,
+                    _circuitBreakerFactory,
+                    messageBusService);
+
+                // Note: MessageBusService would need to be updated to accept circuit breaker service after construction
+                // For now, this creates a working setup but the circular dependency needs architectural consideration
 
                 // Register health check if enabled
                 if (config.HealthChecksEnabled)
@@ -234,6 +260,7 @@ namespace AhBearStudios.Core.Messaging.Factories
             if (_alertService == null) missingDependencies.Add(nameof(IAlertService));
             if (_profilerService == null) missingDependencies.Add(nameof(IProfilerService));
             if (_poolingService == null) missingDependencies.Add(nameof(IPoolingService));
+            if (_circuitBreakerFactory == null) missingDependencies.Add(nameof(ICircuitBreakerFactory));
 
             if (missingDependencies.AsValueEnumerable().Any())
             {

@@ -1,8 +1,8 @@
 ﻿using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
+using ZLinq;
 using System.Threading;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Configs;
 using AhBearStudios.Core.Messaging.Messages;
@@ -126,7 +126,7 @@ namespace AhBearStudios.Core.Messaging.Publishers
                 stopwatch.Stop();
                 Interlocked.Increment(ref _failedPublications);
 
-                _logger.LogException(ex, $"Failed to publish message {typeof(TMessage).Name} with ID {message.Id}");
+                _logger.LogException($"Failed to publish message {typeof(TMessage).Name} with ID {message.Id}", ex);
 
                 // Raise failure event
                 MessagePublishFailed?.Invoke(this, new MessagePublishFailedEventArgs(message, ex, 0));
@@ -136,7 +136,7 @@ namespace AhBearStudios.Core.Messaging.Publishers
         }
 
         /// <inheritdoc />
-        public async Task PublishAsync(TMessage message, CancellationToken cancellationToken = default)
+        public async UniTask PublishAsync(TMessage message, CancellationToken cancellationToken = default)
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
@@ -192,7 +192,7 @@ namespace AhBearStudios.Core.Messaging.Publishers
                 stopwatch.Stop();
                 Interlocked.Increment(ref _failedPublications);
 
-                _logger.LogException(ex, $"Failed to publish async message {typeof(TMessage).Name} with ID {message.Id}");
+                _logger.LogException($"Failed to publish async message {typeof(TMessage).Name} with ID {message.Id}", ex);
 
                 // Raise failure event
                 MessagePublishFailed?.Invoke(this, new MessagePublishFailedEventArgs(message, ex, 0));
@@ -211,7 +211,7 @@ namespace AhBearStudios.Core.Messaging.Publishers
 
             using var profilerScope = _profilerService?.BeginScope($"Publisher_PublishBatch_{typeof(TMessage).Name}");
 
-            var messageList = messages.ToList();
+            var messageList = messages.AsValueEnumerable().ToList();
             if (messageList.Count == 0)
             {
                 _logger.LogWarning($"Empty batch provided to PublishBatch for {typeof(TMessage).Name}");
@@ -234,7 +234,7 @@ namespace AhBearStudios.Core.Messaging.Publishers
                     catch (Exception ex)
                     {
                         failureCount++;
-                        _logger.LogException(ex, $"Failed to publish message in batch: {message.Id}");
+                        _logger.LogException($"Failed to publish message in batch: {message.Id}", ex);
                     }
                 }
 
@@ -244,13 +244,13 @@ namespace AhBearStudios.Core.Messaging.Publishers
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                _logger.LogException(ex, $"Failed to publish batch for {typeof(TMessage).Name}");
+                _logger.LogException($"Failed to publish batch for {typeof(TMessage).Name}", ex);
                 throw;
             }
         }
 
         /// <inheritdoc />
-        public async Task PublishBatchAsync(IEnumerable<TMessage> messages, CancellationToken cancellationToken = default)
+        public async UniTask PublishBatchAsync(IEnumerable<TMessage> messages, CancellationToken cancellationToken = default)
         {
             if (messages == null)
                 throw new ArgumentNullException(nameof(messages));
@@ -260,7 +260,8 @@ namespace AhBearStudios.Core.Messaging.Publishers
             using var profilerScope = _profilerService?.BeginScope($"Publisher_PublishBatchAsync_{typeof(TMessage).Name}");
             using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token);
 
-            var messageList = messages.ToList();
+            // Convert to list for performance and count validation
+            var messageList = messages.AsValueEnumerable().ToList();
             if (messageList.Count == 0)
             {
                 _logger.LogWarning($"Empty batch provided to PublishBatchAsync for {typeof(TMessage).Name}");
@@ -268,35 +269,161 @@ namespace AhBearStudios.Core.Messaging.Publishers
             }
 
             var stopwatch = Stopwatch.StartNew();
-            var successCount = 0;
-            var failureCount = 0;
+            
+            // Use a thread-safe counter class for async operations
+            var batchStats = new BatchPublishStats();
 
             try
             {
-                var tasks = messageList.Select(async message =>
+                // Determine optimal batch size based on config
+                var batchSize = Math.Min(_config.MaxConcurrentHandlers, messageList.Count);
+                var semaphore = new SemaphoreSlim(batchSize, batchSize);
+                
+                // Create UniTask array for proper type compatibility
+                var tasks = new UniTask[messageList.Count];
+                
+                for (int i = 0; i < messageList.Count; i++)
                 {
-                    try
-                    {
-                        await PublishAsync(message, combinedCts.Token);
-                        Interlocked.Increment(ref successCount);
-                    }
-                    catch (Exception ex)
-                    {
-                        Interlocked.Increment(ref failureCount);
-                        _logger.LogException(ex, $"Failed to publish message in async batch: {message.Id}");
-                    }
-                });
+                    var index = i;
+                    var message = messageList[index];
+                    
+                    tasks[index] = PublishBatchItemAsync(
+                        message, 
+                        semaphore, 
+                        combinedCts.Token,
+                        batchStats);
+                }
 
-                await Task.WhenAll(tasks);
+                // Wait for all tasks to complete
+                await UniTask.WhenAll(tasks);
 
                 stopwatch.Stop();
-                _logger.LogInfo($"Published async batch of {messageList.Count} messages for {typeof(TMessage).Name}: {successCount} succeeded, {failureCount} failed in {stopwatch.ElapsedMilliseconds}ms");
+                
+                // Log detailed results
+                var totalTime = stopwatch.ElapsedMilliseconds;
+                var avgTime = messageList.Count > 0 ? totalTime / (double)messageList.Count : 0;
+                
+                _logger.LogInfo($"Published async batch of {messageList.Count} messages for {typeof(TMessage).Name}: " +
+                    $"{batchStats.SuccessCount} succeeded, {batchStats.FailureCount} failed in {totalTime}ms (avg: {avgTime:F2}ms/msg)");
+                
+                // Log individual failures if any (only log first few to avoid spam)
+                var failedMessages = batchStats.GetFailedMessages();
+                if (failedMessages.Count > 0)
+                {
+                    var maxFailuresToLog = Math.Min(failedMessages.Count, 5);
+                    for (int i = 0; i < maxFailuresToLog; i++)
+                    {
+                        var (message, exception) = failedMessages[i];
+                        _logger.LogException($"Batch item failed: {message.Id}", exception);
+                    }
+                    
+                    if (failedMessages.Count > maxFailuresToLog)
+                    {
+                        _logger.LogWarning($"And {failedMessages.Count - maxFailuresToLog} more failures not shown");
+                    }
+                }
+                
+                // Dispose the batch semaphore
+                semaphore?.Dispose();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                stopwatch.Stop();
+                _logger.LogWarning($"Batch publishing cancelled for {typeof(TMessage).Name} after {stopwatch.ElapsedMilliseconds}ms");
+                throw;
             }
             catch (Exception ex)
             {
                 stopwatch.Stop();
-                _logger.LogException(ex, $"Failed to publish async batch for {typeof(TMessage).Name}");
+                _logger.LogException($"Critical failure in async batch for {typeof(TMessage).Name}", ex);
                 throw;
+            }
+        }
+
+        /// <summary>
+        /// Thread-safe statistics tracking for batch operations
+        /// </summary>
+        private sealed class BatchPublishStats
+        {
+            private int _successCount;
+            private int _failureCount;
+            private readonly List<(TMessage message, Exception exception)> _failedMessages = new();
+            private readonly object _lockObject = new();
+
+            public int SuccessCount => _successCount;
+            public int FailureCount => _failureCount;
+
+            public void IncrementSuccess()
+            {
+                Interlocked.Increment(ref _successCount);
+            }
+
+            public void IncrementFailure()
+            {
+                Interlocked.Increment(ref _failureCount);
+            }
+
+            public void AddFailedMessage(TMessage message, Exception exception)
+            {
+                lock (_lockObject)
+                {
+                    _failedMessages.Add((message, exception));
+                }
+            }
+
+            public List<(TMessage message, Exception exception)> GetFailedMessages()
+            {
+                lock (_lockObject)
+                {
+                    return new List<(TMessage, Exception)>(_failedMessages);
+                }
+            }
+        }
+
+        /// <summary>
+        /// Publishes a single message item within a batch operation with proper concurrency control
+        /// </summary>
+        private async UniTask PublishBatchItemAsync(
+            TMessage message,
+            SemaphoreSlim batchSemaphore,
+            CancellationToken cancellationToken,
+            BatchPublishStats batchStats)
+        {
+            await batchSemaphore.WaitAsync(cancellationToken);
+            try
+            {
+                // Validate message first
+                ValidateMessage(message);
+                
+                // Use internal publishing to avoid nested semaphore waits
+                await PublishInternalAsync(message, cancellationToken);
+                
+                // Update statistics
+                Interlocked.Increment(ref _totalPublished);
+                Interlocked.Increment(ref _successfulPublications);
+                batchStats.IncrementSuccess();
+                Interlocked.Exchange(ref _lastPublishedTicks, DateTime.UtcNow.Ticks);
+                
+                // Raise success event
+                MessagePublished?.Invoke(this, new MessagePublishedEventArgs(message, TimeSpan.Zero));
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Don't count cancellation as failure
+                throw;
+            }
+            catch (Exception ex)
+            {
+                Interlocked.Increment(ref _failedPublications);
+                batchStats.IncrementFailure();
+                batchStats.AddFailedMessage(message, ex);
+                
+                // Raise failure event but don't throw to allow batch to continue
+                MessagePublishFailed?.Invoke(this, new MessagePublishFailedEventArgs(message, ex, 0));
+            }
+            finally
+            {
+                batchSemaphore.Release();
             }
         }
 
@@ -323,13 +450,13 @@ namespace AhBearStudios.Core.Messaging.Publishers
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"Failed in conditional publish for message {typeof(TMessage).Name} with ID {message.Id}");
+                _logger.LogException($"Failed in conditional publish for message {typeof(TMessage).Name} with ID {message.Id}", ex);
                 throw;
             }
         }
 
         /// <inheritdoc />
-        public async Task<bool> PublishIfAsync(TMessage message, Func<Task<bool>> condition, CancellationToken cancellationToken = default)
+        public async UniTask<bool> PublishIfAsync(TMessage message, Func<UniTask<bool>> condition, CancellationToken cancellationToken = default)
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
@@ -353,13 +480,13 @@ namespace AhBearStudios.Core.Messaging.Publishers
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"Failed in async conditional publish for message {typeof(TMessage).Name} with ID {message.Id}");
+                _logger.LogException($"Failed in async conditional publish for message {typeof(TMessage).Name} with ID {message.Id}", ex);
                 throw;
             }
         }
 
         /// <inheritdoc />
-        public async Task PublishDelayedAsync(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default)
+        public async UniTask PublishDelayedAsync(TMessage message, TimeSpan delay, CancellationToken cancellationToken = default)
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
@@ -374,7 +501,7 @@ namespace AhBearStudios.Core.Messaging.Publishers
             {
                 _logger.LogInfo($"Scheduled delayed publish for message {typeof(TMessage).Name} with ID {message.Id} in {delay.TotalMilliseconds}ms");
 
-                await Task.Delay(delay, combinedCts.Token);
+                await UniTask.Delay(delay, cancellationToken: combinedCts.Token);
                 await PublishAsync(message, combinedCts.Token);
 
                 _logger.LogInfo($"Completed delayed publish for message {typeof(TMessage).Name} with ID {message.Id}");
@@ -386,7 +513,7 @@ namespace AhBearStudios.Core.Messaging.Publishers
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"Failed in delayed publish for message {typeof(TMessage).Name} with ID {message.Id}");
+                _logger.LogException($"Failed in delayed publish for message {typeof(TMessage).Name} with ID {message.Id}", ex);
                 throw;
             }
         }
@@ -463,14 +590,14 @@ namespace AhBearStudios.Core.Messaging.Publishers
         /// <param name="message">The message to publish</param>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Task representing the async operation</returns>
-        private async Task PublishInternalAsync(TMessage message, CancellationToken cancellationToken)
+        private async UniTask PublishInternalAsync(TMessage message, CancellationToken cancellationToken)
         {
             // This is where the actual async message publishing would occur
             
             _logger.LogInfo($"Internal async publish for message {typeof(TMessage).Name} with ID {message.Id}");
             
             // Simulate async work
-            await Task.Yield();
+            await UniTask.Yield();
             
             // Example: await messagePipe.PublishAsync(message, cancellationToken);
         }
@@ -513,7 +640,7 @@ namespace AhBearStudios.Core.Messaging.Publishers
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"Failed to update statistics for publisher {typeof(TMessage).Name}");
+                _logger.LogException($"Failed to update statistics for publisher {typeof(TMessage).Name}", ex);
             }
         }
 
@@ -556,7 +683,7 @@ namespace AhBearStudios.Core.Messaging.Publishers
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"Error during MessagePublisher<{typeof(TMessage).Name}> disposal");
+                _logger.LogException($"Error during MessagePublisher<{typeof(TMessage).Name}> disposal", ex);
             }
         }
 

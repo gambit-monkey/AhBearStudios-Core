@@ -2,6 +2,7 @@ using System;
 using Unity.Collections;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Messaging.Messages;
+using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Pooling.Models;
 
 namespace AhBearStudios.Core.Pooling.Messages
@@ -11,7 +12,7 @@ namespace AhBearStudios.Core.Pooling.Messages
     /// Follows the IMessage pattern from CLAUDE.md guidelines.
     /// Used for monitoring pool health and triggering capacity management.
     /// </summary>
-    public record struct PoolCapacityReachedMessage : IMessage
+    public readonly record struct PoolCapacityReachedMessage : IMessage
     {
         /// <summary>
         /// Gets the unique identifier for this message instance.
@@ -21,7 +22,7 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode => MessageTypeCodes.PoolCapacityReached;
+        public ushort TypeCode { get; init; } = MessageTypeCodes.PoolCapacityReachedMessage;
 
         /// <summary>
         /// Gets the name of the pool that reached capacity.
@@ -74,6 +75,11 @@ namespace AhBearStudios.Core.Pooling.Messages
         public FixedString64Bytes Source { get; init; }
 
         /// <summary>
+        /// Gets the priority level for message processing.
+        /// </summary>
+        public MessagePriority Priority { get; init; }
+
+        /// <summary>
         /// Gets the severity level of the capacity issue.
         /// </summary>
         public CapacitySeverity Severity { get; init; }
@@ -82,6 +88,27 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// Gets additional context about the capacity situation.
         /// </summary>
         public FixedString128Bytes Context { get; init; }
+
+        /// <summary>
+        /// Initializes a new instance of the PoolCapacityReachedMessage struct.
+        /// </summary>
+        public PoolCapacityReachedMessage()
+        {
+            Id = default;
+            TimestampTicks = default;
+            PoolName = default;
+            ObjectTypeName = default;
+            PoolId = default;
+            CurrentCapacity = default;
+            MaxCapacity = default;
+            ActiveObjects = default;
+            UtilizationPercentage = default;
+            CorrelationId = default;
+            Source = default;
+            Priority = default;
+            Severity = default;
+            Context = default;
+        }
 
         /// <summary>
         /// Gets the DateTime representation of the timestamp.
@@ -119,6 +146,7 @@ namespace AhBearStudios.Core.Pooling.Messages
             return new PoolCapacityReachedMessage
             {
                 Id = Guid.NewGuid(),
+                TypeCode = MessageTypeCodes.PoolCapacityReachedMessage,
                 PoolName = poolName,
                 ObjectTypeName = objectTypeName,
                 PoolId = poolId,
@@ -127,6 +155,7 @@ namespace AhBearStudios.Core.Pooling.Messages
                 MaxCapacity = maxCapacity,
                 ActiveObjects = activeObjects,
                 UtilizationPercentage = utilizationPercentage,
+                Priority = MessagePriority.High, // Pool capacity issues are high priority
                 Severity = severity,
                 Context = context.IsEmpty ? new FixedString128Bytes("Pool capacity limit reached") : context,
                 CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,

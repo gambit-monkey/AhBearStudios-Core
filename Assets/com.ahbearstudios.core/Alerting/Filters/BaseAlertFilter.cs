@@ -134,7 +134,7 @@ namespace AhBearStudios.Core.Alerting.Filters
             
             if (result)
             {
-                var message = FilterConfigurationChangedMessage.Create(
+                var message = AlertFilterConfigurationChangedMessage.Create(
                     filterName: Name,
                     changeSummary: "Filter configuration updated successfully",
                     previousConfig: previousConfig,
@@ -152,7 +152,7 @@ namespace AhBearStudios.Core.Alerting.Filters
                 // Rollback on failure
                 _configuration = previousConfig;
                 
-                var failureMessage = FilterConfigurationChangedMessage.Create(
+                var failureMessage = AlertFilterConfigurationChangedMessage.Create(
                     filterName: Name,
                     changeSummary: "Filter configuration update failed",
                     previousConfig: previousConfig,
@@ -194,7 +194,7 @@ namespace AhBearStudios.Core.Alerting.Filters
                 ResetCore(correlationId);
             }
 
-            var message = FilterStatisticsUpdatedMessage.Create(
+            var message = AlertFilterStatisticsUpdatedMessage.Create(
                 filterName: Name,
                 statistics: _statistics,
                 source: "BaseAlertFilter",

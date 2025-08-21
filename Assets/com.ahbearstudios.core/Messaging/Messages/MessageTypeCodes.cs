@@ -5,7 +5,8 @@
     /// Provides organized ranges to prevent conflicts and enable efficient message routing.
     /// 
     /// TypeCode Range Allocation:
-    /// - Core System: 1000-1099 (General messaging, startup, shutdown)
+    /// - Core System: 1000-1049 (System startup, shutdown, general operations)
+    /// - Messaging System: 1050-1099 (Message bus, routing, subscriptions)
     /// - Logging System: 1100-1199 (Logging infrastructure)
     /// - Health System: 1200-1299 (Health checks and monitoring)
     /// - Pooling System: 1300-1399 (Object pooling strategies)
@@ -19,82 +20,254 @@
     /// - Custom/Third-party: 3000-64999 (Custom integrations)
     /// - Reserved/Testing: 65000-65535 (Special cases and testing)
     /// 
+    /// Naming Convention:
+    /// All type codes follow the pattern: {System}{Action}Message
+    /// Examples: CoreStartupMessage, MessageBusHealthChangedMessage, PoolExpansionMessage
+    /// 
     /// To request a new range allocation, update this documentation and register
     /// the range in the MessageRegistry system.
     /// </summary>
     public static class MessageTypeCodes
     {
-        #region Core System Messages (1000-1099)
+        #region Core System Messages (1000-1049)
         
         /// <summary>
-        /// Type code for general log messages.
+        /// Type code for general log messages from core system.
         /// </summary>
-        public const ushort LogMessage = 1000;
+        public const ushort CoreLogMessage = 1000;
         
         /// <summary>
         /// Type code for system startup messages.
         /// </summary>
-        public const ushort SystemStartup = 1001;
+        public const ushort CoreStartupMessage = 1001;
         
         /// <summary>
         /// Type code for system shutdown messages.
         /// </summary>
-        public const ushort SystemShutdown = 1002;
+        public const ushort CoreShutdownMessage = 1002;
         
         /// <summary>
         /// Type code for system error messages.
         /// </summary>
-        public const ushort SystemError = 1003;
+        public const ushort CoreErrorMessage = 1003;
         
         /// <summary>
-        /// Type code for performance metric messages.
+        /// Type code for performance metric messages from core system.
         /// </summary>
-        public const ushort PerformanceMetric = 1004;
+        public const ushort CorePerformanceMetricMessage = 1004;
         
         /// <summary>
-        /// Type code for general alert messages.
+        /// Type code for general alert messages from core system.
         /// </summary>
-        public const ushort Alert = 1005;
+        public const ushort CoreAlertMessage = 1005;
+        
+        #endregion
+        
+        #region Messaging System Messages (1050-1099)
         
         /// <summary>
         /// Type code for message bus configuration messages.
         /// </summary>
-        public const ushort MessageBusConfiguration = 1006;
+        public const ushort MessageBusConfigurationMessage = 1050;
         
         /// <summary>
         /// Type code for message bus statistics messages.
         /// </summary>
-        public const ushort MessageBusStatistics = 1007;
+        public const ushort MessageBusStatisticsMessage = 1051;
         
         /// <summary>
         /// Type code for message bus health status messages.
         /// </summary>
-        public const ushort MessageBusHealthStatus = 1008;
+        public const ushort MessageBusHealthStatusMessage = 1052;
         
         /// <summary>
         /// Type code for message routing status messages.
         /// </summary>
-        public const ushort MessageRoutingStatus = 1009;
+        public const ushort MessageBusRoutingStatusMessage = 1053;
         
         /// <summary>
         /// Type code for message processing failed messages.
         /// </summary>
-        public const ushort MessageProcessingFailed = 1010;
+        public const ushort MessageBusProcessingFailedMessage = 1054;
         
         /// <summary>
-        /// Type code for message published event messages.
+        /// Type code for message published messages.
         /// </summary>
-        public const ushort MessagePublished = 1011;
+        public const ushort MessageBusPublishedMessage = 1055;
         
         /// <summary>
         /// Type code for message subscriber registered messages.
         /// </summary>
-        public const ushort MessageSubscriberRegistered = 1012;
+        public const ushort MessageBusSubscriberRegisteredMessage = 1056;
         
         /// <summary>
         /// Type code for message subscriber unregistered messages.
         /// </summary>
-        public const ushort MessageSubscriberUnregistered = 1013;
+        public const ushort MessageBusSubscriberUnregisteredMessage = 1057;
+        
+        /// <summary>
+        /// Type code for message metadata created messages.
+        /// </summary>
+        public const ushort MessageBusMetadataCreatedMessage = 1058;
+        
+        /// <summary>
+        /// Type code for message metadata updated messages.
+        /// </summary>
+        public const ushort MessageBusMetadataUpdatedMessage = 1059;
+        
+        /// <summary>
+        /// Type code for message metadata validation failed messages.
+        /// </summary>
+        public const ushort MessageBusMetadataValidationFailedMessage = 1060;
+        
+        /// <summary>
+        /// Type code for message bus health changed messages.
+        /// </summary>
+        public const ushort MessageBusHealthChangedMessage = 1061;
+        
+        /// <summary>
+        /// Type code for message bus circuit breaker state changed messages.
+        /// </summary>
+        public const ushort MessageBusCircuitBreakerStateChangedMessage = 1062;
+        
+        /// <summary>
+        /// Type code for message processed messages.
+        /// </summary>
+        public const ushort MessageBusProcessedMessage = 1063;
+        
+        /// <summary>
+        /// Type code for subscription created messages.
+        /// </summary>
+        public const ushort MessageBusSubscriptionCreatedMessage = 1064;
+        
+        /// <summary>
+        /// Type code for subscription disposed messages.
+        /// </summary>
+        public const ushort MessageBusSubscriptionDisposedMessage = 1065;
+        
+        /// <summary>
+        /// Type code for message routed messages.
+        /// </summary>
+        public const ushort MessageBusRoutedMessage = 1066;
+        
+        /// <summary>
+        /// Type code for routing rule changed messages.
+        /// </summary>
+        public const ushort MessageBusRoutingRuleChangedMessage = 1067;
+        
+        /// <summary>
+        /// Type code for route handler changed messages.
+        /// </summary>
+        public const ushort MessageBusRouteHandlerChangedMessage = 1068;
+        
+        /// <summary>
+        /// Type code for routes cleared messages.
+        /// </summary>
+        public const ushort MessageBusRoutesClearedMessage = 1069;
+        
+        /// <summary>
+        /// Type code for message type registered messages.
+        /// </summary>
+        public const ushort MessageBusTypeRegisteredMessage = 1070;
+        
+        /// <summary>
+        /// Type code for message type unregistered messages.
+        /// </summary>
+        public const ushort MessageBusTypeUnregisteredMessage = 1071;
+        
+        /// <summary>
+        /// Type code for registry cleared messages.
+        /// </summary>
+        public const ushort MessageBusRegistryClearedMessage = 1072;
+        
+        /// <summary>
+        /// Type code for MessagePipe publish succeeded messages.
+        /// </summary>
+        public const ushort MessagePipePublishSucceededMessage = 1073;
+        
+        /// <summary>
+        /// Type code for MessagePipe publish failed messages.
+        /// </summary>
+        public const ushort MessagePipePublishFailedMessage = 1074;
+        
+        /// <summary>
+        /// Type code for MessagePipe publish cancelled messages.
+        /// </summary>
+        public const ushort MessagePipePublishCancelledMessage = 1075;
+        
+        /// <summary>
+        /// Type code for MessagePipe subscription created messages.
+        /// </summary>
+        public const ushort MessagePipeSubscriptionCreatedMessage = 1076;
+        
+        /// <summary>
+        /// Type code for MessagePipe subscription disposed messages.
+        /// </summary>
+        public const ushort MessagePipeSubscriptionDisposedMessage = 1077;
+        
+        /// <summary>
+        /// Type code for MessagePipe health changed messages.
+        /// </summary>
+        public const ushort MessagePipeHealthChangedMessage = 1078;
+        
+        /// <summary>
+        /// Type code for message bus publish failed messages.
+        /// </summary>
+        public const ushort MessageBusPublishFailedMessage = 1079;
+        
+        /// <summary>
+        /// Type code for message registry type registered messages.
+        /// </summary>
+        public const ushort MessageRegistryTypeRegisteredMessage = 1080;
+        
+        /// <summary>
+        /// Type code for message registry type unregistered messages.
+        /// </summary>
+        public const ushort MessageRegistryTypeUnregisteredMessage = 1081;
+        
+        /// <summary>
+        /// Type code for message registry cache cleared messages.
+        /// </summary>
+        public const ushort MessageRegistryCacheClearedMessage = 1082;
+        
+        /// <summary>
+        /// Type code for message registry statistics reset messages.
+        /// </summary>
+        public const ushort MessageRegistryStatisticsResetMessage = 1083;
+        
+        /// <summary>
+        /// Type code for message pipe adapter health status messages.
+        /// </summary>
+        public const ushort MessagePipeAdapterHealthStatusMessage = 1084;
+        
+        /// <summary>
+        /// Type code for message pipe adapter statistics messages.
+        /// </summary>
+        public const ushort MessagePipeAdapterStatisticsMessage = 1085;
+        
+        /// <summary>
+        /// Type code for message subscriber created messages.
+        /// Sent when a new message subscriber is created.
+        /// </summary>
+        public const ushort MessageBusSubscriberCreatedMessage = 1086;
+        
+        /// <summary>
+        /// Type code for message subscriber disposed messages.
+        /// Sent when a message subscriber is disposed.
+        /// </summary>
+        public const ushort MessageBusSubscriberDisposedMessage = 1087;
+        
+        /// <summary>
+        /// Type code for subscription processed messages.
+        /// Sent when a subscription successfully processes a message.
+        /// </summary>
+        public const ushort MessageBusSubscriptionProcessedMessage = 1088;
+        
+        /// <summary>
+        /// Type code for subscription failed messages.
+        /// Sent when a subscription fails to process a message.
+        /// </summary>
+        public const ushort MessageBusSubscriptionFailedMessage = 1089;
         
         #endregion
         
@@ -103,46 +276,51 @@
         /// <summary>
         /// Type code for log target error messages.
         /// </summary>
-        public const ushort LogTargetError = 1100;
+        public const ushort LoggingTargetErrorMessage = 1100;
         
         /// <summary>
         /// Type code for log scope completed messages.
         /// </summary>
-        public const ushort LogScopeCompleted = 1101;
+        public const ushort LoggingScopeCompletedMessage = 1101;
         
         /// <summary>
         /// Type code for logging system health messages.
         /// </summary>
-        public const ushort LoggingSystemHealth = 1102;
+        public const ushort LoggingSystemHealthMessage = 1102;
         
         /// <summary>
         /// Type code for log configuration changed messages.
         /// </summary>
-        public const ushort LogConfigurationChanged = 1103;
+        public const ushort LoggingConfigurationChangedMessage = 1103;
         
         #endregion
         
         #region Health System Messages (1200-1299)
         
         /// <summary>
-        /// Type code for health check messages.
+        /// Type code for health check completed messages.
         /// </summary>
-        public const ushort HealthCheck = 1200;
+        public const ushort HealthCheckCompletedMessage = 1200;
         
         /// <summary>
         /// Type code for health check test messages.
         /// </summary>
-        public const ushort HealthCheckTest = 1201;
+        public const ushort HealthCheckTestMessage = 1201;
         
         /// <summary>
         /// Type code for health status changed messages.
         /// </summary>
-        public const ushort HealthStatusChanged = 1202;
+        public const ushort HealthCheckStatusChangedMessage = 1202;
         
         /// <summary>
         /// Type code for health monitoring alert messages.
         /// </summary>
-        public const ushort HealthAlert = 1203;
+        public const ushort HealthCheckAlertMessage = 1203;
+        
+        /// <summary>
+        /// Type code for health check degradation change messages.
+        /// </summary>
+        public const ushort HealthCheckDegradationChangeMessage = 1204;
         
         #endregion
         
@@ -152,55 +330,55 @@
         /// Type code for pool expansion messages.
         /// Sent when a pool increases its size due to demand.
         /// </summary>
-        public const ushort PoolExpansion = 1300;
+        public const ushort PoolExpansionMessage = 1300;
         
         /// <summary>
         /// Type code for network spike detected messages.
         /// Sent when adaptive network strategies detect traffic spikes.
         /// </summary>
-        public const ushort NetworkSpikeDetected = 1301;
+        public const ushort PoolNetworkSpikeDetectedMessage = 1301;
         
         /// <summary>
         /// Type code for pool contraction messages.
         /// Sent when a pool reduces its size due to low utilization.
         /// </summary>
-        public const ushort PoolContraction = 1302;
+        public const ushort PoolContractionMessage = 1302;
         
         /// <summary>
         /// Type code for buffer exhaustion messages.
         /// Sent when a pool runs out of available objects.
         /// </summary>
-        public const ushort BufferExhaustion = 1303;
+        public const ushort PoolBufferExhaustionMessage = 1303;
         
         /// <summary>
-        /// Type code for circuit breaker state changed messages.
-        /// Sent when circuit breaker strategies change state.
+        /// Type code for pool circuit breaker state changed messages.
+        /// Sent when pool circuit breaker strategies change state.
         /// </summary>
-        public const ushort CircuitBreakerStateChanged = 1304;
+        public const ushort PoolCircuitBreakerStateChangedMessage = 1304;
         
         /// <summary>
         /// Type code for pool object retrieved messages.
         /// Sent when an object is retrieved from a pool.
         /// </summary>
-        public const ushort PoolObjectRetrieved = 1305;
+        public const ushort PoolObjectRetrievedMessage = 1305;
         
         /// <summary>
         /// Type code for pool object returned messages.
         /// Sent when an object is returned to a pool.
         /// </summary>
-        public const ushort PoolObjectReturned = 1306;
+        public const ushort PoolObjectReturnedMessage = 1306;
         
         /// <summary>
         /// Type code for pool capacity reached messages.
         /// Sent when a pool reaches its capacity limits.
         /// </summary>
-        public const ushort PoolCapacityReached = 1307;
+        public const ushort PoolCapacityReachedMessage = 1307;
         
         /// <summary>
         /// Type code for pool validation issues messages.
         /// Sent when pool validation detects issues.
         /// </summary>
-        public const ushort PoolValidationIssues = 1308;
+        public const ushort PoolValidationIssuesMessage = 1308;
         
         #endregion
         
@@ -210,109 +388,109 @@
         /// Type code for alert raised messages.
         /// Sent when an alert is raised in the system.
         /// </summary>
-        public const ushort AlertRaised = 1401;
+        public const ushort AlertRaisedMessage = 1401;
         
         /// <summary>
         /// Type code for alert acknowledged messages.
         /// Sent when an alert is acknowledged by a user or system.
         /// </summary>
-        public const ushort AlertAcknowledged = 1402;
+        public const ushort AlertAcknowledgedMessage = 1402;
         
         /// <summary>
         /// Type code for alert resolved messages.
         /// Sent when an alert is resolved and no longer active.
         /// </summary>
-        public const ushort AlertResolved = 1403;
+        public const ushort AlertResolvedMessage = 1403;
         
         /// <summary>
         /// Type code for alert system health changed messages.
         /// Sent when alerting system health status changes.
         /// </summary>
-        public const ushort AlertSystemHealthChanged = 1404;
+        public const ushort AlertSystemHealthChangedMessage = 1404;
         
         /// <summary>
         /// Type code for alert suppression messages.
         /// Sent when alerts are suppressed by filtering rules.
         /// </summary>
-        public const ushort AlertSuppressed = 1405;
+        public const ushort AlertSuppressedMessage = 1405;
         
         /// <summary>
         /// Type code for alert channel status messages.
         /// Sent when alert channels change status or fail.
         /// </summary>
-        public const ushort AlertChannelStatus = 1406;
+        public const ushort AlertChannelStatusMessage = 1406;
         
         /// <summary>
         /// Type code for alert statistics messages.
         /// Sent periodically with alerting system statistics.
         /// </summary>
-        public const ushort AlertStatistics = 1407;
+        public const ushort AlertStatisticsMessage = 1407;
 
         /// <summary>
         /// Type code for channel health changed messages.
         /// Sent when alert channel health status changes.
         /// </summary>
-        public const ushort ChannelHealthChanged = 1408;
+        public const ushort AlertChannelHealthChangedMessage = 1408;
 
         /// <summary>
         /// Type code for alert delivery failed messages.
         /// Sent when an alert fails to be delivered through a channel.
         /// </summary>
-        public const ushort AlertDeliveryFailed = 1409;
+        public const ushort AlertDeliveryFailedMessage = 1409;
 
         /// <summary>
         /// Type code for filter configuration changed messages.
         /// Sent when filter configuration is updated.
         /// </summary>
-        public const ushort FilterConfigurationChanged = 1410;
+        public const ushort AlertFilterConfigurationChangedMessage = 1410;
 
         /// <summary>
         /// Type code for filter statistics updated messages.
         /// Sent when filter statistics are updated.
         /// </summary>
-        public const ushort FilterStatisticsUpdated = 1411;
+        public const ushort AlertFilterStatisticsUpdatedMessage = 1411;
 
         /// <summary>
         /// Type code for channel configuration changed messages.
         /// Sent when channel configuration is updated.
         /// </summary>
-        public const ushort ChannelConfigurationChanged = 1412;
+        public const ushort AlertChannelConfigurationChangedMessage = 1412;
 
         /// <summary>
         /// Type code for channel registered messages.
         /// Sent when a channel is registered with the alert service.
         /// </summary>
-        public const ushort ChannelRegistered = 1413;
+        public const ushort AlertChannelRegisteredMessage = 1413;
 
         /// <summary>
         /// Type code for channel unregistered messages.
         /// Sent when a channel is unregistered from the alert service.
         /// </summary>
-        public const ushort ChannelUnregistered = 1414;
+        public const ushort AlertChannelUnregisteredMessage = 1414;
 
         /// <summary>
         /// Type code for alert service health check messages.
         /// Sent when comprehensive health checks are performed.
         /// </summary>
-        public const ushort AlertServiceHealthCheck = 1415;
+        public const ushort AlertServiceHealthCheckMessage = 1415;
 
         /// <summary>
         /// Type code for alert service configuration updated messages.
         /// Sent when service configuration is hot-reloaded.
         /// </summary>
-        public const ushort AlertServiceConfigurationUpdated = 1416;
+        public const ushort AlertServiceConfigurationUpdatedMessage = 1416;
 
         /// <summary>
         /// Type code for emergency mode status messages.
         /// Sent when emergency mode is enabled or disabled.
         /// </summary>
-        public const ushort EmergencyModeStatus = 1417;
+        public const ushort AlertEmergencyModeStatusMessage = 1417;
 
         /// <summary>
         /// Type code for bulk operation completed messages.
         /// Sent when bulk alert operations complete.
         /// </summary>
-        public const ushort BulkOperationCompleted = 1418;
+        public const ushort AlertBulkOperationCompletedMessage = 1418;
         
         #endregion
         
@@ -326,7 +504,17 @@
         /// <summary>
         /// Maximum TypeCode value for core system messages.
         /// </summary>
-        public const ushort CoreSystemRangeEnd = 1099;
+        public const ushort CoreSystemRangeEnd = 1049;
+        
+        /// <summary>
+        /// Minimum TypeCode value for messaging system messages.
+        /// </summary>
+        public const ushort MessagingSystemRangeStart = 1050;
+        
+        /// <summary>
+        /// Maximum TypeCode value for messaging system messages.
+        /// </summary>
+        public const ushort MessagingSystemRangeEnd = 1099;
         
         /// <summary>
         /// Minimum TypeCode value for logging system messages.
@@ -399,6 +587,7 @@
             return typeCode switch
             {
                 >= CoreSystemRangeStart and <= CoreSystemRangeEnd => "Core System",
+                >= MessagingSystemRangeStart and <= MessagingSystemRangeEnd => "Messaging System",
                 >= LoggingSystemRangeStart and <= LoggingSystemRangeEnd => "Logging System",
                 >= HealthSystemRangeStart and <= HealthSystemRangeEnd => "Health System",
                 >= PoolingSystemRangeStart and <= PoolingSystemRangeEnd => "Pooling System",

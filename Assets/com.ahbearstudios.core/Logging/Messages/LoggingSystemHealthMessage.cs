@@ -13,85 +13,107 @@ namespace AhBearStudios.Core.Logging.Messages
         /// <summary>
         /// Gets the unique identifier for this message.
         /// </summary>
-        public Guid Id { get; }
+        public Guid Id { get; init; }
 
         /// <summary>
         /// Gets the timestamp when this message was created.
         /// </summary>
-        public long TimestampTicks { get; }
+        public long TimestampTicks { get; init; }
 
         /// <summary>
         /// Gets the type code for this message type.
         /// </summary>
-        public ushort TypeCode => MessageTypeCodes.LoggingSystemHealth;
+        public ushort TypeCode { get; init; } = MessageTypeCodes.LoggingSystemHealthMessage;
 
         /// <summary>
         /// Gets the source system that published this message.
         /// </summary>
-        public FixedString64Bytes Source { get; }
+        public FixedString64Bytes Source { get; init; }
 
         /// <summary>
         /// Gets the priority level for message processing.
         /// </summary>
-        public MessagePriority Priority { get; }
+        public MessagePriority Priority { get; init; }
 
         /// <summary>
         /// Gets the correlation ID for tracking.
         /// </summary>
-        public Guid CorrelationId { get; }
+        public Guid CorrelationId { get; init; }
 
         /// <summary>
         /// Gets the overall health status of the logging system.
         /// </summary>
-        public LoggingSystemHealthStatus HealthStatus { get; }
+        public LoggingSystemHealthStatus HealthStatus { get; init; }
 
         /// <summary>
         /// Gets the number of healthy targets.
         /// </summary>
-        public int HealthyTargetCount { get; }
+        public int HealthyTargetCount { get; init; }
 
         /// <summary>
         /// Gets the total number of targets.
         /// </summary>
-        public int TotalTargetCount { get; }
+        public int TotalTargetCount { get; init; }
 
         /// <summary>
         /// Gets the number of active channels.
         /// </summary>
-        public int ActiveChannelCount { get; }
+        public int ActiveChannelCount { get; init; }
 
         /// <summary>
         /// Gets the messages processed per second (throughput).
         /// </summary>
-        public float MessagesPerSecond { get; }
+        public float MessagesPerSecond { get; init; }
 
         /// <summary>
         /// Gets the current error rate as a percentage.
         /// </summary>
-        public float ErrorRatePercent { get; }
+        public float ErrorRatePercent { get; init; }
 
         /// <summary>
         /// Gets the memory usage in bytes.
         /// </summary>
-        public long MemoryUsageBytes { get; }
+        public long MemoryUsageBytes { get; init; }
 
         /// <summary>
         /// Gets the uptime in ticks.
         /// </summary>
-        public long UptimeTicks { get; }
+        public long UptimeTicks { get; init; }
 
         /// <summary>
         /// Gets the health check correlation ID.
         /// </summary>
-        public FixedString64Bytes HealthCheckCorrelationId { get; }
+        public FixedString64Bytes HealthCheckCorrelationId { get; init; }
 
         /// <summary>
         /// Gets additional health status details.
         /// </summary>
-        public FixedString512Bytes StatusDetails { get; }
+        public FixedString512Bytes StatusDetails { get; init; }
 
         /// <summary>
-        /// Initializes a new instance of the LoggingSystemHealthMessage.
+        /// Initializes a new instance of the LoggingSystemHealthMessage struct.
+        /// </summary>
+        public LoggingSystemHealthMessage()
+        {
+            Id = default;
+            TimestampTicks = default;
+            Source = default;
+            Priority = default;
+            CorrelationId = default;
+            HealthStatus = default;
+            HealthyTargetCount = default;
+            TotalTargetCount = default;
+            ActiveChannelCount = default;
+            MessagesPerSecond = default;
+            ErrorRatePercent = default;
+            MemoryUsageBytes = default;
+            UptimeTicks = default;
+            HealthCheckCorrelationId = default;
+            StatusDetails = default;
+        }
+
+        /// <summary>
+        /// Initializes a new instance of the LoggingSystemHealthMessage with parameters.
         /// </summary>
         /// <param name="healthStatus">The overall health status</param>
         /// <param name="healthyTargetCount">Number of healthy targets</param>
@@ -119,6 +141,7 @@ namespace AhBearStudios.Core.Logging.Messages
         {
             Id = Guid.NewGuid();
             TimestampTicks = DateTime.UtcNow.Ticks;
+            TypeCode = MessageTypeCodes.LoggingSystemHealthMessage;
             Source = new FixedString64Bytes("LoggingSystem");
             Priority = healthStatus == LoggingSystemHealthStatus.Critical ? MessagePriority.High : MessagePriority.Normal;
             CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId;

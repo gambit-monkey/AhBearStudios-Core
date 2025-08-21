@@ -229,7 +229,7 @@ namespace AhBearStudios.Core.Logging
                     // Publish configuration change message for loose coupling
                     if (_messageBusService != null)
                     {
-                        var configMessage = LogConfigurationChangedMessage.Create(
+                        var configMessage = LoggingConfigurationChangedMessage.Create(
                             LogConfigurationChangeType.TargetAdded,
                             "LoggingService",
                             "RegisteredTargets",
@@ -267,7 +267,7 @@ namespace AhBearStudios.Core.Logging
                         // Publish configuration change message for loose coupling
                         if (_messageBusService != null)
                         {
-                            var configMessage = LogConfigurationChangedMessage.Create(
+                            var configMessage = LoggingConfigurationChangedMessage.Create(
                                 LogConfigurationChangeType.TargetRemoved,
                                 "LoggingService",
                                 "RegisteredTargets",
@@ -692,7 +692,7 @@ namespace AhBearStudios.Core.Logging
                 // Publish message through message bus for loose coupling
                 if (_messageBusService != null)
                 {
-                    var errorMessage = LogTargetErrorMessage.Create(
+                    var errorMessage = LoggingTargetErrorMessage.Create(
                         targetName,
                         exception?.Message ?? "Unknown error",
                         severity: LogTargetErrorSeverity.Error);
@@ -728,7 +728,7 @@ namespace AhBearStudios.Core.Logging
                 // Publish internal error as target error message
                 if (_messageBusService != null)
                 {
-                    var errorMessage = LogTargetErrorMessage.Create(
+                    var errorMessage = LoggingTargetErrorMessage.Create(
                         "LoggingService",
                         $"Internal logging service error: {exception?.Message ?? "Unknown error"}",
                         severity: LogTargetErrorSeverity.Critical);

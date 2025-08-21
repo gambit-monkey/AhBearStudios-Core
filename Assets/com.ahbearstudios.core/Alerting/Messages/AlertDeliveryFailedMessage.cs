@@ -26,7 +26,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; }
+        public ushort TypeCode { get; init; } = MessageTypeCodes.AlertDeliveryFailedMessage;
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -90,6 +90,27 @@ namespace AhBearStudios.Core.Alerting.Messages
         public bool IsFinalFailure { get; init; }
 
         /// <summary>
+        /// Initializes a new instance of the AlertDeliveryFailedMessage struct.
+        /// </summary>
+        public AlertDeliveryFailedMessage()
+        {
+            Id = default;
+            TimestampTicks = default;
+            Source = default;
+            Priority = default;
+            CorrelationId = default;
+            ChannelName = default;
+            AlertId = default;
+            AlertMessage = default;
+            AlertSeverity = default;
+            AlertSource = default;
+            ExceptionMessage = default;
+            ExceptionType = default;
+            RetryCount = default;
+            IsFinalFailure = default;
+        }
+
+        /// <summary>
         /// Gets the DateTime representation of the message timestamp.
         /// </summary>
         public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
@@ -118,7 +139,7 @@ namespace AhBearStudios.Core.Alerting.Messages
             {
                 Id = Guid.NewGuid(),
                 TimestampTicks = DateTime.UtcNow.Ticks,
-                TypeCode = MessageTypeCodes.AlertDeliveryFailed,
+                TypeCode = MessageTypeCodes.AlertDeliveryFailedMessage,
                 Source = source.IsEmpty ? "AlertChannelService" : source,
                 Priority = isFinalFailure ? MessagePriority.High : MessagePriority.Normal,
                 CorrelationId = correlationId == Guid.Empty ? alert?.CorrelationId ?? Guid.NewGuid() : correlationId,
@@ -164,7 +185,7 @@ namespace AhBearStudios.Core.Alerting.Messages
             {
                 Id = Guid.NewGuid(),
                 TimestampTicks = DateTime.UtcNow.Ticks,
-                TypeCode = MessageTypeCodes.AlertDeliveryFailed,
+                TypeCode = MessageTypeCodes.AlertDeliveryFailedMessage,
                 Source = source.IsEmpty ? "AlertChannelService" : source,
                 Priority = isFinalFailure ? MessagePriority.High : MessagePriority.Normal,
                 CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,

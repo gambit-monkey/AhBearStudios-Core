@@ -479,7 +479,7 @@ namespace AhBearStudios.Core.Pooling.Strategies
                     _networkSpikes.Add(DateTime.UtcNow);
                     _loggingService.LogInfo($"Network spike detected - Operations per second: {recentOpsPerSecond:F1}");
                     
-                    _messageBusService.PublishMessage(NetworkSpikeDetectedMessage.Create(
+                    _messageBusService.PublishMessage(PoolNetworkSpikeDetectedMessage.Create(
                         strategyName: Name,
                         operationsPerSecond: recentOpsPerSecond,
                         source: AlertSource

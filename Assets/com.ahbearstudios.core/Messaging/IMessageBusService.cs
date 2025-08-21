@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Threading;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.HealthChecking;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Messaging.Messages;
@@ -37,7 +37,7 @@ namespace AhBearStudios.Core.Messaging
         /// <returns>Task representing the async operation</returns>
         /// <exception cref="ArgumentNullException">Thrown when message is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when service is disposed</exception>
-        Task PublishMessageAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default) where TMessage : IMessage;
+        UniTask PublishMessageAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default) where TMessage : IMessage;
 
         /// <summary>
         /// Publishes multiple messages as a batch operation.
@@ -57,7 +57,7 @@ namespace AhBearStudios.Core.Messaging
         /// <returns>Task representing the async operation</returns>
         /// <exception cref="ArgumentNullException">Thrown when messages is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when service is disposed</exception>
-        Task PublishBatchAsync<TMessage>(TMessage[] messages, CancellationToken cancellationToken = default) where TMessage : IMessage;
+        UniTask PublishBatchAsync<TMessage>(TMessage[] messages, CancellationToken cancellationToken = default) where TMessage : IMessage;
 
         #endregion
 
@@ -81,7 +81,7 @@ namespace AhBearStudios.Core.Messaging
         /// <returns>Disposable subscription handle</returns>
         /// <exception cref="ArgumentNullException">Thrown when handler is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when service is disposed</exception>
-        IDisposable SubscribeToMessageAsync<TMessage>(Func<TMessage, Task> handler) where TMessage : IMessage;
+        IDisposable SubscribeToMessageAsync<TMessage>(Func<TMessage, UniTask> handler) where TMessage : IMessage;
 
         #endregion
 
@@ -127,7 +127,7 @@ namespace AhBearStudios.Core.Messaging
         /// <returns>Disposable subscription handle</returns>
         /// <exception cref="ArgumentNullException">Thrown when filter or handler is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when service is disposed</exception>
-        IDisposable SubscribeWithFilterAsync<TMessage>(Func<TMessage, bool> filter, Func<TMessage, Task> handler) where TMessage : IMessage;
+        IDisposable SubscribeWithFilterAsync<TMessage>(Func<TMessage, bool> filter, Func<TMessage, UniTask> handler) where TMessage : IMessage;
 
         /// <summary>
         /// Subscribes to messages with priority filtering.
@@ -177,7 +177,7 @@ namespace AhBearStudios.Core.Messaging
         /// </summary>
         /// <param name="cancellationToken">Optional cancellation token</param>
         /// <returns>Health check result</returns>
-        Task<HealthStatus> CheckHealthAsync(CancellationToken cancellationToken = default);
+        UniTask<HealthStatus> CheckHealthAsync(CancellationToken cancellationToken = default);
 
         #endregion
 

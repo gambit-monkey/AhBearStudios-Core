@@ -1,16 +1,18 @@
-﻿using System.Collections.Concurrent;
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
 using System.Threading;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Messaging.Configs;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Pooling;
 using AhBearStudios.Core.Profiling;
 using Unity.Collections;
+using ZLinq;
 
 namespace AhBearStudios.Core.Messaging.Services
 {
@@ -23,9 +25,8 @@ namespace AhBearStudios.Core.Messaging.Services
     {
         #region Private Fields
 
+        private readonly MessageRegistryConfig _config;
         private readonly ILoggingService _logger;
-        private readonly IAlertService _alertService;
-        private readonly IProfilerService _profilerService;
         private readonly IPoolingService _poolingService;
 
         // Message type registry
@@ -70,20 +71,17 @@ namespace AhBearStudios.Core.Messaging.Services
         /// <summary>
         /// Initializes a new instance of the MessageRegistry class.
         /// </summary>
+        /// <param name="config">The configuration for the message registry</param>
         /// <param name="logger">The logging service</param>
-        /// <param name="alertService">The alert service</param>
-        /// <param name="profilerService">The profiler service</param>
         /// <param name="poolingService">The pooling service</param>
         /// <exception cref="ArgumentNullException">Thrown when required parameters are null</exception>
         public MessageRegistry(
+            MessageRegistryConfig config,
             ILoggingService logger,
-            IAlertService alertService,
-            IProfilerService profilerService,
             IPoolingService poolingService)
         {
+            _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _alertService = alertService ?? throw new ArgumentNullException(nameof(alertService));
-            _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             _poolingService = poolingService ?? throw new ArgumentNullException(nameof(poolingService));
 
             // Generate correlation ID for tracking
@@ -91,8 +89,6 @@ namespace AhBearStudios.Core.Messaging.Services
 
             try
             {
-                using var initScope = _profilerService.BeginScope("MessageRegistry_Initialize");
-
                 _logger.LogInfo($"[{_correlationId}] Initializing MessageRegistry");
 
                 // Initialize collections
@@ -107,13 +103,27 @@ namespace AhBearStudios.Core.Messaging.Services
                 // Initialize synchronization
                 _registryLock = new ReaderWriterLockSlim();
 
-                // Initialize timers
+                // Initialize timers based on configuration
                 _lastStatsReset = DateTime.UtcNow;
-                _statisticsTimer = new Timer(UpdateStatistics, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
-                _cacheCleanupTimer = new Timer(CleanupCache, null, TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5));
+                if (_config.EnableStatistics)
+                {
+                    _statisticsTimer = new Timer(UpdateStatistics, null, TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(10));
+                }
+                
+                if (_config.EnableCaching)
+                {
+                    var cleanupInterval = TimeSpan.FromSeconds(_config.CacheCleanupIntervalSeconds);
+                    _cacheCleanupTimer = new Timer(CleanupCache, null, cleanupInterval, cleanupInterval);
+                }
 
-                // Auto-discover message types
-                DiscoverMessageTypes();
+                // Set initial type code range
+                _nextTypeCode = _config.InitialTypeCodeRangeStart;
+
+                // Auto-discover message types if enabled
+                if (_config.EnableTypeDiscovery)
+                {
+                    DiscoverMessageTypes();
+                }
 
                 _initialized = true;
 
@@ -121,17 +131,7 @@ namespace AhBearStudios.Core.Messaging.Services
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{_correlationId}] Failed to initialize MessageRegistry");
-
-                if (_alertService != null)
-                {
-                    _alertService.RaiseAlert(
-                        $"MessageRegistry initialization failed: {ex.Message}",
-                        AlertSeverity.Critical,
-                        "MessageRegistry",
-                        "Initialization");
-                }
-
+                _logger.LogException("Failed to initialize MessageRegistry", ex);
                 throw;
             }
         }
@@ -164,8 +164,6 @@ namespace AhBearStudios.Core.Messaging.Services
 
             try
             {
-                using var profilerScope = _profilerService?.BeginScope($"MessageRegistry_Register_{messageType.Name}");
-
                 _logger.LogInfo($"[{registrationCorrelationId}] Registering message type {messageType.Name}");
 
                 // Validate message type
@@ -198,10 +196,16 @@ namespace AhBearStudios.Core.Messaging.Services
                     // Update inheritance hierarchy
                     UpdateInheritanceHierarchy(messageType);
 
-                    // Update cache
-                    _typeInfoCache[messageType] = typeInfo;
+                    // Update cache if enabled
+                    if (_config.EnableCaching)
+                    {
+                        _typeInfoCache[messageType] = typeInfo;
+                    }
 
-                    Interlocked.Increment(ref _totalRegistrations);
+                    if (_config.EnableStatistics)
+                    {
+                        Interlocked.Increment(ref _totalRegistrations);
+                    }
 
                     _logger.LogInfo($"[{registrationCorrelationId}] Successfully registered message type {messageType.Name} with type code {typeCode}");
 
@@ -215,17 +219,7 @@ namespace AhBearStudios.Core.Messaging.Services
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{registrationCorrelationId}] Failed to register message type {messageType.Name}");
-
-                if (_alertService != null)
-                {
-                    _alertService.RaiseAlert(
-                        $"Message type registration failed: {ex.Message}",
-                        AlertSeverity.High,
-                        "MessageRegistry",
-                        "Registration");
-                }
-
+                _logger.LogException($"[{registrationCorrelationId}] Failed to register message type {messageType.Name}", ex);
                 throw;
             }
         }
@@ -244,7 +238,10 @@ namespace AhBearStudios.Core.Messaging.Services
 
             ThrowIfDisposed();
 
-            Interlocked.Increment(ref _totalLookups);
+            if (_config.EnableStatistics)
+            {
+                Interlocked.Increment(ref _totalLookups);
+            }
 
             _registryLock.EnterReadLock();
             try
@@ -271,24 +268,39 @@ namespace AhBearStudios.Core.Messaging.Services
 
             ThrowIfDisposed();
 
-            Interlocked.Increment(ref _totalLookups);
-
-            // Check cache first
-            if (_typeInfoCache.TryGetValue(messageType, out var cachedInfo))
+            if (_config.EnableStatistics)
             {
-                Interlocked.Increment(ref _cacheHits);
+                if (_config.EnableStatistics)
+            {
+                Interlocked.Increment(ref _totalLookups);
+            }
+            }
+
+            // Check cache first if enabled
+            if (_config.EnableCaching && _typeInfoCache.TryGetValue(messageType, out var cachedInfo))
+            {
+                if (_config.EnableStatistics)
+                {
+                    Interlocked.Increment(ref _cacheHits);
+                }
                 return cachedInfo;
             }
 
-            Interlocked.Increment(ref _cacheMisses);
+            if (_config.EnableStatistics)
+            {
+                Interlocked.Increment(ref _cacheMisses);
+            }
 
             _registryLock.EnterReadLock();
             try
             {
                 if (_messageTypes.TryGetValue(messageType, out var typeInfo))
                 {
-                    // Update cache
-                    _typeInfoCache[messageType] = typeInfo;
+                    // Update cache if enabled
+                    if (_config.EnableCaching)
+                    {
+                        _typeInfoCache[messageType] = typeInfo;
+                    }
                     return typeInfo;
                 }
 
@@ -305,18 +317,27 @@ namespace AhBearStudios.Core.Messaging.Services
         {
             ThrowIfDisposed();
 
-            Interlocked.Increment(ref _totalLookups);
+            if (_config.EnableStatistics)
+            {
+                Interlocked.Increment(ref _totalLookups);
+            }
 
             _registryLock.EnterReadLock();
             try
             {
                 if (_typeCodeMap.TryGetValue(typeCode, out var messageType))
                 {
-                    Interlocked.Increment(ref _cacheHits);
+                    if (_config.EnableStatistics)
+                    {
+                        Interlocked.Increment(ref _cacheHits);
+                    }
                     return messageType;
                 }
 
-                Interlocked.Increment(ref _cacheMisses);
+                if (_config.EnableStatistics)
+                {
+                    Interlocked.Increment(ref _cacheMisses);
+                }
                 return null;
             }
             finally
@@ -333,7 +354,10 @@ namespace AhBearStudios.Core.Messaging.Services
 
             ThrowIfDisposed();
 
-            Interlocked.Increment(ref _totalLookups);
+            if (_config.EnableStatistics)
+            {
+                Interlocked.Increment(ref _totalLookups);
+            }
 
             FixedString64Bytes fixedTypeName = typeName;
 
@@ -342,11 +366,17 @@ namespace AhBearStudios.Core.Messaging.Services
             {
                 if (_nameMap.TryGetValue(fixedTypeName, out var messageType))
                 {
-                    Interlocked.Increment(ref _cacheHits);
+                    if (_config.EnableStatistics)
+                    {
+                        Interlocked.Increment(ref _cacheHits);
+                    }
                     return messageType;
                 }
 
-                Interlocked.Increment(ref _cacheMisses);
+                if (_config.EnableStatistics)
+                {
+                    Interlocked.Increment(ref _cacheMisses);
+                }
                 return null;
             }
             finally
@@ -363,7 +393,7 @@ namespace AhBearStudios.Core.Messaging.Services
             _registryLock.EnterReadLock();
             try
             {
-                return _messageTypes.Keys.ToArray();
+                return _messageTypes.Keys.AsValueEnumerable().ToList();
             }
             finally
             {
@@ -384,10 +414,10 @@ namespace AhBearStudios.Core.Messaging.Services
             {
                 if (_categoryMap.TryGetValue(category, out var types))
                 {
-                    return types.ToArray();
+                    return types.AsValueEnumerable().ToList();
                 }
 
-                return Enumerable.Empty<Type>();
+                return new List<Type>();
             }
             finally
             {
@@ -408,10 +438,10 @@ namespace AhBearStudios.Core.Messaging.Services
             {
                 if (_derivedTypesMap.TryGetValue(baseType, out var derivedTypes))
                 {
-                    return derivedTypes.ToArray();
+                    return derivedTypes.AsValueEnumerable().ToList();
                 }
 
-                return Enumerable.Empty<Type>();
+                return new List<Type>();
             }
             finally
             {
@@ -437,8 +467,6 @@ namespace AhBearStudios.Core.Messaging.Services
 
             try
             {
-                using var profilerScope = _profilerService?.BeginScope($"MessageRegistry_Unregister_{messageType.Name}");
-
                 _logger.LogInfo($"[{unregistrationCorrelationId}] Unregistering message type {messageType.Name}");
 
                 _registryLock.EnterWriteLock();
@@ -480,7 +508,7 @@ namespace AhBearStudios.Core.Messaging.Services
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{unregistrationCorrelationId}] Failed to unregister message type {messageType.Name}");
+                _logger.LogException($"[{unregistrationCorrelationId}] Failed to unregister message type {messageType.Name}", ex);
                 throw;
             }
         }
@@ -492,14 +520,12 @@ namespace AhBearStudios.Core.Messaging.Services
 
             try
             {
-                using var profilerScope = _profilerService?.BeginScope("MessageRegistry_Clear");
-
                 _logger.LogInfo($"[{_correlationId}] Clearing message registry");
 
                 _registryLock.EnterWriteLock();
                 try
                 {
-                    var typesToRemove = _messageTypes.Keys.ToArray();
+                    var typesToRemove = _messageTypes.Keys.AsValueEnumerable().ToList();
 
                     _messageTypes.Clear();
                     _typeCodeMap.Clear();
@@ -510,12 +536,12 @@ namespace AhBearStudios.Core.Messaging.Services
                     _typeInfoCache.Clear();
 
                     // Reset type code assignment
-                    _nextTypeCode = 1000;
+                    _nextTypeCode = _config.InitialTypeCodeRangeStart;
 
-                    _logger.LogInfo($"[{_correlationId}] Cleared {typesToRemove.Length} message types from registry");
+                    _logger.LogInfo($"[{_correlationId}] Cleared {typesToRemove.Count} message types from registry");
 
                     // Raise event
-                    RegistryCleared?.Invoke(this, new RegistryClearedEventArgs(typesToRemove));
+                    RegistryCleared?.Invoke(this, new RegistryClearedEventArgs(typesToRemove.ToArray()));
                 }
                 finally
                 {
@@ -524,7 +550,7 @@ namespace AhBearStudios.Core.Messaging.Services
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{_correlationId}] Failed to clear message registry");
+                _logger.LogException($"[{_correlationId}] Failed to clear message registry",ex);
                 throw;
             }
         }
@@ -532,6 +558,11 @@ namespace AhBearStudios.Core.Messaging.Services
         /// <inheritdoc />
         public MessageRegistryStatistics GetStatistics()
         {
+            if (!_config.EnableStatistics)
+            {
+                return MessageRegistryStatistics.Empty;
+            }
+
             try
             {
                 var timeSinceReset = DateTime.UtcNow - _lastStatsReset;
@@ -556,7 +587,7 @@ namespace AhBearStudios.Core.Messaging.Services
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{_correlationId}] Failed to get registry statistics");
+                _logger.LogException("Failed to get registry statistics", ex);
                 return MessageRegistryStatistics.Empty;
             }
         }
@@ -585,27 +616,27 @@ namespace AhBearStudios.Core.Messaging.Services
         {
             try
             {
-                using var profilerScope = _profilerService?.BeginScope("MessageRegistry_Discover");
-
                 _logger.LogInfo($"[{_correlationId}] Discovering message types in loaded assemblies");
 
                 var discoveredTypes = new List<Type>();
 
                 // Get all loaded assemblies
                 var assemblies = AppDomain.CurrentDomain.GetAssemblies()
+                    .AsValueEnumerable()
                     .Where(a => !a.IsDynamic && !a.GlobalAssemblyCache)
-                    .ToArray();
+                    .ToList();
 
                 foreach (var assembly in assemblies)
                 {
                     try
                     {
                         var messageTypes = assembly.GetTypes()
+                            .AsValueEnumerable()
                             .Where(t => typeof(IMessage).IsAssignableFrom(t) && 
                                        !t.IsInterface && 
                                        !t.IsAbstract &&
                                        t.IsClass)
-                            .ToArray();
+                            .ToList();
 
                         discoveredTypes.AddRange(messageTypes);
                     }
@@ -614,15 +645,17 @@ namespace AhBearStudios.Core.Messaging.Services
                         _logger.LogWarning($"[{_correlationId}] Failed to load types from assembly {assembly.FullName}: {ex.Message}");
                         
                         // Try to register the types that did load
-                        var loadedTypes = ex.Types?.Where(t => t != null && typeof(IMessage).IsAssignableFrom(t));
-                        if (loadedTypes != null)
+                        if (ex.Types != null)
                         {
+                            var loadedTypes = ex.Types.AsValueEnumerable()
+                                .Where(t => t != null && typeof(IMessage).IsAssignableFrom(t))
+                                .ToList();
                             discoveredTypes.AddRange(loadedTypes);
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogException(ex, $"[{_correlationId}] Error processing assembly {assembly.FullName}");
+                        _logger.LogException($"[{_correlationId}] Error processing assembly {assembly.FullName}",ex);
                     }
                 }
 
@@ -635,7 +668,7 @@ namespace AhBearStudios.Core.Messaging.Services
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogException(ex, $"[{_correlationId}] Failed to auto-register message type {messageType.Name}");
+                        _logger.LogException($"[{_correlationId}] Failed to auto-register message type {messageType.Name}",ex);
                     }
                 }
 
@@ -643,7 +676,7 @@ namespace AhBearStudios.Core.Messaging.Services
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{_correlationId}] Failed to discover message types");
+                _logger.LogException($"[{_correlationId}] Failed to discover message types",ex);
             }
         }
 
@@ -707,9 +740,9 @@ namespace AhBearStudios.Core.Messaging.Services
             do
             {
                 typeCode = _nextTypeCode++;
-                if (_nextTypeCode == ushort.MaxValue)
+                if (_nextTypeCode > _config.InitialTypeCodeRangeEnd)
                 {
-                    throw new InvalidOperationException("Exhausted available type codes");
+                    throw new InvalidOperationException($"Exhausted available type codes in range {_config.InitialTypeCodeRangeStart}-{_config.InitialTypeCodeRangeEnd}");
                 }
             } while (_typeCodeMap.ContainsKey(typeCode));
 
@@ -834,7 +867,7 @@ namespace AhBearStudios.Core.Messaging.Services
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{_correlationId}] Failed to update registry statistics");
+                _logger.LogException($"[{_correlationId}] Failed to update registry statistics", ex);
             }
         }
 
@@ -849,7 +882,7 @@ namespace AhBearStudios.Core.Messaging.Services
             try
             {
                 // If cache is getting too large, trim it
-                if (_typeInfoCache.Count > 1000)
+                if (_config.EnableCaching && _typeInfoCache.Count > _config.MaxCacheEntries)
                 {
                     _logger.LogInfo($"[{_correlationId}] Cleaning up type info cache (current size: {_typeInfoCache.Count})");
 
@@ -861,7 +894,7 @@ namespace AhBearStudios.Core.Messaging.Services
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{_correlationId}] Failed to cleanup cache");
+                _logger.LogException($"[{_correlationId}] Failed to cleanup cache", ex);
             }
         }
 
@@ -920,7 +953,7 @@ namespace AhBearStudios.Core.Messaging.Services
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{_correlationId}] Error during MessageRegistry disposal");
+                _logger.LogException($"[{_correlationId}] Error during MessageRegistry disposal", ex);
             }
         }
 

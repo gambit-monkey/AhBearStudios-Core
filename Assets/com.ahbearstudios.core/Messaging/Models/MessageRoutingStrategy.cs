@@ -1,42 +1,19 @@
-﻿namespace AhBearStudios.Core.com.ahbearstudios.core.Messaging.Models;
+namespace AhBearStudios.Core.Messaging.Models;
 
 /// <summary>
-/// Defines the routing strategy for messages.
+/// Enumeration of simple message routing strategies.
+/// Simplified from complex routing system to basic game-focused routing.
 /// </summary>
 public enum MessageRoutingStrategy : byte
 {
     /// <summary>
-    /// Default routing based on message type and configuration.
+    /// No specific routing strategy. Use system defaults.
     /// </summary>
-    Default = 0,
-
+    None = 0,
+    
     /// <summary>
-    /// Direct routing to specific destinations.
+    /// Default routing strategy for standard message delivery.
+    /// Routes based on message type and destination.
     /// </summary>
-    Direct = 1,
-
-    /// <summary>
-    /// Broadcast routing to all subscribers.
-    /// </summary>
-    Broadcast = 2,
-
-    /// <summary>
-    /// Round-robin routing among available handlers.
-    /// </summary>
-    RoundRobin = 3,
-
-    /// <summary>
-    /// Load-balanced routing based on handler capacity.
-    /// </summary>
-    LoadBalanced = 4,
-
-    /// <summary>
-    /// Priority-based routing with handler selection.
-    /// </summary>
-    PriorityBased = 5,
-
-    /// <summary>
-    /// Content-based routing using message properties.
-    /// </summary>
-    ContentBased = 6
+    Default = 1
 }

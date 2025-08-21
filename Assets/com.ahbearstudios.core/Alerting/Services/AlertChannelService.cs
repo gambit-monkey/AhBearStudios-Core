@@ -158,7 +158,7 @@ namespace AhBearStudios.Core.Alerting.Services
                 await PerformHealthCheckForChannel(channel, correlationId);
 
                 // Publish message
-                var message = ChannelRegisteredMessage.Create(channelName, config, correlationId, new FixedString64Bytes("AlertChannelService"));
+                var message = AlertChannelRegisteredMessage.Create(channelName, config, correlationId, new FixedString64Bytes("AlertChannelService"));
                 await _messageBus.PublishMessageAsync(message);
 
                 LogInfo($"Channel registered successfully: {channelName}", correlationId);
@@ -206,7 +206,7 @@ namespace AhBearStudios.Core.Alerting.Services
                 channel.Dispose();
 
                 // Publish message
-                var message = ChannelUnregisteredMessage.Create(channelName, correlationId, new FixedString64Bytes("AlertChannelService"), new FixedString512Bytes("Manual unregistration"));
+                var message = AlertChannelUnregisteredMessage.Create(channelName, correlationId, new FixedString64Bytes("AlertChannelService"), new FixedString512Bytes("Manual unregistration"));
                 await _messageBus.PublishMessageAsync(message);
 
                 LogInfo($"Channel unregistered: {channelName}", correlationId);
@@ -405,7 +405,7 @@ namespace AhBearStudios.Core.Alerting.Services
                 if (result)
                 {
                     // Publish configuration changed message
-                    var message = ChannelConfigurationChangedMessage.Create(channelName, null, config, new FixedString64Bytes("AlertChannelService"), correlationId);
+                    var message = AlertChannelConfigurationChangedMessage.Create(channelName, null, config, new FixedString64Bytes("AlertChannelService"), correlationId);
                     await _messageBus.PublishMessageAsync(message);
                     
                     LogInfo($"Channel configuration updated: {channelName}", correlationId);
@@ -647,7 +647,7 @@ namespace AhBearStudios.Core.Alerting.Services
                 // Publish health changed message if status changed
                 if (wasHealthy != healthResult.IsHealthy)
                 {
-                    var message = ChannelHealthChangedMessage.Create(
+                    var message = AlertChannelHealthChangedMessage.Create(
                         channelName, 
                         wasHealthy, 
                         healthResult.IsHealthy, 

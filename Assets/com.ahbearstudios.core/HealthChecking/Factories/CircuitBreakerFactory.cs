@@ -16,7 +16,7 @@ namespace AhBearStudios.Core.HealthChecking.Factories;
 /// <remarks>
 /// Provides creation of circuit breakers with health check integration and dependency management
 /// </remarks>
-public sealed class CircuitBreakerFactory
+public sealed class CircuitBreakerFactory : ICircuitBreakerFactory
 {
     private readonly ILoggingService _logger;
     private readonly IAlertService _alertService;
@@ -144,6 +144,44 @@ public sealed class CircuitBreakerFactory
     }
 
     /// <summary>
+    /// Gets all registered circuit breaker names
+    /// </summary>
+    /// <returns>Collection of circuit breaker operation names</returns>
+    public IReadOnlyCollection<string> GetRegisteredOperations()
+    {
+        return _circuitBreakers.Keys.ToList().AsReadOnly();
+    }
+
+    /// <summary>
+    /// Validates that all required dependencies are available
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Thrown when required dependencies are missing</exception>
+    public void ValidateDependencies()
+    {
+        var missingDependencies = new List<string>();
+
+        if (_logger == null) missingDependencies.Add(nameof(ILoggingService));
+        if (_alertService == null) missingDependencies.Add(nameof(IAlertService));
+        if (_healthCheckService == null) missingDependencies.Add(nameof(IHealthCheckService));
+
+        if (missingDependencies.Count > 0)
+        {
+            var errorMessage = $"Required dependencies are missing: {string.Join(", ", missingDependencies)}";
+            throw new InvalidOperationException(errorMessage);
+        }
+
+        var validationErrors = _defaultConfig.Validate();
+        if (validationErrors.Count > 0)
+        {
+            var errorMessage = $"Default configuration validation failed: {string.Join(", ", validationErrors)}";
+            _logger.LogError(errorMessage);
+            throw new InvalidOperationException(errorMessage);
+        }
+
+        _logger.LogDebug("CircuitBreakerFactory dependencies validated successfully");
+    }
+
+    /// <summary>
     /// Validates factory configuration and dependencies
     /// </summary>
     /// <returns>True if factory is properly configured</returns>
@@ -151,14 +189,7 @@ public sealed class CircuitBreakerFactory
     {
         try
         {
-            var validationErrors = _defaultConfig.Validate();
-            if (validationErrors.Count > 0)
-            {
-                _logger.LogError($"Default configuration validation failed: {string.Join(", ", validationErrors)}");
-                return false;
-            }
-
-            _logger.LogDebug("CircuitBreakerFactory validation passed");
+            ValidateDependencies();
             return true;
         }
         catch (Exception ex)
@@ -199,7 +230,7 @@ public sealed class CircuitBreakerFactory
     private void ConfigureHealthCheckIntegration(ICircuitBreaker circuitBreaker, string healthCheckName)
     {
         // Implementation would depend on specific health check integration requirements
-        _logger.LogDebug($"Configured health check integration for circuit breaker: {circuitBreaker.OperationName} -> {healthCheckName}");
+        _logger.LogDebug($"Configured health check integration for circuit breaker: {circuitBreaker.Name} -> {healthCheckName}");
     }
 
     private void OnCircuitBreakerStateChanged(object sender, CircuitBreakerStateChangedEventArgs e)
@@ -213,10 +244,10 @@ public sealed class CircuitBreakerFactory
         };
 
         _alertService.RaiseAlert(
-            new FixedString64Bytes($"CircuitBreaker.{e.OperationName}"),
+            new FixedString64Bytes($"CircuitBreaker.{e.CircuitBreakerName}"),
             severity,
             new FixedString512Bytes($"Circuit breaker state changed: {e.OldState} -> {e.NewState}"));
 
-        _logger.LogInfo($"Circuit breaker '{e.OperationName}' state changed: {e.OldState} -> {e.NewState}");
+        _logger.LogInfo($"Circuit breaker '{e.CircuitBreakerName}' state changed: {e.OldState} -> {e.NewState}");
     }
 }

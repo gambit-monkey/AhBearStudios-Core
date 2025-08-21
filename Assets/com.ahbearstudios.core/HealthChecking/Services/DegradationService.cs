@@ -984,7 +984,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 DegradationChanged?.Invoke(this, eventArgs);
 
                 // Publish message bus event
-                PublishDegradationChangeMessage(systemName, oldLevel, newLevel, reason, isAutomatic);
+                PublishHealthCheckDegradationChangeMessage(systemName, oldLevel, newLevel, reason, isAutomatic);
 
                 // Generate alert
                 HandleDegradationAlert(systemName, oldLevel, newLevel, reason);
@@ -1063,7 +1063,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             }
         }
 
-        private void PublishDegradationChangeMessage(
+        private void PublishHealthCheckDegradationChangeMessage(
             FixedString64Bytes systemName,
             DegradationLevel oldLevel,
             DegradationLevel newLevel,
@@ -1072,17 +1072,15 @@ namespace AhBearStudios.Core.HealthChecking.Services
         {
             try
             {
-                var message = new DegradationChangeMessage
-                {
-                    SystemName = systemName.ToString(),
-                    OldLevel = oldLevel,
-                    NewLevel = newLevel,
-                    Reason = reason,
-                    IsAutomatic = isAutomatic,
-                    Timestamp = DateTime.UtcNow
-                };
+                var message = HealthCheckDegradationChangeMessage.Create(
+                    systemName.ToString(),
+                    oldLevel,
+                    newLevel,
+                    reason,
+                    isAutomatic,
+                    "DegradationService");
 
-                var publisher = _messageBusService.GetPublisher<DegradationChangeMessage>();
+                var publisher = _messageBusService.GetPublisher<HealthCheckDegradationChangeMessage>();
                 publisher.PublishMessage(message);
             }
             catch (Exception ex)

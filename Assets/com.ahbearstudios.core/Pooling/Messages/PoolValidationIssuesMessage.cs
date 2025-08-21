@@ -2,6 +2,7 @@ using System;
 using Unity.Collections;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Messaging.Messages;
+using AhBearStudios.Core.Messaging.Models;
 
 namespace AhBearStudios.Core.Pooling.Messages
 {
@@ -10,7 +11,7 @@ namespace AhBearStudios.Core.Pooling.Messages
     /// Follows the IMessage pattern from CLAUDE.md guidelines.
     /// Used for monitoring pool health and triggering maintenance operations.
     /// </summary>
-    public record struct PoolValidationIssuesMessage : IMessage
+    public readonly record struct PoolValidationIssuesMessage : IMessage
     {
         /// <summary>
         /// Gets the unique identifier for this message instance.
@@ -20,7 +21,7 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode => MessageTypeCodes.PoolValidationIssues;
+        public ushort TypeCode { get; init; } = MessageTypeCodes.PoolValidationIssuesMessage;
 
         /// <summary>
         /// Gets the name of the pool with validation issues.
@@ -85,12 +86,40 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// <summary>
         /// Gets a description of the primary validation issue.
         /// </summary>
-        public FixedString256Bytes PrimaryIssueDescription { get; init; }
+        public FixedString512Bytes PrimaryIssueDescription { get; init; }
 
         /// <summary>
         /// Gets whether the pool was automatically cleaned up.
         /// </summary>
         public bool AutoCleanupPerformed { get; init; }
+
+        /// <summary>
+        /// Gets the priority level for message processing.
+        /// </summary>
+        public MessagePriority Priority { get; init; }
+
+        /// <summary>
+        /// Initializes a new instance of the PoolValidationIssuesMessage struct.
+        /// </summary>
+        public PoolValidationIssuesMessage()
+        {
+            Id = default;
+            PoolName = default;
+            ObjectTypeName = default;
+            PoolId = default;
+            TimestampTicks = default;
+            IssueCount = default;
+            ObjectsValidated = default;
+            InvalidObjects = default;
+            CorruptedObjects = default;
+            ErrorPercentage = default;
+            CorrelationId = default;
+            Source = default;
+            Severity = default;
+            PrimaryIssueDescription = default;
+            AutoCleanupPerformed = default;
+            Priority = default;
+        }
 
         /// <summary>
         /// Gets the DateTime representation of the timestamp.
@@ -122,16 +151,27 @@ namespace AhBearStudios.Core.Pooling.Messages
             int invalidObjects,
             int corruptedObjects,
             ValidationSeverity severity,
-            FixedString256Bytes primaryIssueDescription = default,
+            FixedString512Bytes primaryIssueDescription = default,
             bool autoCleanupPerformed = false,
             Guid correlationId = default,
             FixedString64Bytes source = default)
         {
             var errorPercentage = objectsValidated > 0 ? (float)issueCount / objectsValidated : 0f;
 
+            // Set priority based on validation severity
+            var messagePriority = severity switch
+            {
+                ValidationSeverity.Critical => MessagePriority.Critical,
+                ValidationSeverity.Major => MessagePriority.High,
+                ValidationSeverity.Moderate => MessagePriority.Normal,
+                ValidationSeverity.Minor => MessagePriority.Low,
+                _ => MessagePriority.Normal
+            };
+
             return new PoolValidationIssuesMessage
             {
                 Id = Guid.NewGuid(),
+                TypeCode = MessageTypeCodes.PoolValidationIssuesMessage,
                 PoolName = poolName,
                 ObjectTypeName = objectTypeName,
                 PoolId = poolId,
@@ -141,9 +181,10 @@ namespace AhBearStudios.Core.Pooling.Messages
                 InvalidObjects = invalidObjects,
                 CorruptedObjects = corruptedObjects,
                 ErrorPercentage = errorPercentage,
+                Priority = messagePriority, // Priority based on validation severity
                 Severity = severity,
                 PrimaryIssueDescription = primaryIssueDescription.IsEmpty 
-                    ? new FixedString256Bytes($"Pool validation found {issueCount} issues")
+                    ? new FixedString512Bytes($"Pool validation found {issueCount} issues")
                     : primaryIssueDescription,
                 AutoCleanupPerformed = autoCleanupPerformed,
                 CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,

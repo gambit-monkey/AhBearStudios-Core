@@ -26,7 +26,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; }
+        public ushort TypeCode { get; init; } = MessageTypeCodes.AlertResolvedMessage;
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -115,6 +115,32 @@ namespace AhBearStudios.Core.Alerting.Messages
         public int AlertCount { get; init; }
 
         /// <summary>
+        /// Initializes a new instance of the AlertResolvedMessage struct.
+        /// </summary>
+        public AlertResolvedMessage()
+        {
+            Id = default;
+            TimestampTicks = default;
+            Source = default;
+            Priority = default;
+            CorrelationId = default;
+            AlertId = default;
+            AlertMessage = default;
+            AlertSeverity = default;
+            AlertSource = default;
+            AlertTag = default;
+            OperationId = default;
+            ResolvedBy = default;
+            AcknowledgedBy = default;
+            ResolvedTimestampTicks = default;
+            AcknowledgedTimestampTicks = default;
+            OriginalAlertTimestampTicks = default;
+            ResolutionDurationTicks = default;
+            AcknowledgmentToResolutionDurationTicks = default;
+            AlertCount = default;
+        }
+
+        /// <summary>
         /// Gets whether the alert was acknowledged before being resolved.
         /// </summary>
         public bool WasAcknowledged => AcknowledgedTimestampTicks.HasValue;
@@ -179,7 +205,7 @@ namespace AhBearStudios.Core.Alerting.Messages
             {
                 Id = Guid.NewGuid(),
                 TimestampTicks = DateTime.UtcNow.Ticks,
-                TypeCode = MessageTypeCodes.AlertResolved,
+                TypeCode = MessageTypeCodes.AlertResolvedMessage,
                 Source = source.IsEmpty ? "AlertService" : source,
                 Priority = GetMessagePriority(resolvedAlert.Severity),
                 CorrelationId = correlationId == Guid.Empty ? resolvedAlert.CorrelationId : correlationId,
@@ -245,7 +271,7 @@ namespace AhBearStudios.Core.Alerting.Messages
             {
                 Id = Guid.NewGuid(),
                 TimestampTicks = nowTicks,
-                TypeCode = MessageTypeCodes.AlertResolved,
+                TypeCode = MessageTypeCodes.AlertResolvedMessage,
                 Source = source.IsEmpty ? "AlertService" : source,
                 Priority = GetMessagePriority(severity),
                 CorrelationId = correlationId == Guid.Empty ? Guid.NewGuid() : correlationId,

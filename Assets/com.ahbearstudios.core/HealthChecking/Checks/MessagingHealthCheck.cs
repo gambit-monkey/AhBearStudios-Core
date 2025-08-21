@@ -330,7 +330,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
                 timeoutCts.CancelAfter(publishTimeout);
 
                 // Create a test message
-                var testMessage = new HealthCheckTestMessage();
+                var testMessage = HealthCheckTestMessage.Create("MessagingHealthCheck");
 
                 // Get publisher and test message publishing
                 var publisher = _messageBusService.GetPublisher<HealthCheckTestMessage>();
@@ -433,7 +433,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
                 timeoutCts.CancelAfter(roundTripTimeout);
 
                 // Create test message with unique identifier
-                var testMessage = new HealthCheckTestMessage();
+                var testMessage = HealthCheckTestMessage.Create("MessagingHealthCheck");
 
                 // Set up subscriber to receive the test message
                 var subscriber = _messageBusService.GetSubscriber<HealthCheckTestMessage>();

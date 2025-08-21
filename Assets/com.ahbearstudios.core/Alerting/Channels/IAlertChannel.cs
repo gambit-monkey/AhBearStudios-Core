@@ -130,7 +130,7 @@ namespace AhBearStudios.Core.Alerting.Channels
 
         // Message bus integration for channel events
         // Events have been replaced with IMessage pattern for better decoupling
-        // ChannelHealthChangedMessage, AlertDeliveryFailedMessage, and ChannelConfigurationChangedMessage
+        // AlertChannelHealthChangedMessage, AlertDeliveryFailedMessage, and AlertChannelConfigurationChangedMessage
         // are published through IMessageBusService
     }
 

@@ -1,8 +1,8 @@
-﻿using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
+﻿using System.Threading;
+using ZLinq;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
+using Cysharp.Threading.Tasks;
 using Unity.Collections;
 
 namespace AhBearStudios.Core.Messaging.Services
@@ -244,7 +244,7 @@ namespace AhBearStudios.Core.Messaging.Services
         /// <summary>
         /// Gets the custom condition function (optional).
         /// </summary>
-        public Func<IMessage, CancellationToken, Task<bool>> Condition { get; }
+        public Func<IMessage, CancellationToken, UniTask<bool>> Condition { get; }
 
         /// <summary>
         /// Initializes a new instance of the RoutingRule record.
@@ -271,7 +271,7 @@ namespace AhBearStudios.Core.Messaging.Services
             int priority = 100,
             bool isEnabled = true,
             DateTime createdAt = default,
-            Func<IMessage, CancellationToken, Task<bool>> condition = null)
+            Func<IMessage, CancellationToken, UniTask<bool>> condition = null)
         {
             Id = id;
             Name = name ?? throw new ArgumentNullException(nameof(name));
@@ -305,7 +305,7 @@ namespace AhBearStudios.Core.Messaging.Services
         /// <summary>
         /// Gets the handler function.
         /// </summary>
-        public Func<IMessage, CancellationToken, Task<bool>> Handler { get; }
+        public Func<IMessage, CancellationToken, UniTask<bool>> Handler { get; }
 
         /// <summary>
         /// Gets when this handler was registered.
@@ -322,7 +322,7 @@ namespace AhBearStudios.Core.Messaging.Services
         public RouteHandler(
             Guid id,
             string name,
-            Func<IMessage, CancellationToken, Task<bool>> handler,
+            Func<IMessage, CancellationToken, UniTask<bool>> handler,
             DateTime registeredAt)
         {
             Id = id;
@@ -525,7 +525,7 @@ namespace AhBearStudios.Core.Messaging.Services
             string ruleName,
             HandlerExecutionResult[] handlerResults,
             TimeSpan duration) =>
-            new(executionId, ruleId, ruleName, handlerResults.Any(r => r.Success), "Some handlers failed", duration, handlerResults);
+            new(executionId, ruleId, ruleName, handlerResults.AsValueEnumerable().Any(r => r.Success), "Some handlers failed", duration, handlerResults);
     }
 
     /// <summary>

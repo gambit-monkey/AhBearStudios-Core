@@ -421,6 +421,136 @@ _messageBus.PublishMessage(new PlayerSpawnedMessage
 _messageBus.Subscribe<PlayerSpawnedMessage>(OnPlayerSpawned);
 ```
 
+## Message Type Code Standards
+
+### Context-Prefixed Naming Convention
+
+**ALWAYS use system context prefixes for all message type codes** to eliminate ambiguity and enable immediate identification of message origin.
+
+#### Naming Pattern: `{System}{Action}Message`
+
+All message type codes follow this strict pattern:
+- **Core System**: `Core{Action}Message`
+- **Messaging System**: `MessageBus{Action}Message` 
+- **Logging System**: `Logging{Action}Message`
+- **Health System**: `HealthCheck{Action}Message`
+- **Pooling System**: `Pool{Action}Message`
+- **Alerting System**: `Alert{Action}Message`
+
+#### Examples:
+```csharp
+// ✅ CORRECT: Clear system context
+CoreSystemStartupMessage = 1001
+MessageBusCircuitBreakerStateChangedMessage = 1062
+PoolExpansionMessage = 1300
+AlertRaisedMessage = 1401
+
+// ❌ AVOID: Ambiguous without context
+SystemStartup = 1001
+CircuitBreakerStateChanged = 1304
+Expansion = 1300
+Raised = 1401
+```
+
+### Type Code Range Allocation
+
+**Ranges are strictly enforced** to prevent conflicts and enable efficient routing:
+
+```
+Core System:        1000-1049 (System startup, shutdown, general)
+Messaging System:   1050-1099 (Message bus, routing, subscriptions)  
+Logging System:     1100-1199 (Logging infrastructure)
+Health System:      1200-1299 (Health checks and monitoring)
+Pooling System:     1300-1399 (Object pooling strategies)
+Alerting System:    1400-1499 (Alert and notification messages)
+Profiling System:   1500-1599 (Performance profiling)
+Serialization:      1600-1699 (Serialization infrastructure)
+Authentication:     1700-1799 (Auth and security)
+Networking:         1800-1899 (Network communication)
+User Interface:     1900-1999 (UI and interaction)
+Game Systems:       2000-2999 (Game-specific messages)
+Custom/Third-party: 3000-64999 (Custom integrations)
+Reserved/Testing:   65000-65535 (Special cases and testing)
+```
+
+### Message Implementation Requirements
+
+#### IMessage Interface Compliance
+All messages **MUST implement IMessage interface completely**:
+
+```csharp
+// ✅ CORRECT: Full IMessage implementation
+public record struct AlertRaisedMessage : IMessage
+{
+    public Guid Id { get; init; } = Guid.NewGuid();
+    public long TimestampTicks { get; init; } = DateTime.UtcNow.Ticks;
+    public ushort TypeCode { get; init; } = MessageTypeCodes.AlertRaisedMessage;
+    public FixedString64Bytes Source { get; init; } = "AlertSystem";
+    public MessagePriority Priority { get; init; } = MessagePriority.Normal;
+    public Guid CorrelationId { get; init; }
+    
+    // Message-specific properties
+    public AlertSeverity Severity { get; init; }
+    public string Message { get; init; }
+}
+```
+
+#### Type Code Assignment
+```csharp
+// ✅ CORRECT: Use system-specific type code
+TypeCode = MessageTypeCodes.MessageBusCircuitBreakerStateChangedMessage
+
+// ❌ AVOID: Hardcoded values or wrong system codes
+TypeCode = 1062 // Hard-coded
+TypeCode = MessageTypeCodes.PoolCircuitBreakerStateChangedMessage // Wrong system
+```
+
+### Anti-Patterns to Avoid
+
+#### ❌ **Ambiguous Naming**
+```csharp
+// Bad: Which system does this belong to?
+public const ushort StateChanged = 1234;
+public const ushort ProcessingFailed = 5678;
+```
+
+#### ❌ **Duplicate Type Codes**
+```csharp
+// Bad: Same concept, different systems, same code
+CircuitBreakerStateChanged = 1304      // Pool system
+CircuitBreakerStateChangedEvent = 1019 // Messaging system  
+```
+
+#### ❌ **Range Violations**
+```csharp
+// Bad: Using wrong range for system
+public const ushort LoggingMessage = 1350; // Should be 1100-1199
+```
+
+#### ❌ **Inconsistent Suffixes**
+```csharp
+// Bad: Mixed naming conventions
+MessagePublished = 1055      // No suffix
+MessageProcessedEvent = 1063 // Event suffix  
+MessageRoutedMessage = 1066  // Message suffix
+```
+
+### Benefits of Context-Prefixed Naming
+
+1. **Immediate Clarity** - No guessing about message origin
+2. **IDE IntelliSense** - Easy to find all messages from a system  
+3. **Debugging** - Logs clearly show which system sent the message
+4. **Prevents Duplicates** - Can't accidentally create same-named messages
+5. **Scalability** - Easy to add new systems without naming conflicts
+
+### Requesting New Ranges
+
+To request a new type code range:
+1. Update `MessageTypeCodes.cs` header documentation
+2. Add range constants in Range Validation Constants section
+3. Update `GetSystemForTypeCode()` method
+4. Register the range in the MessageRegistry system
+
 ## Serialization Usage
 
 ### ISerializationService Pattern

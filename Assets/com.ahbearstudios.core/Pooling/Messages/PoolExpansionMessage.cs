@@ -23,7 +23,7 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; }
+        public ushort TypeCode { get; init; } = MessageTypeCodes.PoolExpansionMessage;
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -44,7 +44,7 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// <summary>
         /// Gets the name of the strategy that triggered the expansion.
         /// </summary>
-        public string StrategyName { get; init; }
+        public FixedString64Bytes StrategyName { get; init; }
 
         /// <summary>
         /// Gets the previous pool size.
@@ -59,12 +59,28 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// <summary>
         /// Gets the reason for the expansion.
         /// </summary>
-        public string Reason { get; init; }
+        public FixedString512Bytes Reason { get; init; }
+
+        /// <summary>
+        /// Initializes a new instance of the PoolExpansionMessage struct.
+        /// </summary>
+        public PoolExpansionMessage()
+        {
+            Id = default;
+            TimestampTicks = default;
+            Source = default;
+            Priority = default;
+            CorrelationId = default;
+            StrategyName = default;
+            OldSize = default;
+            NewSize = default;
+            Reason = default;
+        }
 
         /// <summary>
         /// Gets the timestamp when the expansion occurred.
         /// </summary>
-        public DateTime Timestamp { get; init; }
+        public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
         /// <summary>
         /// Creates a new PoolExpansionMessage with the specified details.
@@ -88,15 +104,14 @@ namespace AhBearStudios.Core.Pooling.Messages
             {
                 Id = Guid.NewGuid(),
                 TimestampTicks = DateTime.UtcNow.Ticks,
-                TypeCode = MessageTypeCodes.PoolExpansion,
-                Source = source.IsEmpty ? "PoolingStrategy" : source,
+                TypeCode = MessageTypeCodes.PoolExpansionMessage,
+                Source = source.IsEmpty ? "PoolingService" : source,
                 Priority = MessagePriority.Normal,
                 CorrelationId = correlationId,
-                StrategyName = strategyName,
+                StrategyName = strategyName?.Length <= 64 ? strategyName : strategyName?[..64] ?? "Unknown",
                 OldSize = oldSize,
                 NewSize = newSize,
-                Reason = reason,
-                Timestamp = DateTime.UtcNow
+                Reason = reason?.Length <= 512 ? reason : reason?[..512] ?? "Unknown"
             };
         }
     }

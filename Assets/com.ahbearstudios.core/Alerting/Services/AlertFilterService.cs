@@ -604,7 +604,7 @@ namespace AhBearStudios.Core.Alerting.Services
         #region Private Methods
 
         // Filter events are now handled via IMessage pattern - see IAlertFilter interface
-        // FilterConfigurationChangedMessage and FilterStatisticsUpdatedMessage
+        // AlertFilterConfigurationChangedMessage and AlertFilterStatisticsUpdatedMessage
         // are published through IMessageBusService
 
         private void UpdateFilterPerformance(string filterName, FilterDecision decision, TimeSpan duration)

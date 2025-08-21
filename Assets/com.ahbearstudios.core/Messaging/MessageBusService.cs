@@ -1,7 +1,7 @@
 ﻿using System.Collections.Concurrent;
-using System.Linq;
+using ZLinq;
 using System.Threading;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.HealthChecking;
@@ -11,7 +11,9 @@ using AhBearStudios.Core.Messaging.Configs;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Messaging.Publishers;
+using AhBearStudios.Core.Messaging.Services;
 using AhBearStudios.Core.Messaging.Subscribers;
+using AhBearStudios.Core.Messaging.Filters;
 using AhBearStudios.Core.Pooling;
 using AhBearStudios.Core.Profiling;
 using Unity.Collections;
@@ -32,6 +34,8 @@ namespace AhBearStudios.Core.Messaging
         private readonly IAlertService _alertService;
         private readonly IProfilerService _profilerService;
         private readonly IPoolingService _poolingService;
+        private readonly IMessageCircuitBreakerService _circuitBreakerService;
+        private readonly IMessagePipeAdapter _messagePipeAdapter;
 
         // Core collections
         private readonly ConcurrentDictionary<Type, object> _publishers;
@@ -39,8 +43,7 @@ namespace AhBearStudios.Core.Messaging
         private readonly ConcurrentDictionary<Type, ConcurrentBag<IDisposable>> _subscriptions;
         private readonly ConcurrentDictionary<Guid, MessageScope> _scopes;
 
-        // Circuit breaker management
-        private readonly ConcurrentDictionary<Type, CircuitBreaker> _circuitBreakers;
+        // Message queues
         private readonly ConcurrentQueue<FailedMessage> _deadLetterQueue;
         private readonly ConcurrentQueue<PendingMessage> _retryQueue;
 
@@ -66,7 +69,6 @@ namespace AhBearStudios.Core.Messaging
         private readonly Timer _statisticsTimer;
         private readonly Timer _healthCheckTimer;
         private readonly Timer _retryTimer;
-        private readonly Timer _circuitBreakerTimer;
         private DateTime _lastStatsReset;
 
         // Correlation tracking
@@ -94,6 +96,8 @@ namespace AhBearStudios.Core.Messaging
         /// </summary>
         /// <param name="config">The message bus configuration</param>
         /// <param name="logger">The logging service</param>
+        /// <param name="circuitBreakerService">The circuit breaker service</param>
+        /// <param name="messagePipeAdapter">The message pipe adapter for publishing events</param>
         /// <param name="alertService">The alert service</param>
         /// <param name="profilerService">The profiler service</param>
         /// <param name="poolingService">The pooling service</param>
@@ -101,12 +105,16 @@ namespace AhBearStudios.Core.Messaging
         public MessageBusService(
             MessageBusConfig config,
             ILoggingService logger,
+            IMessageCircuitBreakerService circuitBreakerService,
+            IMessageBusAdapter messagePipeAdapter = null,
             IAlertService alertService = null,
             IProfilerService profilerService = null,
             IPoolingService poolingService = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _circuitBreakerService = circuitBreakerService ?? throw new ArgumentNullException(nameof(circuitBreakerService));
+            _messagePipeAdapter = messagePipeAdapter;
             _alertService = alertService;
             _profilerService = profilerService;
             _poolingService = poolingService;
@@ -119,7 +127,6 @@ namespace AhBearStudios.Core.Messaging
             _subscribers = new ConcurrentDictionary<Type, object>();
             _subscriptions = new ConcurrentDictionary<Type, ConcurrentBag<IDisposable>>();
             _scopes = new ConcurrentDictionary<Guid, MessageScope>();
-            _circuitBreakers = new ConcurrentDictionary<Type, CircuitBreaker>();
             _deadLetterQueue = new ConcurrentQueue<FailedMessage>();
             _retryQueue = new ConcurrentQueue<PendingMessage>();
             _messageTypeStats = new ConcurrentDictionary<Type, MessageTypeStatistics>();
@@ -136,14 +143,18 @@ namespace AhBearStudios.Core.Messaging
                 _config.HealthCheckInterval, _config.HealthCheckInterval);
             _retryTimer = new Timer(ProcessRetryQueue, null, 
                 _config.RetryInterval, _config.RetryInterval);
-            _circuitBreakerTimer = new Timer(UpdateCircuitBreakers, null, 
-                _config.CircuitBreakerCheckInterval, _config.CircuitBreakerCheckInterval);
 
             // Set initial state
             _currentHealthStatus = HealthStatus.Healthy;
             _lastStatsReset = DateTime.UtcNow;
 
-            _logger.LogInfo($"[{_correlationId}] MessageBusService initialized with configSo: {_config.InstanceName}");
+            // Wire up circuit breaker events
+            _circuitBreakerService.StateChanged += (sender, args) =>
+            {
+                CircuitBreakerStateChanged?.Invoke(this, args);
+            };
+
+            _logger.LogInfo($"[{_correlationId}] MessageBusService initialized with config: {_config.InstanceName}");
         }
 
         #endregion
@@ -158,8 +169,7 @@ namespace AhBearStudios.Core.Messaging
 
             ThrowIfDisposed();
 
-            var circuitBreaker = GetOrCreateCircuitBreaker<TMessage>();
-            if (circuitBreaker.State == CircuitBreakerState.Open)
+            if (!_circuitBreakerService.CanProcess<TMessage>())
             {
                 HandleCircuitBreakerOpen<TMessage>(message);
                 return;
@@ -187,7 +197,7 @@ namespace AhBearStudios.Core.Messaging
                     Interlocked.Increment(ref _totalMessagesPublished);
                     
                     // Update circuit breaker with success
-                    circuitBreaker.RecordSuccess();
+                    _circuitBreakerService.RecordSuccess<TMessage>();
                     
                     _logger.LogInfo($"[{_correlationId}] Published message {typeof(TMessage).Name} with ID {message.Id}");
                 }
@@ -203,13 +213,13 @@ namespace AhBearStudios.Core.Messaging
             }
             catch (Exception ex)
             {
-                HandlePublishingError<TMessage>(message, ex, circuitBreaker);
+                HandlePublishingError<TMessage>(message, ex);
                 throw;
             }
         }
 
         /// <inheritdoc />
-        public async Task PublishMessageAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default) where TMessage : IMessage
+        public async UniTask PublishMessageAsync<TMessage>(TMessage message, CancellationToken cancellationToken = default) where TMessage : IMessage
         {
             if (message == null)
                 throw new ArgumentNullException(nameof(message));
@@ -248,7 +258,7 @@ namespace AhBearStudios.Core.Messaging
                     Interlocked.Increment(ref _totalMessagesPublished);
                     
                     // Update circuit breaker with success
-                    circuitBreaker.RecordSuccess();
+                    _circuitBreakerService.RecordSuccess<TMessage>();
                     
                     _logger.LogInfo($"[{_correlationId}] Published async message {typeof(TMessage).Name} with ID {message.Id}");
                 }
@@ -264,7 +274,7 @@ namespace AhBearStudios.Core.Messaging
             }
             catch (Exception ex)
             {
-                HandlePublishingError<TMessage>(message, ex, circuitBreaker);
+                HandlePublishingError<TMessage>(message, ex);
                 throw;
             }
         }
@@ -290,7 +300,7 @@ namespace AhBearStudios.Core.Messaging
         }
 
         /// <inheritdoc />
-        public async Task PublishBatchAsync<TMessage>(TMessage[] messages, CancellationToken cancellationToken = default) where TMessage : IMessage
+        public async UniTask PublishBatchAsync<TMessage>(TMessage[] messages, CancellationToken cancellationToken = default) where TMessage : IMessage
         {
             if (messages == null)
                 throw new ArgumentNullException(nameof(messages));
@@ -404,25 +414,13 @@ namespace AhBearStudios.Core.Messaging
 
             ThrowIfDisposed();
 
-            return SubscribeToMessage<TMessage>(message =>
-            {
-                try
-                {
-                    if (filter(message))
-                    {
-                        handler(message);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogException(ex, $"[{_correlationId}] Error in filtered message handler for {typeof(TMessage).Name}");
-                    throw;
-                }
-            });
+            // Use MessagePipe filter instead of manual filtering
+            var customFilter = new CustomPredicateFilter<TMessage>(filter, _logger);
+            return _adapter.Subscribe(handler, customFilter);
         }
 
         /// <inheritdoc />
-        public IDisposable SubscribeWithFilterAsync<TMessage>(Func<TMessage, bool> filter, Func<TMessage, Task> handler) where TMessage : IMessage
+        public IDisposable SubscribeWithFilterAsync<TMessage>(Func<TMessage, bool> filter, Func<TMessage, UniTask> handler) where TMessage : IMessage
         {
             if (filter == null)
                 throw new ArgumentNullException(nameof(filter));
@@ -431,21 +429,9 @@ namespace AhBearStudios.Core.Messaging
 
             ThrowIfDisposed();
 
-            return SubscribeToMessageAsync<TMessage>(async message =>
-            {
-                try
-                {
-                    if (filter(message))
-                    {
-                        await handler(message).ConfigureAwait(false);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogException(ex, $"[{_correlationId}] Error in async filtered message handler for {typeof(TMessage).Name}");
-                    throw;
-                }
-            });
+            // Use MessagePipe async filter instead of manual filtering
+            var customFilter = new AsyncCustomPredicateFilter<TMessage>(filter, _logger);
+            return _adapter.SubscribeAsync(handler, customFilter);
         }
 
         /// <inheritdoc />
@@ -456,9 +442,9 @@ namespace AhBearStudios.Core.Messaging
 
             ThrowIfDisposed();
 
-            return SubscribeWithFilter<TMessage>(
-                message => message.Priority >= minPriority,
-                handler);
+            // Use optimized MessagePipe priority filter
+            var priorityFilter = new MessagePriorityFilter<TMessage>(minPriority, _logger);
+            return _adapter.Subscribe(handler, priorityFilter);
         }
 
         #endregion
@@ -502,8 +488,8 @@ namespace AhBearStudios.Core.Messaging
                     CurrentQueueDepth = (int)Interlocked.Read(ref _currentQueueDepth),
                     MemoryUsage = Interlocked.Read(ref _totalMemoryAllocated),
                     CurrentHealthStatus = _currentHealthStatus,
-                    MessageTypeStatistics = _messageTypeStats.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
-                    CircuitBreakerStates = _circuitBreakers.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.State),
+                    MessageTypeStatistics = _messageTypeStats.AsValueEnumerable().ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+                    CircuitBreakerStates = new Dictionary<Type, CircuitBreakerState>(), // Circuit breaker states managed by service
                     ActiveScopes = _scopes.Count,
                     LastStatsReset = _lastStatsReset,
                     ErrorRate = CalculateErrorRate(),
@@ -555,7 +541,7 @@ namespace AhBearStudios.Core.Messaging
         }
 
         /// <inheritdoc />
-        public async Task<HealthStatus> CheckHealthAsync(CancellationToken cancellationToken = default)
+        public async UniTask<HealthStatus> CheckHealthAsync(CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
 
@@ -593,8 +579,7 @@ namespace AhBearStudios.Core.Messaging
         {
             ThrowIfDisposed();
             
-            var circuitBreaker = GetOrCreateCircuitBreaker<TMessage>();
-            return circuitBreaker.State;
+            return _circuitBreakerService.GetCircuitBreakerState<TMessage>();
         }
 
         /// <inheritdoc />
@@ -602,18 +587,9 @@ namespace AhBearStudios.Core.Messaging
         {
             ThrowIfDisposed();
             
-            var circuitBreaker = GetOrCreateCircuitBreaker<TMessage>();
-            circuitBreaker.Reset();
+            _circuitBreakerService.ResetCircuitBreaker<TMessage>();
             
             _logger.LogInfo($"[{_correlationId}] Circuit breaker reset for {typeof(TMessage).Name}");
-            
-            CircuitBreakerStateChanged?.Invoke(this, new CircuitBreakerStateChangedEventArgs
-            {
-                MessageType = typeof(TMessage),
-                OldState = CircuitBreakerState.Open,
-                NewState = CircuitBreakerState.Closed,
-                Reason = "Manual reset"
-            });
         }
 
         #endregion
@@ -638,16 +614,8 @@ namespace AhBearStudios.Core.Messaging
             });
         }
 
-        private CircuitBreaker GetOrCreateCircuitBreaker<TMessage>() where TMessage : IMessage
-        {
-            return _circuitBreakers.GetOrAdd(typeof(TMessage), _ =>
-            {
-                _logger.LogInfo($"[{_correlationId}] Creating circuit breaker for {typeof(TMessage).Name}");
-                return new CircuitBreaker(_config.CircuitBreakerConfig, _logger);
-            });
-        }
 
-        private void HandlePublishingError<TMessage>(TMessage message, Exception ex, CircuitBreaker circuitBreaker) where TMessage : IMessage
+        private void HandlePublishingError<TMessage>(TMessage message, Exception ex) where TMessage : IMessage
         {
             _logger.LogException(ex, $"[{_correlationId}] Failed to publish message {typeof(TMessage).Name} with ID {message.Id}");
             
@@ -656,7 +624,7 @@ namespace AhBearStudios.Core.Messaging
             Interlocked.Increment(ref _totalMessagesFailed);
             
             // Update circuit breaker
-            circuitBreaker.RecordFailure();
+            _circuitBreakerService.RecordFailure<TMessage>(ex);
             
             // Add to retry queue if configured
             if (_config.RetryFailedMessages)
@@ -683,7 +651,31 @@ namespace AhBearStudios.Core.Messaging
                     new { MessageId = message.Id, Error = ex.Message });
             }
             
-            // Raise event
+            // Publish message processing failed message
+            if (_messagePipeAdapter != null)
+            {
+                var failureMessage = new MessageProcessingFailedEventMessage
+                {
+                    MessageTypeName = typeof(TMessage).Name,
+                    MessageId = message.Id,
+                    ErrorMessage = ex.Message,
+                    ExceptionType = ex.GetType().Name,
+                    RetryScheduled = _config.RetryFailedMessages,
+                    InstanceName = _config.InstanceName,
+                    CorrelationId = new Guid(_correlationId.ToString())
+                };
+                
+                try
+                {
+                    _messagePipeAdapter.Publish(failureMessage);
+                }
+                catch (Exception publishEx)
+                {
+                    _logger.LogException(publishEx, "Failed to publish message processing failed message");
+                }
+            }
+            
+            // Keep event for backward compatibility during transition
             MessageProcessingFailed?.Invoke(this, new MessageProcessingFailedEventArgs
             {
                 MessageType = typeof(TMessage),
@@ -739,9 +731,9 @@ namespace AhBearStudios.Core.Messaging
         private double CalculateAverageProcessingTime()
         {
             var allStats = _messageTypeStats.Values;
-            if (!allStats.Any()) return 0.0;
+            if (!allStats.AsValueEnumerable().Any()) return 0.0;
             
-            return allStats.Average(s => s.AverageProcessingTime);
+            return allStats.AsValueEnumerable().Average(s => s.AverageProcessingTime);
         }
 
         private HealthStatus DetermineHealthStatus(MessageBusStatistics statistics)
@@ -781,6 +773,29 @@ namespace AhBearStudios.Core.Messaging
                     
                     _logger.LogInfo($"[{_correlationId}] Health status changed from {oldStatus} to {newStatus}: {reason}");
                     
+                    // Publish health status change message
+                    if (_messagePipeAdapter != null)
+                    {
+                        var healthMessage = new MessageBusHealthChangedMessage
+                        {
+                            PreviousStatus = oldStatus,
+                            CurrentStatus = newStatus,
+                            Reason = reason,
+                            InstanceName = _config.InstanceName,
+                            CorrelationId = new Guid(_correlationId.ToString())
+                        };
+                        
+                        try
+                        {
+                            _messagePipeAdapter.Publish(healthMessage);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogException(ex, "Failed to publish health status change message");
+                        }
+                    }
+                    
+                    // Keep event for backward compatibility during transition
                     HealthStatusChanged?.Invoke(this, new HealthStatusChangedEventArgs
                     {
                         OldStatus = oldStatus,
@@ -920,37 +935,6 @@ namespace AhBearStudios.Core.Messaging
             }
         }
 
-        private void UpdateCircuitBreakers(object state)
-        {
-            if (_disposed) return;
-
-            try
-            {
-                foreach (var kvp in _circuitBreakers)
-                {
-                    var oldState = kvp.Value.State;
-                    kvp.Value.Update();
-                    var newState = kvp.Value.State;
-
-                    if (oldState != newState)
-                    {
-                        _logger.LogInfo($"[{_correlationId}] Circuit breaker for {kvp.Key.Name} changed from {oldState} to {newState}");
-                        
-                        CircuitBreakerStateChanged?.Invoke(this, new CircuitBreakerStateChangedEventArgs
-                        {
-                            MessageType = kvp.Key,
-                            OldState = oldState,
-                            NewState = newState,
-                            Reason = "Automatic state transition"
-                        });
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.LogException(ex, $"[{_correlationId}] Failed to update circuit breakers");
-            }
-        }
 
         internal void OnScopeDisposed(Guid scopeId)
         {
@@ -988,7 +972,6 @@ namespace AhBearStudios.Core.Messaging
                 _statisticsTimer?.Dispose();
                 _healthCheckTimer?.Dispose();
                 _retryTimer?.Dispose();
-                _circuitBreakerTimer?.Dispose();
 
                 // Dispose all publishers
                 foreach (var publisher in _publishers.Values.OfType<IDisposable>())
@@ -1028,6 +1011,9 @@ namespace AhBearStudios.Core.Messaging
                         _logger.LogException(ex, $"[{_correlationId}] Error disposing scope");
                     }
                 }
+
+                // Dispose services
+                _circuitBreakerService?.Dispose();
 
                 // Dispose synchronization primitives
                 _publishSemaphore?.Dispose();
