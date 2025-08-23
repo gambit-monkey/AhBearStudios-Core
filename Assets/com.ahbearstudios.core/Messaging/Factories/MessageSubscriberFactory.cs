@@ -1,12 +1,14 @@
+using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Messages;
-using AhBearStudios.Core.Messaging.Subscribers.Configs;
+using AhBearStudios.Core.Messaging.Configs;
+using AhBearStudios.Core.Messaging.Subscribers;
 using AhBearStudios.Core.Profiling;
 using Unity.Profiling;
 using ZLinq;
 
-namespace AhBearStudios.Core.Messaging.Subscribers.Factories;
+namespace AhBearStudios.Core.Messaging.Factories;
 
 /// <summary>
 /// Factory implementation for creating MessageSubscriber instances.
@@ -75,7 +77,7 @@ public sealed class MessageSubscriberFactory : IMessageSubscriberFactory
             }
             catch (Exception ex)
             {
-                _loggingService.LogException(ex, $"[{correlationId}] Failed to create MessageSubscriber for {typeof(TMessage).Name}");
+                _loggingService.LogException($"[{correlationId}] Failed to create MessageSubscriber for {typeof(TMessage).Name}", ex);
                 throw new InvalidOperationException($"Failed to create MessageSubscriber<{typeof(TMessage).Name}>", ex);
             }
         }
@@ -151,7 +153,7 @@ public sealed class MessageSubscriberFactory : IMessageSubscriberFactory
         }
         catch (Exception ex)
         {
-            _loggingService.LogException(ex, $"Configuration validation failed for {config.CorrelationId}");
+            _loggingService.LogException($"Configuration validation failed for {config.CorrelationId}",ex);
             return false;
         }
     }

@@ -1,8 +1,10 @@
+using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Messaging.Messages;
-using AhBearStudios.Core.Messaging.Subscribers.Configs;
+using AhBearStudios.Core.Messaging.Configs;
+using AhBearStudios.Core.Messaging.Subscribers;
 
-namespace AhBearStudios.Core.Messaging.Subscribers.Factories;
+namespace AhBearStudios.Core.Messaging.Factories;
 
 /// <summary>
 /// Factory interface for creating MessageSubscriber instances.

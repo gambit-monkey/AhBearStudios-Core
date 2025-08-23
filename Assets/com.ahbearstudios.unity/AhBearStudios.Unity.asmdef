@@ -1,10 +1,12 @@
 {
-    "name": "AhBearStudios.Core",
-    "rootNamespace": "AhBearStudios.Core",
+    "name": "AhBearStudios.Unity",
+    "rootNamespace": "AhBearStudios.Unity",
     "references": [
+        "AhBearStudios.Core",
         "Unity.Collections",
         "Unity.Burst",
         "Unity.Mathematics",
+        "Unity.InputSystem",
         "Reflex",
         "MessagePipe",
         "UniTask",
@@ -18,5 +20,5 @@
     "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [],
-    "noEngineReferences": true
+    "noEngineReferences": false
 }

@@ -1,4 +1,4 @@
-﻿using System.Threading.Tasks;
+﻿using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Messaging.Messages;
 
 namespace AhBearStudios.Core.Messaging;
@@ -37,5 +37,5 @@ public interface IMessageScope : IDisposable
     /// <typeparam name="TMessage">The message type to subscribe to</typeparam>
     /// <param name="handler">The async message handler</param>
     /// <returns>Scoped subscription that will be automatically disposed when scope is disposed</returns>
-    IDisposable SubscribeAsync<TMessage>(Func<TMessage, Task> handler) where TMessage : IMessage;
+    IDisposable SubscribeAsync<TMessage>(Func<TMessage, UniTask> handler) where TMessage : IMessage;
 }

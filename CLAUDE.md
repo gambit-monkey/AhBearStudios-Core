@@ -11,6 +11,21 @@ AhBearStudios Core is a **modular, high-performance Unity game development frame
 - **Modular Architecture**: Swappable interfaces, dependency injection via Reflex, compositional design
 - **Performance Critical**: Unity Jobs & Burst, Unity Collections v2, zero-allocation patterns where possible
 
+### Package Architecture
+
+The framework is split into two distinct packages for maximum flexibility:
+
+1. **com.ahbearstudios.core** - Platform-agnostic POCO (Plain Old C# Objects) systems
+   - Pure C# implementations without Unity dependencies
+   - Can be used in server applications or tools
+   - Easier to unit test without Unity runtime
+   
+2. **com.ahbearstudios.unity** - Unity-specific implementations
+   - MonoBehaviour components and managers
+   - ScriptableObject configurations
+   - Unity Editor tools and inspectors
+   - References and extends core functionality
+
 ## Core Architecture Pattern
 
 **ALWAYS follow Builder → Config → Factory → Service design flow**
@@ -97,29 +112,41 @@ var alertService = await _alertServiceFactory.CreateAlertServiceAsync(config);
 
 Code is organized by **functional domain**, not architectural layers. Related functionality stays together.
 
+### Package Structure
+The project is organized into two separate Unity packages:
+- **com.ahbearstudios.core** - POCO core systems (platform-agnostic)
+- **com.ahbearstudios.unity** - Unity-specific implementations
+
 ### Core POCO System Structure
 ```
-AhBearStudios.Core.{FunctionalSystem}/
-├── I{System}Service.cs              // Primary interface at root
-├── {System}Service.cs               // Primary implementation at root
-├── Configs/                         // Configuration objects
-├── Builders/                        // Builder pattern implementations
-├── Factories/                       // Factory pattern implementations
-├── Services/                        // Additional service implementations
-├── Models/                          // Data structures, enums, structs
-└── HealthChecks/                    // Health monitoring
+Assets/com.ahbearstudios.core/
+├── AhBearStudios.Core.asmdef        // Core assembly definition
+├── {FunctionalSystem}/               // e.g., Logging, Messaging, Pooling
+│   ├── I{System}Service.cs          // Primary interface at root
+│   ├── {System}Service.cs           // Primary implementation at root
+│   ├── Configs/                     // Configuration objects
+│   ├── Builders/                    // Builder pattern implementations
+│   ├── Factories/                   // Factory pattern implementations
+│   ├── Services/                    // Additional service implementations
+│   ├── Models/                      // Data structures, enums, structs
+│   └── HealthChecks/                // Health monitoring
+└── Common/                           // Shared utilities across systems
+    └── Models/                       // Shared data structures
 ```
 
 ### Unity Application Layer Structure
 ```
-AhBearStudios.Unity.{GameSystem}/
-├── I{System}Manager.cs              // Primary interface at root
-├── {System}Manager.cs               // MonoBehaviour implementation at root
-├── Configs/                         // ScriptableObject configurations
-├── Builders/                        // Unity object builders
-├── Components/                      // MonoBehaviour components
-├── Systems/                         // Game logic (avoid MonoBehaviour when possible)
-└── Monitoring/                      // Performance profiling
+Assets/com.ahbearstudios.unity/
+├── AhBearStudios.Unity.asmdef       // Unity assembly definition
+├── package.json                     // Unity package metadata
+└── {GameSystem}/                    // e.g., Logging, Messaging, Serialization
+    ├── I{System}Manager.cs          // Primary interface at root
+    ├── {System}Manager.cs           // MonoBehaviour implementation at root
+    ├── Configs/                     // ScriptableObject configurations
+    ├── Builders/                    // Unity object builders
+    ├── Components/                  // MonoBehaviour components
+    ├── Systems/                     // Game logic (avoid MonoBehaviour when possible)
+    └── Monitoring/                  // Performance profiling
 ```
 
 ## Key Development Commands
@@ -670,40 +697,60 @@ public void MethodName_StateUnderTest_ExpectedBehavior()
 - Recommended: Unity 2022.3 LTS or newer
 
 ### Package Dependencies
+
+#### Core Package (com.ahbearstudios.core)
 - Reflex (Dependency Injection)
 - Unity Collections
 - Unity Burst Compiler
-- Unity Jobs System
+- Unity Mathematics
 - ZLinq (Zero-allocation LINQ)
 - UniTask (Unity async/await)
 - MemoryPack (via ISerializationService)
+
+#### Unity Package (com.ahbearstudios.unity)
+- com.ahbearstudios.core (references core package)
+- Unity Input System
+- Unity Jobs System
+- All dependencies from Core package (inherited)
 
 ## Development Workflow
 
 1. **Understand existing patterns**: Check neighboring files for conventions
 2. **Follow functional organization**: Place code in appropriate functional folders
-3. **Implement Builder → Config → Factory → Service**: Use established pattern
-4. **Test with Unity Profiler**: Validate performance impact
-5. **Verify frame budget**: Ensure operations fit within 16.67ms
+3. **Choose correct package**: 
+   - POCO/platform-agnostic code → `com.ahbearstudios.core`
+   - Unity-specific/MonoBehaviour code → `com.ahbearstudios.unity`
+4. **Implement Builder → Config → Factory → Service**: Use established pattern
+5. **Test with Unity Profiler**: Validate performance impact
+6. **Verify frame budget**: Ensure operations fit within 16.67ms
 
 ## Quick Reference
 
 ### Namespace Examples
 ```csharp
-// Core POCO Systems
+// Core POCO Systems (com.ahbearstudios.core package)
 AhBearStudios.Core.Logging
 AhBearStudios.Core.Messaging
 AhBearStudios.Core.Pooling
 AhBearStudios.Core.Serialization
 AhBearStudios.Core.HealthCheck
 AhBearStudios.Core.Profiling
+AhBearStudios.Core.Alerting
 
-// Common Utilities
+// Common Utilities (com.ahbearstudios.core package)
 AhBearStudios.Core.Common.Models
 AhBearStudios.Core.Common.Extensions
 AhBearStudios.Core.Common.Utilities
 
-// Unity Game Systems
+// Unity Implementations (com.ahbearstudios.unity package)
+AhBearStudios.Unity.Logging
+AhBearStudios.Unity.Messaging
+AhBearStudios.Unity.Serialization
+AhBearStudios.Unity.HealthChecking
+AhBearStudios.Unity.Alerting
+AhBearStudios.Unity.Common
+
+// Unity Game Systems (com.ahbearstudios.unity package)
 AhBearStudios.Unity.Player
 AhBearStudios.Unity.Combat
 AhBearStudios.Unity.UI

@@ -2,12 +2,14 @@ using System;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Unity.Collections;
+using UnityEngine;
+using AhBearStudios.Core.Alerting.Channels;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Common.Models;
 using AhBearStudios.Core.Messaging;
 
-namespace AhBearStudios.Core.Alerting.Channels
+namespace AhBearStudios.Unity.Alerting.Channels
 {
     /// <summary>
     /// Unity Debug.Log-based alert channel.
@@ -29,13 +31,13 @@ namespace AhBearStudios.Core.Alerting.Channels
             {
                 case AlertSeverity.Critical:
                 case AlertSeverity.Emergency:
-                    UnityEngine.Debug.LogError(message);
+                    Debug.LogError(message);
                     break;
                 case AlertSeverity.Warning:
-                    UnityEngine.Debug.LogWarning(message);
+                    Debug.LogWarning(message);
                     break;
                 default:
-                    UnityEngine.Debug.Log(message);
+                    Debug.Log(message);
                     break;
             }
             
@@ -50,13 +52,13 @@ namespace AhBearStudios.Core.Alerting.Channels
             {
                 case AlertSeverity.Critical:
                 case AlertSeverity.Emergency:
-                    UnityEngine.Debug.LogError(message);
+                    Debug.LogError(message);
                     break;
                 case AlertSeverity.Warning:
-                    UnityEngine.Debug.LogWarning(message);
+                    Debug.LogWarning(message);
                     break;
                 default:
-                    UnityEngine.Debug.Log(message);
+                    Debug.Log(message);
                     break;
             }
             

@@ -197,24 +197,5 @@ namespace AhBearStudios.Core.Messaging
         void ResetCircuitBreaker<TMessage>() where TMessage : IMessage;
 
         #endregion
-
-        #region Events
-
-        /// <summary>
-        /// Event raised when the health status changes.
-        /// </summary>
-        event EventHandler<HealthStatusChangedEventArgs> HealthStatusChanged;
-
-        /// <summary>
-        /// Event raised when a message processing fails.
-        /// </summary>
-        event EventHandler<MessageProcessingFailedEventArgs> MessageProcessingFailed;
-
-        /// <summary>
-        /// Event raised when circuit breaker state changes.
-        /// </summary>
-        event EventHandler<CircuitBreakerStateChangedEventArgs> CircuitBreakerStateChanged;
-
-        #endregion
     }
 }

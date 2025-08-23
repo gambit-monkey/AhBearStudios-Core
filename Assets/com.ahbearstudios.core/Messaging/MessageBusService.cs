@@ -1,4 +1,6 @@
 ﻿using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using ZLinq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
@@ -35,7 +37,7 @@ namespace AhBearStudios.Core.Messaging
         private readonly IProfilerService _profilerService;
         private readonly IPoolingService _poolingService;
         private readonly IMessageCircuitBreakerService _circuitBreakerService;
-        private readonly IMessagePipeAdapter _messagePipeAdapter;
+        private readonly IMessageBusAdapter _messageBusAdapter;
 
         // Core collections
         private readonly ConcurrentDictionary<Type, object> _publishers;
@@ -76,18 +78,6 @@ namespace AhBearStudios.Core.Messaging
 
         #endregion
 
-        #region Events
-
-        /// <inheritdoc />
-        public event EventHandler<HealthStatusChangedEventArgs> HealthStatusChanged;
-
-        /// <inheritdoc />
-        public event EventHandler<MessageProcessingFailedEventArgs> MessageProcessingFailed;
-
-        /// <inheritdoc />
-        public event EventHandler<CircuitBreakerStateChangedEventArgs> CircuitBreakerStateChanged;
-
-        #endregion
 
         #region Constructor
 
@@ -97,7 +87,7 @@ namespace AhBearStudios.Core.Messaging
         /// <param name="config">The message bus configuration</param>
         /// <param name="logger">The logging service</param>
         /// <param name="circuitBreakerService">The circuit breaker service</param>
-        /// <param name="messagePipeAdapter">The message pipe adapter for publishing events</param>
+        /// <param name="messageBusAdapter">The message pipe adapter for publishing events</param>
         /// <param name="alertService">The alert service</param>
         /// <param name="profilerService">The profiler service</param>
         /// <param name="poolingService">The pooling service</param>
@@ -106,7 +96,7 @@ namespace AhBearStudios.Core.Messaging
             MessageBusConfig config,
             ILoggingService logger,
             IMessageCircuitBreakerService circuitBreakerService,
-            IMessageBusAdapter messagePipeAdapter = null,
+            IMessageBusAdapter messageBusAdapter = null,
             IAlertService alertService = null,
             IProfilerService profilerService = null,
             IPoolingService poolingService = null)
@@ -114,7 +104,7 @@ namespace AhBearStudios.Core.Messaging
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _circuitBreakerService = circuitBreakerService ?? throw new ArgumentNullException(nameof(circuitBreakerService));
-            _messagePipeAdapter = messagePipeAdapter;
+            _messageBusAdapter = messageBusAdapter;
             _alertService = alertService;
             _profilerService = profilerService;
             _poolingService = poolingService;
@@ -148,11 +138,7 @@ namespace AhBearStudios.Core.Messaging
             _currentHealthStatus = HealthStatus.Healthy;
             _lastStatsReset = DateTime.UtcNow;
 
-            // Wire up circuit breaker events
-            _circuitBreakerService.StateChanged += (sender, args) =>
-            {
-                CircuitBreakerStateChanged?.Invoke(this, args);
-            };
+            // Circuit breaker state changes are handled by the circuit breaker service itself via IMessage publishing
 
             _logger.LogInfo($"[{_correlationId}] MessageBusService initialized with config: {_config.InstanceName}");
         }
@@ -229,8 +215,7 @@ namespace AhBearStudios.Core.Messaging
             using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(
                 _cancellationTokenSource.Token, cancellationToken);
 
-            var circuitBreaker = GetOrCreateCircuitBreaker<TMessage>();
-            if (circuitBreaker.State == CircuitBreakerState.Open)
+            if (!_circuitBreakerService.CanProcess<TMessage>())
             {
                 HandleCircuitBreakerOpen<TMessage>(message);
                 return;
@@ -240,7 +225,7 @@ namespace AhBearStudios.Core.Messaging
             
             try
             {
-                await _publishSemaphore.WaitAsync(combinedCts.Token).ConfigureAwait(false);
+                await _publishSemaphore.WaitAsync(combinedCts.Token);
                 
                 try
                 {
@@ -250,7 +235,7 @@ namespace AhBearStudios.Core.Messaging
                     var publisher = GetOrCreatePublisher<TMessage>();
                     
                     // Publish message
-                    await publisher.PublishAsync(message).ConfigureAwait(false);
+                    await publisher.PublishAsync(message);
                     
                     // Update statistics
                     var processingTime = DateTime.UtcNow - startTime;
@@ -316,7 +301,7 @@ namespace AhBearStudios.Core.Messaging
             using var scope = _profilerService?.BeginScope($"PublishBatchAsync<{typeof(TMessage).Name}>");
             
             var publisher = GetOrCreatePublisher<TMessage>();
-            await publisher.PublishBatchAsync(messages).ConfigureAwait(false);
+            await publisher.PublishBatchAsync(messages);
             
             Interlocked.Add(ref _totalMessagesPublished, messages.Length);
             _logger.LogInfo($"[{_correlationId}] Published async batch of {messages.Length} {typeof(TMessage).Name} messages");
@@ -349,13 +334,13 @@ namespace AhBearStudios.Core.Messaging
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{_correlationId}] Failed to create subscription for {typeof(TMessage).Name}");
+                _logger.LogException($"[{_correlationId}] Failed to create subscription for {typeof(TMessage).Name}", ex);
                 throw;
             }
         }
 
         /// <inheritdoc />
-        public IDisposable SubscribeToMessageAsync<TMessage>(Func<TMessage, Task> handler) where TMessage : IMessage
+        public IDisposable SubscribeToMessageAsync<TMessage>(Func<TMessage, UniTask> handler) where TMessage : IMessage
         {
             if (handler == null)
                 throw new ArgumentNullException(nameof(handler));
@@ -377,7 +362,7 @@ namespace AhBearStudios.Core.Messaging
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{_correlationId}] Failed to create async subscription for {typeof(TMessage).Name}");
+                _logger.LogException($"[{_correlationId}] Failed to create async subscription for {typeof(TMessage).Name}", ex);
                 throw;
             }
         }
@@ -416,7 +401,7 @@ namespace AhBearStudios.Core.Messaging
 
             // Use MessagePipe filter instead of manual filtering
             var customFilter = new CustomPredicateFilter<TMessage>(filter, _logger);
-            return _adapter.Subscribe(handler, customFilter);
+            return _messageBusAdapter.Subscribe(handler, customFilter);
         }
 
         /// <inheritdoc />
@@ -431,7 +416,7 @@ namespace AhBearStudios.Core.Messaging
 
             // Use MessagePipe async filter instead of manual filtering
             var customFilter = new AsyncCustomPredicateFilter<TMessage>(filter, _logger);
-            return _adapter.SubscribeAsync(handler, customFilter);
+            return _messageBusAdapter.SubscribeAsync(handler, customFilter);
         }
 
         /// <inheritdoc />
@@ -444,7 +429,7 @@ namespace AhBearStudios.Core.Messaging
 
             // Use optimized MessagePipe priority filter
             var priorityFilter = new MessagePriorityFilter<TMessage>(minPriority, _logger);
-            return _adapter.Subscribe(handler, priorityFilter);
+            return _messageBusAdapter.Subscribe(handler, priorityFilter);
         }
 
         #endregion
@@ -479,12 +464,12 @@ namespace AhBearStudios.Core.Messaging
                 return new MessageBusStatistics
                 {
                     InstanceName = _config.InstanceName,
-                    MessagesPublished = Interlocked.Read(ref _totalMessagesPublished),
-                    MessagesProcessed = Interlocked.Read(ref _totalMessagesProcessed),
-                    MessagesFailed = Interlocked.Read(ref _totalMessagesFailed),
-                    ActiveSubscriptions = GetActiveSubscriberCount(),
+                    TotalMessagesPublished = Interlocked.Read(ref _totalMessagesPublished),
+                    TotalMessagesProcessed = Interlocked.Read(ref _totalMessagesProcessed),
+                    TotalMessagesFailed = Interlocked.Read(ref _totalMessagesFailed),
+                    ActiveSubscribers = GetActiveSubscriberCount(),
                     DeadLetterQueueSize = _deadLetterQueue.Count,
-                    RetryQueueSize = (int)Interlocked.Read(ref _retryQueueSize),
+                    MessagesInRetry = (int)Interlocked.Read(ref _retryQueueSize),
                     CurrentQueueDepth = (int)Interlocked.Read(ref _currentQueueDepth),
                     MemoryUsage = Interlocked.Read(ref _totalMemoryAllocated),
                     CurrentHealthStatus = _currentHealthStatus,
@@ -493,7 +478,7 @@ namespace AhBearStudios.Core.Messaging
                     ActiveScopes = _scopes.Count,
                     LastStatsReset = _lastStatsReset,
                     ErrorRate = CalculateErrorRate(),
-                    AverageProcessingTime = CalculateAverageProcessingTime()
+                    AverageProcessingTimeMs = CalculateAverageProcessingTime()
                 };
             }
             finally
@@ -564,7 +549,7 @@ namespace AhBearStudios.Core.Messaging
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{_correlationId}] Health check failed");
+                _logger.LogException($"[{_correlationId}] Health check failed", ex);
                 UpdateHealthStatus(HealthStatus.Unhealthy, $"Health check exception: {ex.Message}");
                 return HealthStatus.Unhealthy;
             }
@@ -601,7 +586,7 @@ namespace AhBearStudios.Core.Messaging
             return (IMessagePublisher<TMessage>)_publishers.GetOrAdd(typeof(TMessage), _ =>
             {
                 _logger.LogInfo($"[{_correlationId}] Creating publisher for {typeof(TMessage).Name}");
-                return new MessagePublisher<TMessage>(_config, _logger, _profilerService, this);
+                return new MessagePublisher<TMessage>(_config, _logger, _profilerService, _poolingService);
             });
         }
 
@@ -610,14 +595,28 @@ namespace AhBearStudios.Core.Messaging
             return (IMessageSubscriber<TMessage>)_subscribers.GetOrAdd(typeof(TMessage), _ =>
             {
                 _logger.LogInfo($"[{_correlationId}] Creating subscriber for {typeof(TMessage).Name}");
-                return new MessageSubscriber<TMessage>(_config, _logger, _profilerService, this);
+                
+                // Create MessageSubscriberConfig from MessageBusConfig
+                var subscriberConfig = new MessageSubscriberConfig(
+                    maxConcurrentHandlers: _config.MaxConcurrentHandlers,
+                    processingTimeout: _config.HandlerTimeout,
+                    enableProfiling: _config.PerformanceMonitoring,
+                    enableMessageBusIntegration: true,
+                    statisticsInterval: _config.StatisticsUpdateInterval,
+                    enableCircuitBreaker: _config.UseCircuitBreaker,
+                    enableErrorRetry: _config.RetryFailedMessages,
+                    maxRetryAttempts: _config.MaxRetryAttempts,
+                    retryDelay: _config.RetryDelay,
+                    correlationId: _correlationId);
+                
+                return new MessageSubscriber<TMessage>(subscriberConfig, _logger, _profilerService, this);
             });
         }
 
 
         private void HandlePublishingError<TMessage>(TMessage message, Exception ex) where TMessage : IMessage
         {
-            _logger.LogException(ex, $"[{_correlationId}] Failed to publish message {typeof(TMessage).Name} with ID {message.Id}");
+            _logger.LogException($"[{_correlationId}] Failed to publish message {typeof(TMessage).Name} with ID {message.Id}", ex);
             
             // Update statistics
             UpdateMessageStatistics<TMessage>(false, 0);
@@ -629,14 +628,14 @@ namespace AhBearStudios.Core.Messaging
             // Add to retry queue if configured
             if (_config.RetryFailedMessages)
             {
-                var pendingMessage = new PendingMessage
-                {
-                    Message = message,
-                    MessageType = typeof(TMessage),
-                    FailureCount = 1,
-                    LastAttempt = DateTime.UtcNow,
-                    NextRetry = DateTime.UtcNow.Add(_config.RetryDelay)
-                };
+                var pendingMessage = new PendingMessage(
+                    message: message,
+                    messageType: typeof(TMessage),
+                    failureCount: 1,
+                    lastAttempt: DateTime.UtcNow,
+                    nextRetry: DateTime.UtcNow.Add(_config.RetryDelay),
+                    originalException: ex,
+                    retryContext: $"Publishing failure for {typeof(TMessage).Name}");
                 
                 _retryQueue.Enqueue(pendingMessage);
                 Interlocked.Increment(ref _retryQueueSize);
@@ -648,41 +647,33 @@ namespace AhBearStudios.Core.Messaging
                 _alertService.RaiseAlert(
                     $"Message publishing failed for {typeof(TMessage).Name}",
                     AlertSeverity.Warning,
-                    new { MessageId = message.Id, Error = ex.Message });
+                    source: "MessageBusService",
+                    tag: "PublishFailure",
+                    correlationId: message.CorrelationId);
             }
             
             // Publish message processing failed message
-            if (_messagePipeAdapter != null)
+            if (_messageBusAdapter != null)
             {
-                var failureMessage = new MessageProcessingFailedEventMessage
-                {
-                    MessageTypeName = typeof(TMessage).Name,
-                    MessageId = message.Id,
-                    ErrorMessage = ex.Message,
-                    ExceptionType = ex.GetType().Name,
-                    RetryScheduled = _config.RetryFailedMessages,
-                    InstanceName = _config.InstanceName,
-                    CorrelationId = new Guid(_correlationId.ToString())
-                };
+                var failureMessage = MessageProcessingFailedEventMessage.Create(
+                    failedMessage: message,
+                    exception: ex,
+                    attemptCount: 1,
+                    isFinalFailure: !_config.RetryFailedMessages,
+                    subscriberName: "MessageBusService",
+                    failureContext: $"Failed to publish {typeof(TMessage).Name} in {_config.InstanceName}",
+                    source: "MessageBusService",
+                    correlationId: message.CorrelationId);
                 
                 try
                 {
-                    _messagePipeAdapter.Publish(failureMessage);
+                    _messageBusAdapter.Publish(failureMessage);
                 }
                 catch (Exception publishEx)
                 {
-                    _logger.LogException(publishEx, "Failed to publish message processing failed message");
+                    _logger.LogException("Failed to publish message processing failed message", publishEx);
                 }
             }
-            
-            // Keep event for backward compatibility during transition
-            MessageProcessingFailed?.Invoke(this, new MessageProcessingFailedEventArgs
-            {
-                MessageType = typeof(TMessage),
-                MessageId = message.Id,
-                Exception = ex,
-                RetryScheduled = _config.RetryFailedMessages
-            });
         }
 
         private void HandleCircuitBreakerOpen<TMessage>(TMessage message) where TMessage : IMessage
@@ -690,13 +681,14 @@ namespace AhBearStudios.Core.Messaging
             _logger.LogWarning($"[{_correlationId}] Circuit breaker open for {typeof(TMessage).Name}, dropping message {message.Id}");
             
             // Add to dead letter queue
-            var failedMessage = new FailedMessage
-            {
-                Message = message,
-                MessageType = typeof(TMessage),
-                Reason = "Circuit breaker open",
-                Timestamp = DateTime.UtcNow
-            };
+            var failedMessage = new FailedMessage(
+                message: message,
+                messageType: typeof(TMessage),
+                reason: "Circuit breaker open",
+                exception: null,
+                attemptCount: 0,
+                failedComponent: "MessageBusService",
+                failureContext: $"Circuit breaker prevented publishing of {typeof(TMessage).Name}");
             
             _deadLetterQueue.Enqueue(failedMessage);
             
@@ -706,7 +698,9 @@ namespace AhBearStudios.Core.Messaging
                 _alertService.RaiseAlert(
                     $"Circuit breaker open for {typeof(TMessage).Name}",
                     AlertSeverity.Critical,
-                    new { MessageId = message.Id });
+                    source: "MessageBusService",
+                    tag: "CircuitBreakerOpen",
+                    correlationId: message.CorrelationId);
             }
         }
 
@@ -745,7 +739,7 @@ namespace AhBearStudios.Core.Messaging
             if (statistics.DeadLetterQueueSize > _config.CriticalQueueSizeThreshold)
                 return HealthStatus.Unhealthy;
                 
-            if (statistics.AverageProcessingTime > _config.CriticalProcessingTimeThreshold.TotalMilliseconds)
+            if (statistics.AverageProcessingTimeMs > _config.CriticalProcessingTimeThreshold.TotalMilliseconds)
                 return HealthStatus.Unhealthy;
             
             // Check degraded conditions
@@ -755,7 +749,7 @@ namespace AhBearStudios.Core.Messaging
             if (statistics.DeadLetterQueueSize > _config.WarningQueueSizeThreshold)
                 return HealthStatus.Degraded;
                 
-            if (statistics.AverageProcessingTime > _config.WarningProcessingTimeThreshold.TotalMilliseconds)
+            if (statistics.AverageProcessingTimeMs > _config.WarningProcessingTimeThreshold.TotalMilliseconds)
                 return HealthStatus.Degraded;
             
             return HealthStatus.Healthy;
@@ -774,35 +768,25 @@ namespace AhBearStudios.Core.Messaging
                     _logger.LogInfo($"[{_correlationId}] Health status changed from {oldStatus} to {newStatus}: {reason}");
                     
                     // Publish health status change message
-                    if (_messagePipeAdapter != null)
+                    if (_messageBusAdapter != null)
                     {
-                        var healthMessage = new MessageBusHealthChangedMessage
-                        {
-                            PreviousStatus = oldStatus,
-                            CurrentStatus = newStatus,
-                            Reason = reason,
-                            InstanceName = _config.InstanceName,
-                            CorrelationId = new Guid(_correlationId.ToString())
-                        };
+                        var healthMessage = MessageBusHealthChangedMessage.Create(
+                            previousStatus: oldStatus,
+                            currentStatus: newStatus,
+                            reason: reason,
+                            context: $"MessageBus instance: {_config.InstanceName}",
+                            source: "MessageBusService",
+                            correlationId: new Guid(_correlationId.ToString()));
                         
                         try
                         {
-                            _messagePipeAdapter.Publish(healthMessage);
+                            _messageBusAdapter.Publish(healthMessage);
                         }
                         catch (Exception ex)
                         {
-                            _logger.LogException(ex, "Failed to publish health status change message");
+                            _logger.LogException("Failed to publish health status change message", ex);
                         }
                     }
-                    
-                    // Keep event for backward compatibility during transition
-                    HealthStatusChanged?.Invoke(this, new HealthStatusChangedEventArgs
-                    {
-                        OldStatus = oldStatus,
-                        NewStatus = newStatus,
-                        Reason = reason,
-                        Timestamp = DateTime.UtcNow
-                    });
                     
                     // Raise alert for unhealthy status
                     if (_config.AlertsEnabled && _alertService != null && newStatus == HealthStatus.Unhealthy)
@@ -810,7 +794,9 @@ namespace AhBearStudios.Core.Messaging
                         _alertService.RaiseAlert(
                             $"MessageBus health status changed to {newStatus}",
                             AlertSeverity.Critical,
-                            new { Reason = reason });
+                            source: "MessageBusService",
+                            tag: "HealthChange",
+                            correlationId: new Guid(_correlationId.ToString()));
                     }
                 }
             }
@@ -839,7 +825,7 @@ namespace AhBearStudios.Core.Messaging
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{_correlationId}] Failed to update statistics");
+                _logger.LogException($"[{_correlationId}] Failed to update statistics", ex);
             }
         }
 
@@ -855,7 +841,7 @@ namespace AhBearStudios.Core.Messaging
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{_correlationId}] Health check failed");
+                _logger.LogException($"[{_correlationId}] Health check failed", ex);
                 UpdateHealthStatus(HealthStatus.Unhealthy, $"Health check exception: {ex.Message}");
             }
         }
@@ -891,33 +877,64 @@ namespace AhBearStudios.Core.Messaging
                     }
                     catch (Exception ex)
                     {
-                        pendingMessage.FailureCount++;
-                        pendingMessage.LastAttempt = now;
+                        var updatedFailureCount = pendingMessage.FailureCount + 1;
 
-                        if (pendingMessage.FailureCount < _config.MaxRetryAttempts)
+                        // Publish retry failure message
+                        if (_messageBusAdapter != null && pendingMessage.Message is IMessage retryMessage)
+                        {
+                            var retryFailureMessage = MessageProcessingFailedEventMessage.Create(
+                                failedMessage: retryMessage,
+                                exception: ex,
+                                attemptCount: updatedFailureCount,
+                                isFinalFailure: updatedFailureCount >= _config.MaxRetryAttempts,
+                                subscriberName: "MessageBusService",
+                                failureContext: $"Retry attempt {updatedFailureCount} failed for {pendingMessage.MessageType.Name}",
+                                source: "MessageBusService",
+                                correlationId: retryMessage.CorrelationId);
+                            
+                            try
+                            {
+                                _messageBusAdapter.Publish(retryFailureMessage);
+                            }
+                            catch (Exception publishEx)
+                            {
+                                _logger.LogException("Failed to publish retry failure message", publishEx);
+                            }
+                        }
+
+                        if (updatedFailureCount < _config.MaxRetryAttempts)
                         {
                             // Schedule next retry with exponential backoff
                             var delay = TimeSpan.FromMilliseconds(
-                                _config.RetryDelay.TotalMilliseconds * Math.Pow(2, pendingMessage.FailureCount - 1));
-                            pendingMessage.NextRetry = now.Add(delay);
+                                _config.RetryDelay.TotalMilliseconds * Math.Pow(2, updatedFailureCount - 1));
                             
-                            _retryQueue.Enqueue(pendingMessage);
+                            var updatedPendingMessage = new PendingMessage(
+                                message: pendingMessage.Message,
+                                messageType: pendingMessage.MessageType,
+                                failureCount: updatedFailureCount,
+                                lastAttempt: now,
+                                nextRetry: now.Add(delay),
+                                originalException: pendingMessage.OriginalException ?? ex,
+                                retryContext: pendingMessage.RetryContext);
+                            
+                            _retryQueue.Enqueue(updatedPendingMessage);
                             Interlocked.Increment(ref _retryQueueSize);
                         }
                         else
                         {
                             // Move to dead letter queue
-                            var failedMessage = new FailedMessage
-                            {
-                                Message = pendingMessage.Message,
-                                MessageType = pendingMessage.MessageType,
-                                Reason = $"Max retry attempts exceeded: {ex.Message}",
-                                Timestamp = now
-                            };
+                            var failedMessage = new FailedMessage(
+                                message: pendingMessage.Message,
+                                messageType: pendingMessage.MessageType,
+                                reason: $"Max retry attempts exceeded: {ex.Message}",
+                                exception: ex,
+                                attemptCount: updatedFailureCount,
+                                failedComponent: "MessageBusService",
+                                failureContext: $"Retry processing failed after {updatedFailureCount} attempts");
                             
                             _deadLetterQueue.Enqueue(failedMessage);
                             
-                            _logger.LogError($"[{_correlationId}] Message {pendingMessage.MessageType.Name} moved to dead letter queue after {pendingMessage.FailureCount} attempts");
+                            _logger.LogError($"[{_correlationId}] Message {pendingMessage.MessageType.Name} moved to dead letter queue after {updatedFailureCount} attempts");
                         }
                     }
                 }
@@ -982,7 +999,7 @@ namespace AhBearStudios.Core.Messaging
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogException(ex, $"[{_correlationId}] Error disposing publisher");
+                        _logger.LogException($"[{_correlationId}] Error disposing publisher", ex);
                     }
                 }
 
@@ -995,7 +1012,7 @@ namespace AhBearStudios.Core.Messaging
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogException(ex, $"[{_correlationId}] Error disposing subscriber");
+                        _logger.LogException($"[{_correlationId}] Error disposing subscriber", ex);
                     }
                 }
 
@@ -1008,7 +1025,7 @@ namespace AhBearStudios.Core.Messaging
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogException(ex, $"[{_correlationId}] Error disposing scope");
+                        _logger.LogException($"[{_correlationId}] Error disposing scope", ex);
                     }
                 }
 
@@ -1024,7 +1041,7 @@ namespace AhBearStudios.Core.Messaging
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"[{_correlationId}] Error during MessageBusService disposal");
+                _logger.LogException($"[{_correlationId}] Error during MessageBusService disposal", ex);
             }
         }
 

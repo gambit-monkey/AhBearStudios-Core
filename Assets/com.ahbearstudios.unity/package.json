@@ -1,0 +1,28 @@
+{
+  "name": "com.ahbearstudios.unity",
+  "displayName": "AhBearStudios Unity Framework",
+  "version": "1.0.0",
+  "description": "Unity-specific implementations and components for the AhBearStudios Core framework. Provides MonoBehaviour managers, Unity-native integrations, and platform-specific features for game development.",
+  "unity": "2021.3",
+  "dependencies": {
+    "com.unity.collections": "2.1.0",
+    "com.unity.burst": "1.8.0", 
+    "com.unity.mathematics": "1.2.0",
+    "com.unity.inputsystem": "1.4.0"
+  },
+  "keywords": [
+    "game-development",
+    "unity",
+    "framework",
+    "ahbearstudios",
+    "messaging",
+    "logging",
+    "serialization",
+    "pooling",
+    "alerts"
+  ],
+  "author": {
+    "name": "AhBearStudios"
+  },
+  "type": "library"
+}

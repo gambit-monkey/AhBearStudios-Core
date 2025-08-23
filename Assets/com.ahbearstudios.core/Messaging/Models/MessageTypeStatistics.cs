@@ -92,4 +92,26 @@ public sealed record MessageTypeStatistics
     /// </summary>
     /// <returns>Empty statistics</returns>
     public static MessageTypeStatistics Empty => new();
+
+    /// <summary>
+    /// Creates a new statistics instance with updated values.
+    /// Since this is an immutable record, this returns a new instance.
+    /// </summary>
+    /// <param name="success">Whether the processing was successful</param>
+    /// <param name="processingTimeMs">The processing time in milliseconds</param>
+    /// <returns>New statistics instance with updated values</returns>
+    public MessageTypeStatistics Update(bool success, double processingTimeMs)
+    {
+        var newProcessedCount = ProcessedCount + (success ? 1 : 0);
+        var newFailedCount = FailedCount + (success ? 0 : 1);
+        var newTotalProcessingTime = TotalProcessingTime + processingTimeMs;
+        var newPeakProcessingTime = Math.Max(PeakProcessingTime, processingTimeMs);
+
+        return new MessageTypeStatistics(
+            processedCount: newProcessedCount,
+            failedCount: newFailedCount,
+            totalProcessingTime: newTotalProcessingTime,
+            peakProcessingTime: newPeakProcessingTime,
+            lastUpdated: DateTime.UtcNow);
+    }
 }

@@ -1,8 +1,9 @@
+using System.Collections.Generic;
 using AhBearStudios.Core.Messaging.Models;
-using AhBearStudios.Core.Messaging.Subscribers.Configs;
+using AhBearStudios.Core.Messaging.Configs;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.Messaging.Subscribers.Builders;
+namespace AhBearStudios.Core.Messaging.Builders;
 
 /// <summary>
 /// Builder for MessageSubscriberConfig instances.

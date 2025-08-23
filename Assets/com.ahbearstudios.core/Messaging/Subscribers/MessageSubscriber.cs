@@ -5,7 +5,7 @@ using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
-using AhBearStudios.Core.Messaging.Subscribers.Configs;
+using AhBearStudios.Core.Messaging.Configs;
 using AhBearStudios.Core.Profiling;
 using Unity.Collections;
 using Unity.Profiling;
@@ -170,7 +170,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
             }
             catch (Exception ex)
             {
-                _loggingService.LogException(ex, $"[{subscriptionCorrelationId}] Failed to create subscription for {typeof(TMessage).Name}");
+                _loggingService.LogException($"[{subscriptionCorrelationId}] Failed to create subscription for {typeof(TMessage).Name}", ex);
                 throw;
             }
         }
@@ -228,7 +228,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
             }
             catch (Exception ex)
             {
-                _loggingService.LogException(ex, $"[{subscriptionCorrelationId}] Failed to create async subscription for {typeof(TMessage).Name}");
+                _loggingService.LogException($"[{subscriptionCorrelationId}] Failed to create async subscription for {typeof(TMessage).Name}", ex);
                 throw;
             }
         }
@@ -290,7 +290,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
             }
             catch (Exception ex)
             {
-                _loggingService.LogException(ex, $"[{subscriptionCorrelationId}] Failed to create filtered subscription for {typeof(TMessage).Name}");
+                _loggingService.LogException($"[{subscriptionCorrelationId}] Failed to create filtered subscription for {typeof(TMessage).Name}", ex);
                 throw;
             }
         }
@@ -351,7 +351,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
             }
             catch (Exception ex)
             {
-                _loggingService.LogException(ex, $"[{subscriptionCorrelationId}] Failed to create async filtered subscription for {typeof(TMessage).Name}");
+                _loggingService.LogException($"[{subscriptionCorrelationId}] Failed to create async filtered subscription for {typeof(TMessage).Name}", ex);
                 throw;
             }
         }
@@ -377,7 +377,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
                     }
                     catch (Exception ex)
                     {
-                        _loggingService.LogException(ex, $"[{_correlationId}] Failed to remove subscription {subscriptionId}");
+                        _loggingService.LogException($"[{_correlationId}] Failed to remove subscription {subscriptionId}", ex);
                     }
                 }
 
@@ -385,7 +385,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
             }
             catch (Exception ex)
             {
-                _loggingService.LogException(ex, $"[{_correlationId}] Failed to unsubscribe all for {typeof(TMessage).Name}");
+                _loggingService.LogException($"[{_correlationId}] Failed to unsubscribe all for {typeof(TMessage).Name}", ex);
                 throw;
             }
         }
@@ -452,7 +452,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
             }
             catch (Exception ex)
             {
-                _loggingService.LogException(ex, $"[{messageCorrelationId}] Failed to process message {message.Id}");
+                _loggingService.LogException($"[{messageCorrelationId}] Failed to process message {message.Id}", ex);
             }
         }
     }
@@ -568,7 +568,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
             stopwatch.Stop();
             Interlocked.Increment(ref _failedProcessing);
 
-            _loggingService.LogException(ex, $"[{correlationId}] Subscription {subscription.Id} failed to process message {message.Id}");
+            _loggingService.LogException($"[{correlationId}] Subscription {subscription.Id} failed to process message {message.Id}", ex);
 
             // Publish failure message if enabled
             if (_config.EnableMessageBusIntegration)
@@ -616,7 +616,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
         }
         catch (Exception ex)
         {
-            _loggingService.LogException(ex, $"[{_correlationId}] Failed to update statistics for subscriber {typeof(TMessage).Name}");
+            _loggingService.LogException($"[{_correlationId}] Failed to update statistics for subscriber {typeof(TMessage).Name}", ex);
         }
     }
 
@@ -633,7 +633,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
         }
         catch (Exception ex)
         {
-            _loggingService.LogException(ex, $"[{_correlationId}] Failed to publish subscriber created message");
+            _loggingService.LogException($"[{_correlationId}] Failed to publish subscriber created message", ex);
         }
     }
 
@@ -652,7 +652,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
         }
         catch (Exception ex)
         {
-            _loggingService.LogException(ex, $"[{_correlationId}] Failed to publish subscription created message for {subscriptionId}");
+            _loggingService.LogException($"[{_correlationId}] Failed to publish subscription created message for {subscriptionId}", ex);
         }
     }
 
@@ -671,7 +671,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
         }
         catch (Exception ex)
         {
-            _loggingService.LogException(ex, $"[{_correlationId}] Failed to publish subscription disposed message for {subscriptionId}");
+            _loggingService.LogException($"[{_correlationId}] Failed to publish subscription disposed message for {subscriptionId}", ex);
         }
     }
 
@@ -687,7 +687,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
         }
         catch (Exception ex)
         {
-            _loggingService.LogException(ex, $"[{_correlationId}] Failed to publish subscription processed message for {subscriptionId}");
+            _loggingService.LogException($"[{_correlationId}] Failed to publish subscription processed message for {subscriptionId}", ex);
         }
     }
 
@@ -703,7 +703,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
         }
         catch (Exception ex)
         {
-            _loggingService.LogException(ex, $"[{_correlationId}] Failed to publish subscription failed message for {subscriptionId}");
+            _loggingService.LogException($"[{_correlationId}] Failed to publish subscription failed message for {subscriptionId}", ex);
         }
     }
 
@@ -756,7 +756,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
                 }
                 catch (Exception ex)
                 {
-                    _loggingService.LogException(ex, $"[{_correlationId}] Failed to publish subscriber disposed message");
+                    _loggingService.LogException($"[{_correlationId}] Failed to publish subscriber disposed message", ex);
                 }
             }
 
@@ -764,7 +764,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
         }
         catch (Exception ex)
         {
-            _loggingService.LogException(ex, $"[{_correlationId}] Error during MessageSubscriber<{typeof(TMessage).Name}> disposal");
+            _loggingService.LogException($"[{_correlationId}] Error during MessageSubscriber<{typeof(TMessage).Name}> disposal", ex);
         }
     }
 
@@ -849,7 +849,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
             }
             catch (Exception ex)
             {
-                _subscriber._loggingService.LogException(ex, $"[{_correlationId}] Error disposing managed subscription {_subscriptionId}");
+                _subscriber._loggingService.LogException($"[{_correlationId}] Error disposing managed subscription {_subscriptionId}", ex);
             }
             finally
             {

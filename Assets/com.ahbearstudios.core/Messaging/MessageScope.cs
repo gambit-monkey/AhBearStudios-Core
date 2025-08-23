@@ -1,5 +1,5 @@
 ﻿using System.Collections.Concurrent;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Messages;
 
@@ -64,13 +64,13 @@ namespace AhBearStudios.Core.Messaging
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"Failed to create scoped subscription for {typeof(TMessage).Name} in scope {Id}");
+                _logger.LogException($"Failed to create scoped subscription for {typeof(TMessage).Name} in scope {Id}", ex);
                 throw;
             }
         }
 
         /// <inheritdoc />
-        public IDisposable SubscribeAsync<TMessage>(Func<TMessage, Task> handler) where TMessage : IMessage
+        public IDisposable SubscribeAsync<TMessage>(Func<TMessage, UniTask> handler) where TMessage : IMessage
         {
             if (handler == null)
                 throw new ArgumentNullException(nameof(handler));
@@ -90,7 +90,7 @@ namespace AhBearStudios.Core.Messaging
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"Failed to create async scoped subscription for {typeof(TMessage).Name} in scope {Id}");
+                _logger.LogException($"Failed to create async scoped subscription for {typeof(TMessage).Name} in scope {Id}", ex);
                 throw;
             }
         }
@@ -135,7 +135,7 @@ namespace AhBearStudios.Core.Messaging
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogException(ex, $"Error disposing subscription in scope {Id}");
+                        _logger.LogException($"Error disposing subscription in scope {Id}", ex);
                     }
                 }
 
@@ -150,14 +150,14 @@ namespace AhBearStudios.Core.Messaging
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"Error during MessageScope {Id} disposal");
+                _logger.LogException($"Error during MessageScope {Id} disposal", ex);
             }
         }
 
         /// <summary>
         /// Scoped subscription wrapper that notifies the scope when disposed.
         /// </summary>
-        private sealed class ScopedSubscription : IDisposable
+        internal sealed class ScopedSubscription : IDisposable
         {
             private readonly IDisposable _innerSubscription;
             private readonly MessageScope _scope;
@@ -192,7 +192,7 @@ namespace AhBearStudios.Core.Messaging
                 }
                 catch (Exception ex)
                 {
-                    _scope._logger.LogException(ex, $"Error disposing scoped subscription for {_messageTypeName}");
+                    _scope._logger.LogException($"Error disposing scoped subscription for {_messageTypeName}", ex);
                 }
             }
         }

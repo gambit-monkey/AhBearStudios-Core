@@ -3,6 +3,7 @@ using System.Threading;
 using Cysharp.Threading.Tasks;
 using Unity.Collections;
 using UnityEngine;
+using AhBearStudios.Core.Alerting.Channels;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Messaging;
@@ -11,7 +12,7 @@ using AhBearStudios.Core.Messaging;
 using UnityEditor;
 #endif
 
-namespace AhBearStudios.Core.Alerting.Channels
+namespace AhBearStudios.Unity.Alerting.Channels
 {
     /// <summary>
     /// Unity notification alert channel that displays alerts as Unity editor dialogs and runtime notifications.

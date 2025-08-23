@@ -1,11 +1,12 @@
 using System;
+using System.Collections.Concurrent;
 using MessagePipe;
 using Unity.Profiling;
 using UnityEngine;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Logging;
 
-namespace AhBearStudios.Core.Messaging.Filters;
+namespace AhBearStudios.Unity.Messaging.Filters;
 
 /// <summary>
 /// Unity-specific MessagePipe filter that enforces frame budget compliance for 60+ FPS performance.

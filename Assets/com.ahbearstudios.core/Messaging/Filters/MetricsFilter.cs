@@ -135,28 +135,28 @@ public sealed class MetricsFilter<TMessage> : MessageHandlerFilter<TMessage>
         
         // Update internal counters and Unity Profiler markers
         Interlocked.Increment(ref _messageCount);
-        Interlocked.Add(ref _totalProcessingTimeNs, (long)processingTime.TotalNanoseconds);
+        Interlocked.Add(ref _totalProcessingTimeNs, (long)(processingTime.TotalMilliseconds * 1_000_000));
         
         // Use ProfilerMarker.Begin/End for Unity Profiler integration
         _messageCountMarker.Begin();
         _messageCountMarker.End();
         
-        _processingTimeMarker.Begin((int)processingTime.TotalMicroseconds);
+        _processingTimeMarker.Begin();
         _processingTimeMarker.End();
         
         // Record in profiler service if available
-        _profilerService?.RecordMetric("MessageProcessing", typeof(TMessage).Name, processingTime.TotalMilliseconds);
+        _profilerService?.RecordMetric($"MessageProcessing.{typeof(TMessage).Name}", processingTime.TotalMilliseconds);
         
         if (memoryDelta > 0)
         {
-            _profilerService?.RecordMetric("MessageMemoryAllocation", typeof(TMessage).Name, memoryDelta);
+            _profilerService?.RecordMetric($"MessageMemoryAllocation.{typeof(TMessage).Name}", memoryDelta);
         }
         
         // Detailed logging if enabled
         if (_enableDetailedLogging)
         {
             _logger?.LogDebug($"MetricsFilter<{typeof(TMessage).Name}>: Processed message {message.Id} " +
-                            $"in {processingTime.TotalMicroseconds:F2}μs, " +
+                            $"in {processingTime.TotalMilliseconds * 1000:F2}μs, " +
                             $"memory delta: {memoryDelta} bytes");
         }
         
@@ -185,12 +185,12 @@ public sealed class MetricsFilter<TMessage> : MessageHandlerFilter<TMessage>
         var memoryDelta = endMemory - startMemory;
         
         // Record failure in profiler service if available
-        _profilerService?.RecordMetric("MessageProcessingFailure", typeof(TMessage).Name, 1);
-        _profilerService?.RecordMetric("MessageProcessingFailureTime", typeof(TMessage).Name, processingTime.TotalMilliseconds);
+        _profilerService?.RecordMetric($"MessageProcessingFailure.{typeof(TMessage).Name}", 1);
+        _profilerService?.RecordMetric($"MessageProcessingFailureTime.{typeof(TMessage).Name}", processingTime.TotalMilliseconds);
         
         // Log failure with detailed information
         _logger?.LogException($"MetricsFilter<{typeof(TMessage).Name}>: Failed to process message {message.Id} " +
-                            $"after {processingTime.TotalMicroseconds:F2}μs, " +
+                            $"after {processingTime.TotalMilliseconds * 1000:F2}μs, " +
                             $"memory delta: {memoryDelta} bytes", exception);
     }
 }

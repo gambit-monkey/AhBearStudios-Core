@@ -7,27 +7,32 @@
 public enum MessagePriority : byte
 {
     /// <summary>
-    /// Very low priority messages for debug or informational purposes.
+    /// Debug priority messages for development and diagnostic purposes.
     /// </summary>
-    VeryLow = 0,
+    Debug = 0,
+
+    /// <summary>
+    /// Very low priority messages for informational purposes.
+    /// </summary>
+    VeryLow = 1,
 
     /// <summary>
     /// Low priority messages that can be processed when resources are available.
     /// </summary>
-    Low = 1,
+    Low = 2,
 
     /// <summary>
     /// Normal priority messages for regular system operations.
     /// </summary>
-    Normal = 2,
+    Normal = 3,
 
     /// <summary>
     /// High priority messages that should be processed quickly.
     /// </summary>
-    High = 3,
+    High = 4,
 
     /// <summary>
     /// Critical priority messages that require immediate processing.
     /// </summary>
-    Critical = 4
+    Critical = 5
 }

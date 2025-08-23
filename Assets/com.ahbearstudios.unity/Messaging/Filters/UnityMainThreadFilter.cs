@@ -2,11 +2,11 @@ using System;
 using System.Threading;
 using MessagePipe;
 using Unity.Profiling;
-using UnityEngine;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Unity.Common.Components;
 
-namespace AhBearStudios.Core.Messaging.Filters;
+namespace AhBearStudios.Unity.Messaging.Filters;
 
 /// <summary>
 /// Unity-specific MessagePipe filter that ensures messages are processed on Unity's main thread.
@@ -17,6 +17,7 @@ namespace AhBearStudios.Core.Messaging.Filters;
 public sealed class UnityMainThreadFilter<TMessage> : MessageHandlerFilter<TMessage>
     where TMessage : IMessage
 {
+    private readonly IMainThreadDispatcher _dispatcher;
     private readonly ILoggingService _logger;
     private readonly ProfilerMarker _filterMarker;
     private readonly bool _strictMode;
@@ -31,14 +32,17 @@ public sealed class UnityMainThreadFilter<TMessage> : MessageHandlerFilter<TMess
     /// <summary>
     /// Initializes a new UnityMainThreadFilter with main thread enforcement.
     /// </summary>
+    /// <param name="dispatcher">Main thread dispatcher service for enqueueing actions</param>
     /// <param name="strictMode">If true, throws exception when called from wrong thread (default: false)</param>
     /// <param name="enableAutoDispatch">If true, automatically dispatches to main thread (default: true)</param>
     /// <param name="logger">Optional logging service for thread violations</param>
     public UnityMainThreadFilter(
+        IMainThreadDispatcher dispatcher,
         bool strictMode = false,
         bool enableAutoDispatch = true,
         ILoggingService logger = null)
     {
+        _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
         _strictMode = strictMode;
         _enableAutoDispatch = enableAutoDispatch;
         _logger = logger;
@@ -119,8 +123,8 @@ public sealed class UnityMainThreadFilter<TMessage> : MessageHandlerFilter<TMess
         {
             _logger?.LogInfo($"UnityMainThreadFilter<{typeof(TMessage).Name}>: Auto-dispatching message {message.Id} to main thread");
             
-            // Dispatch to Unity's main thread
-            UnityMainThreadDispatcher.Enqueue(() =>
+            // Dispatch to Unity's main thread using dependency-injected dispatcher
+            _dispatcher.Enqueue(() =>
             {
                 _logger?.LogDebug($"UnityMainThreadFilter<{typeof(TMessage).Name}>: Processing dispatched message {message.Id} on main thread");
                 next(message);
@@ -129,124 +133,6 @@ public sealed class UnityMainThreadFilter<TMessage> : MessageHandlerFilter<TMess
         else
         {
             _logger?.LogWarning($"UnityMainThreadFilter<{typeof(TMessage).Name}>: Dropping message {message.Id} - " +
-                              "auto-dispatch disabled and not on main thread");
-            // Message is dropped if auto-dispatch is disabled
-        }
-    }
-}
-
-/// <summary>
-/// Async version of UnityMainThreadFilter for async message handlers.
-/// </summary>
-/// <typeparam name="TMessage">The message type implementing IMessage</typeparam>
-public sealed class AsyncUnityMainThreadFilter<TMessage> : AsyncMessageHandlerFilter<TMessage>
-    where TMessage : IMessage
-{
-    private readonly ILoggingService _logger;
-    private readonly ProfilerMarker _filterMarker;
-    private readonly bool _strictMode;
-    private readonly bool _enableAutoDispatch;
-    
-    private static readonly ProfilerMarker _staticFilterMarker = new("AsyncUnityMainThreadFilter.Handle");
-
-    /// <summary>
-    /// Initializes a new AsyncUnityMainThreadFilter with main thread enforcement.
-    /// </summary>
-    /// <param name="strictMode">If true, throws exception when called from wrong thread (default: false)</param>
-    /// <param name="enableAutoDispatch">If true, automatically dispatches to main thread (default: true)</param>
-    /// <param name="logger">Optional logging service for thread violations</param>
-    public AsyncUnityMainThreadFilter(
-        bool strictMode = false,
-        bool enableAutoDispatch = true,
-        ILoggingService logger = null)
-    {
-        _strictMode = strictMode;
-        _enableAutoDispatch = enableAutoDispatch;
-        _logger = logger;
-        _filterMarker = new ProfilerMarker($"AsyncUnityMainThreadFilter<{typeof(TMessage).Name}>.Handle");
-    }
-
-    /// <summary>
-    /// Handles message processing asynchronously with Unity main thread enforcement.
-    /// </summary>
-    /// <param name="message">The message to process</param>
-    /// <param name="next">The next async handler in the filter chain</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    public override async ValueTask HandleAsync(TMessage message, Func<TMessage, ValueTask> next, CancellationToken cancellationToken)
-    {
-        using (_staticFilterMarker.Auto())
-        using (_filterMarker.Auto())
-        {
-            if (message == null)
-            {
-                _logger?.LogWarning($"AsyncUnityMainThreadFilter<{typeof(TMessage).Name}>: Received null message");
-                return;
-            }
-
-            if (UnityMainThreadFilter<TMessage>.IsMainThread)
-            {
-                // Already on main thread, process immediately
-                _logger?.LogDebug($"AsyncUnityMainThreadFilter<{typeof(TMessage).Name}>: Processing async message {message.Id} on main thread");
-                await next(message);
-            }
-            else
-            {
-                // Not on main thread - handle based on configuration
-                await HandleOffMainThreadAsync(message, next, cancellationToken);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Handles async message processing when called from a background thread.
-    /// </summary>
-    /// <param name="message">The message to process</param>
-    /// <param name="next">The next async handler in the filter chain</param>
-    /// <param name="cancellationToken">Cancellation token</param>
-    private async ValueTask HandleOffMainThreadAsync(TMessage message, Func<TMessage, ValueTask> next, CancellationToken cancellationToken)
-    {
-        var currentThreadId = Thread.CurrentThread.ManagedThreadId;
-        var threadName = Thread.CurrentThread.Name ?? "Unknown";
-        
-        _logger?.LogWarning($"AsyncUnityMainThreadFilter<{typeof(TMessage).Name}>: Async message {message.Id} received on background thread " +
-                          $"(ID: {currentThreadId}, Name: {threadName})");
-
-        if (_strictMode)
-        {
-            var errorMessage = $"AsyncUnityMainThreadFilter<{typeof(TMessage).Name}>: Strict mode violation - " +
-                             $"async message {message.Id} must be processed on Unity main thread";
-            
-            _logger?.LogException(errorMessage, new InvalidOperationException(errorMessage));
-            throw new InvalidOperationException(errorMessage);
-        }
-
-        if (_enableAutoDispatch)
-        {
-            _logger?.LogInfo($"AsyncUnityMainThreadFilter<{typeof(TMessage).Name}>: Auto-dispatching async message {message.Id} to main thread");
-            
-            // Create a task completion source for async dispatch
-            var tcs = new TaskCompletionSource<bool>();
-            
-            UnityMainThreadDispatcher.Enqueue(async () =>
-            {
-                try
-                {
-                    _logger?.LogDebug($"AsyncUnityMainThreadFilter<{typeof(TMessage).Name}>: Processing dispatched async message {message.Id} on main thread");
-                    await next(message);
-                    tcs.SetResult(true);
-                }
-                catch (Exception ex)
-                {
-                    tcs.SetException(ex);
-                }
-            });
-            
-            // Wait for the main thread to complete processing
-            await tcs.Task.ConfigureAwait(false);
-        }
-        else
-        {
-            _logger?.LogWarning($"AsyncUnityMainThreadFilter<{typeof(TMessage).Name}>: Dropping async message {message.Id} - " +
                               "auto-dispatch disabled and not on main thread");
             // Message is dropped if auto-dispatch is disabled
         }
