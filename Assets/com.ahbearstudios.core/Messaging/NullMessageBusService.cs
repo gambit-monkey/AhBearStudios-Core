@@ -4,7 +4,6 @@ using System.Threading;
 using Cysharp.Threading.Tasks;
 using Unity.Profiling;
 using Unity.Collections;
-using ZLinq;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.HealthChecking;
 using AhBearStudios.Core.HealthChecking.Models;
@@ -82,7 +81,7 @@ namespace AhBearStudios.Core.Messaging
             _poolingService = poolingService;
 
             // Log initialization for debugging purposes
-            _logger?.LogDebug("NullMessageBusService initialized", correlationId: Guid.NewGuid());
+            _logger?.LogDebug("NullMessageBusService initialized");
         }
 
         #endregion
@@ -94,9 +93,8 @@ namespace AhBearStudios.Core.Messaging
         {
             using (_publishMarker.Auto())
             {
-                // Log for debugging purposes with correlation ID
-                _logger?.LogDebug($"NullMessageBus: PublishMessage<{typeof(TMessage).Name}> - No-op", 
-                    correlationId: message?.CorrelationId ?? Guid.NewGuid());
+                // Log for debugging purposes
+                _logger?.LogDebug($"NullMessageBus: PublishMessage<{typeof(TMessage).Name}> - No-op");
                 
                 // No actual publishing operation
             }
@@ -107,9 +105,8 @@ namespace AhBearStudios.Core.Messaging
         {
             using (_publishMarker.Auto())
             {
-                // Log for debugging purposes with correlation ID
-                _logger?.LogDebug($"NullMessageBus: PublishMessageAsync<{typeof(TMessage).Name}> - No-op", 
-                    correlationId: message?.CorrelationId ?? Guid.NewGuid());
+                // Log for debugging purposes
+                _logger?.LogDebug($"NullMessageBus: PublishMessageAsync<{typeof(TMessage).Name}> - No-op");
                 
                 return UniTask.CompletedTask;
             }
@@ -121,9 +118,7 @@ namespace AhBearStudios.Core.Messaging
             using (_publishMarker.Auto())
             {
                 // Log batch operation for debugging
-                var correlationId = messages?.Length > 0 ? messages[0].CorrelationId : Guid.NewGuid();
-                _logger?.LogDebug($"NullMessageBus: PublishBatch<{typeof(TMessage).Name}> [{messages?.Length ?? 0} messages] - No-op", 
-                    correlationId: correlationId);
+                _logger?.LogDebug($"NullMessageBus: PublishBatch<{typeof(TMessage).Name}> [{messages?.Length ?? 0} messages] - No-op");
                 
                 // No actual publishing operation
             }
@@ -135,9 +130,7 @@ namespace AhBearStudios.Core.Messaging
             using (_publishMarker.Auto())
             {
                 // Log batch operation for debugging
-                var correlationId = messages?.Length > 0 ? messages[0].CorrelationId : Guid.NewGuid();
-                _logger?.LogDebug($"NullMessageBus: PublishBatchAsync<{typeof(TMessage).Name}> [{messages?.Length ?? 0} messages] - No-op", 
-                    correlationId: correlationId);
+                _logger?.LogDebug($"NullMessageBus: PublishBatchAsync<{typeof(TMessage).Name}> [{messages?.Length ?? 0} messages] - No-op");
                 
                 return UniTask.CompletedTask;
             }
@@ -152,9 +145,7 @@ namespace AhBearStudios.Core.Messaging
         {
             using (_subscribeMarker.Auto())
             {
-                var correlationId = Guid.NewGuid();
-                _logger?.LogDebug($"NullMessageBus: SubscribeToMessage<{typeof(TMessage).Name}> - No-op", 
-                    correlationId: correlationId);
+                _logger?.LogDebug($"NullMessageBus: SubscribeToMessage<{typeof(TMessage).Name}> - No-op");
                 
                 return NullDisposable.Instance;
             }
@@ -165,9 +156,7 @@ namespace AhBearStudios.Core.Messaging
         {
             using (_subscribeMarker.Auto())
             {
-                var correlationId = Guid.NewGuid();
-                _logger?.LogDebug($"NullMessageBus: SubscribeToMessageAsync<{typeof(TMessage).Name}> - No-op", 
-                    correlationId: correlationId);
+                _logger?.LogDebug($"NullMessageBus: SubscribeToMessageAsync<{typeof(TMessage).Name}> - No-op");
                 
                 return NullDisposable.Instance;
             }
@@ -198,9 +187,7 @@ namespace AhBearStudios.Core.Messaging
         {
             using (_subscribeMarker.Auto())
             {
-                var correlationId = Guid.NewGuid();
-                _logger?.LogDebug($"NullMessageBus: SubscribeWithFilter<{typeof(TMessage).Name}> - No-op", 
-                    correlationId: correlationId);
+                _logger?.LogDebug($"NullMessageBus: SubscribeWithFilter<{typeof(TMessage).Name}> - No-op");
                 
                 return NullDisposable.Instance;
             }
@@ -211,9 +198,7 @@ namespace AhBearStudios.Core.Messaging
         {
             using (_subscribeMarker.Auto())
             {
-                var correlationId = Guid.NewGuid();
-                _logger?.LogDebug($"NullMessageBus: SubscribeWithFilterAsync<{typeof(TMessage).Name}> - No-op", 
-                    correlationId: correlationId);
+                _logger?.LogDebug($"NullMessageBus: SubscribeWithFilterAsync<{typeof(TMessage).Name}> - No-op");
                 
                 return NullDisposable.Instance;
             }
@@ -224,9 +209,7 @@ namespace AhBearStudios.Core.Messaging
         {
             using (_subscribeMarker.Auto())
             {
-                var correlationId = Guid.NewGuid();
-                _logger?.LogDebug($"NullMessageBus: SubscribeWithPriority<{typeof(TMessage).Name}> [MinPriority: {minPriority}] - No-op", 
-                    correlationId: correlationId);
+                _logger?.LogDebug($"NullMessageBus: SubscribeWithPriority<{typeof(TMessage).Name}> [MinPriority: {minPriority}] - No-op");
                 
                 return NullDisposable.Instance;
             }
@@ -239,7 +222,7 @@ namespace AhBearStudios.Core.Messaging
         /// <inheritdoc />
         public IMessageScope CreateScope()
         {
-            return NullMessageScope.Instance;
+            return new NullMessageScope();
         }
 
         #endregion
@@ -264,8 +247,7 @@ namespace AhBearStudios.Core.Messaging
         {
             using (_healthCheckMarker.Auto())
             {
-                var correlationId = Guid.NewGuid();
-                _logger?.LogDebug("NullMessageBus: GetHealthStatus - Always Healthy", correlationId: correlationId);
+                _logger?.LogDebug("NullMessageBus: GetHealthStatus - Always Healthy");
                 
                 return HealthStatus.Healthy;
             }
@@ -276,8 +258,7 @@ namespace AhBearStudios.Core.Messaging
         {
             using (_healthCheckMarker.Auto())
             {
-                var correlationId = Guid.NewGuid();
-                _logger?.LogDebug("NullMessageBus: CheckHealthAsync - Always Healthy", correlationId: correlationId);
+                _logger?.LogDebug("NullMessageBus: CheckHealthAsync - Always Healthy");
                 
                 return UniTask.FromResult(HealthStatus.Healthy);
             }
@@ -301,104 +282,16 @@ namespace AhBearStudios.Core.Messaging
 
         #endregion
 
-        #region Events
-
-        /// <inheritdoc />
-        public event EventHandler<HealthStatusChangedEventArgs> HealthStatusChanged
-        {
-            add { /* No-op */ }
-            remove { /* No-op */ }
-        }
-
-        /// <inheritdoc />
-        public event EventHandler<MessageProcessingFailedEventArgs> MessageProcessingFailed
-        {
-            add { /* No-op */ }
-            remove { /* No-op */ }
-        }
-
-        /// <inheritdoc />
-        public event EventHandler<CircuitBreakerStateChangedEventArgs> CircuitBreakerStateChanged
-        {
-            add { /* No-op */ }
-            remove { /* No-op */ }
-        }
-
-        #endregion
-
         #region IDisposable
 
         /// <inheritdoc />
         public void Dispose()
         {
-            var correlationId = Guid.NewGuid();
-            _logger?.LogDebug("NullMessageBusService disposed", correlationId: correlationId);
+            _logger?.LogDebug("NullMessageBusService disposed");
             
             // No actual resources to dispose in null implementation
         }
 
         #endregion
-    }
-
-    /// <summary>
-    /// Null implementation of IDisposable for use in null service patterns.
-    /// </summary>
-    internal sealed class NullDisposable : IDisposable
-    {
-        public static readonly NullDisposable Instance = new NullDisposable();
-        private NullDisposable() { }
-        public void Dispose() { /* No-op */ }
-    }
-
-    /// <summary>
-    /// Null implementation of IMessagePublisher for use in null service patterns.
-    /// </summary>
-    internal sealed class NullMessagePublisher<TMessage> : IMessagePublisher<TMessage> where TMessage : IMessage
-    {
-        public static readonly NullMessagePublisher<TMessage> Instance = new NullMessagePublisher<TMessage>();
-        private NullMessagePublisher() { }
-
-        public void PublishMessage(TMessage message) { /* No-op */ }
-        public UniTask PublishMessageAsync(TMessage message, CancellationToken cancellationToken = default) => UniTask.CompletedTask;
-        public void PublishBatch(TMessage[] messages) { /* No-op */ }
-        public UniTask PublishBatchAsync(TMessage[] messages, CancellationToken cancellationToken = default) => UniTask.CompletedTask;
-        public void Dispose() { /* No-op */ }
-    }
-
-    /// <summary>
-    /// Null implementation of IMessageSubscriber for use in null service patterns.
-    /// </summary>
-    internal sealed class NullMessageSubscriber<TMessage> : IMessageSubscriber<TMessage> where TMessage : IMessage
-    {
-        public static readonly NullMessageSubscriber<TMessage> Instance = new NullMessageSubscriber<TMessage>();
-        private NullMessageSubscriber() { }
-
-        public IDisposable Subscribe(Action<TMessage> handler) => NullDisposable.Instance;
-        public IDisposable SubscribeAsync(Func<TMessage, UniTask> handler) => NullDisposable.Instance;
-        public IDisposable SubscribeWithFilter(Action<TMessage> handler, Func<TMessage, bool> filter = null, MessagePriority minPriority = MessagePriority.Debug) => NullDisposable.Instance;
-        public IDisposable SubscribeAsyncWithFilter(Func<TMessage, UniTask> handler, Func<TMessage, UniTask<bool>> filter = null, MessagePriority minPriority = MessagePriority.Debug) => NullDisposable.Instance;
-        public void UnsubscribeAll() { /* No-op */ }
-        public int ActiveSubscriptions => 0;
-        public bool IsOperational => false;
-        public Type MessageType => typeof(TMessage);
-        public SubscriberStatistics GetStatistics() => SubscriberStatistics.Empty;
-        public void Dispose() { /* No-op */ }
-    }
-
-    /// <summary>
-    /// Null implementation of IMessageScope for use in null service patterns.
-    /// </summary>
-    internal sealed class NullMessageScope : IMessageScope
-    {
-        public static readonly NullMessageScope Instance = new NullMessageScope();
-        private NullMessageScope() { }
-
-        public Guid Id => Guid.Empty;
-        public int ActiveSubscriptions => 0;
-        public bool IsActive => false;
-
-        public IDisposable Subscribe<TMessage>(Action<TMessage> handler) where TMessage : IMessage => NullDisposable.Instance;
-        public IDisposable SubscribeAsync<TMessage>(Func<TMessage, UniTask> handler) where TMessage : IMessage => NullDisposable.Instance;
-        public void Dispose() { /* No-op */ }
     }
 }

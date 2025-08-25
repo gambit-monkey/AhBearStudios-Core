@@ -330,7 +330,7 @@ namespace AhBearStudios.Core.Messaging
                 
                 _logger.LogInfo($"[{_correlationId}] Created subscription for {typeof(TMessage).Name}");
                 
-                return new WrappedSubscription(subscription, this, typeof(TMessage));
+                return new WrappedSubscription(subscription, _logger, typeof(TMessage), Guid.Parse(_correlationId.ToString()));
             }
             catch (Exception ex)
             {
@@ -358,7 +358,7 @@ namespace AhBearStudios.Core.Messaging
                 
                 _logger.LogInfo($"[{_correlationId}] Created async subscription for {typeof(TMessage).Name}");
                 
-                return new WrappedSubscription(subscription, this, typeof(TMessage));
+                return new WrappedSubscription(subscription, _logger, typeof(TMessage), Guid.Parse(_correlationId.ToString()));
             }
             catch (Exception ex)
             {
