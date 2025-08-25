@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Logging;
@@ -5,7 +6,6 @@ using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Configs;
 using AhBearStudios.Core.Messaging.Subscribers;
 using AhBearStudios.Core.Profiling;
-using Unity.Profiling;
 using ZLinq;
 
 namespace AhBearStudios.Core.Messaging.Factories;
@@ -20,7 +20,6 @@ public sealed class MessageSubscriberFactory : IMessageSubscriberFactory
     private readonly ILoggingService _loggingService;
     private readonly IProfilerService _profilerService;
     private readonly IMessageBusService _messageBusService;
-    private readonly ProfilerMarker _createSubscriberMarker;
 
     /// <summary>
     /// Initializes a new instance of MessageSubscriberFactory.
@@ -37,8 +36,6 @@ public sealed class MessageSubscriberFactory : IMessageSubscriberFactory
         _loggingService = loggingService ?? throw new ArgumentNullException(nameof(loggingService));
         _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
         _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
-        
-        _createSubscriberMarker = new ProfilerMarker("MessageSubscriberFactory.CreateSubscriber");
     }
 
     /// <inheritdoc />
@@ -48,38 +45,35 @@ public sealed class MessageSubscriberFactory : IMessageSubscriberFactory
         if (config == null)
             throw new ArgumentNullException(nameof(config));
 
-        using (_createSubscriberMarker.Auto())
+        var correlationId = $"Factory_{config.CorrelationId}_{typeof(TMessage).Name}";
+        
+        try
         {
-            var correlationId = $"Factory_{config.CorrelationId}_{typeof(TMessage).Name}";
-            
-            try
-            {
-                _loggingService.LogInfo($"[{correlationId}] Creating MessageSubscriber for {typeof(TMessage).Name}");
+            _loggingService.LogInfo($"[{correlationId}] Creating MessageSubscriber for {typeof(TMessage).Name}");
 
-                // Validate configuration
-                if (!ValidateConfig(config))
-                    throw new InvalidOperationException($"Invalid configuration for MessageSubscriber<{typeof(TMessage).Name}>");
+            // Validate configuration
+            if (!ValidateConfig(config))
+                throw new InvalidOperationException($"Invalid configuration for MessageSubscriber<{typeof(TMessage).Name}>");
 
-                // Validate message type support
-                if (!SupportsMessageType<TMessage>())
-                    throw new InvalidOperationException($"Message type {typeof(TMessage).Name} is not supported by this factory");
+            // Validate message type support
+            if (!SupportsMessageType<TMessage>())
+                throw new InvalidOperationException($"Message type {typeof(TMessage).Name} is not supported by this factory");
 
-                // Create the subscriber instance
-                var subscriber = new MessageSubscriber<TMessage>(
-                    config,
-                    _loggingService,
-                    _profilerService,
-                    _messageBusService);
+            // Create the subscriber instance
+            var subscriber = new MessageSubscriber<TMessage>(
+                config,
+                _loggingService,
+                _profilerService,
+                _messageBusService);
 
-                _loggingService.LogInfo($"[{correlationId}] Successfully created MessageSubscriber for {typeof(TMessage).Name}");
+            _loggingService.LogInfo($"[{correlationId}] Successfully created MessageSubscriber for {typeof(TMessage).Name}");
 
-                return subscriber;
-            }
-            catch (Exception ex)
-            {
-                _loggingService.LogException($"[{correlationId}] Failed to create MessageSubscriber for {typeof(TMessage).Name}", ex);
-                throw new InvalidOperationException($"Failed to create MessageSubscriber<{typeof(TMessage).Name}>", ex);
-            }
+            return subscriber;
+        }
+        catch (Exception ex)
+        {
+            _loggingService.LogException($"[{correlationId}] Failed to create MessageSubscriber for {typeof(TMessage).Name}", ex);
+            throw new InvalidOperationException($"Failed to create MessageSubscriber<{typeof(TMessage).Name}>", ex);
         }
     }
 
