@@ -7,6 +7,7 @@ using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Messaging;
+using AhBearStudios.Core.Pooling.Messages;
 using AhBearStudios.Core.Profiling.Models;
 using Unity.Collections;
 
@@ -363,7 +364,26 @@ namespace AhBearStudios.Core.Pooling.Strategies
         /// </summary>
         public void OnPoolOperationStart()
         {
-            // Minimal overhead for high performance
+            // Publish operation started message if message bus is available
+            if (_messageBusService != null)
+            {
+                try
+                {
+                    var message = PoolOperationStartedMessage.Create(
+                        poolName: "HighPerformancePool",
+                        strategyName: Name,
+                        operationType: "HighPerformanceOperation",
+                        poolSizeAtStart: 0, // High performance strategy doesn't track specific pool size
+                        activeObjectsAtStart: 0
+                    );
+                    
+                    _messageBusService.PublishMessageAsync(message);
+                }
+                catch
+                {
+                    // Swallow exceptions to avoid disrupting pool operations
+                }
+            }
         }
 
         /// <summary>
@@ -411,6 +431,29 @@ namespace AhBearStudios.Core.Pooling.Strategies
                     _loggingService.LogWarning($"Potential GC pressure detected - Events: {_gcPressureEvents}");
                 }
             }
+            
+            // Publish operation completed message if message bus is available
+            if (_messageBusService != null)
+            {
+                try
+                {
+                    var message = PoolOperationCompletedMessage.Create(
+                        poolName: "HighPerformancePool",
+                        strategyName: Name,
+                        operationType: "HighPerformanceOperation",
+                        duration: duration,
+                        poolSizeAfter: 0, // High performance strategy doesn't track specific pool size
+                        activeObjectsAfter: 0,
+                        isSuccessful: true
+                    );
+                    
+                    _messageBusService.PublishMessageAsync(message);
+                }
+                catch
+                {
+                    // Swallow exceptions to avoid disrupting pool operations
+                }
+            }
         }
 
         /// <summary>
@@ -431,6 +474,29 @@ namespace AhBearStudios.Core.Pooling.Strategies
                     source: AlertSource,
                     tag: "HighPerformanceCompromised"
                 );
+            }
+            
+            // Publish operation failed message if message bus is available
+            if (_messageBusService != null)
+            {
+                try
+                {
+                    var message = PoolOperationFailedMessage.Create(
+                        poolName: "HighPerformancePool",
+                        strategyName: Name,
+                        operationType: "HighPerformanceOperation",
+                        error: error,
+                        errorCount: _errorCount,
+                        poolSizeAtFailure: 0, // High performance strategy doesn't track specific pool size
+                        activeObjectsAtFailure: 0
+                    );
+                    
+                    _messageBusService.PublishMessageAsync(message);
+                }
+                catch
+                {
+                    // Swallow exceptions to avoid disrupting pool operations
+                }
             }
         }
 

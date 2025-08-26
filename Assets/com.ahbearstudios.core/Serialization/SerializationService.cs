@@ -1247,11 +1247,15 @@ namespace AhBearStudios.Core.Serialization
             try
             {
                 var alertMessage = exception != null ? $"{message} - {exception.Message}" : message;
+                // Truncate message to fit in FixedString512Bytes (511 chars max)
+                if (alertMessage.Length > 511)
+                    alertMessage = alertMessage.Substring(0, 511);
+                    
                 _alertService.RaiseAlert(
-                    new FixedString128Bytes(alertMessage.Substring(0, Math.Min(alertMessage.Length, 127))),
+                    new FixedString512Bytes(alertMessage),
                     AlertSeverity.High,
                     new FixedString64Bytes("SerializationService"),
-                    new FixedString64Bytes("Error"));
+                    new FixedString32Bytes("Error"));
             }
             catch (Exception ex)
             {
@@ -1267,11 +1271,15 @@ namespace AhBearStudios.Core.Serialization
             try
             {
                 var alertMessage = exception != null ? $"CRITICAL: {message} - {exception.Message}" : $"CRITICAL: {message}";
+                // Truncate message to fit in FixedString512Bytes (511 chars max)
+                if (alertMessage.Length > 511)
+                    alertMessage = alertMessage.Substring(0, 511);
+                    
                 _alertService.RaiseAlert(
-                    new FixedString128Bytes(alertMessage.Substring(0, Math.Min(alertMessage.Length, 127))),
+                    new FixedString512Bytes(alertMessage),
                     AlertSeverity.Critical,
                     new FixedString64Bytes("SerializationService"),
-                    new FixedString64Bytes("Critical"));
+                    new FixedString32Bytes("Critical"));
             }
             catch (Exception ex)
             {
@@ -1288,12 +1296,15 @@ namespace AhBearStudios.Core.Serialization
             {
                 var severity = state == CircuitBreakerState.Open ? AlertSeverity.High : AlertSeverity.Medium;
                 var message = $"Circuit breaker {state} for {format}: {reason}";
+                // Truncate message to fit in FixedString512Bytes (511 chars max)
+                if (message.Length > 511)
+                    message = message.Substring(0, 511);
                 
                 _alertService.RaiseAlert(
-                    new FixedString128Bytes(message.Substring(0, Math.Min(message.Length, 127))),
+                    new FixedString512Bytes(message),
                     severity,
                     new FixedString64Bytes("SerializationService"),
-                    new FixedString64Bytes("CircuitBreaker"));
+                    new FixedString32Bytes("CircuitBreaker"));
             }
             catch (Exception ex)
             {

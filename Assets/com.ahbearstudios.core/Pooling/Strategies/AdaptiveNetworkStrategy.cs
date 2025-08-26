@@ -1,10 +1,8 @@
-using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
-using AhBearStudios.Core.Pooling.Builders;
 using AhBearStudios.Core.Pooling.Messages;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Profiling;
@@ -442,7 +440,26 @@ namespace AhBearStudios.Core.Pooling.Strategies
         /// </summary>
         public void OnPoolOperationStart()
         {
-            // Network operations can update packet/byte counters here
+            // Publish operation started message if message bus is available
+            if (_messageBusService != null)
+            {
+                try
+                {
+                    var message = PoolOperationStartedMessage.Create(
+                        poolName: "AdaptiveNetworkPool",
+                        strategyName: Name,
+                        operationType: "NetworkOperation",
+                        poolSizeAtStart: 0, // Network strategy doesn't track specific pool size
+                        activeObjectsAtStart: 0
+                    );
+                    
+                    _messageBusService.PublishMessageAsync(message);
+                }
+                catch
+                {
+                    // Swallow exceptions to avoid disrupting pool operations
+                }
+            }
         }
 
         /// <summary>
@@ -451,16 +468,16 @@ namespace AhBearStudios.Core.Pooling.Strategies
         /// <param name="duration">Duration of the operation</param>
         public void OnPoolOperationComplete(TimeSpan duration)
         {
-            if (!_configuration.EnableDetailedMetrics)
-                return;
-
-            lock (_metricsLock)
+            if (_configuration.EnableDetailedMetrics)
             {
-                _recentOperationTimes.Add(duration);
-                
-                if (_recentOperationTimes.Count > _configuration.MaxMetricsSamples)
+                lock (_metricsLock)
                 {
-                    _recentOperationTimes.RemoveAt(0);
+                    _recentOperationTimes.Add(duration);
+                    
+                    if (_recentOperationTimes.Count > _configuration.MaxMetricsSamples)
+                    {
+                        _recentOperationTimes.RemoveAt(0);
+                    }
                 }
             }
 
@@ -486,6 +503,29 @@ namespace AhBearStudios.Core.Pooling.Strategies
                     ));
                 }
             }
+            
+            // Publish operation completed message if message bus is available
+            if (_messageBusService != null)
+            {
+                try
+                {
+                    var message = PoolOperationCompletedMessage.Create(
+                        poolName: "AdaptiveNetworkPool",
+                        strategyName: Name,
+                        operationType: "NetworkOperation",
+                        duration: duration,
+                        poolSizeAfter: 0, // Network strategy doesn't track specific pool size
+                        activeObjectsAfter: 0,
+                        isSuccessful: true
+                    );
+                    
+                    _messageBusService.PublishMessageAsync(message);
+                }
+                catch
+                {
+                    // Swallow exceptions to avoid disrupting pool operations
+                }
+            }
         }
 
         /// <summary>
@@ -505,6 +545,29 @@ namespace AhBearStudios.Core.Pooling.Strategies
                     source: AlertSource,
                     tag: "HighErrorRate"
                 );
+            }
+            
+            // Publish operation failed message if message bus is available
+            if (_messageBusService != null)
+            {
+                try
+                {
+                    var message = PoolOperationFailedMessage.Create(
+                        poolName: "AdaptiveNetworkPool",
+                        strategyName: Name,
+                        operationType: "NetworkOperation",
+                        error: error,
+                        errorCount: _errorCount,
+                        poolSizeAtFailure: 0, // Network strategy doesn't track specific pool size
+                        activeObjectsAtFailure: 0
+                    );
+                    
+                    _messageBusService.PublishMessageAsync(message);
+                }
+                catch
+                {
+                    // Swallow exceptions to avoid disrupting pool operations
+                }
             }
         }
 

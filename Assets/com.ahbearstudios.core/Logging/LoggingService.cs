@@ -626,11 +626,15 @@ namespace AhBearStudios.Core.Logging
             try
             {
                 var alertMessage = exception != null ? $"{message} - {exception.Message}" : message;
+                // Truncate message to fit in FixedString512Bytes (511 chars max)
+                if (alertMessage.Length > 511)
+                    alertMessage = alertMessage.Substring(0, 511);
+                    
                 _alertService.RaiseAlert(
-                    new FixedString128Bytes(alertMessage.Substring(0, Math.Min(alertMessage.Length, 127))),
+                    new FixedString512Bytes(alertMessage),
                     AlertSeverity.High,
                     new FixedString64Bytes("LoggingService"),
-                    new FixedString64Bytes("Error"));
+                    new FixedString32Bytes("Error"));
             }
             catch (Exception ex)
             {
@@ -668,11 +672,15 @@ namespace AhBearStudios.Core.Logging
                 if (_alertService != null)
                 {
                     var alertMessage = exception != null ? $"CRITICAL: {message} - {exception.Message}" : $"CRITICAL: {message}";
+                    // Truncate message to fit in FixedString512Bytes (511 chars max)
+                    if (alertMessage.Length > 511)
+                        alertMessage = alertMessage.Substring(0, 511);
+                        
                     _alertService.RaiseAlert(
-                        new FixedString128Bytes(alertMessage.Substring(0, Math.Min(alertMessage.Length, 127))),
+                        new FixedString512Bytes(alertMessage),
                         AlertSeverity.Critical,
                         new FixedString64Bytes("LoggingService"),
-                        new FixedString64Bytes("Critical"));
+                        new FixedString32Bytes("Critical"));
                 }
             }
             catch (Exception ex)
@@ -704,11 +712,15 @@ namespace AhBearStudios.Core.Logging
                 if (_alertService != null)
                 {
                     var alertMessage = $"Log target '{targetName}' error: {exception?.Message ?? "Unknown error"}";
+                    // Truncate message to fit in FixedString512Bytes (511 chars max)
+                    if (alertMessage.Length > 511)
+                        alertMessage = alertMessage.Substring(0, 511);
+                        
                     _alertService.RaiseAlert(
-                        new FixedString128Bytes(alertMessage.Substring(0, Math.Min(alertMessage.Length, 127))),
+                        new FixedString512Bytes(alertMessage),
                         AlertSeverity.Medium,
                         new FixedString64Bytes("LoggingService"),
-                        new FixedString64Bytes("TargetError"));
+                        new FixedString32Bytes("TargetError"));
                 }
             }
             catch (Exception ex)
@@ -740,11 +752,15 @@ namespace AhBearStudios.Core.Logging
                 if (_alertService != null)
                 {
                     var alertMessage = $"Logging service internal error: {exception?.Message ?? "Unknown error"}";
+                    // Truncate message to fit in FixedString512Bytes (511 chars max)
+                    if (alertMessage.Length > 511)
+                        alertMessage = alertMessage.Substring(0, 511);
+                        
                     _alertService.RaiseAlert(
-                        new FixedString128Bytes(alertMessage.Substring(0, Math.Min(alertMessage.Length, 127))),
+                        new FixedString512Bytes(alertMessage),
                         AlertSeverity.Critical,
                         new FixedString64Bytes("LoggingService"),
-                        new FixedString64Bytes("Internal"));
+                        new FixedString32Bytes("Internal"));
                 }
             }
             catch (Exception ex)

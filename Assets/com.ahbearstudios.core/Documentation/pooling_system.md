@@ -128,11 +128,6 @@ public interface IObjectPool<T> : IDisposable where T : class
     
     // Statistics
     PoolStatistics GetStatistics();
-    
-    // Events
-    event Action<T> ObjectCreated;
-    event Action<T> ObjectReturned;
-    event Action<T> ObjectDestroyed;
 }
 ```
 
@@ -549,15 +544,12 @@ public class TimeBasedStrategy : IPoolStrategy
         return _lastUsed.Values.Any(lastUsed => lastUsed < cutoffTime);
     }
     
-    public void OnObjectReturned(object obj)
-    {
-        _lastUsed[obj] = DateTime.UtcNow;
-    }
-    
-    public void OnObjectDestroyed(object obj)
-    {
-        _lastUsed.Remove(obj);
-    }
+    // Subscribe to pool messages via IMessageBusService
+    // to track object lifecycle events:
+    // - PoolObjectRetrievedMessage
+    // - PoolObjectReturnedMessage
+    // These messages follow the IMessage pattern
+    // as per CLAUDE.md guidelines
 }
 ```
 

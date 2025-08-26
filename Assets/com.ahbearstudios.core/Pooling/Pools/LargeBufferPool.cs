@@ -73,9 +73,6 @@ namespace AhBearStudios.Core.Pooling.Pools
         public PoolConfiguration Configuration => _configuration;
         public IPoolingStrategy Strategy => _strategy;
 
-        public event Action<PooledNetworkBuffer> ObjectCreated;
-        public event Action<PooledNetworkBuffer> ObjectReturned;
-        public event Action<PooledNetworkBuffer> ObjectDestroyed;
 
         public PooledNetworkBuffer Get()
         {
@@ -113,7 +110,6 @@ namespace AhBearStudios.Core.Pooling.Pools
             if (_totalCount <= _configuration.MaxCapacity && !_strategy.ShouldDestroy(_statistics))
             {
                 _objects.Enqueue(item);
-                ObjectReturned?.Invoke(item);
             }
             else
             {
@@ -185,7 +181,6 @@ namespace AhBearStudios.Core.Pooling.Pools
                 PoolName = Name
             };
 
-            ObjectCreated?.Invoke(buffer);
             return buffer;
         }
 
@@ -193,7 +188,6 @@ namespace AhBearStudios.Core.Pooling.Pools
         {
             buffer?.Dispose();
             Interlocked.Decrement(ref _totalCount);
-            ObjectDestroyed?.Invoke(buffer);
 
             lock (_statistics)
             {
@@ -234,10 +228,6 @@ namespace AhBearStudios.Core.Pooling.Pools
             _maintenanceTimer?.Dispose();
 
             Clear();
-
-            ObjectCreated = null;
-            ObjectReturned = null;
-            ObjectDestroyed = null;
         }
     }
 }

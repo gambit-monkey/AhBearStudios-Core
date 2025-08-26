@@ -421,7 +421,26 @@ namespace AhBearStudios.Core.Pooling.Strategies
         /// </summary>
         public void OnPoolOperationStart()
         {
-            // Currently no pre-operation setup needed
+            // Publish operation started message if message bus is available
+            if (_messageBusService != null)
+            {
+                try
+                {
+                    var message = PoolOperationStartedMessage.Create(
+                        poolName: "DynamicSizePool",
+                        strategyName: Name,
+                        operationType: "DynamicSizeOperation",
+                        poolSizeAtStart: 0, // Dynamic size strategy doesn't track specific pool size
+                        activeObjectsAtStart: 0
+                    );
+                    
+                    _messageBusService.PublishMessageAsync(message);
+                }
+                catch
+                {
+                    // Swallow exceptions to avoid disrupting pool operations
+                }
+            }
         }
 
         /// <summary>
@@ -430,17 +449,17 @@ namespace AhBearStudios.Core.Pooling.Strategies
         /// <param name="duration">Duration of the operation</param>
         public void OnPoolOperationComplete(TimeSpan duration)
         {
-            if (!_configuration.EnableDetailedMetrics)
-                return;
-
-            lock (_metricsLock)
+            if (_configuration.EnableDetailedMetrics)
             {
-                _recentOperationTimes.Add(duration);
-                
-                // Keep only recent samples to avoid memory growth
-                if (_recentOperationTimes.Count > _configuration.MaxMetricsSamples)
+                lock (_metricsLock)
                 {
-                    _recentOperationTimes.RemoveAt(0);
+                    _recentOperationTimes.Add(duration);
+                    
+                    // Keep only recent samples to avoid memory growth
+                    if (_recentOperationTimes.Count > _configuration.MaxMetricsSamples)
+                    {
+                        _recentOperationTimes.RemoveAt(0);
+                    }
                 }
             }
 
@@ -448,6 +467,29 @@ namespace AhBearStudios.Core.Pooling.Strategies
             if (_performanceBudget.LogPerformanceWarnings && duration > _performanceBudget.MaxOperationTime)
             {
                 _loggingService.LogWarning($"Pool operation exceeded performance budget: {duration.TotalMilliseconds}ms > {_performanceBudget.MaxOperationTime.TotalMilliseconds}ms");
+            }
+            
+            // Publish operation completed message if message bus is available
+            if (_messageBusService != null)
+            {
+                try
+                {
+                    var message = PoolOperationCompletedMessage.Create(
+                        poolName: "DynamicSizePool",
+                        strategyName: Name,
+                        operationType: "DynamicSizeOperation",
+                        duration: duration,
+                        poolSizeAfter: 0, // Dynamic size strategy doesn't track specific pool size
+                        activeObjectsAfter: 0,
+                        isSuccessful: true
+                    );
+                    
+                    _messageBusService.PublishMessageAsync(message);
+                }
+                catch
+                {
+                    // Swallow exceptions to avoid disrupting pool operations
+                }
             }
         }
 
@@ -469,6 +511,29 @@ namespace AhBearStudios.Core.Pooling.Strategies
                     tag: "HighErrorRate"
                 );
             }
+            
+            // Publish operation failed message if message bus is available
+            if (_messageBusService != null)
+            {
+                try
+                {
+                    var message = PoolOperationFailedMessage.Create(
+                        poolName: "DynamicSizePool",
+                        strategyName: Name,
+                        operationType: "DynamicSizeOperation",
+                        error: error,
+                        errorCount: _errorCount,
+                        poolSizeAtFailure: 0, // Dynamic size strategy doesn't track specific pool size
+                        activeObjectsAtFailure: 0
+                    );
+                    
+                    _messageBusService.PublishMessageAsync(message);
+                }
+                catch
+                {
+                    // Swallow exceptions to avoid disrupting pool operations
+                }
+            }
         }
 
         /// <summary>
@@ -488,6 +553,53 @@ namespace AhBearStudios.Core.Pooling.Strategies
         public PoolingStrategyConfig GetConfiguration()
         {
             return _configuration;
+        }
+
+        /// <summary>
+        /// Publishes a health status message if message bus is available.
+        /// Can be called periodically for health monitoring.
+        /// </summary>
+        public void PublishHealthStatus()
+        {
+            if (_messageBusService != null)
+            {
+                try
+                {
+                    var healthStatus = GetHealthStatus();
+                    var message = PoolStrategyHealthStatusMessage.Create(
+                        strategyName: Name,
+                        isHealthy: healthStatus.Status == StrategyHealth.Healthy,
+                        errorCount: (int)Math.Min(healthStatus.ErrorCount, int.MaxValue),
+                        lastHealthCheck: healthStatus.Timestamp,
+                        statusMessage: healthStatus.Description,
+                        averageOperationDurationMs: healthStatus.AverageOperationTime.TotalMilliseconds,
+                        totalOperations: healthStatus.OperationCount,
+                        successRatePercentage: CalculateSuccessRate()
+                    );
+                    
+                    _messageBusService.PublishMessageAsync(message);
+                }
+                catch
+                {
+                    // Swallow exceptions to avoid disrupting pool operations
+                }
+            }
+        }
+
+        /// <summary>
+        /// Calculates the current success rate percentage.
+        /// </summary>
+        /// <returns>Success rate as a percentage (0-100)</returns>
+        private double CalculateSuccessRate()
+        {
+            lock (_metricsLock)
+            {
+                var totalOperations = _recentOperationTimes.Count + _errorCount;
+                if (totalOperations == 0) return 100.0;
+                
+                var successfulOperations = _recentOperationTimes.Count;
+                return (double)successfulOperations / totalOperations * 100.0;
+            }
         }
 
         #endregion

@@ -387,8 +387,8 @@ namespace AhBearStudios.Core.Alerting.Factories
                     IsEnabled = true,
                     MinimumSeverity = AlertSeverity.Warning,
                     MaximumSeverity = AlertSeverity.Emergency,
-                    MessageFormat = "[{Source}] {Message}",
-                    TypedSettings = UnityChannelSettings.Default
+                    MessageFormat = "[{Source}] {Message}"
+                    // TypedSettings should be set by Unity package factory
                 },
                 AlertChannelType.File => new ChannelConfig
                 {
@@ -428,6 +428,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                     MinimumSeverity = AlertSeverity.Warning,
                     MaximumSeverity = AlertSeverity.Emergency,
                     MessageFormat = "[{Source}] {Message}"
+                    // TypedSettings should be set by Unity package factory
                 },
                 _ => new ChannelConfig
                 {
@@ -519,10 +520,10 @@ namespace AhBearStudios.Core.Alerting.Factories
                 [AlertChannelType.Console] = CreateConsoleChannelInternal,
                 [AlertChannelType.File] = CreateFileChannelInternal,
                 [AlertChannelType.Memory] = CreateMemoryChannelInternal,
-                [AlertChannelType.UnityConsole] = CreateUnityDebugChannelInternal,
-                [AlertChannelType.UnityNotification] = CreateUnityNotificationChannelInternal,
                 [AlertChannelType.Network] = CreateNetworkChannelInternal,
                 [AlertChannelType.Email] = CreateEmailChannelInternal
+                // Unity-specific channels (UnityConsole, UnityNotification) should be created
+                // by Unity package's AlertChannelFactory extension
             };
         }
 
@@ -553,15 +554,8 @@ namespace AhBearStudios.Core.Alerting.Factories
             return UniTask.FromResult<IAlertChannel>(new MemoryAlertChannel(_messageBusService, maxAlerts));
         }
 
-        private UniTask<IAlertChannel> CreateUnityDebugChannelInternal(ChannelConfig config, ILoggingService loggingService)
-        {
-            return UniTask.FromResult<IAlertChannel>(new UnityDebugAlertChannel(_messageBusService));
-        }
-
-        private UniTask<IAlertChannel> CreateUnityNotificationChannelInternal(ChannelConfig config, ILoggingService loggingService)
-        {
-            return UniTask.FromResult<IAlertChannel>(new UnityNotificationAlertChannel(_messageBusService));
-        }
+        // Unity-specific channel creation methods removed - these should be implemented
+        // in the Unity package's AlertChannelFactory extension to maintain proper separation
 
         private UniTask<IAlertChannel> CreateNetworkChannelInternal(ChannelConfig config, ILoggingService loggingService)
         {

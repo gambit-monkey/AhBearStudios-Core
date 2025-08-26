@@ -1,5 +1,6 @@
 using System;
 using AhBearStudios.Core.Pooling.Models;
+using AhBearStudios.Core.Pooling.Configs;
 
 namespace AhBearStudios.Core.Pooling.Configs
 {
@@ -65,6 +66,31 @@ namespace AhBearStudios.Core.Pooling.Configs
         /// Gets the disposal policy for objects.
         /// </summary>
         public PoolDisposalPolicy DisposalPolicy { get; init; } = PoolDisposalPolicy.ReturnToPool;
+
+        /// <summary>
+        /// Gets whether the pool should block when exhausted or throw an exception.
+        /// </summary>
+        public bool BlockWhenExhausted { get; init; } = false;
+
+        /// <summary>
+        /// Gets the maximum time to wait when pool is exhausted (in milliseconds).
+        /// </summary>
+        public int MaxWaitTime { get; init; } = 5000;
+
+        /// <summary>
+        /// Gets the pooling strategy type to use for this pool.
+        /// </summary>
+        public PoolingStrategyType StrategyType { get; init; } = PoolingStrategyType.Default;
+
+        /// <summary>
+        /// Gets the performance budget constraints for this pool.
+        /// </summary>
+        public PerformanceBudget PerformanceBudget { get; init; }
+
+        /// <summary>
+        /// Gets additional configuration specific to the chosen strategy.
+        /// </summary>
+        public PoolingStrategyConfig StrategyConfig { get; init; }
         
         /// <summary>
         /// Creates a default pool configuration with basic settings.
@@ -82,7 +108,59 @@ namespace AhBearStudios.Core.Pooling.Configs
                 MaxIdleTime = TimeSpan.FromMinutes(30),
                 EnableValidation = true,
                 EnableStatistics = true,
-                DisposalPolicy = PoolDisposalPolicy.ReturnToPool
+                DisposalPolicy = PoolDisposalPolicy.ReturnToPool,
+                BlockWhenExhausted = false,
+                MaxWaitTime = 5000,
+                StrategyType = PoolingStrategyType.Default,
+                PerformanceBudget = PerformanceBudget.For60FPS()
+            };
+        }
+
+        /// <summary>
+        /// Creates a high-performance pool configuration optimized for 60+ FPS.
+        /// </summary>
+        /// <param name="name">Name of the pool</param>
+        /// <returns>High-performance pool configuration</returns>
+        public static PoolConfiguration CreateHighPerformance(string name)
+        {
+            return new PoolConfiguration
+            {
+                Name = name,
+                InitialCapacity = 50,
+                MaxCapacity = 500,
+                ValidationInterval = TimeSpan.FromMinutes(10),
+                MaxIdleTime = TimeSpan.FromMinutes(15),
+                EnableValidation = true,
+                EnableStatistics = true,
+                DisposalPolicy = PoolDisposalPolicy.ReturnToPool,
+                BlockWhenExhausted = false,
+                MaxWaitTime = 1000,
+                StrategyType = PoolingStrategyType.HighPerformance,
+                PerformanceBudget = PerformanceBudget.For60FPS()
+            };
+        }
+
+        /// <summary>
+        /// Creates a network-optimized pool configuration for adaptive networking.
+        /// </summary>
+        /// <param name="name">Name of the pool</param>
+        /// <returns>Network-optimized pool configuration</returns>
+        public static PoolConfiguration CreateNetworkOptimized(string name)
+        {
+            return new PoolConfiguration
+            {
+                Name = name,
+                InitialCapacity = 25,
+                MaxCapacity = 1000,
+                ValidationInterval = TimeSpan.FromMinutes(2),
+                MaxIdleTime = TimeSpan.FromMinutes(5),
+                EnableValidation = true,
+                EnableStatistics = true,
+                DisposalPolicy = PoolDisposalPolicy.ReturnToPool,
+                BlockWhenExhausted = false,
+                MaxWaitTime = 500,
+                StrategyType = PoolingStrategyType.AdaptiveNetwork,
+                PerformanceBudget = PerformanceBudget.For60FPS()
             };
         }
     }

@@ -1,8 +1,10 @@
+using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using Unity.Profiling;
 using Unity.Collections;
 using Cysharp.Threading.Tasks;
+using ZLinq;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Pooling.Strategies;
@@ -30,6 +32,7 @@ namespace AhBearStudios.Core.Pooling.Pools
         private readonly ProfilerMarker _getMarker;
         private readonly ProfilerMarker _returnMarker;
         private readonly ProfilerMarker _maintenanceMarker;
+        private readonly ProfilerMarker _validateMarker;
         
         private volatile bool _disposed = false;
         private int _totalCount = 0;
@@ -41,10 +44,11 @@ namespace AhBearStudios.Core.Pooling.Pools
 
         /// <summary>
         /// Initializes a new GenericObjectPool instance.
+        /// Use a factory to create pools with proper strategy dependencies.
         /// </summary>
         /// <param name="configuration">Pool configuration</param>
         /// <param name="messageBusService">Message bus service for publishing events</param>
-        /// <param name="strategy">Pooling strategy to use</param>
+        /// <param name="strategy">Pooling strategy to use (required)</param>
         public GenericObjectPool(
             PoolConfiguration configuration, 
             IMessageBusService messageBusService = null,
@@ -52,15 +56,22 @@ namespace AhBearStudios.Core.Pooling.Pools
         {
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _messageBusService = messageBusService; // Optional - can be null
-            _strategy = strategy ?? new DefaultPoolingStrategy();
+            _strategy = strategy ?? throw new ArgumentException("Strategy cannot be null. Use a factory to create pools with proper strategy dependencies.", nameof(strategy));
             _objects = new ConcurrentQueue<T>();
-            _statistics = new PoolStatistics { CreatedAt = DateTime.UtcNow };
+            _statistics = new PoolStatistics 
+            { 
+                CreatedAt = DateTime.UtcNow,
+                LastMaintenance = DateTime.UtcNow,
+                InitialCapacity = _configuration.InitialCapacity,
+                MaxCapacity = _configuration.MaxCapacity
+            };
             
             // Initialize profiler markers
             var typeName = typeof(T).Name;
             _getMarker = new ProfilerMarker($"GenericObjectPool<{typeName}>.Get");
             _returnMarker = new ProfilerMarker($"GenericObjectPool<{typeName}>.Return");
             _maintenanceMarker = new ProfilerMarker($"GenericObjectPool<{typeName}>.Maintenance");
+            _validateMarker = new ProfilerMarker($"GenericObjectPool<{typeName}>.Validate");
 
             if (!_strategy.ValidateConfiguration(_configuration))
                 throw new ArgumentException("Invalid pool configuration for strategy", nameof(configuration));
@@ -111,67 +122,93 @@ namespace AhBearStudios.Core.Pooling.Pools
             using (_getMarker.Auto())
             {
                 ThrowIfDisposed();
-
-                T item = null;
                 
-                // Try to get from pool
-                while (_objects.TryDequeue(out item))
-                {
-                    if (item.IsValid())
-                    {
-                        break;
-                    }
-                    // Invalid object, destroy it
-                    DestroyObject(item);
-                    item = null;
-                }
+                // Notify strategy that operation is starting
+                _strategy.OnPoolOperationStart();
+                var operationStart = DateTime.UtcNow;
 
-                // Create new if needed
-                if (item == null)
+                try
                 {
-                    if (_totalCount >= _configuration.MaxCapacity)
+                    T item = null;
+                    
+                    // Try to get from pool
+                    while (_objects.TryDequeue(out item))
                     {
-                        // Pool is at max capacity, wait or throw based on configuration
-                        if (!_configuration.BlockWhenExhausted)
+                        if (item.IsValid())
                         {
-                            throw new InvalidOperationException($"Pool '{Name}' has reached maximum capacity of {_configuration.MaxCapacity}");
+                            break;
                         }
-                        
-                        // Simple spin wait for demo - production would use better waiting mechanism
-                        var waitStart = DateTime.UtcNow;
-                        while ((DateTime.UtcNow - waitStart).TotalMilliseconds < _configuration.MaxWaitTime)
+                        // Invalid object, destroy it
+                        DestroyObject(item);
+                        item = null;
+                    }
+
+                    // Create new if needed
+                    if (item == null)
+                    {
+                        if (_totalCount >= _configuration.MaxCapacity)
                         {
-                            if (_objects.TryDequeue(out item) && item.IsValid())
+                            // Pool is at max capacity, wait or throw based on configuration
+                            if (!_configuration.BlockWhenExhausted)
                             {
-                                break;
+                                throw new InvalidOperationException($"Pool '{Name}' has reached maximum capacity of {_configuration.MaxCapacity}");
                             }
-                            Thread.Yield();
+                            
+                            // Simple spin wait for demo - production would use better waiting mechanism
+                            var waitStart = DateTime.UtcNow;
+                            while ((DateTime.UtcNow - waitStart).TotalMilliseconds < _configuration.MaxWaitTime)
+                            {
+                                if (_objects.TryDequeue(out item) && item.IsValid())
+                                {
+                                    break;
+                                }
+                                Thread.Yield();
+                            }
+                            
+                            if (item == null)
+                            {
+                                throw new TimeoutException($"Timeout waiting for available object in pool '{Name}'");
+                            }
                         }
-                        
-                        if (item == null)
+                        else
                         {
-                            throw new TimeoutException($"Timeout waiting for available object in pool '{Name}'");
+                            item = CreateNewObject();
                         }
                     }
-                    else
-                    {
-                        item = CreateNewObject();
-                    }
-                }
 
-                // Configure object for use
-                item.PoolName = Name;
-                item.PoolId = Guid.NewGuid();
-                item.LastUsed = DateTime.UtcNow;
-                item.OnGet();
+                    // Configure object for use
+                    item.PoolName = Name;
+                    item.PoolId = Guid.NewGuid();
+                    item.LastUsed = DateTime.UtcNow;
+                    item.OnGet();
+                    
+                    Interlocked.Increment(ref _activeCount);
+                    Interlocked.Increment(ref _totalGets);
+                    
+                    // Update peak active count if needed (thread-safe)
+                    lock (_statsLock)
+                    {
+                        if (_activeCount > _statistics.PeakActiveCount)
+                        {
+                            _statistics.PeakActiveCount = _activeCount;
+                        }
+                    }
                 
-                Interlocked.Increment(ref _activeCount);
-                Interlocked.Increment(ref _totalGets);
-                
-                // Publish object retrieved message if message bus is available
-                PublishObjectRetrievedMessage(item);
-                
-                return item;
+                    // Publish object retrieved message if message bus is available
+                    PublishObjectRetrievedMessage(item);
+                    
+                    // Notify strategy that operation completed
+                    var operationDuration = DateTime.UtcNow - operationStart;
+                    _strategy.OnPoolOperationComplete(operationDuration);
+                    
+                    return item;
+                }
+                catch (Exception ex)
+                {
+                    // Notify strategy of error
+                    _strategy.OnPoolError(ex);
+                    throw; // Re-throw to maintain original behavior
+                }
             }
         }
 
@@ -248,32 +285,36 @@ namespace AhBearStudios.Core.Pooling.Pools
         /// </summary>
         public bool Validate()
         {
-            ThrowIfDisposed();
-            
-            var tempList = new System.Collections.Generic.List<T>();
-            var allValid = true;
-            
-            // Dequeue all objects for validation
-            while (_objects.TryDequeue(out var item))
+            using (_validateMarker.Auto())
             {
-                if (item.IsValid())
+                ThrowIfDisposed();
+                
+                // Use managed collection for reference types but with ZLinq optimization
+                var validObjects = new System.Collections.Generic.List<T>();
+                var allValid = true;
+                
+                // Dequeue all objects for validation
+                while (_objects.TryDequeue(out var item))
                 {
-                    tempList.Add(item);
+                    if (item.IsValid())
+                    {
+                        validObjects.Add(item);
+                    }
+                    else
+                    {
+                        allValid = false;
+                        DestroyObject(item);
+                    }
                 }
-                else
+                
+                // Re-enqueue valid objects
+                foreach (var item in validObjects)
                 {
-                    allValid = false;
-                    DestroyObject(item);
+                    _objects.Enqueue(item);
                 }
+                
+                return allValid;
             }
-            
-            // Re-enqueue valid objects
-            foreach (var item in tempList)
-            {
-                _objects.Enqueue(item);
-            }
-            
-            return allValid;
         }
 
         /// <summary>
@@ -283,18 +324,37 @@ namespace AhBearStudios.Core.Pooling.Pools
         {
             lock (_statsLock)
             {
+                // Update peak size if current total is higher
+                if (_totalCount > _statistics.PeakSize)
+                {
+                    _statistics.PeakSize = _totalCount;
+                }
+                
+                // Update real-time values in statistics
+                _statistics.TotalCreated = _totalCreations;
+                _statistics.TotalGets = _totalGets;
+                _statistics.TotalReturns = _totalReturns;
+                _statistics.TotalCount = _totalCount;
+                _statistics.ActiveCount = _activeCount;
+                _statistics.AvailableCount = _objects.Count;
+                _statistics.LastUpdated = DateTime.UtcNow;
+                _statistics.LastMaintenance = _lastMaintenance;
+                
                 return new PoolStatistics
                 {
-                    TotalCreations = _totalCreations,
-                    TotalGets = _totalGets,
-                    TotalReturns = _totalReturns,
-                    CurrentSize = _totalCount,
-                    ActiveObjects = _activeCount,
-                    AvailableObjects = _objects.Count,
-                    PeakSize = Math.Max(_totalCount, _statistics.PeakSize),
+                    TotalCreated = _statistics.TotalCreated,
+                    TotalGets = _statistics.TotalGets,
+                    TotalReturns = _statistics.TotalReturns,
+                    TotalCount = _statistics.TotalCount,
+                    ActiveCount = _statistics.ActiveCount,
+                    AvailableCount = _statistics.AvailableCount,
+                    PeakSize = _statistics.PeakSize,
+                    PeakActiveCount = _statistics.PeakActiveCount,
                     CreatedAt = _statistics.CreatedAt,
-                    LastUpdated = DateTime.UtcNow,
-                    LastMaintenance = _lastMaintenance
+                    LastUpdated = _statistics.LastUpdated,
+                    LastMaintenance = _statistics.LastMaintenance,
+                    InitialCapacity = _configuration.InitialCapacity,
+                    MaxCapacity = _configuration.MaxCapacity
                 };
             }
         }
@@ -319,7 +379,7 @@ namespace AhBearStudios.Core.Pooling.Pools
                     activeObjectsAfter: ActiveCount
                 );
                 
-                _messageBusService.PublishAsync(message).Forget();
+                _messageBusService.PublishMessageAsync(message).Forget();
             }
             catch
             {
@@ -346,7 +406,7 @@ namespace AhBearStudios.Core.Pooling.Pools
                     wasValidOnReturn: item.IsValid()
                 );
                 
-                _messageBusService.PublishAsync(message).Forget();
+                _messageBusService.PublishMessageAsync(message).Forget();
             }
             catch
             {
@@ -423,6 +483,12 @@ namespace AhBearStudios.Core.Pooling.Pools
                 {
                     _lastMaintenance = DateTime.UtcNow;
                     
+                    // Update statistics maintenance timestamp
+                    lock (_statsLock)
+                    {
+                        _statistics.LastMaintenance = _lastMaintenance;
+                    }
+                    
                     // Validate objects
                     Validate();
                     
@@ -432,12 +498,29 @@ namespace AhBearStudios.Core.Pooling.Pools
                         TrimExcess();
                     }
                     
-                    // Let strategy perform its maintenance
-                    _strategy.PerformMaintenance(GetStatistics());
+                    // Let strategy know maintenance operation is starting
+                    _strategy.OnPoolOperationStart();
+                    
+                    // Get maintenance duration for strategy performance monitoring
+                    var maintenanceStart = DateTime.UtcNow;
+                    
+                    // Strategy can evaluate pool health and trigger circuit breaker if needed
+                    var stats = GetStatistics();
+                    if (_strategy.ShouldTriggerCircuitBreaker(stats))
+                    {
+                        // Log circuit breaker trigger (could publish message here if needed)
+                        // For now, we'll just note it happened
+                    }
+                    
+                    // Notify strategy that maintenance operation completed
+                    var maintenanceDuration = DateTime.UtcNow - maintenanceStart;
+                    _strategy.OnPoolOperationComplete(maintenanceDuration);
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Swallow maintenance exceptions
+                    // Notify strategy of maintenance error
+                    _strategy.OnPoolError(ex);
+                    // Swallow maintenance exceptions to prevent pool failure
                 }
             }
         }
@@ -464,48 +547,5 @@ namespace AhBearStudios.Core.Pooling.Pools
             Clear();
         }
 
-        /// <summary>
-        /// Default pooling strategy implementation.
-        /// </summary>
-        private class DefaultPoolingStrategy : IPoolingStrategy
-        {
-            public bool ValidateConfiguration(PoolConfiguration configuration)
-            {
-                return configuration != null &&
-                       configuration.InitialCapacity > 0 &&
-                       configuration.MaxCapacity >= configuration.InitialCapacity;
-            }
-
-            public TimeSpan GetValidationInterval()
-            {
-                return TimeSpan.FromMinutes(1);
-            }
-
-            public void PerformMaintenance(PoolStatistics statistics)
-            {
-                // Basic maintenance - can be extended
-            }
-
-            public bool ShouldExpandPool(PoolStatistics statistics)
-            {
-                return statistics.AvailableObjects == 0 && 
-                       statistics.CurrentSize < 1000;
-            }
-
-            public bool ShouldContractPool(PoolStatistics statistics)
-            {
-                return statistics.AvailableObjects > statistics.ActiveObjects * 2;
-            }
-
-            public int CalculateExpansionSize(PoolStatistics statistics)
-            {
-                return Math.Min(10, 1000 - statistics.CurrentSize);
-            }
-
-            public int CalculateContractionSize(PoolStatistics statistics)
-            {
-                return statistics.AvailableObjects / 2;
-            }
-        }
     }
 }

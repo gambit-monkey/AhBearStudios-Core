@@ -83,21 +83,5 @@ namespace AhBearStudios.Core.Pooling.Pools
         /// Gets the pooling strategy used by this pool.
         /// </summary>
         IPoolingStrategy Strategy { get; }
-        
-        // Events
-        /// <summary>
-        /// Raised when a new object is created for the pool.
-        /// </summary>
-        event Action<T> ObjectCreated;
-        
-        /// <summary>
-        /// Raised when an object is returned to the pool.
-        /// </summary>
-        event Action<T> ObjectReturned;
-        
-        /// <summary>
-        /// Raised when an object is destroyed (removed from pool).
-        /// </summary>
-        event Action<T> ObjectDestroyed;
     }
 }

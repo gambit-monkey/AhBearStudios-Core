@@ -97,7 +97,7 @@ namespace AhBearStudios.Core.Logging.Models
         /// <summary>
         /// Gets the type code for IMessage interface compatibility.
         /// </summary>
-        public ushort TypeCode => MessageTypeCodes.LogMessage;
+        public ushort TypeCode => MessageTypeCodes.CoreLogMessage;
 
         /// <summary>
         /// Gets the source system for IMessage interface compatibility.

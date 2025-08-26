@@ -7,7 +7,7 @@ namespace AhBearStudios.Core.Pooling.Models
     /// Represents the health status of a pooling strategy.
     /// Provides detailed information about strategy performance and potential issues.
     /// </summary>
-    public sealed class StrategyHealthStatus
+    public sealed record StrategyHealthStatus
     {
         /// <summary>
         /// Overall health status of the strategy.

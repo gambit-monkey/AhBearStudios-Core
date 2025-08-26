@@ -29,6 +29,11 @@ namespace AhBearStudios.Core.Pooling.Models
         public int PeakActiveCount { get; set; }
         
         /// <summary>
+        /// Gets or sets the peak total size of the pool (total objects).
+        /// </summary>
+        public int PeakSize { get; set; }
+        
+        /// <summary>
         /// Gets or sets the total number of objects created.
         /// </summary>
         public long TotalCreated { get; set; }
@@ -67,6 +72,11 @@ namespace AhBearStudios.Core.Pooling.Models
         /// Gets or sets the timestamp when the pool was created.
         /// </summary>
         public DateTime CreatedAt { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the timestamp when maintenance was last performed.
+        /// </summary>
+        public DateTime LastMaintenance { get; set; }
         
         /// <summary>
         /// Gets or sets the initial capacity of the pool when it was created.
@@ -141,6 +151,7 @@ namespace AhBearStudios.Core.Pooling.Models
             AvailableCount = 0;
             ActiveCount = 0;
             PeakActiveCount = 0;
+            PeakSize = 0;
             TotalCreated = 0;
             TotalDestroyed = 0;
             TotalGets = 0;
@@ -150,6 +161,7 @@ namespace AhBearStudios.Core.Pooling.Models
             TotalRequestCount = 0;
             LastUpdated = DateTime.UtcNow;
             CreatedAt = DateTime.UtcNow;
+            LastMaintenance = DateTime.UtcNow;
         }
         
         /// <summary>

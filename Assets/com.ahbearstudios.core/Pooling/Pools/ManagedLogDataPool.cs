@@ -171,24 +171,15 @@ namespace AhBearStudios.Core.Pooling.Pools
             // Register the ManagedLogData pool
             var poolConfig = new PoolConfiguration
             {
+                Name = "ManagedLogData",
                 InitialCapacity = 100,
                 MaxCapacity = 1000,
                 Factory = () => new ManagedLogData(),
-                ResetAction = data => data.Reset(),
-                ValidationFunc = data => data != null
+                ResetAction = obj => ((ManagedLogData)obj).Reset(),
+                ValidationFunc = obj => obj is ManagedLogData data && data.IsValid()
             };
 
             _poolingService.RegisterPool<ManagedLogData>(poolConfig);
-
-            // Register pools for common property dictionary types
-            _poolingService.RegisterPool<Dictionary<string, object>>(new PoolConfiguration
-            {
-                InitialCapacity = 50,
-                MaxCapacity = 200,
-                Factory = () => new Dictionary<string, object>(),
-                ResetAction = dict => dict.Clear(),
-                ValidationFunc = dict => dict != null
-            });
         }
 
         /// <summary>

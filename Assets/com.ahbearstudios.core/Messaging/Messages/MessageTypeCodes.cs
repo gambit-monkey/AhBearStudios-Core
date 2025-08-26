@@ -380,6 +380,30 @@
         /// </summary>
         public const ushort PoolValidationIssuesMessage = 1308;
         
+        /// <summary>
+        /// Type code for pool operation started messages.
+        /// Sent when a pool operation begins for performance monitoring.
+        /// </summary>
+        public const ushort PoolOperationStartedMessage = 1310;
+        
+        /// <summary>
+        /// Type code for pool operation completed messages.
+        /// Sent when a pool operation completes successfully.
+        /// </summary>
+        public const ushort PoolOperationCompletedMessage = 1311;
+        
+        /// <summary>
+        /// Type code for pool operation failed messages.
+        /// Sent when a pool operation encounters an error.
+        /// </summary>
+        public const ushort PoolOperationFailedMessage = 1312;
+        
+        /// <summary>
+        /// Type code for pool strategy health status messages.
+        /// Sent periodically to report strategy health metrics.
+        /// </summary>
+        public const ushort PoolStrategyHealthStatusMessage = 1313;
+        
         #endregion
         
         #region Alerting System Messages (1400-1499)

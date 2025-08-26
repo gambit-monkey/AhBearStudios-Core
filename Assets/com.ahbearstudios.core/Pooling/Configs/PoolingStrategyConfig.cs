@@ -71,6 +71,36 @@ namespace AhBearStudios.Core.Pooling.Configs
         public bool EnableDebugLogging { get; init; }
 
         /// <summary>
+        /// Default initial capacity for pools using this strategy.
+        /// </summary>
+        public int DefaultCapacity { get; init; } = 50;
+        
+        /// <summary>
+        /// Maximum capacity allowed for pools using this strategy.
+        /// </summary>
+        public int MaxCapacity { get; init; } = 1000;
+        
+        /// <summary>
+        /// Minimum capacity to maintain for pools using this strategy.
+        /// </summary>
+        public int MinCapacity { get; init; } = 10;
+        
+        /// <summary>
+        /// Number of objects to add when expanding the pool.
+        /// </summary>
+        public int ExpansionSize { get; init; } = 10;
+        
+        /// <summary>
+        /// Number of objects to remove when contracting the pool.
+        /// </summary>
+        public int ContractionSize { get; init; } = 5;
+        
+        /// <summary>
+        /// Interval in seconds between validation checks.
+        /// </summary>
+        public int ValidationIntervalSeconds { get; init; } = 60;
+
+        /// <summary>
         /// Custom strategy-specific parameters.
         /// </summary>
         public Dictionary<string, object> CustomParameters { get; init; } = new();
@@ -107,6 +137,24 @@ namespace AhBearStudios.Core.Pooling.Configs
 
             if (MaxMetricsSamples < 1)
                 errors.Add("MaxMetricsSamples must be at least 1");
+                
+            if (DefaultCapacity < 1)
+                errors.Add("DefaultCapacity must be at least 1");
+                
+            if (MaxCapacity < DefaultCapacity)
+                errors.Add("MaxCapacity must be greater than or equal to DefaultCapacity");
+                
+            if (MinCapacity < 0 || MinCapacity > DefaultCapacity)
+                errors.Add("MinCapacity must be non-negative and less than or equal to DefaultCapacity");
+                
+            if (ExpansionSize < 1)
+                errors.Add("ExpansionSize must be at least 1");
+                
+            if (ContractionSize < 1)
+                errors.Add("ContractionSize must be at least 1");
+                
+            if (ValidationIntervalSeconds < 1)
+                errors.Add("ValidationIntervalSeconds must be at least 1");
 
             return errors;
         }
