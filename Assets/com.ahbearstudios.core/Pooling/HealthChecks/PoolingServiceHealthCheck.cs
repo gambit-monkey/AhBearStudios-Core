@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using ZLinq;
 using Unity.Collections;
 using AhBearStudios.Core.HealthChecking.Checks;
 using AhBearStudios.Core.HealthChecking.Configs;
@@ -182,7 +182,7 @@ namespace AhBearStudios.Core.Pooling.HealthChecks
                 ["Category"] = Category.ToString(),
                 ["Timeout"] = Timeout.TotalSeconds,
                 ["Version"] = "1.0.0",
-                ["Dependencies"] = Dependencies.Select(d => d.ToString()).ToArray(),
+                ["Dependencies"] = Dependencies.AsValueEnumerable().Select(d => d.ToString()).ToArray(),
                 ["SupportsAsync"] = true,
                 ["ThreadSafe"] = true,
                 ["PerformanceOptimized"] = true,

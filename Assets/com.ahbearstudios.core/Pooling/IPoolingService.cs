@@ -38,7 +38,7 @@ namespace AhBearStudios.Core.Pooling
         /// </summary>
         /// <typeparam name="T">Type that implements IPooledObject</typeparam>
         /// <param name="item">Object to return to the pool</param>
-        void Return<T>(T item) where T : class, IPooledObject;
+        void Return<T>(T item) where T : class, IPooledObject, new();
         
         /// <summary>
         /// Returns an object to its pool asynchronously.
@@ -46,7 +46,7 @@ namespace AhBearStudios.Core.Pooling
         /// </summary>
         /// <typeparam name="T">Type that implements IPooledObject</typeparam>
         /// <param name="item">Object to return to the pool</param>
-        UniTask ReturnAsync<T>(T item) where T : class, IPooledObject;
+        UniTask ReturnAsync<T>(T item) where T : class, IPooledObject, new();
         
         #endregion
         
@@ -70,14 +70,14 @@ namespace AhBearStudios.Core.Pooling
         /// Unregisters and disposes a pool for the specified type.
         /// </summary>
         /// <typeparam name="T">Type to unregister pool for</typeparam>
-        void UnregisterPool<T>() where T : class, IPooledObject;
+        void UnregisterPool<T>() where T : class, IPooledObject, new();
         
         /// <summary>
         /// Checks if a pool is registered for the specified type.
         /// </summary>
         /// <typeparam name="T">Type to check</typeparam>
         /// <returns>True if pool is registered</returns>
-        bool IsPoolRegistered<T>() where T : class, IPooledObject;
+        bool IsPoolRegistered<T>() where T : class, IPooledObject, new();
         
         #endregion
         
@@ -94,7 +94,7 @@ namespace AhBearStudios.Core.Pooling
         /// </summary>
         /// <typeparam name="T">Pool type to get statistics for</typeparam>
         /// <returns>Pool statistics or null if not registered</returns>
-        PoolStatistics GetPoolStatistics<T>() where T : class, IPooledObject;
+        PoolStatistics GetPoolStatistics<T>() where T : class, IPooledObject, new();
         
         /// <summary>
         /// Validates all pools and returns overall health status.
@@ -107,7 +107,7 @@ namespace AhBearStudios.Core.Pooling
         /// </summary>
         /// <typeparam name="T">Pool type to validate</typeparam>
         /// <returns>True if pool is healthy</returns>
-        bool ValidatePool<T>() where T : class, IPooledObject;
+        bool ValidatePool<T>() where T : class, IPooledObject, new();
         
         #endregion
         
@@ -122,7 +122,7 @@ namespace AhBearStudios.Core.Pooling
         /// Clears all objects from a specific pool.
         /// </summary>
         /// <typeparam name="T">Pool type to clear</typeparam>
-        void ClearPool<T>() where T : class, IPooledObject;
+        void ClearPool<T>() where T : class, IPooledObject, new();
         
         /// <summary>
         /// Removes excess objects from all pools to reduce memory usage.
@@ -133,7 +133,7 @@ namespace AhBearStudios.Core.Pooling
         /// Removes excess objects from a specific pool.
         /// </summary>
         /// <typeparam name="T">Pool type to trim</typeparam>
-        void TrimPool<T>() where T : class, IPooledObject;
+        void TrimPool<T>() where T : class, IPooledObject, new();
         
         #endregion
         

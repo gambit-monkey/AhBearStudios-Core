@@ -322,6 +322,12 @@
         /// </summary>
         public const ushort HealthCheckDegradationChangeMessage = 1204;
         
+        /// <summary>
+        /// Type code for health check circuit breaker state changed messages.
+        /// Sent when circuit breakers managed by the health check system change state.
+        /// </summary>
+        public const ushort HealthCheckCircuitBreakerStateChangedMessage = 1205;
+        
         #endregion
         
         #region Pooling System Messages (1300-1399)

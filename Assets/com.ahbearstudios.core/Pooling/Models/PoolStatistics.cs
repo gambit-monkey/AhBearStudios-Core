@@ -1,10 +1,12 @@
 using System;
+using Unity.Collections;
 
 namespace AhBearStudios.Core.Pooling.Models
 {
     /// <summary>
     /// Statistics for object pool usage and performance monitoring.
     /// Provides metrics for pool sizing decisions and health monitoring.
+    /// Uses Unity-optimized collections for high performance.
     /// </summary>
     public class PoolStatistics
     {
@@ -52,6 +54,11 @@ namespace AhBearStudios.Core.Pooling.Models
         /// Gets or sets the total number of return operations.
         /// </summary>
         public long TotalReturns { get; set; }
+        
+        /// <summary>
+        /// Gets or sets the total number of failed get operations.
+        /// </summary>
+        public long FailedGets { get; set; }
         
         /// <summary>
         /// Gets or sets the number of cache hits (objects reused from pool).
@@ -156,6 +163,7 @@ namespace AhBearStudios.Core.Pooling.Models
             TotalDestroyed = 0;
             TotalGets = 0;
             TotalReturns = 0;
+            FailedGets = 0;
             CacheHits = 0;
             CacheMisses = 0;
             TotalRequestCount = 0;
@@ -210,6 +218,16 @@ namespace AhBearStudios.Core.Pooling.Models
             TotalDestroyed++;
             TotalCount--;
             AvailableCount--;
+            LastUpdated = DateTime.UtcNow;
+        }
+        
+        /// <summary>
+        /// Updates the statistics with a failed get operation.
+        /// </summary>
+        public void RecordFailedGet()
+        {
+            FailedGets++;
+            TotalRequestCount++;
             LastUpdated = DateTime.UtcNow;
         }
     }
