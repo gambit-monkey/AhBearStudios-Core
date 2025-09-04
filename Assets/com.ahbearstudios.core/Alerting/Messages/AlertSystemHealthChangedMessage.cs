@@ -1,5 +1,6 @@
 using System;
 using Unity.Collections;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 
@@ -12,6 +13,8 @@ namespace AhBearStudios.Core.Alerting.Messages
     /// </summary>
     public readonly record struct AlertSystemHealthChangedMessage : IMessage
     {
+        #region IMessage Implementation
+
         /// <summary>
         /// Gets the unique identifier for this message instance.
         /// </summary>
@@ -25,7 +28,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.AlertSystemHealthChangedMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -42,7 +45,9 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// </summary>
         public Guid CorrelationId { get; init; }
 
-        // Health-specific properties
+        #endregion
+
+        #region Message-Specific Properties
         /// <summary>
         /// Gets the previous health status.
         /// </summary>
@@ -78,24 +83,9 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// </summary>
         public long UptimeSeconds { get; init; }
 
-        /// <summary>
-        /// Initializes a new instance of the AlertSystemHealthChangedMessage struct.
-        /// </summary>
-        public AlertSystemHealthChangedMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-            PreviousHealthStatus = default;
-            CurrentHealthStatus = default;
-            HealthChangeReason = default;
-            HealthyChannelsCount = default;
-            TotalChannelsCount = default;
-            ActiveAlertsCount = default;
-            UptimeSeconds = default;
-        }
+        #endregion
+
+        #region Computed Properties
 
         /// <summary>
         /// Gets the DateTime representation of the message timestamp.
@@ -103,7 +93,16 @@ namespace AhBearStudios.Core.Alerting.Messages
         public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
         /// <summary>
-        /// Creates a new AlertSystemHealthChangedMessage.
+        /// Gets the uptime as a TimeSpan.
+        /// </summary>
+        public TimeSpan Uptime => TimeSpan.FromSeconds(UptimeSeconds);
+
+        #endregion
+
+        #region Static Factory Methods
+
+        /// <summary>
+        /// Creates a new AlertSystemHealthChangedMessage with proper validation and defaults.
         /// </summary>
         /// <param name="previousHealth">Previous health status</param>
         /// <param name="currentHealth">Current health status</param>
@@ -126,23 +125,38 @@ namespace AhBearStudios.Core.Alerting.Messages
             FixedString64Bytes source = default,
             Guid correlationId = default)
         {
+            // Input validation
+            if (healthyChannels < 0 || totalChannels < 0 || activeAlerts < 0 || uptimeSeconds < 0)
+                throw new ArgumentException("Count values cannot be negative");
+
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "AlertService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("AlertSystemHealthChangedMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("AlertSystemHealthChange", $"{previousHealth}-{currentHealth}")
+                : correlationId;
+
             return new AlertSystemHealthChangedMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
                 TimestampTicks = DateTime.UtcNow.Ticks,
                 TypeCode = MessageTypeCodes.AlertSystemHealthChangedMessage,
                 Source = source.IsEmpty ? "AlertService" : source,
                 Priority = currentHealth ? MessagePriority.Normal : MessagePriority.High,
-                CorrelationId = correlationId == Guid.Empty ? Guid.NewGuid() : correlationId,
+                CorrelationId = finalCorrelationId,
                 PreviousHealthStatus = previousHealth,
                 CurrentHealthStatus = currentHealth,
-                HealthChangeReason = reason?.Length <= 256 ? reason : reason?[..256] ?? "Unknown",
+                HealthChangeReason = reason?.Length <= 512 ? reason : reason?[..512] ?? "Unknown",
                 HealthyChannelsCount = healthyChannels,
                 TotalChannelsCount = totalChannels,
                 ActiveAlertsCount = activeAlerts,
                 UptimeSeconds = uptimeSeconds
             };
         }
+
+        #endregion
+
+        #region String Representation
 
         /// <summary>
         /// Returns a string representation of this message for debugging.
@@ -151,7 +165,10 @@ namespace AhBearStudios.Core.Alerting.Messages
         public override string ToString()
         {
             var healthStatus = CurrentHealthStatus ? "Healthy" : "Unhealthy";
-            return $"AlertSystemHealthChanged: {healthStatus} ({HealthyChannelsCount}/{TotalChannelsCount} channels) - {HealthChangeReason}";
+            var reasonText = HealthChangeReason.IsEmpty ? "No reason specified" : HealthChangeReason.ToString();
+            return $"AlertSystemHealthChanged: {healthStatus} ({HealthyChannelsCount}/{TotalChannelsCount} channels) - {reasonText}";
         }
+
+        #endregion
     }
 }

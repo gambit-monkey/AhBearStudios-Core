@@ -1,7 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Pooling;
 using AhBearStudios.Core.HealthChecking.Configs;
@@ -96,7 +96,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
         }
 
         /// <inheritdoc />
-        public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
+        public async UniTask<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
         {
             var stopwatch = Stopwatch.StartNew();
             var data = new Dictionary<string, object>();
@@ -189,7 +189,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
 
         #region Private Implementation
 
-        private async Task<Dictionary<string, object>> CollectResourceMetricsAsync(CancellationToken cancellationToken)
+        private async UniTask<Dictionary<string, object>> CollectResourceMetricsAsync(CancellationToken cancellationToken)
         {
             var metrics = new Dictionary<string, object>();
 

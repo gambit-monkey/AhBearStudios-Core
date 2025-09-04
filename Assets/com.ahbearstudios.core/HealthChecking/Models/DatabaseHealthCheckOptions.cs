@@ -1,9 +1,11 @@
-﻿using Unity.Collections;
+﻿using System;
+using Unity.Collections;
 
-namespace AhBearStudios.Core.HealthChecking.Models;
-
-/// <summary>
-    /// Configuration options for database health checking
+namespace AhBearStudios.Core.HealthChecking.Models
+{
+    /// <summary>
+    /// Configuration options for database health checking operations.
+    /// Provides comprehensive settings for database connectivity, performance, and operational testing.
     /// </summary>
     public sealed class DatabaseHealthCheckOptions
     {
@@ -109,3 +111,4 @@ namespace AhBearStudios.Core.HealthChecking.Models;
             };
         }
     }
+}

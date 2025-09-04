@@ -4,6 +4,7 @@ using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Pooling.Models;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.Pooling.Messages
 {
@@ -14,15 +15,40 @@ namespace AhBearStudios.Core.Pooling.Messages
     /// </summary>
     public readonly record struct PoolCapacityReachedMessage : IMessage
     {
+        #region IMessage Implementation
         /// <summary>
         /// Gets the unique identifier for this message instance.
         /// </summary>
         public Guid Id { get; init; }
 
         /// <summary>
+        /// Gets the timestamp when this message was created, in UTC ticks.
+        /// </summary>
+        public long TimestampTicks { get; init; }
+
+        /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.PoolCapacityReachedMessage;
+        public ushort TypeCode { get; init; }
+
+        /// <summary>
+        /// Gets the source system or component that created this message.
+        /// </summary>
+        public FixedString64Bytes Source { get; init; }
+
+        /// <summary>
+        /// Gets the priority level for message processing.
+        /// </summary>
+        public MessagePriority Priority { get; init; }
+
+        /// <summary>
+        /// Gets optional correlation ID for message tracing across systems.
+        /// </summary>
+        public Guid CorrelationId { get; init; }
+
+        #endregion
+
+        #region Message-Specific Properties
 
         /// <summary>
         /// Gets the name of the pool that reached capacity.
@@ -38,11 +64,6 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// Gets the unique identifier of the pool.
         /// </summary>
         public Guid PoolId { get; init; }
-
-        /// <summary>
-        /// Gets the timestamp when capacity was reached (UTC ticks).
-        /// </summary>
-        public long TimestampTicks { get; init; }
 
         /// <summary>
         /// Gets the current capacity of the pool.
@@ -65,21 +86,6 @@ namespace AhBearStudios.Core.Pooling.Messages
         public float UtilizationPercentage { get; init; }
 
         /// <summary>
-        /// Gets the correlation ID for tracking related operations.
-        /// </summary>
-        public Guid CorrelationId { get; init; }
-
-        /// <summary>
-        /// Gets the source that triggered the capacity check.
-        /// </summary>
-        public FixedString64Bytes Source { get; init; }
-
-        /// <summary>
-        /// Gets the priority level for message processing.
-        /// </summary>
-        public MessagePriority Priority { get; init; }
-
-        /// <summary>
         /// Gets the severity level of the capacity issue.
         /// </summary>
         public CapacitySeverity Severity { get; init; }
@@ -89,34 +95,21 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// </summary>
         public FixedString128Bytes Context { get; init; }
 
-        /// <summary>
-        /// Initializes a new instance of the PoolCapacityReachedMessage struct.
-        /// </summary>
-        public PoolCapacityReachedMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            PoolName = default;
-            ObjectTypeName = default;
-            PoolId = default;
-            CurrentCapacity = default;
-            MaxCapacity = default;
-            ActiveObjects = default;
-            UtilizationPercentage = default;
-            CorrelationId = default;
-            Source = default;
-            Priority = default;
-            Severity = default;
-            Context = default;
-        }
+        #endregion
+
+        #region Computed Properties
 
         /// <summary>
-        /// Gets the DateTime representation of the timestamp.
+        /// Gets the timestamp when capacity was reached.
         /// </summary>
         public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
+        #endregion
+
+        #region Static Factory Methods
+
         /// <summary>
-        /// Creates a new PoolCapacityReachedMessage.
+        /// Creates a new PoolCapacityReachedMessage with proper validation and defaults.
         /// </summary>
         /// <param name="poolName">Name of the pool</param>
         /// <param name="objectTypeName">Type name of pooled objects</param>
@@ -126,10 +119,10 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// <param name="activeObjects">Number of active objects</param>
         /// <param name="severity">Severity of the capacity issue</param>
         /// <param name="context">Additional context about the situation</param>
-        /// <param name="correlationId">Correlation ID for tracking</param>
-        /// <param name="source">Source that triggered the check</param>
-        /// <returns>New message instance</returns>
-        public static PoolCapacityReachedMessage Create(
+        /// <param name="correlationId">Optional correlation ID</param>
+        /// <param name="source">Source component</param>
+        /// <returns>New PoolCapacityReachedMessage instance</returns>
+        public static PoolCapacityReachedMessage CreateFromFixedStrings(
             FixedString64Bytes poolName,
             FixedString64Bytes objectTypeName,
             Guid poolId,
@@ -143,50 +136,73 @@ namespace AhBearStudios.Core.Pooling.Messages
         {
             var utilizationPercentage = maxCapacity > 0 ? (float)currentCapacity / maxCapacity : 0f;
 
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "PoolingService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("PoolCapacityReachedMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("PoolCapacityOperation", poolName.ToString())
+                : correlationId;
+            
             return new PoolCapacityReachedMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
+                TimestampTicks = DateTime.UtcNow.Ticks,
                 TypeCode = MessageTypeCodes.PoolCapacityReachedMessage,
+                Source = source.IsEmpty ? "PoolingService" : source,
+                Priority = MessagePriority.High,
+                CorrelationId = finalCorrelationId,
+                
                 PoolName = poolName,
                 ObjectTypeName = objectTypeName,
                 PoolId = poolId,
-                TimestampTicks = DateTime.UtcNow.Ticks,
                 CurrentCapacity = currentCapacity,
                 MaxCapacity = maxCapacity,
                 ActiveObjects = activeObjects,
                 UtilizationPercentage = utilizationPercentage,
-                Priority = MessagePriority.High, // Pool capacity issues are high priority
                 Severity = severity,
-                Context = context.IsEmpty ? new FixedString128Bytes("Pool capacity limit reached") : context,
-                CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
-                Source = source.IsEmpty ? new FixedString64Bytes("PoolingService") : source
+                Context = context.IsEmpty ? new FixedString128Bytes("Pool capacity limit reached") : context
             };
         }
-    }
-
-    /// <summary>
-    /// Severity levels for pool capacity issues.
-    /// </summary>
-    public enum CapacitySeverity : byte
-    {
-        /// <summary>
-        /// Information about normal capacity usage.
-        /// </summary>
-        Info = 0,
 
         /// <summary>
-        /// Warning about approaching capacity limits.
+        /// Creates a new PoolCapacityReachedMessage with the specified details.
         /// </summary>
-        Warning = 1,
+        /// <param name="poolName">Name of the pool</param>
+        /// <param name="objectTypeName">Type name of pooled objects</param>
+        /// <param name="poolId">Pool unique identifier</param>
+        /// <param name="currentCapacity">Current pool capacity</param>
+        /// <param name="maxCapacity">Maximum pool capacity</param>
+        /// <param name="activeObjects">Number of active objects</param>
+        /// <param name="severity">Severity of the capacity issue</param>
+        /// <param name="context">Additional context about the situation</param>
+        /// <param name="correlationId">Optional correlation ID</param>
+        /// <param name="source">Source component</param>
+        /// <returns>New PoolCapacityReachedMessage instance</returns>
+        public static PoolCapacityReachedMessage Create(
+            string poolName,
+            string objectTypeName,
+            Guid poolId,
+            int currentCapacity,
+            int maxCapacity,
+            int activeObjects,
+            CapacitySeverity severity,
+            string context = null,
+            Guid correlationId = default,
+            string source = null)
+        {
+            return CreateFromFixedStrings(
+                new FixedString64Bytes(poolName?.Length <= 64 ? poolName : poolName?[..64] ?? "Unknown"),
+                new FixedString64Bytes(objectTypeName?.Length <= 64 ? objectTypeName : objectTypeName?[..64] ?? "Unknown"),
+                poolId,
+                currentCapacity,
+                maxCapacity,
+                activeObjects,
+                severity,
+                new FixedString128Bytes(context?.Length <= 128 ? context : context?[..128] ?? "Pool capacity limit reached"),
+                correlationId,
+                new FixedString64Bytes(source ?? "PoolingService"));
+        }
 
-        /// <summary>
-        /// Critical capacity situation requiring immediate attention.
-        /// </summary>
-        Critical = 2,
-
-        /// <summary>
-        /// Emergency situation - pool exhausted.
-        /// </summary>
-        Emergency = 3
+        #endregion
     }
 }

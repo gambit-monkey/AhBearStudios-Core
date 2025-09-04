@@ -1,4 +1,5 @@
 using System;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using Unity.Collections;
@@ -11,6 +12,8 @@ namespace AhBearStudios.Core.Messaging.Messages;
 /// </summary>
 public readonly record struct MessageBusSubscriptionDisposedMessage : IMessage
 {
+    #region IMessage Implementation
+
     /// <summary>
     /// Gets the unique identifier for this message instance.
     /// </summary>
@@ -22,9 +25,9 @@ public readonly record struct MessageBusSubscriptionDisposedMessage : IMessage
     public long TimestampTicks { get; init; }
 
     /// <summary>
-    /// Gets the unique type code for this message type.
+    /// Gets the message type code for efficient routing and filtering.
     /// </summary>
-    public ushort TypeCode { get; init; } = MessageTypeCodes.MessageBusSubscriptionDisposedMessage;
+    public ushort TypeCode { get; init; }
 
     /// <summary>
     /// Gets the source system or component that created this message.
@@ -40,6 +43,10 @@ public readonly record struct MessageBusSubscriptionDisposedMessage : IMessage
     /// Gets optional correlation ID for message tracing across systems.
     /// </summary>
     public Guid CorrelationId { get; init; }
+
+    #endregion
+
+    #region Message-Specific Properties
 
     /// <summary>
     /// Gets the unique identifier of the disposed subscription.
@@ -81,33 +88,68 @@ public readonly record struct MessageBusSubscriptionDisposedMessage : IMessage
     /// </summary>
     public FixedString512Bytes Context { get; init; }
 
-    /// <summary>
-    /// Initializes a new instance of the MessageBusSubscriptionDisposedMessage struct.
-    /// </summary>
-    public MessageBusSubscriptionDisposedMessage()
-    {
-        Id = default;
-        TimestampTicks = default;
-        Source = default;
-        Priority = default;
-        CorrelationId = default;
-        SubscriptionId = default;
-        MessageType = default;
-        SubscriberName = default;
-        DisposedAt = default;
-        DisposalReason = default;
-        ActiveDuration = default;
-        MessagesProcessed = default;
-        Context = default;
-    }
+    #endregion
+
+    #region Computed Properties
 
     /// <summary>
-    /// Gets the DateTime representation of the timestamp.
+    /// Gets the DateTime representation of the message timestamp.
     /// </summary>
     public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
+    #endregion
+
+    #region Static Factory Methods
+
     /// <summary>
-    /// Creates a new instance of the MessageBusSubscriptionDisposedMessage.
+    /// Creates a new instance of MessageBusSubscriptionDisposedMessage using FixedString parameters for optimal performance.
+    /// </summary>
+    /// <param name="subscriptionId">The unique identifier of the subscription</param>
+    /// <param name="messageType">The type of message being subscribed to</param>
+    /// <param name="subscriberName">The name of the subscriber</param>
+    /// <param name="disposalReason">The reason for disposal</param>
+    /// <param name="activeDuration">How long the subscription was active</param>
+    /// <param name="messagesProcessed">Number of messages processed</param>
+    /// <param name="context">Additional context</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessageBusSubscriptionDisposedMessage instance</returns>
+    public static MessageBusSubscriptionDisposedMessage CreateFromFixedStrings(
+        Guid subscriptionId,
+        Type messageType,
+        string subscriberName,
+        string disposalReason,
+        TimeSpan activeDuration,
+        long messagesProcessed,
+        string context,
+        FixedString64Bytes source = default,
+        Guid correlationId = default)
+    {
+        var finalCorrelationId = correlationId == default 
+            ? DeterministicIdGenerator.GenerateCorrelationId("MessageBusSubscription", null)
+            : correlationId;
+
+        return new MessageBusSubscriptionDisposedMessage
+        {
+            Id = DeterministicIdGenerator.GenerateMessageId("MessageBusSubscriptionDisposedMessage", "MessagingSystem", correlationId: null),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.MessageBusSubscriptionDisposedMessage,
+            Source = source.IsEmpty ? "MessageBusService" : source,
+            Priority = MessagePriority.Low,
+            CorrelationId = finalCorrelationId,
+            SubscriptionId = subscriptionId,
+            MessageType = messageType ?? throw new ArgumentNullException(nameof(messageType)),
+            SubscriberName = subscriberName?.Length <= 64 ? subscriberName : subscriberName?[..64] ?? "Unknown",
+            DisposedAt = DateTime.UtcNow,
+            DisposalReason = disposalReason?.Length <= 128 ? disposalReason : disposalReason?[..128] ?? "Normal disposal",
+            ActiveDuration = activeDuration,
+            MessagesProcessed = Math.Max(0, messagesProcessed),
+            Context = context?.Length <= 512 ? context : context?[..512] ?? string.Empty
+        };
+    }
+
+    /// <summary>
+    /// Creates a new instance of MessageBusSubscriptionDisposedMessage using string parameters.
     /// </summary>
     /// <param name="subscriptionId">The unique identifier of the subscription</param>
     /// <param name="messageType">The type of message being subscribed to</param>
@@ -127,25 +169,20 @@ public readonly record struct MessageBusSubscriptionDisposedMessage : IMessage
         TimeSpan activeDuration = default,
         long messagesProcessed = 0,
         string context = null,
-        FixedString64Bytes source = default,
+        string source = null,
         Guid correlationId = default)
     {
-        return new MessageBusSubscriptionDisposedMessage
-        {
-            Id = Guid.NewGuid(),
-            TimestampTicks = DateTime.UtcNow.Ticks,
-            TypeCode = MessageTypeCodes.MessageBusSubscriptionDisposedMessage,
-            Source = source.IsEmpty ? "MessageBusService" : source,
-            Priority = MessagePriority.Low, // Disposal events are informational
-            CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
-            SubscriptionId = subscriptionId,
-            MessageType = messageType ?? throw new ArgumentNullException(nameof(messageType)),
-            SubscriberName = subscriberName?.Length <= 64 ? subscriberName : subscriberName?[..64] ?? "Unknown",
-            DisposedAt = DateTime.UtcNow,
-            DisposalReason = disposalReason?.Length <= 128 ? disposalReason : disposalReason?[..128] ?? "Normal disposal",
-            ActiveDuration = activeDuration,
-            MessagesProcessed = Math.Max(0, messagesProcessed),
-            Context = context?.Length <= 256 ? context : context?[..256] ?? string.Empty
-        };
+        return CreateFromFixedStrings(
+            subscriptionId,
+            messageType,
+            subscriberName,
+            disposalReason,
+            activeDuration,
+            messagesProcessed,
+            context,
+            source?.Length <= 64 ? source : source?[..64] ?? "MessageBusService",
+            correlationId);
     }
+
+    #endregion
 }

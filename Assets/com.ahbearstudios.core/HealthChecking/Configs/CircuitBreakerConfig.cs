@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.HealthChecking.Models;
 using Unity.Collections;
 
@@ -8,7 +9,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs
     /// <summary>
     /// Comprehensive configuration for circuit breaker behavior with advanced fault tolerance settings
     /// </summary>
-    public sealed record CircuitBreakerConfig
+    public sealed record CircuitBreakerConfig : ICircuitBreakerConfig
     {
         /// <summary>
         /// Unique identifier for this circuit breaker configuration
@@ -137,22 +138,22 @@ namespace AhBearStudios.Core.HealthChecking.Configs
         /// <summary>
         /// Slow call detection configuration
         /// </summary>
-        public SlowCallConfig SlowCallConfig { get; init; } = new();
+        public ISlowCallConfig SlowCallConfig { get; init; } = new SlowCallConfig();
 
         /// <summary>
         /// Bulkhead isolation configuration
         /// </summary>
-        public BulkheadConfig BulkheadConfig { get; init; } = new();
+        public IBulkheadConfig BulkheadConfig { get; init; } = new BulkheadConfig();
 
         /// <summary>
         /// Rate limiting configuration when circuit is closed
         /// </summary>
-        public RateLimitConfig RateLimitConfig { get; init; } = new();
+        public IRateLimitConfig RateLimitConfig { get; init; } = new RateLimitConfig();
 
         /// <summary>
         /// Failover configuration for when circuit is open
         /// </summary>
-        public FailoverConfig FailoverConfig { get; init; } = new();
+        public IFailoverConfig FailoverConfig { get; init; } = new FailoverConfig();
 
         /// <summary>
         /// Validates the circuit breaker configuration
@@ -414,7 +415,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs
         /// <returns>Unique configuration ID</returns>
         private static FixedString64Bytes GenerateId()
         {
-            return new FixedString64Bytes(Guid.NewGuid().ToString("N")[..16]);
+            return new FixedString64Bytes(DeterministicIdGenerator.GenerateHealthCheckId("CircuitBreakerConfig", "System").ToString("N")[..16]);
         }
     }
 }

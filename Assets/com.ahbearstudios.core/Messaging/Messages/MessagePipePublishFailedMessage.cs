@@ -1,4 +1,5 @@
 using System;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using Unity.Collections;
@@ -11,6 +12,8 @@ namespace AhBearStudios.Core.Messaging.Messages;
 /// </summary>
 public readonly record struct MessagePipePublishFailedMessage : IMessage
 {
+    #region IMessage Implementation
+
     /// <summary>
     /// Gets the unique identifier for this message instance.
     /// </summary>
@@ -22,9 +25,9 @@ public readonly record struct MessagePipePublishFailedMessage : IMessage
     public long TimestampTicks { get; init; }
 
     /// <summary>
-    /// Gets the unique type code for this message type.
+    /// Gets the message type code for efficient routing and filtering.
     /// </summary>
-    public ushort TypeCode { get; init; } = MessageTypeCodes.MessagePipePublishFailedMessage;
+    public ushort TypeCode { get; init; }
 
     /// <summary>
     /// Gets the source system or component that created this message.
@@ -40,6 +43,10 @@ public readonly record struct MessagePipePublishFailedMessage : IMessage
     /// Gets optional correlation ID for message tracing across systems.
     /// </summary>
     public Guid CorrelationId { get; init; }
+
+    #endregion
+
+    #region Message-Specific Properties
 
     /// <summary>
     /// Gets the message type that failed to publish.
@@ -76,32 +83,67 @@ public readonly record struct MessagePipePublishFailedMessage : IMessage
     /// </summary>
     public bool IsRetriable { get; init; }
 
-    /// <summary>
-    /// Initializes a new instance of the MessagePipePublishFailedMessage struct.
-    /// </summary>
-    public MessagePipePublishFailedMessage()
-    {
-        Id = default;
-        TimestampTicks = default;
-        Source = default;
-        Priority = default;
-        CorrelationId = default;
-        MessageType = default;
-        MessageId = default;
-        Error = default;
-        ProcessingTime = default;
-        RetryAttempts = default;
-        ChannelName = default;
-        IsRetriable = default;
-    }
+    #endregion
+
+    #region Computed Properties
 
     /// <summary>
-    /// Gets the DateTime representation of the timestamp.
+    /// Gets the DateTime representation of the message timestamp.
     /// </summary>
     public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
+    #endregion
+
+    #region Static Factory Methods
+
     /// <summary>
-    /// Creates a new instance of the MessagePipePublishFailedMessage.
+    /// Creates a new instance of MessagePipePublishFailedMessage using FixedString parameters for optimal performance.
+    /// </summary>
+    /// <param name="messageType">The message type that failed to publish</param>
+    /// <param name="messageId">The failed message ID</param>
+    /// <param name="error">The error message</param>
+    /// <param name="processingTime">The processing time before failure</param>
+    /// <param name="retryAttempts">Number of retry attempts made</param>
+    /// <param name="channelName">The MessagePipe channel name</param>
+    /// <param name="isRetriable">Whether this failure is retriable</param>
+    /// <param name="source">Source system or component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessagePipePublishFailedMessage instance</returns>
+    public static MessagePipePublishFailedMessage CreateFromFixedStrings(
+        Type messageType,
+        Guid messageId,
+        string error,
+        TimeSpan processingTime = default,
+        int retryAttempts = 0,
+        string channelName = null,
+        bool isRetriable = true,
+        FixedString64Bytes source = default,
+        Guid correlationId = default)
+    {
+        var finalCorrelationId = correlationId == default 
+            ? DeterministicIdGenerator.GenerateCorrelationId("MessagePipePublishFailed", null)
+            : correlationId;
+
+        return new MessagePipePublishFailedMessage
+        {
+            Id = DeterministicIdGenerator.GenerateMessageId("MessagePipePublishFailedMessage", "MessagingSystem", correlationId: null),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.MessagePipePublishFailedMessage,
+            Source = source.IsEmpty ? "MessagePipe" : source,
+            Priority = MessagePriority.High,
+            CorrelationId = finalCorrelationId,
+            MessageType = messageType ?? throw new ArgumentNullException(nameof(messageType)),
+            MessageId = messageId,
+            Error = error?.Length <= 512 ? error : error?[..512] ?? throw new ArgumentNullException(nameof(error)),
+            ProcessingTime = processingTime,
+            RetryAttempts = Math.Max(0, retryAttempts),
+            ChannelName = channelName?.Length <= 64 ? channelName : channelName?[..64] ?? "Default",
+            IsRetriable = isRetriable
+        };
+    }
+
+    /// <summary>
+    /// Creates a new instance of MessagePipePublishFailedMessage using string parameters.
     /// </summary>
     /// <param name="messageType">The message type that failed to publish</param>
     /// <param name="messageId">The failed message ID</param>
@@ -121,24 +163,20 @@ public readonly record struct MessagePipePublishFailedMessage : IMessage
         int retryAttempts = 0,
         string channelName = null,
         bool isRetriable = true,
-        FixedString64Bytes source = default,
+        string source = null,
         Guid correlationId = default)
     {
-        return new MessagePipePublishFailedMessage
-        {
-            Id = Guid.NewGuid(),
-            TimestampTicks = DateTime.UtcNow.Ticks,
-            TypeCode = MessageTypeCodes.MessagePipePublishFailedMessage,
-            Source = source.IsEmpty ? "MessagePipe" : source,
-            Priority = MessagePriority.High, // Publish failures are high priority
-            CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
-            MessageType = messageType ?? throw new ArgumentNullException(nameof(messageType)),
-            MessageId = messageId,
-            Error = error?.Length <= 256 ? error : error?[..256] ?? throw new ArgumentNullException(nameof(error)),
-            ProcessingTime = processingTime,
-            RetryAttempts = Math.Max(0, retryAttempts),
-            ChannelName = channelName?.Length <= 64 ? channelName : channelName?[..64] ?? "Default",
-            IsRetriable = isRetriable
-        };
+        return CreateFromFixedStrings(
+            messageType,
+            messageId,
+            error,
+            processingTime,
+            retryAttempts,
+            channelName,
+            isRetriable,
+            source?.Length <= 64 ? source : source?[..64] ?? "MessagePipe",
+            correlationId);
     }
+
+    #endregion
 }

@@ -97,6 +97,28 @@ namespace AhBearStudios.Core.Pooling
         PoolStatistics GetPoolStatistics<T>() where T : class, IPooledObject, new();
         
         /// <summary>
+        /// Gets a complete pool state snapshot for analysis and persistence.
+        /// Includes statistics, configuration, health status, and performance metrics.
+        /// </summary>
+        /// <typeparam name="T">Pool type to get snapshot for</typeparam>
+        /// <returns>Complete pool state snapshot or null if pool not found</returns>
+        UniTask<PoolStateSnapshot> GetPoolStateSnapshotAsync<T>() where T : class, IPooledObject, new();
+        
+        /// <summary>
+        /// Saves a pool state snapshot to persistent storage for recovery and analysis.
+        /// </summary>
+        /// <typeparam name="T">Pool type to save snapshot for</typeparam>
+        /// <returns>True if snapshot was saved successfully</returns>
+        UniTask<bool> SavePoolStateSnapshotAsync<T>() where T : class, IPooledObject, new();
+        
+        /// <summary>
+        /// Loads a previously saved pool state snapshot from persistent storage.
+        /// </summary>
+        /// <typeparam name="T">Pool type to load snapshot for</typeparam>
+        /// <returns>Loaded pool state snapshot or null if not found</returns>
+        UniTask<PoolStateSnapshot> LoadPoolStateSnapshotAsync<T>() where T : class, IPooledObject, new();
+        
+        /// <summary>
         /// Validates all pools and returns overall health status.
         /// </summary>
         /// <returns>True if all pools are healthy</returns>

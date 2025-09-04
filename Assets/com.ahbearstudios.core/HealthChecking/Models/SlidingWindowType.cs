@@ -1,17 +1,19 @@
-﻿namespace AhBearStudios.Core.HealthChecking.Models;
+namespace AhBearStudios.Core.HealthChecking.Models;
 
 /// <summary>
-/// Types of sliding windows for failure rate calculation
+/// Enumeration of sliding window types for circuit breaker failure rate calculation.
 /// </summary>
-public enum SlidingWindowType
+public enum SlidingWindowType : byte
 {
     /// <summary>
-    /// Count-based sliding window (tracks last N requests)
+    /// Window based on a fixed number of requests/calls.
+    /// The sliding window maintains a count of the most recent N requests.
     /// </summary>
-    CountBased,
+    CountBased = 0,
 
     /// <summary>
-    /// Time-based sliding window (tracks requests in last N time units)
+    /// Window based on a fixed time duration.
+    /// The sliding window maintains requests within the last N time units.
     /// </summary>
-    TimeBased
+    TimeBased = 1
 }

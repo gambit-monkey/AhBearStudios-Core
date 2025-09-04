@@ -1,21 +1,26 @@
-﻿using System.Collections.Concurrent;
+using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
+using Unity.Collections;
+using ZLinq;
+using Cysharp.Threading.Tasks;
+using Unity.Profiling;
 using AhBearStudios.Core.HealthChecking.Checks;
 using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.HealthChecking.Models;
+using AhBearStudios.Core.HealthChecking.Services;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.Profiling;
-using Unity.Collections;
+using AhBearStudios.Core.Messaging;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.HealthChecking
 {
     /// <summary>
-    /// Production-ready health check service providing comprehensive system health monitoring,
-    /// circuit breaker protection, and graceful degradation capabilities.
+    /// Production-ready health check service providing comprehensive system health monitoring.
+    /// Orchestrates specialized services for scheduling, degradation management, statistics, and circuit breakers.
     /// </summary>
     public sealed class HealthCheckService : IHealthCheckService, IDisposable
     {
@@ -23,60 +28,86 @@ namespace AhBearStudios.Core.HealthChecking
         private readonly ILoggingService _logger;
         private readonly IAlertService _alertService;
         private readonly IProfilerService _profilerService;
+        private readonly IMessageBusService _messageBus;
         
-        // Thread-safe collections for health checks and circuit breakers
+        // Specialized service dependencies
+        private readonly IHealthCheckScheduler _scheduler;
+        private readonly IHealthDegradationManager _degradationManager;
+        private readonly IHealthStatisticsCollector _statisticsCollector;
+        private readonly IHealthCircuitBreakerManager _circuitBreakerManager;
+        
+        // Core health check management
         private readonly ConcurrentDictionary<FixedString64Bytes, IHealthCheck> _healthChecks = new();
         private readonly ConcurrentDictionary<FixedString64Bytes, HealthCheckConfiguration> _healthCheckConfigs = new();
-        private readonly ConcurrentDictionary<FixedString64Bytes, ICircuitBreaker> _circuitBreakers = new();
-        private readonly ConcurrentDictionary<FixedString64Bytes, List<HealthCheckResult>> _healthCheckHistory = new();
         private readonly ConcurrentDictionary<FixedString64Bytes, bool> _healthCheckEnabledStatus = new();
         
+        // Profiler markers
+        private readonly ProfilerMarker _executeHealthCheckMarker = new("HealthCheckService.ExecuteHealthCheck");
+        private readonly ProfilerMarker _executeAllHealthChecksMarker = new("HealthCheckService.ExecuteAllHealthChecks");
+        
         // State management
+        private readonly Guid _serviceId;
         private readonly object _stateLock = new();
-        private Timer _automaticCheckTimer;
         private HealthStatus _lastOverallStatus = HealthStatus.Unknown;
-        private DegradationLevel _currentDegradationLevel = DegradationLevel.None;
         private readonly CancellationTokenSource _cancellationTokenSource = new();
+        private readonly DateTime _serviceStartTime = DateTime.UtcNow;
         private bool _disposed;
-
-        // Statistics tracking
-        private long _totalHealthChecks;
-        private long _successfulHealthChecks;
-        private long _failedHealthChecks;
-        private DateTime _serviceStartTime = DateTime.UtcNow;
 
         public event EventHandler<HealthStatusChangedEventArgs> HealthStatusChanged;
         public event EventHandler<CircuitBreakerStateChangedEventArgs> CircuitBreakerStateChanged;
         public event EventHandler<DegradationStatusChangedEventArgs> DegradationStatusChanged;
 
         /// <summary>
-        /// Initializes a new instance of the HealthCheckService
+        /// Initializes a new instance of the HealthCheckService with specialized service dependencies.
         /// </summary>
+        /// <param name="config">Health check service configuration</param>
+        /// <param name="logger">Logging service</param>
+        /// <param name="alertService">Alert service</param>
+        /// <param name="messageBus">Message bus service</param>
+        /// <param name="scheduler">Health check scheduler service</param>
+        /// <param name="degradationManager">Degradation management service</param>
+        /// <param name="statisticsCollector">Statistics collection service</param>
+        /// <param name="circuitBreakerManager">Circuit breaker management service</param>
+        /// <param name="profilerService">Profiler service (optional)</param>
         public HealthCheckService(
             HealthCheckServiceConfig config,
             ILoggingService logger,
             IAlertService alertService,
+            IMessageBusService messageBus,
+            IHealthCheckScheduler scheduler,
+            IHealthDegradationManager degradationManager,
+            IHealthStatisticsCollector statisticsCollector,
+            IHealthCircuitBreakerManager circuitBreakerManager,
             IProfilerService profilerService = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _alertService = alertService ?? throw new ArgumentNullException(nameof(alertService));
+            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+            _scheduler = scheduler ?? throw new ArgumentNullException(nameof(scheduler));
+            _degradationManager = degradationManager ?? throw new ArgumentNullException(nameof(degradationManager));
+            _statisticsCollector = statisticsCollector ?? throw new ArgumentNullException(nameof(statisticsCollector));
+            _circuitBreakerManager = circuitBreakerManager ?? throw new ArgumentNullException(nameof(circuitBreakerManager));
             _profilerService = profilerService;
 
             // Validate configuration
             _config.Validate();
 
-            _logger.LogInfo("HealthCheckService initialized with configuration", new Dictionary<string, object>
-            {
-                ["AutomaticCheckInterval"] = _config.AutomaticCheckInterval,
-                ["MaxHistorySize"] = _config.MaxHistorySize,
-                ["EnableCircuitBreaker"] = _config.EnableCircuitBreaker,
-                ["DefaultTimeout"] = _config.DefaultTimeout
-            });
+            _serviceId = DeterministicIdGenerator.GenerateHealthCheckId("HealthCheckService", Environment.MachineName);
+
+            // Wire up event handlers
+            _circuitBreakerManager.StateChanged += OnCircuitBreakerStateChanged;
+            _degradationManager.DegradationLevelChanged += OnDegradationLevelChanged;
+
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("HealthCheckServiceInit", _serviceId.ToString());
+            _logger.LogInfo("HealthCheckService initialized with specialized services", correlationId);
+            
+            // Initialize scheduler to execute our health checks
+            InitializeScheduler();
         }
 
         /// <summary>
-        /// Registers a health check with the service
+        /// Registers a health check with the service and all specialized services.
         /// </summary>
         public void RegisterHealthCheck(IHealthCheck healthCheck, HealthCheckConfiguration config = null)
         {
@@ -89,7 +120,7 @@ namespace AhBearStudios.Core.HealthChecking
             if (_healthChecks.ContainsKey(name))
                 throw new InvalidOperationException($"Health check with name '{name}' is already registered");
 
-            // Use provided configSo or create default
+            // Use provided config or create default
             var healthCheckConfig = config ?? new HealthCheckConfiguration
             {
                 Name = name,
@@ -100,27 +131,21 @@ namespace AhBearStudios.Core.HealthChecking
                 RetryDelay = _config.RetryDelay
             };
 
-            // Create circuit breaker if enabled
+            // Register circuit breaker if enabled
             if (healthCheckConfig.EnableCircuitBreaker)
             {
-                var circuitBreakerConfig = new CircuitBreakerConfig
-                {
-                    FailureThreshold = healthCheckConfig.FailureThreshold,
-                    Timeout = healthCheckConfig.Timeout,
-                    SamplingDuration = TimeSpan.FromMinutes(5),
-                    MinimumThroughput = 5
-                };
-
-                var circuitBreaker = new CircuitBreaker(name, circuitBreakerConfig, _logger);
-                circuitBreaker.StateChanged += OnCircuitBreakerStateChanged;
-                _circuitBreakers.TryAdd(name, circuitBreaker);
+                _circuitBreakerManager.RegisterCircuitBreaker(
+                    name,
+                    healthCheckConfig.FailureThreshold,
+                    healthCheckConfig.Timeout,
+                    1 // halfOpenTestCount
+                );
             }
 
             // Register the health check
             _healthChecks.TryAdd(name, healthCheck);
             _healthCheckConfigs.TryAdd(name, healthCheckConfig);
             _healthCheckEnabledStatus.TryAdd(name, true);
-            _healthCheckHistory.TryAdd(name, new List<HealthCheckResult>());
 
             // Configure the health check if it supports configuration
             if (healthCheck is IConfigurableHealthCheck configurableHealthCheck)
@@ -128,12 +153,8 @@ namespace AhBearStudios.Core.HealthChecking
                 configurableHealthCheck.Configure(healthCheckConfig);
             }
 
-            _logger.LogInfo($"Health check '{name}' registered successfully", new Dictionary<string, object>
-            {
-                ["Category"] = healthCheck.Category,
-                ["Timeout"] = healthCheckConfig.Timeout,
-                ["CircuitBreakerEnabled"] = healthCheckConfig.EnableCircuitBreaker
-            });
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("HealthCheckRegistered", name.ToString());
+            _logger.LogInfo($"Health check '{name}' registered successfully", correlationId);
         }
 
         /// <summary>
@@ -151,7 +172,7 @@ namespace AhBearStudios.Core.HealthChecking
         }
 
         /// <summary>
-        /// Unregisters a health check from the service
+        /// Unregisters a health check from the service and all specialized services.
         /// </summary>
         public bool UnregisterHealthCheck(FixedString64Bytes name)
         {
@@ -162,19 +183,12 @@ namespace AhBearStudios.Core.HealthChecking
             {
                 _healthCheckConfigs.TryRemove(name, out _);
                 _healthCheckEnabledStatus.TryRemove(name, out _);
-                _healthCheckHistory.TryRemove(name, out _);
 
-                // Dispose circuit breaker if it exists
-                if (_circuitBreakers.TryRemove(name, out var circuitBreaker))
-                {
-                    circuitBreaker.StateChanged -= OnCircuitBreakerStateChanged;
-                    if (circuitBreaker is IDisposable disposable)
-                    {
-                        disposable.Dispose();
-                    }
-                }
+                // Unregister from circuit breaker manager
+                _circuitBreakerManager.UnregisterCircuitBreaker(name);
 
-                _logger.LogInfo($"Health check '{name}' unregistered successfully");
+                var correlationId = DeterministicIdGenerator.GenerateCorrelationId("HealthCheckUnregistered", name.ToString());
+                _logger.LogInfo($"Health check '{name}' unregistered successfully", correlationId);
             }
 
             return removed;
@@ -183,7 +197,7 @@ namespace AhBearStudios.Core.HealthChecking
         /// <summary>
         /// Executes a specific health check by name
         /// </summary>
-        public async Task<HealthCheckResult> ExecuteHealthCheckAsync(FixedString64Bytes name, CancellationToken cancellationToken = default)
+        public async UniTask<HealthCheckResult> ExecuteHealthCheckAsync(FixedString64Bytes name, CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
 
@@ -192,102 +206,116 @@ namespace AhBearStudios.Core.HealthChecking
 
             if (!_healthCheckEnabledStatus.TryGetValue(name, out var isEnabled) || !isEnabled)
             {
-                return new HealthCheckResult(
-                    name,
-                    HealthStatus.Unknown,
-                    "Health check is disabled",
-                    TimeSpan.Zero,
-                    new Dictionary<string, object> { ["Enabled"] = false },
-                    GenerateCorrelationId()
-                );
+                var correlationId = DeterministicIdGenerator.GenerateCorrelationId("DisabledHealthCheck", name.ToString());
+                return new HealthCheckResult
+                {
+                    Name = name,
+                    Status = HealthStatus.Unknown,
+                    Description = "Health check is disabled",
+                    Duration = TimeSpan.Zero,
+                    Data = new Dictionary<string, object> { ["Enabled"] = false }.AsReadOnly(),
+                    CorrelationId = correlationId,
+                    Timestamp = DateTime.UtcNow
+                };
             }
 
             using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token);
             
-            // Execute with circuit breaker protection if available
-            if (_circuitBreakers.TryGetValue(name, out var circuitBreaker))
+            // Check circuit breaker status
+            if (!_circuitBreakerManager.IsExecutionAllowed(name))
             {
-                try
+                var correlationId = DeterministicIdGenerator.GenerateCorrelationId("CircuitBreakerOpen", name.ToString());
+                return new HealthCheckResult
                 {
-                    return await circuitBreaker.ExecuteAsync(async ct => 
-                        await ExecuteHealthCheckInternalAsync(healthCheck, ct), combinedCts.Token);
-                }
-                catch (CircuitBreakerOpenException)
-                {
-                    return CreateCircuitBreakerFallbackResult(name, TimeSpan.Zero);
-                }
+                    Name = name,
+                    Status = HealthStatus.Unhealthy,
+                    Description = "Circuit breaker is open - execution blocked",
+                    Duration = TimeSpan.Zero,
+                    Data = new Dictionary<string, object> { ["CircuitBreakerOpen"] = true }.AsReadOnly(),
+                    CorrelationId = correlationId,
+                    Timestamp = DateTime.UtcNow
+                };
             }
 
-            return await ExecuteHealthCheckInternalAsync(healthCheck, combinedCts.Token);
+            using (_executeHealthCheckMarker.Auto())
+            {
+                var result = await ExecuteHealthCheckInternalAsync(healthCheck, combinedCts.Token);
+                
+                // Record result in circuit breaker and statistics
+                _circuitBreakerManager.RecordHealthCheckResult(result);
+                _statisticsCollector.RecordHealthCheckExecution(result);
+                
+                return result;
+            }
         }
 
         /// <summary>
         /// Executes all registered health checks
         /// </summary>
-        public async Task<HealthReport> ExecuteAllHealthChecksAsync(CancellationToken cancellationToken = default)
+        public async UniTask<HealthReport> ExecuteAllHealthChecksAsync(CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
 
             var startTime = DateTime.UtcNow;
-            var results = new List<HealthCheckResult>();
-            var correlationId = GenerateCorrelationId();
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("ExecuteAllHealthChecks", _serviceId.ToString());
 
             using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token);
+            var results = new List<HealthCheckResult>();
 
-            // Execute all health checks in parallel with limited concurrency
-            var semaphore = new SemaphoreSlim(_config.MaxConcurrentHealthChecks, _config.MaxConcurrentHealthChecks);
-            var tasks = _healthChecks.Keys.Select(async name =>
+            using (_executeAllHealthChecksMarker.Auto())
             {
-                await semaphore.WaitAsync(combinedCts.Token);
+                // Execute all health checks in parallel with limited concurrency
+                var semaphore = new SemaphoreSlim(_config.MaxConcurrentHealthChecks, _config.MaxConcurrentHealthChecks);
+                var tasks = _healthChecks.Keys.AsValueEnumerable().Select(async name =>
+                {
+                    await semaphore.WaitAsync(combinedCts.Token);
+                    try
+                    {
+                        return await ExecuteHealthCheckAsync(name, combinedCts.Token);
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                }).ToArray();
+
                 try
                 {
-                    return await ExecuteHealthCheckAsync(name, combinedCts.Token);
+                    var allResults = await UniTask.WhenAll(tasks);
+                    results.AddRange(allResults);
                 }
-                finally
+                catch (Exception ex)
                 {
-                    semaphore.Release();
+                    _logger.LogException(ex, "Error executing health checks", correlationId);
+                    throw;
                 }
-            });
-
-            try
-            {
-                var allResults = await Task.WhenAll(tasks);
-                results.AddRange(allResults);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError("Error executing health checks", ex);
-                throw;
             }
 
             var duration = DateTime.UtcNow - startTime;
             var overallStatus = DetermineOverallStatus(results);
             
-            // Update degradation level based on results
-            UpdateDegradationLevel(results);
-
             // Create comprehensive report
-            var report = new HealthReport(
-                overallStatus,
-                results,
-                duration,
-                correlationId,
-                new Dictionary<string, object>
+            var report = new HealthReport
+            {
+                Status = overallStatus,
+                Results = results.AsReadOnly(),
+                Duration = duration,
+                CorrelationId = correlationId,
+                Timestamp = startTime,
+                Data = new Dictionary<string, object>
                 {
                     ["ExecutionTime"] = startTime,
                     ["TotalChecks"] = results.Count,
-                    ["SuccessfulChecks"] = results.Count(r => r.Status == HealthStatus.Healthy),
-                    ["WarningChecks"] = results.Count(r => r.Status == HealthStatus.Warning),
-                    ["UnhealthyChecks"] = results.Count(r => r.Status == HealthStatus.Unhealthy),
-                    ["DegradationLevel"] = _currentDegradationLevel
-                }
-            );
+                    ["SuccessfulChecks"] = results.AsValueEnumerable().Count(r => r.Status == HealthStatus.Healthy),
+                    ["WarningChecks"] = results.AsValueEnumerable().Count(r => r.Status == HealthStatus.Warning),
+                    ["UnhealthyChecks"] = results.AsValueEnumerable().Count(r => r.Status == HealthStatus.Unhealthy),
+                    ["DegradationLevel"] = _degradationManager.CurrentLevel
+                }.AsReadOnly()
+            };
 
-            // Store results in history
-            foreach (var result in results)
-            {
-                StoreHealthCheckResult(result.Name, result);
-            }
+            // Record health report in statistics and evaluate degradation
+            _statisticsCollector.RecordHealthReport(report);
+            _degradationManager.EvaluateAndUpdateDegradationLevel(report, "Scheduled health check execution");
 
             // Raise health status changed event if needed
             if (overallStatus != _lastOverallStatus)
@@ -302,7 +330,7 @@ namespace AhBearStudios.Core.HealthChecking
         /// <summary>
         /// Gets the overall health status of the system
         /// </summary>
-        public async Task<HealthStatus> GetOverallHealthStatusAsync(CancellationToken cancellationToken = default)
+        public async UniTask<HealthStatus> GetOverallHealthStatusAsync(CancellationToken cancellationToken = default)
         {
             var report = await ExecuteAllHealthChecksAsync(cancellationToken);
             return report.Status;
@@ -313,84 +341,69 @@ namespace AhBearStudios.Core.HealthChecking
         /// </summary>
         public DegradationLevel GetCurrentDegradationLevel()
         {
-            return _currentDegradationLevel;
+            return _degradationManager.CurrentLevel;
         }
 
         /// <summary>
         /// Gets circuit breaker state for a specific operation
         /// </summary>
-        public CircuitBreakerState GetCircuitBreakerState(FixedString64Bytes operationName)
+        public CircuitBreakerState? GetCircuitBreakerState(FixedString64Bytes operationName)
         {
-            return _circuitBreakers.TryGetValue(operationName, out var circuitBreaker) 
-                ? circuitBreaker.State 
-                : CircuitBreakerState.Closed;
+            return _circuitBreakerManager.GetCircuitBreakerState(operationName);
         }
 
         /// <summary>
         /// Gets all circuit breaker states
         /// </summary>
-        public Dictionary<FixedString64Bytes, CircuitBreakerState> GetAllCircuitBreakerStates()
+        public IReadOnlyDictionary<FixedString64Bytes, CircuitBreakerStatistics> GetAllCircuitBreakerStatistics()
         {
-            return _circuitBreakers.ToDictionary(kvp => kvp.Key, kvp => kvp.Value.State);
+            return _circuitBreakerManager.GetAllCircuitBreakerStatistics();
         }
 
         /// <summary>
-        /// Gets health check history for a specific check
+        /// Gets health check statistics for a specific check
         /// </summary>
-        public List<HealthCheckResult> GetHealthCheckHistory(FixedString64Bytes name, int maxResults = 100)
+        public IndividualHealthCheckStatistics GetHealthCheckStatistics(FixedString64Bytes name)
         {
-            if (!_healthCheckHistory.TryGetValue(name, out var history))
-                return new List<HealthCheckResult>();
-
-            lock (history)
-            {
-                return history.TakeLast(maxResults).ToList();
-            }
+            return _statisticsCollector.GetHealthCheckStatistics(name);
         }
 
         /// <summary>
         /// Gets names of all registered health checks
         /// </summary>
-        public List<FixedString64Bytes> GetRegisteredHealthCheckNames()
+        public IEnumerable<FixedString64Bytes> GetRegisteredHealthCheckNames()
         {
-            return _healthChecks.Keys.ToList();
+            return _healthChecks.Keys;
         }
 
         /// <summary>
         /// Gets metadata for a specific health check
         /// </summary>
-        public Dictionary<string, object> GetHealthCheckMetadata(FixedString64Bytes name)
+        public IReadOnlyDictionary<string, object> GetHealthCheckMetadata(FixedString64Bytes name)
         {
             if (!_healthChecks.TryGetValue(name, out var healthCheck))
-                return new Dictionary<string, object>();
+                return new Dictionary<string, object>().AsReadOnly();
 
             return healthCheck.GetMetadata();
         }
 
         /// <summary>
-        /// Starts automatic health check execution
+        /// Starts automatic health check execution using the scheduler service.
         /// </summary>
-        public void StartAutomaticChecks()
+        public async UniTask StartAutomaticChecksAsync(CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
 
-            lock (_stateLock)
-            {
-                if (_automaticCheckTimer != null)
-                    return;
-
-                _automaticCheckTimer = new Timer(ExecuteAutomaticChecks, null, TimeSpan.Zero, _config.AutomaticCheckInterval);
-                _logger.LogInfo("Automatic health checks started", new Dictionary<string, object>
-                {
-                    ["Interval"] = _config.AutomaticCheckInterval
-                });
-            }
+            await _scheduler.StartAsync(_config.AutomaticCheckInterval, cancellationToken);
+            
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AutomaticChecksStarted", _serviceId.ToString());
+            _logger.LogInfo($"Automatic health checks started with interval {_config.AutomaticCheckInterval}", correlationId);
         }
 
         /// <summary>
-        /// Stops automatic health check execution
+        /// Stops automatic health check execution using the scheduler service.
         /// </summary>
-        public void StopAutomaticChecks()
+        public async UniTask StopAutomaticChecksAsync(CancellationToken cancellationToken = default)
         {
             lock (_stateLock)
             {
@@ -405,10 +418,7 @@ namespace AhBearStudios.Core.HealthChecking
         /// </summary>
         public bool IsAutomaticChecksRunning()
         {
-            lock (_stateLock)
-            {
-                return _automaticCheckTimer != null;
-            }
+            return _scheduler.IsRunning;
         }
 
         /// <summary>
@@ -416,10 +426,7 @@ namespace AhBearStudios.Core.HealthChecking
         /// </summary>
         public void ForceCircuitBreakerOpen(FixedString64Bytes operationName, string reason)
         {
-            if (_circuitBreakers.TryGetValue(operationName, out var circuitBreaker))
-            {
-                circuitBreaker.Open(reason);
-            }
+            _circuitBreakerManager.SetCircuitBreakerState(operationName, CircuitBreakerState.Open, reason ?? "Manually forced open");
         }
 
         /// <summary>
@@ -427,10 +434,7 @@ namespace AhBearStudios.Core.HealthChecking
         /// </summary>
         public void ForceCircuitBreakerClosed(FixedString64Bytes operationName, string reason)
         {
-            if (_circuitBreakers.TryGetValue(operationName, out var circuitBreaker))
-            {
-                circuitBreaker.Close(reason);
-            }
+            _circuitBreakerManager.SetCircuitBreakerState(operationName, CircuitBreakerState.Closed, reason ?? "Manually forced closed");
         }
 
         /// <summary>
@@ -438,9 +442,7 @@ namespace AhBearStudios.Core.HealthChecking
         /// </summary>
         public void SetDegradationLevel(DegradationLevel level, string reason)
         {
-            var oldLevel = _currentDegradationLevel;
-            _currentDegradationLevel = level;
-            OnDegradationStatusChanged(oldLevel, level, reason);
+            _degradationManager.SetDegradationLevel(level, reason ?? "Manual degradation level change");
         }
 
         /// <summary>
@@ -448,23 +450,7 @@ namespace AhBearStudios.Core.HealthChecking
         /// </summary>
         public HealthStatistics GetHealthStatistics()
         {
-            var uptime = DateTime.UtcNow - _serviceStartTime;
-            var circuitBreakerStats = _circuitBreakers.ToDictionary(
-                kvp => kvp.Key, 
-                kvp => kvp.Value.GetStatistics()
-            );
-
-            return new HealthStatistics
-            {
-                ServiceUptime = uptime,
-                TotalHealthChecks = _totalHealthChecks,
-                SuccessfulHealthChecks = _successfulHealthChecks,
-                FailedHealthChecks = _failedHealthChecks,
-                RegisteredHealthCheckCount = _healthChecks.Count,
-                CurrentDegradationLevel = _currentDegradationLevel,
-                CircuitBreakerStatistics = circuitBreakerStats,
-                LastOverallStatus = _lastOverallStatus
-            };
+            return _statisticsCollector.GetHealthStatistics();
         }
 
         /// <summary>
@@ -483,45 +469,44 @@ namespace AhBearStudios.Core.HealthChecking
             if (_healthCheckEnabledStatus.ContainsKey(name))
             {
                 _healthCheckEnabledStatus[name] = enabled;
-                _logger.LogInfo($"Health check '{name}' {(enabled ? "enabled" : "disabled")}");
+                var correlationId = DeterministicIdGenerator.GenerateCorrelationId("HealthCheckToggled", name.ToString());
+                _logger.LogInfo($"Health check '{name}' {(enabled ? "enabled" : "disabled")}", correlationId);
             }
         }
 
         #region Private Methods
 
-        private async void ExecuteAutomaticChecks(object state)
+        private void InitializeScheduler()
+        {
+            // The scheduler will be configured to execute health checks through our ExecuteScheduledHealthChecksAsync method
+            // This is handled by the HealthCheckServiceFactory when creating the scheduler
+        }
+
+        private async UniTask ExecuteScheduledHealthChecksAsync(CancellationToken cancellationToken)
         {
             try
             {
-                await ExecuteAllHealthChecksAsync(_cancellationTokenSource.Token);
+                await ExecuteAllHealthChecksAsync(cancellationToken);
             }
             catch (Exception ex)
             {
-                _logger.LogError("Error during automatic health check execution", ex);
+                var correlationId = DeterministicIdGenerator.GenerateCorrelationId("ScheduledHealthCheckError", _serviceId.ToString());
+                _logger.LogException(ex, "Error during scheduled health check execution", correlationId);
             }
         }
 
-        private async Task<HealthCheckResult> ExecuteHealthCheckInternalAsync(IHealthCheck healthCheck, CancellationToken cancellationToken)
+        private async UniTask<HealthCheckResult> ExecuteHealthCheckInternalAsync(IHealthCheck healthCheck, CancellationToken cancellationToken)
         {
             var startTime = DateTime.UtcNow;
-            var correlationId = GenerateCorrelationId();
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("HealthCheckExecution", healthCheck.Name.ToString());
 
             try
             {
-                Interlocked.Increment(ref _totalHealthChecks);
-
                 using var profilerSession = _profilerService?.StartSession($"HealthCheck.{healthCheck.Name}");
                 
                 var result = await healthCheck.CheckHealthAsync(cancellationToken);
-                
-                if (result.Status == HealthStatus.Healthy)
-                {
-                    Interlocked.Increment(ref _successfulHealthChecks);
-                }
-                else
-                {
-                    Interlocked.Increment(ref _failedHealthChecks);
-                }
+                result.CorrelationId = correlationId; // Ensure correlation ID is set
+                result.Timestamp = startTime;
 
                 LogHealthCheckResult(healthCheck, result);
                 RaiseHealthAlert(healthCheck, result);
@@ -530,21 +515,22 @@ namespace AhBearStudios.Core.HealthChecking
             }
             catch (Exception ex)
             {
-                Interlocked.Increment(ref _failedHealthChecks);
                 var duration = DateTime.UtcNow - startTime;
                 
-                var result = new HealthCheckResult(
-                    healthCheck.Name,
-                    HealthStatus.Unhealthy,
-                    $"Health check failed: {ex.Message}",
-                    duration,
-                    new Dictionary<string, object>
+                var result = new HealthCheckResult
+                {
+                    Name = healthCheck.Name,
+                    Status = HealthStatus.Unhealthy,
+                    Description = $"Health check failed: {ex.Message}",
+                    Duration = duration,
+                    Data = new Dictionary<string, object>
                     {
                         ["Exception"] = ex.GetType().Name,
                         ["ExceptionMessage"] = ex.Message
-                    },
-                    correlationId
-                );
+                    }.AsReadOnly(),
+                    CorrelationId = correlationId,
+                    Timestamp = startTime
+                };
 
                 LogHealthCheckResult(healthCheck, result);
                 RaiseHealthAlert(healthCheck, result);
@@ -553,20 +539,6 @@ namespace AhBearStudios.Core.HealthChecking
             }
         }
 
-        private void StoreHealthCheckResult(FixedString64Bytes name, HealthCheckResult result)
-        {
-            if (_healthCheckHistory.TryGetValue(name, out var history))
-            {
-                lock (history)
-                {
-                    history.Add(result);
-                    if (history.Count > _config.MaxHistorySize)
-                    {
-                        history.RemoveAt(0);
-                    }
-                }
-            }
-        }
 
         private void LogHealthCheckResult(IHealthCheck healthCheck, HealthCheckResult result)
         {
@@ -694,7 +666,7 @@ namespace AhBearStudios.Core.HealthChecking
 
         private FixedString64Bytes GenerateCorrelationId()
         {
-            return $"hc_{DateTime.UtcNow:yyyyMMddHHmmss}_{Guid.NewGuid().ToString("N")[..8]}";
+            return $"hc_{DateTime.UtcNow:yyyyMMddHHmmss}_{DeterministicIdGenerator.GenerateHealthCheckCorrelationId("HealthCheckService").ToString("N")[..8]}";
         }
 
         private void ThrowIfDisposed()

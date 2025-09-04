@@ -2,6 +2,7 @@ using System;
 using Unity.Collections;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.Pooling.Messages
 {
@@ -10,6 +11,7 @@ namespace AhBearStudios.Core.Pooling.Messages
     /// </summary>
     public readonly record struct PoolExpansionMessage : IMessage
     {
+        #region IMessage Implementation
         /// <summary>
         /// Gets the unique identifier for this message instance.
         /// </summary>
@@ -23,7 +25,7 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.PoolExpansionMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -39,6 +41,10 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// Gets optional correlation ID for message tracing across systems.
         /// </summary>
         public Guid CorrelationId { get; init; }
+
+        #endregion
+
+        #region Message-Specific Properties
 
         // Pooling-specific properties
         /// <summary>
@@ -61,26 +67,59 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// </summary>
         public FixedString512Bytes Reason { get; init; }
 
-        /// <summary>
-        /// Initializes a new instance of the PoolExpansionMessage struct.
-        /// </summary>
-        public PoolExpansionMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-            StrategyName = default;
-            OldSize = default;
-            NewSize = default;
-            Reason = default;
-        }
+        #endregion
+
+        #region Computed Properties
 
         /// <summary>
         /// Gets the timestamp when the expansion occurred.
         /// </summary>
         public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
+
+        #endregion
+
+        #region Static Factory Methods
+
+        /// <summary>
+        /// Creates a new PoolExpansionMessage with proper validation and defaults.
+        /// </summary>
+        /// <param name="strategyName">Strategy that triggered the expansion</param>
+        /// <param name="oldSize">Previous pool size</param>
+        /// <param name="newSize">New pool size after expansion</param>
+        /// <param name="reason">Reason for the expansion</param>
+        /// <param name="correlationId">Optional correlation ID</param>
+        /// <param name="source">Source component</param>
+        /// <returns>New PoolExpansionMessage instance</returns>
+        public static PoolExpansionMessage CreateFromFixedStrings(
+            FixedString64Bytes strategyName,
+            int oldSize,
+            int newSize,
+            FixedString512Bytes reason,
+            Guid correlationId = default,
+            FixedString64Bytes source = default)
+        {
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "PoolingService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("PoolExpansionMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("PoolExpansion", strategyName.ToString())
+                : correlationId;
+            
+            return new PoolExpansionMessage
+            {
+                Id = messageId,
+                TimestampTicks = DateTime.UtcNow.Ticks,
+                TypeCode = MessageTypeCodes.PoolExpansionMessage,
+                Source = source.IsEmpty ? "PoolingService" : source,
+                Priority = MessagePriority.Normal,
+                CorrelationId = finalCorrelationId,
+                
+                StrategyName = strategyName,
+                OldSize = oldSize,
+                NewSize = newSize,
+                Reason = reason
+            };
+        }
 
         /// <summary>
         /// Creates a new PoolExpansionMessage with the specified details.
@@ -89,30 +128,26 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// <param name="oldSize">Previous pool size</param>
         /// <param name="newSize">New pool size after expansion</param>
         /// <param name="reason">Reason for the expansion</param>
-        /// <param name="source">Source component</param>
         /// <param name="correlationId">Optional correlation ID</param>
+        /// <param name="source">Source component</param>
         /// <returns>New PoolExpansionMessage instance</returns>
         public static PoolExpansionMessage Create(
             string strategyName,
             int oldSize,
             int newSize,
             string reason,
-            FixedString64Bytes source = default,
-            Guid correlationId = default)
+            Guid correlationId = default,
+            string source = null)
         {
-            return new PoolExpansionMessage
-            {
-                Id = Guid.NewGuid(),
-                TimestampTicks = DateTime.UtcNow.Ticks,
-                TypeCode = MessageTypeCodes.PoolExpansionMessage,
-                Source = source.IsEmpty ? "PoolingService" : source,
-                Priority = MessagePriority.Normal,
-                CorrelationId = correlationId,
-                StrategyName = strategyName?.Length <= 64 ? strategyName : strategyName?[..64] ?? "Unknown",
-                OldSize = oldSize,
-                NewSize = newSize,
-                Reason = reason?.Length <= 512 ? reason : reason?[..512] ?? "Unknown"
-            };
+            return CreateFromFixedStrings(
+                new FixedString64Bytes(strategyName?.Length <= 64 ? strategyName : strategyName?[..64] ?? "Unknown"),
+                oldSize,
+                newSize,
+                new FixedString512Bytes(reason?.Length <= 512 ? reason : reason?[..512] ?? "Unknown"),
+                correlationId,
+                new FixedString64Bytes(source ?? "PoolingService"));
         }
+
+        #endregion
     }
 }

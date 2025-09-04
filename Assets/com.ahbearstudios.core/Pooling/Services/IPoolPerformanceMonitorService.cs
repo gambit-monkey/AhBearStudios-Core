@@ -95,8 +95,8 @@ namespace AhBearStudios.Core.Pooling.Services
         /// <summary>
         /// Gets pools that are currently violating performance budgets.
         /// </summary>
-        /// <returns>List of pool type names with performance issues</returns>
-        List<string> GetPoolsWithPerformanceIssues();
+        /// <returns>Array of pool type names with performance issues</returns>
+        string[] GetPoolsWithPerformanceIssues();
         
         #endregion
         

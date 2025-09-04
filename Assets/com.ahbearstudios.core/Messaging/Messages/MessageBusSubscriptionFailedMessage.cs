@@ -1,172 +1,188 @@
-using Unity.Collections;
+using System;
+using AhBearStudios.Core.Common.Utilities;
+using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
+using Unity.Collections;
 
 namespace AhBearStudios.Core.Messaging.Messages;
 
 /// <summary>
 /// Message published when a subscription fails to process a message.
-/// Provides error information and failure diagnostics for monitoring and alerting.
+/// Provides error information and failure diagnostics for monitoring.
 /// </summary>
-public record struct MessageBusSubscriptionFailedMessage : IMessage
+public readonly record struct MessageBusSubscriptionFailedMessage : IMessage
 {
+    #region IMessage Implementation
+
     /// <summary>
-    /// Gets the unique identifier for this message.
+    /// Gets the unique identifier for this message instance.
     /// </summary>
     public Guid Id { get; init; }
 
     /// <summary>
-    /// Gets the timestamp when the message was created (in ticks).
+    /// Gets the timestamp when this message was created, in UTC ticks.
     /// </summary>
     public long TimestampTicks { get; init; }
 
     /// <summary>
-    /// Gets the message type code for routing and identification.
+    /// Gets the message type code for efficient routing and filtering.
     /// </summary>
     public ushort TypeCode { get; init; }
 
     /// <summary>
-    /// Gets the source system that generated this message.
+    /// Gets the source system or component that created this message.
     /// </summary>
     public FixedString64Bytes Source { get; init; }
 
     /// <summary>
-    /// Gets the message priority level.
+    /// Gets the priority level for message processing.
     /// </summary>
     public MessagePriority Priority { get; init; }
 
     /// <summary>
-    /// Gets the correlation identifier for message tracking.
+    /// Gets optional correlation ID for message tracing across systems.
     /// </summary>
     public Guid CorrelationId { get; init; }
 
+    #endregion
+
+    #region Message-Specific Properties
+
     /// <summary>
-    /// Gets the subscription identifier that failed to process the message.
+    /// Gets the subscription ID that failed to process the message.
     /// </summary>
     public Guid SubscriptionId { get; init; }
 
     /// <summary>
-    /// Gets the identifier of the original message that failed processing.
+    /// Gets the message type that failed to be processed.
     /// </summary>
-    public Guid FailedMessageId { get; init; }
+    public Type MessageType { get; init; }
 
     /// <summary>
-    /// Gets the type code of the original message that failed processing.
+    /// Gets the timestamp when the failure occurred.
     /// </summary>
-    public ushort FailedMessageTypeCode { get; init; }
+    public DateTime FailedAt { get; init; }
 
     /// <summary>
-    /// Gets the error message describing the failure.
+    /// Gets the subscriber name that failed to process the message.
     /// </summary>
-    public string ErrorMessage { get; init; }
+    public FixedString64Bytes SubscriberName { get; init; }
 
     /// <summary>
-    /// Gets the exception type name that caused the failure.
+    /// Gets the exception that caused the failure.
     /// </summary>
-    public FixedString64Bytes ExceptionTypeName { get; init; }
+    public Exception Exception { get; init; }
 
     /// <summary>
-    /// Gets the processing time before failure occurred (in milliseconds).
+    /// Gets the number of retry attempts made.
     /// </summary>
-    public double ProcessingTimeMs { get; init; }
+    public int RetryAttempts { get; init; }
 
     /// <summary>
-    /// Gets the name of the message type that failed processing.
+    /// Gets whether this is the final failure (no more retries).
     /// </summary>
-    public FixedString64Bytes FailedMessageTypeName { get; init; }
+    public bool IsFinalFailure { get; init; }
 
     /// <summary>
-    /// Gets whether the failed processing was asynchronous.
+    /// Gets additional context about the failure.
     /// </summary>
-    public bool IsAsyncProcessing { get; init; }
+    public FixedString512Bytes Context { get; init; }
+
+    #endregion
+
+    #region Computed Properties
 
     /// <summary>
-    /// Gets the subscription category that failed processing.
+    /// Gets the DateTime representation of the message timestamp.
     /// </summary>
-    public SubscriptionCategory Category { get; init; }
+    public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
+
+    #endregion
+
+    #region Static Factory Methods
 
     /// <summary>
-    /// Gets the stack trace of the exception (if available).
+    /// Creates a new instance of MessageBusSubscriptionFailedMessage using FixedString parameters for optimal performance.
     /// </summary>
-    public string StackTrace { get; init; }
-
-    /// <summary>
-    /// Initializes a new instance of MessageBusSubscriptionFailedMessage.
-    /// </summary>
-    /// <param name="subscriptionId">The subscription identifier</param>
-    /// <param name="failedMessage">The original message that failed processing</param>
+    /// <param name="subscriptionId">The subscription ID that failed to process the message</param>
+    /// <param name="messageType">The message type that failed to be processed</param>
+    /// <param name="subscriberName">The subscriber name that failed to process the message</param>
     /// <param name="exception">The exception that caused the failure</param>
-    /// <param name="processingTime">The processing time before failure</param>
-    /// <param name="isAsyncProcessing">Whether processing was asynchronous</param>
-    /// <param name="category">The subscription category</param>
-    /// <param name="correlationId">Optional correlation ID for message tracking</param>
-    public MessageBusSubscriptionFailedMessage(
+    /// <param name="retryAttempts">The number of retry attempts made</param>
+    /// <param name="isFinalFailure">Whether this is the final failure</param>
+    /// <param name="context">Additional context about the failure</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessageBusSubscriptionFailedMessage instance</returns>
+    public static MessageBusSubscriptionFailedMessage CreateFromFixedStrings(
         Guid subscriptionId,
-        IMessage failedMessage,
+        Type messageType,
+        string subscriberName,
         Exception exception,
-        TimeSpan processingTime = default,
-        bool isAsyncProcessing = false,
-        SubscriptionCategory category = SubscriptionCategory.Standard,
+        int retryAttempts,
+        bool isFinalFailure,
+        string context,
+        FixedString64Bytes source = default,
         Guid correlationId = default)
     {
-        if (failedMessage == null)
-            throw new ArgumentNullException(nameof(failedMessage));
-        if (exception == null)
-            throw new ArgumentNullException(nameof(exception));
+        var finalCorrelationId = correlationId == default 
+            ? DeterministicIdGenerator.GenerateCorrelationId("MessageBusSubscriptionFailure", null)
+            : correlationId;
 
-        Id = Guid.NewGuid();
-        TimestampTicks = DateTime.UtcNow.Ticks;
-        TypeCode = MessageTypeCodes.MessageBusSubscriptionFailedMessage;
-        Source = "MessageBus";
-        Priority = MessagePriority.High; // Failures are high priority for alerting
-        CorrelationId = correlationId == default ? failedMessage.CorrelationId : correlationId;
-        
-        SubscriptionId = subscriptionId;
-        FailedMessageId = failedMessage.Id;
-        FailedMessageTypeCode = failedMessage.TypeCode;
-        ErrorMessage = exception.Message ?? "Unknown error";
-        ExceptionTypeName = exception.GetType().Name;
-        ProcessingTimeMs = processingTime.TotalMilliseconds;
-        FailedMessageTypeName = failedMessage.GetType().Name;
-        IsAsyncProcessing = isAsyncProcessing;
-        Category = category;
-        StackTrace = exception.StackTrace ?? string.Empty;
+        return new MessageBusSubscriptionFailedMessage
+        {
+            Id = DeterministicIdGenerator.GenerateMessageId("MessageBusSubscriptionFailedMessage", "MessagingSystem", correlationId: null),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.MessageBusSubscriptionFailedMessage,
+            Source = source.IsEmpty ? "MessageBusService" : source,
+            Priority = MessagePriority.High,
+            CorrelationId = finalCorrelationId,
+            SubscriptionId = subscriptionId,
+            MessageType = messageType ?? throw new ArgumentNullException(nameof(messageType)),
+            FailedAt = DateTime.UtcNow,
+            SubscriberName = subscriberName?.Length <= 64 ? subscriberName : subscriberName?[..64] ?? "Unknown",
+            Exception = exception ?? throw new ArgumentNullException(nameof(exception)),
+            RetryAttempts = Math.Max(0, retryAttempts),
+            IsFinalFailure = isFinalFailure,
+            Context = context?.Length <= 512 ? context : context?[..512] ?? string.Empty
+        };
     }
 
     /// <summary>
-    /// Creates a message for synchronous subscription processing failure.
+    /// Creates a new instance of MessageBusSubscriptionFailedMessage using string parameters.
     /// </summary>
-    /// <param name="subscriptionId">The subscription identifier</param>
-    /// <param name="failedMessage">The failed message</param>
-    /// <param name="exception">The exception that caused failure</param>
-    /// <param name="processingTime">The processing time before failure</param>
-    /// <param name="category">The subscription category</param>
-    /// <param name="correlationId">Optional correlation ID</param>
-    /// <returns>Subscription failed message</returns>
-    public static MessageBusSubscriptionFailedMessage ForSync(
+    /// <param name="subscriptionId">The subscription ID that failed to process the message</param>
+    /// <param name="messageType">The message type that failed to be processed</param>
+    /// <param name="subscriberName">The subscriber name that failed to process the message</param>
+    /// <param name="exception">The exception that caused the failure</param>
+    /// <param name="retryAttempts">The number of retry attempts made</param>
+    /// <param name="isFinalFailure">Whether this is the final failure</param>
+    /// <param name="context">Additional context about the failure</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessageBusSubscriptionFailedMessage instance</returns>
+    public static MessageBusSubscriptionFailedMessage Create(
         Guid subscriptionId,
-        IMessage failedMessage,
-        Exception exception,
-        TimeSpan processingTime = default,
-        SubscriptionCategory category = SubscriptionCategory.Standard,
-        Guid correlationId = default) =>
-        new(subscriptionId, failedMessage, exception, processingTime, false, category, correlationId);
+        Type messageType,
+        string subscriberName = null,
+        Exception exception = null,
+        int retryAttempts = 0,
+        bool isFinalFailure = false,
+        string context = null,
+        string source = null,
+        Guid correlationId = default)
+    {
+        return CreateFromFixedStrings(
+            subscriptionId,
+            messageType,
+            subscriberName,
+            exception,
+            retryAttempts,
+            isFinalFailure,
+            context,
+            source?.Length <= 64 ? source : source?[..64] ?? "MessageBusService",
+            correlationId);
+    }
 
-    /// <summary>
-    /// Creates a message for asynchronous subscription processing failure.
-    /// </summary>
-    /// <param name="subscriptionId">The subscription identifier</param>
-    /// <param name="failedMessage">The failed message</param>
-    /// <param name="exception">The exception that caused failure</param>
-    /// <param name="processingTime">The processing time before failure</param>
-    /// <param name="category">The subscription category</param>
-    /// <param name="correlationId">Optional correlation ID</param>
-    /// <returns>Subscription failed message</returns>
-    public static MessageBusSubscriptionFailedMessage ForAsync(
-        Guid subscriptionId,
-        IMessage failedMessage,
-        Exception exception,
-        TimeSpan processingTime = default,
-        SubscriptionCategory category = SubscriptionCategory.Async,
-        Guid correlationId = default) =>
-        new(subscriptionId, failedMessage, exception, processingTime, true, category, correlationId);
+    #endregion
 }

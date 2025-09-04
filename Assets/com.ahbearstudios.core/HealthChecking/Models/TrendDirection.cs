@@ -1,12 +1,38 @@
-﻿namespace AhBearStudios.Core.HealthChecking.Models;
-
-/// <summary>
-/// Trend direction enumeration
-/// </summary>
-public enum TrendDirection
+namespace AhBearStudios.Core.HealthChecking.Services
 {
-    Unknown,
-    Improving,
-    Stable,
-    Degrading
+    /// <summary>
+    /// Trend direction enumeration.
+    /// </summary>
+    public enum TrendDirection
+    {
+        /// <summary>
+        /// Strongly improving trend.
+        /// </summary>
+        StronglyImproving,
+
+        /// <summary>
+        /// Improving trend.
+        /// </summary>
+        Improving,
+
+        /// <summary>
+        /// Stable trend.
+        /// </summary>
+        Stable,
+
+        /// <summary>
+        /// Degrading trend.
+        /// </summary>
+        Degrading,
+
+        /// <summary>
+        /// Strongly degrading trend.
+        /// </summary>
+        StronglyDegrading,
+
+        /// <summary>
+        /// Insufficient data for trend analysis.
+        /// </summary>
+        InsufficientData
+    }
 }

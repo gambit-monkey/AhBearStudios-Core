@@ -1,8 +1,8 @@
 ﻿using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
+using ZLinq;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.HealthChecking.Checks;
 using AhBearStudios.Core.HealthChecking.Configs;
@@ -93,7 +93,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
         }
 
         /// <inheritdoc />
-        public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
+        public async UniTask<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
         {
             var stopwatch = Stopwatch.StartNew();
             var data = new Dictionary<string, object>();
@@ -197,7 +197,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
 
         #region Private Implementation
 
-        private async Task<HealthCheckResult> ExecuteHealthCheckInternal(
+        private async UniTask<HealthCheckResult> ExecuteHealthCheckInternal(
             Dictionary<string, object> data, 
             CancellationToken cancellationToken)
         {
@@ -272,7 +272,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
             }
         }
 
-        private async Task<MessagingTestResult> TestMessageBusConnectivity(CancellationToken cancellationToken)
+        private async UniTask<MessagingTestResult> TestMessageBusConnectivity(CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
             
@@ -319,7 +319,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
             }
         }
 
-        private async Task<MessagingTestResult> TestPublisherFunctionality(CancellationToken cancellationToken)
+        private async UniTask<MessagingTestResult> TestPublisherFunctionality(CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
             
@@ -372,7 +372,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
             }
         }
 
-        private async Task<MessagingTestResult> TestSubscriberFunctionality(CancellationToken cancellationToken)
+        private async UniTask<MessagingTestResult> TestSubscriberFunctionality(CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
             
@@ -420,7 +420,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
             }
         }
 
-        private async Task<MessagingTestResult> TestMessageRoundTrip(CancellationToken cancellationToken)
+        private async UniTask<MessagingTestResult> TestMessageRoundTrip(CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
             var messageReceived = false;
@@ -505,7 +505,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
             }
         }
 
-        private async Task<Dictionary<string, object>> CollectMessageBusMetrics(CancellationToken cancellationToken)
+        private async UniTask<Dictionary<string, object>> CollectMessageBusMetrics(CancellationToken cancellationToken)
         {
             var metrics = new Dictionary<string, object>();
             
@@ -850,7 +850,7 @@ public static class MessageBusHealthCheckExtensions
     /// <param name="messageBusService">Message bus service to check</param>
     /// <param name="cancellationToken">Cancellation token</param>
     /// <returns>True if message bus is healthy</returns>
-    public static async Task<bool> IsHealthyAsync(this IMessageBusService messageBusService, CancellationToken cancellationToken = default)
+    public static async UniTask<bool> IsHealthyAsync(this IMessageBusService messageBusService, CancellationToken cancellationToken = default)
     {
         if (messageBusService is IMessageBusHealthProvider healthProvider)
         {

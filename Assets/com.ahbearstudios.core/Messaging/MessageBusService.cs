@@ -18,6 +18,7 @@ using AhBearStudios.Core.Messaging.Subscribers;
 using AhBearStudios.Core.Messaging.Filters;
 using AhBearStudios.Core.Pooling;
 using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Common.Utilities;
 using Unity.Collections;
 
 namespace AhBearStudios.Core.Messaging
@@ -110,7 +111,7 @@ namespace AhBearStudios.Core.Messaging
             _poolingService = poolingService;
 
             // Generate correlation ID for tracking
-            _correlationId = new FixedString128Bytes($"MessageBus-{Guid.NewGuid():N}");
+            _correlationId = new FixedString128Bytes($"MessageBus-{DeterministicIdGenerator.GenerateCorrelationId("MessageBusService", "Instance"):N}");
 
             // Initialize collections
             _publishers = new ConcurrentDictionary<Type, object>();

@@ -1,4 +1,5 @@
 using System;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using Unity.Collections;
@@ -11,6 +12,8 @@ namespace AhBearStudios.Core.Messaging.Messages;
 /// </summary>
 public readonly record struct MessagePipeHealthChangedMessage : IMessage
 {
+    #region IMessage Implementation
+
     /// <summary>
     /// Gets the unique identifier for this message instance.
     /// </summary>
@@ -22,9 +25,9 @@ public readonly record struct MessagePipeHealthChangedMessage : IMessage
     public long TimestampTicks { get; init; }
 
     /// <summary>
-    /// Gets the unique type code for this message type.
+    /// Gets the message type code for efficient routing and filtering.
     /// </summary>
-    public ushort TypeCode { get; init; } = MessageTypeCodes.MessagePipeHealthChangedMessage;
+    public ushort TypeCode { get; init; }
 
     /// <summary>
     /// Gets the source system or component that created this message.
@@ -40,6 +43,10 @@ public readonly record struct MessagePipeHealthChangedMessage : IMessage
     /// Gets optional correlation ID for message tracing across systems.
     /// </summary>
     public Guid CorrelationId { get; init; }
+
+    #endregion
+
+    #region Message-Specific Properties
 
     /// <summary>
     /// Gets the previous operational status.
@@ -76,27 +83,12 @@ public readonly record struct MessagePipeHealthChangedMessage : IMessage
     /// </summary>
     public DateTime HealthChangedAt { get; init; }
 
-    /// <summary>
-    /// Initializes a new instance of the MessagePipeHealthChangedMessage struct.
-    /// </summary>
-    public MessagePipeHealthChangedMessage()
-    {
-        Id = default;
-        TimestampTicks = default;
-        Source = default;
-        Priority = default;
-        CorrelationId = default;
-        PreviousOperational = default;
-        CurrentOperational = default;
-        ErrorRate = default;
-        Reason = default;
-        InstanceId = default;
-        ActiveSubscriptions = default;
-        HealthChangedAt = default;
-    }
+    #endregion
+
+    #region Computed Properties
 
     /// <summary>
-    /// Gets the DateTime representation of the timestamp.
+    /// Gets the DateTime representation of the message timestamp.
     /// </summary>
     public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
@@ -110,8 +102,61 @@ public readonly record struct MessagePipeHealthChangedMessage : IMessage
     /// </summary>
     public bool IsHealthDegraded => PreviousOperational && !CurrentOperational;
 
+    #endregion
+
+    #region Static Factory Methods
+
     /// <summary>
-    /// Creates a new instance of the MessagePipeHealthChangedMessage.
+    /// Creates a new instance of MessagePipeHealthChangedMessage using FixedString parameters for optimal performance.
+    /// </summary>
+    /// <param name="previousOperational">The previous operational status</param>
+    /// <param name="currentOperational">The current operational status</param>
+    /// <param name="errorRate">The current error rate (0.0 to 1.0)</param>
+    /// <param name="reason">The reason for the health status change</param>
+    /// <param name="instanceId">The MessagePipe instance identifier</param>
+    /// <param name="activeSubscriptions">Number of active subscriptions</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessagePipeHealthChangedMessage instance</returns>
+    public static MessagePipeHealthChangedMessage CreateFromFixedStrings(
+        bool previousOperational,
+        bool currentOperational,
+        double errorRate,
+        string reason,
+        string instanceId,
+        int activeSubscriptions,
+        FixedString64Bytes source = default,
+        Guid correlationId = default)
+    {
+        var finalCorrelationId = correlationId == default 
+            ? DeterministicIdGenerator.GenerateCorrelationId("MessagePipeHealth", null)
+            : correlationId;
+
+        // Determine priority based on health change
+        var priority = (!previousOperational && currentOperational) ? MessagePriority.Normal :  // Recovery
+                      (previousOperational && !currentOperational) ? MessagePriority.High :    // Degradation
+                      MessagePriority.Low;  // No operational change
+
+        return new MessagePipeHealthChangedMessage
+        {
+            Id = DeterministicIdGenerator.GenerateMessageId("MessagePipeHealthChangedMessage", "MessagingSystem", correlationId: null),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.MessagePipeHealthChangedMessage,
+            Source = source.IsEmpty ? "MessagePipe" : source,
+            Priority = priority,
+            CorrelationId = finalCorrelationId,
+            PreviousOperational = previousOperational,
+            CurrentOperational = currentOperational,
+            ErrorRate = Math.Max(0.0, Math.Min(1.0, errorRate)),
+            Reason = reason?.Length <= 512 ? reason : reason?[..512] ?? "Health status changed",
+            InstanceId = instanceId?.Length <= 64 ? instanceId : instanceId?[..64] ?? "Default",
+            ActiveSubscriptions = Math.Max(0, activeSubscriptions),
+            HealthChangedAt = DateTime.UtcNow
+        };
+    }
+
+    /// <summary>
+    /// Creates a new instance of MessagePipeHealthChangedMessage using string parameters.
     /// </summary>
     /// <param name="previousOperational">The previous operational status</param>
     /// <param name="currentOperational">The current operational status</param>
@@ -129,29 +174,19 @@ public readonly record struct MessagePipeHealthChangedMessage : IMessage
         string reason = null,
         string instanceId = null,
         int activeSubscriptions = 0,
-        FixedString64Bytes source = default,
+        string source = null,
         Guid correlationId = default)
     {
-        // Determine priority based on health change
-        var priority = (!previousOperational && currentOperational) ? MessagePriority.Normal :  // Recovery
-                      (previousOperational && !currentOperational) ? MessagePriority.High :    // Degradation
-                      MessagePriority.Low;  // No operational change
-
-        return new MessagePipeHealthChangedMessage
-        {
-            Id = Guid.NewGuid(),
-            TimestampTicks = DateTime.UtcNow.Ticks,
-            TypeCode = MessageTypeCodes.MessagePipeHealthChangedMessage,
-            Source = source.IsEmpty ? "MessagePipe" : source,
-            Priority = priority,
-            CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
-            PreviousOperational = previousOperational,
-            CurrentOperational = currentOperational,
-            ErrorRate = Math.Max(0.0, Math.Min(1.0, errorRate)), // Clamp between 0.0 and 1.0
-            Reason = reason?.Length <= 256 ? reason : reason?[..256] ?? "Health status changed",
-            InstanceId = instanceId?.Length <= 64 ? instanceId : instanceId?[..64] ?? "Default",
-            ActiveSubscriptions = Math.Max(0, activeSubscriptions),
-            HealthChangedAt = DateTime.UtcNow
-        };
+        return CreateFromFixedStrings(
+            previousOperational,
+            currentOperational,
+            errorRate,
+            reason,
+            instanceId,
+            activeSubscriptions,
+            source?.Length <= 64 ? source : source?[..64] ?? "MessagePipe",
+            correlationId);
     }
+
+    #endregion
 }

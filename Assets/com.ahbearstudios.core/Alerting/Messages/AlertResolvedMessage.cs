@@ -1,5 +1,6 @@
 using System;
 using Unity.Collections;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Alerting.Models;
@@ -13,6 +14,8 @@ namespace AhBearStudios.Core.Alerting.Messages
     /// </summary>
     public readonly record struct AlertResolvedMessage : IMessage
     {
+        #region IMessage Implementation
+
         /// <summary>
         /// Gets the unique identifier for this message instance.
         /// </summary>
@@ -26,7 +29,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.AlertResolvedMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -43,7 +46,9 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// </summary>
         public Guid CorrelationId { get; init; }
 
-        // Alert resolution-specific properties
+        #endregion
+
+        #region Message-Specific Properties
         /// <summary>
         /// Gets the unique identifier of the resolved alert.
         /// </summary>
@@ -114,31 +119,9 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// </summary>
         public int AlertCount { get; init; }
 
-        /// <summary>
-        /// Initializes a new instance of the AlertResolvedMessage struct.
-        /// </summary>
-        public AlertResolvedMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-            AlertId = default;
-            AlertMessage = default;
-            AlertSeverity = default;
-            AlertSource = default;
-            AlertTag = default;
-            OperationId = default;
-            ResolvedBy = default;
-            AcknowledgedBy = default;
-            ResolvedTimestampTicks = default;
-            AcknowledgedTimestampTicks = default;
-            OriginalAlertTimestampTicks = default;
-            ResolutionDurationTicks = default;
-            AcknowledgmentToResolutionDurationTicks = default;
-            AlertCount = default;
-        }
+        #endregion
+
+        #region Computed Properties
 
         /// <summary>
         /// Gets whether the alert was acknowledged before being resolved.
@@ -174,8 +157,12 @@ namespace AhBearStudios.Core.Alerting.Messages
             ? new TimeSpan(AcknowledgmentToResolutionDurationTicks.Value)
             : null;
 
+        #endregion
+
+        #region Static Factory Methods
+
         /// <summary>
-        /// Creates a new AlertResolvedMessage from a resolved Alert instance.
+        /// Creates a new AlertResolvedMessage from a resolved Alert instance with proper validation and defaults.
         /// </summary>
         /// <param name="resolvedAlert">The resolved alert</param>
         /// <param name="source">Source component creating this message</param>
@@ -186,11 +173,19 @@ namespace AhBearStudios.Core.Alerting.Messages
             FixedString64Bytes source = default,
             Guid correlationId = default)
         {
+            // Input validation
             if (resolvedAlert == null)
                 throw new ArgumentNullException(nameof(resolvedAlert));
 
             if (!resolvedAlert.IsResolved)
                 throw new ArgumentException("Alert must be resolved", nameof(resolvedAlert));
+
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "AlertService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("AlertResolvedMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? resolvedAlert.CorrelationId 
+                : correlationId;
 
             var resolutionDuration = resolvedAlert.ResolvedTimestampTicks.HasValue
                 ? resolvedAlert.ResolvedTimestampTicks.Value - resolvedAlert.TimestampTicks
@@ -203,12 +198,12 @@ namespace AhBearStudios.Core.Alerting.Messages
 
             return new AlertResolvedMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
                 TimestampTicks = DateTime.UtcNow.Ticks,
                 TypeCode = MessageTypeCodes.AlertResolvedMessage,
                 Source = source.IsEmpty ? "AlertService" : source,
                 Priority = GetMessagePriority(resolvedAlert.Severity),
-                CorrelationId = correlationId == Guid.Empty ? resolvedAlert.CorrelationId : correlationId,
+                CorrelationId = finalCorrelationId,
                 AlertId = resolvedAlert.Id,
                 AlertMessage = resolvedAlert.Message,
                 AlertSeverity = resolvedAlert.Severity,
@@ -227,7 +222,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         }
 
         /// <summary>
-        /// Creates a new AlertResolvedMessage with explicit alert details.
+        /// Creates a new AlertResolvedMessage with explicit alert details and proper validation.
         /// </summary>
         /// <param name="alertId">Alert unique identifier</param>
         /// <param name="message">Alert message</param>
@@ -258,6 +253,17 @@ namespace AhBearStudios.Core.Alerting.Messages
             FixedString64Bytes source = default,
             Guid correlationId = default)
         {
+            // Input validation
+            if (alertId == Guid.Empty)
+                throw new ArgumentException("Alert ID cannot be empty", nameof(alertId));
+
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "AlertService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("AlertResolvedMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("AlertResolution", alertId.ToString())
+                : correlationId;
+
             var now = DateTime.UtcNow;
             var nowTicks = now.Ticks;
             var originalTicks = originalAlertTimestamp.Ticks;
@@ -269,12 +275,12 @@ namespace AhBearStudios.Core.Alerting.Messages
 
             return new AlertResolvedMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
                 TimestampTicks = nowTicks,
                 TypeCode = MessageTypeCodes.AlertResolvedMessage,
                 Source = source.IsEmpty ? "AlertService" : source,
                 Priority = GetMessagePriority(severity),
-                CorrelationId = correlationId == Guid.Empty ? Guid.NewGuid() : correlationId,
+                CorrelationId = finalCorrelationId,
                 AlertId = alertId,
                 AlertMessage = message,
                 AlertSeverity = severity,
@@ -311,15 +317,25 @@ namespace AhBearStudios.Core.Alerting.Messages
             };
         }
 
+        #endregion
+
+        #region String Representation
+
         /// <summary>
         /// Returns a string representation of this message for debugging.
         /// </summary>
         /// <returns>Alert resolved message string representation</returns>
         public override string ToString()
         {
-            var ackStatus = WasAcknowledged ? $" (Acked by {AcknowledgedBy})" : " (Direct resolution)";
-            return $"AlertResolved: [{AlertSeverity}] {AlertSource} - {AlertMessage} " +
-                   $"(ID: {AlertId}, ResolvedBy: {ResolvedBy}, Duration: {ResolutionDuration:mm\\:ss}{ackStatus})";
+            var sourceText = AlertSource.IsEmpty ? "Unknown" : AlertSource.ToString();
+            var messageText = AlertMessage.IsEmpty ? "No message" : AlertMessage.ToString();
+            var resolvedByText = ResolvedBy.IsEmpty ? "Unknown" : ResolvedBy.ToString();
+            var acknowledgedByText = AcknowledgedBy.IsEmpty ? "Unknown" : AcknowledgedBy.ToString();
+            var ackStatus = WasAcknowledged ? $" (Acked by {acknowledgedByText})" : " (Direct resolution)";
+            return $"AlertResolved: [{AlertSeverity}] {sourceText} - {messageText} " +
+                   $"(ID: {AlertId}, ResolvedBy: {resolvedByText}, Duration: {ResolutionDuration:mm\\:ss}{ackStatus})";
         }
+
+        #endregion
     }
 }

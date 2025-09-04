@@ -1,179 +1,89 @@
-﻿using System.Collections.Generic;
-using AhBearStudios.Core.HealthChecking.Configs;
-using Unity.Collections;
+using System;
+using System.Collections.Generic;
 
 namespace AhBearStudios.Core.HealthChecking.Models
 {
     /// <summary>
-    /// Comprehensive configuration for system degradation thresholds and graceful degradation behavior
+    /// Configuration for degradation thresholds that control automatic system degradation.
+    /// Used to determine when to transition between degradation levels based on system health.
     /// </summary>
     public sealed record DegradationThresholds
     {
         /// <summary>
-        /// Unique identifier for this degradation configuration
+        /// Gets the threshold for triggering minor degradation (0.0 to 1.0).
+        /// Represents the percentage of failed health checks before entering minor degradation.
         /// </summary>
-        public FixedString64Bytes Id { get; init; } = GenerateId();
+        public double MinorThreshold { get; init; } = 0.10; // 10% failures
 
         /// <summary>
-        /// Display name for this degradation configuration
+        /// Gets the threshold for triggering moderate degradation (0.0 to 1.0).
+        /// Represents the percentage of failed health checks before entering moderate degradation.
         /// </summary>
-        public string Name { get; init; } = "Default Degradation Thresholds";
+        public double ModerateThreshold { get; init; } = 0.25; // 25% failures
 
         /// <summary>
-        /// Whether graceful degradation is enabled
+        /// Gets the threshold for triggering severe degradation (0.0 to 1.0).
+        /// Represents the percentage of failed health checks before entering severe degradation.
         /// </summary>
-        public bool Enabled { get; init; } = true;
+        public double SevereThreshold { get; init; } = 0.50; // 50% failures
 
         /// <summary>
-        /// Percentage of unhealthy checks that triggers minor degradation (0.0 to 1.0)
+        /// Gets the threshold for completely disabling the system (0.0 to 1.0).
+        /// Represents the percentage of failed health checks before entering disabled state.
         /// </summary>
-        public double MinorThreshold { get; init; } = 0.1;
+        public double DisabledThreshold { get; init; } = 0.75; // 75% failures
 
         /// <summary>
-        /// Percentage of unhealthy checks that triggers moderate degradation (0.0 to 1.0)
+        /// Gets the recovery threshold for returning to a better degradation level (0.0 to 1.0).
+        /// Represents the percentage of successful health checks needed for recovery.
         /// </summary>
-        public double ModerateThreshold { get; init; } = 0.25;
+        public double RecoveryThreshold { get; init; } = 0.80; // 80% success for recovery
 
         /// <summary>
-        /// Percentage of unhealthy checks that triggers severe degradation (0.0 to 1.0)
+        /// Gets the minimum number of health checks required before applying degradation rules.
+        /// Prevents degradation from being triggered with too few samples.
         /// </summary>
-        public double SevereThreshold { get; init; } = 0.5;
+        public int MinimumHealthChecks { get; init; } = 5;
 
         /// <summary>
-        /// Percentage of unhealthy checks that triggers system disable (0.0 to 1.0)
-        /// </summary>
-        public double DisabledThreshold { get; init; } = 0.75;
-
-        /// <summary>
-        /// Time window for evaluating degradation thresholds
+        /// Gets the time window for evaluating degradation thresholds.
+        /// Only health checks within this window are considered for degradation decisions.
         /// </summary>
         public TimeSpan EvaluationWindow { get; init; } = TimeSpan.FromMinutes(5);
 
         /// <summary>
-        /// Minimum number of health checks required before applying degradation
+        /// Gets the hysteresis delay to prevent rapid state changes.
+        /// System must remain in a degraded state for this duration before recovery is considered.
         /// </summary>
-        public int MinimumHealthChecks { get; init; } = 3;
+        public TimeSpan HysteresisDelay { get; init; } = TimeSpan.FromMinutes(2);
 
         /// <summary>
-        /// Whether to use weighted health checks for degradation calculation
+        /// Gets whether automatic degradation is enabled.
+        /// When false, degradation levels must be set manually.
         /// </summary>
-        public bool UseWeightedCalculation { get; init; } = true;
+        public bool AutomaticDegradation { get; init; } = true;
 
         /// <summary>
-        /// Time to wait before escalating degradation level
+        /// Gets whether to consider critical health checks with higher weight.
+        /// Critical health check failures count more towards degradation thresholds.
         /// </summary>
-        public TimeSpan EscalationDelay { get; init; } = TimeSpan.FromMinutes(2);
+        public bool WeightCriticalChecks { get; init; } = true;
 
         /// <summary>
-        /// Time to wait before de-escalating degradation level
+        /// Gets the weight multiplier for critical health check failures.
+        /// Only used when WeightCriticalChecks is true.
         /// </summary>
-        public TimeSpan DeEscalationDelay { get; init; } = TimeSpan.FromMinutes(5);
+        public double CriticalCheckWeight { get; init; } = 2.0;
 
         /// <summary>
-        /// Whether to enable automatic recovery from degradation
+        /// Validates the degradation thresholds configuration.
         /// </summary>
-        public bool EnableAutoRecovery { get; init; } = true;
-
-        /// <summary>
-        /// Recovery success rate threshold for automatic recovery (0.0 to 1.0)
-        /// </summary>
-        public double RecoveryThreshold { get; init; } = 0.8;
-
-        /// <summary>
-        /// Time window for evaluating recovery
-        /// </summary>
-        public TimeSpan RecoveryWindow { get; init; } = TimeSpan.FromMinutes(3);
-
-        /// <summary>
-        /// Features and services configuration for each degradation level
-        /// </summary>
-        public DegradationLevelConfig MinorDegradation { get; init; } = new();
-
-        /// <summary>
-        /// Features and services configuration for moderate degradation
-        /// </summary>
-        public DegradationLevelConfig ModerateDegradation { get; init; } = new();
-
-        /// <summary>
-        /// Features and services configuration for severe degradation
-        /// </summary>
-        public DegradationLevelConfig SevereDegradation { get; init; } = new();
-
-        /// <summary>
-        /// Features and services configuration for disabled state
-        /// </summary>
-        public DegradationLevelConfig DisabledState { get; init; } = new();
-
-        /// <summary>
-        /// Health check category weights for degradation calculation
-        /// </summary>
-        public Dictionary<HealthCheckCategory, double> CategoryWeights { get; init; } = new()
-        {
-            { HealthCheckCategory.System, 1.0 },
-            { HealthCheckCategory.Database, 0.9 },
-            { HealthCheckCategory.Network, 0.7 },
-            { HealthCheckCategory.Performance, 0.5 },
-            { HealthCheckCategory.Security, 0.8 },
-            { HealthCheckCategory.CircuitBreaker, 0.6 },
-            { HealthCheckCategory.Custom, 0.4 }
-        };
-
-        /// <summary>
-        /// Critical health checks that immediately trigger severe degradation when unhealthy
-        /// </summary>
-        public HashSet<FixedString64Bytes> CriticalHealthChecks { get; init; } = new();
-
-        /// <summary>
-        /// Health checks that should be ignored in degradation calculations
-        /// </summary>
-        public HashSet<FixedString64Bytes> IgnoredHealthChecks { get; init; } = new();
-
-        /// <summary>
-        /// Advanced degradation rules for complex scenarios
-        /// </summary>
-        public List<DegradationRule> CustomRules { get; init; } = new();
-
-        /// <summary>
-        /// Circuit breaker integration settings
-        /// </summary>
-        public CircuitBreakerIntegrationConfig CircuitBreakerIntegration { get; init; } = new();
-
-        /// <summary>
-        /// Load shedding configuration for each degradation level
-        /// </summary>
-        public LoadSheddingConfig LoadShedding { get; init; } = new();
-
-        /// <summary>
-        /// Performance throttling configuration
-        /// </summary>
-        public PerformanceThrottlingConfig PerformanceThrottling { get; init; } = new();
-
-        /// <summary>
-        /// Feature flag integration for controlled degradation
-        /// </summary>
-        public FeatureFlagIntegrationConfig FeatureFlagIntegration { get; init; } = new();
-
-        /// <summary>
-        /// Monitoring and alerting configuration for degradation events
-        /// </summary>
-        public DegradationMonitoringConfig Monitoring { get; init; } = new();
-
-        /// <summary>
-        /// Custom metadata for this degradation configuration
-        /// </summary>
-        public Dictionary<string, object> Metadata { get; init; } = new();
-
-        /// <summary>
-        /// Validates the degradation thresholds configuration
-        /// </summary>
-        /// <returns>List of validation error messages, empty if valid</returns>
+        /// <returns>List of validation errors, empty if valid</returns>
         public List<string> Validate()
         {
             var errors = new List<string>();
 
-            if (string.IsNullOrWhiteSpace(Name))
-                errors.Add("Name cannot be null or empty");
-
+            // Threshold validation
             if (MinorThreshold < 0.0 || MinorThreshold > 1.0)
                 errors.Add("MinorThreshold must be between 0.0 and 1.0");
 
@@ -186,7 +96,10 @@ namespace AhBearStudios.Core.HealthChecking.Models
             if (DisabledThreshold < 0.0 || DisabledThreshold > 1.0)
                 errors.Add("DisabledThreshold must be between 0.0 and 1.0");
 
-            // Validate threshold ordering
+            if (RecoveryThreshold < 0.0 || RecoveryThreshold > 1.0)
+                errors.Add("RecoveryThreshold must be between 0.0 and 1.0");
+
+            // Threshold ordering validation
             if (MinorThreshold >= ModerateThreshold)
                 errors.Add("MinorThreshold must be less than ModerateThreshold");
 
@@ -196,127 +109,74 @@ namespace AhBearStudios.Core.HealthChecking.Models
             if (SevereThreshold >= DisabledThreshold)
                 errors.Add("SevereThreshold must be less than DisabledThreshold");
 
+            // Other validations
+            if (MinimumHealthChecks < 1)
+                errors.Add("MinimumHealthChecks must be at least 1");
+
             if (EvaluationWindow <= TimeSpan.Zero)
                 errors.Add("EvaluationWindow must be greater than zero");
 
-            if (MinimumHealthChecks <= 0)
-                errors.Add("MinimumHealthChecks must be greater than zero");
+            if (HysteresisDelay < TimeSpan.Zero)
+                errors.Add("HysteresisDelay must be non-negative");
 
-            if (EscalationDelay < TimeSpan.Zero)
-                errors.Add("EscalationDelay must be non-negative");
-
-            if (DeEscalationDelay < TimeSpan.Zero)
-                errors.Add("DeEscalationDelay must be non-negative");
-
-            if (RecoveryThreshold < 0.0 || RecoveryThreshold > 1.0)
-                errors.Add("RecoveryThreshold must be between 0.0 and 1.0");
-
-            if (RecoveryWindow <= TimeSpan.Zero)
-                errors.Add("RecoveryWindow must be greater than zero");
-
-            // Validate category weights
-            foreach (var weight in CategoryWeights.Values)
-            {
-                if (weight < 0.0 || weight > 2.0)
-                    errors.Add($"Category weights must be between 0.0 and 2.0, found: {weight}");
-            }
-
-            // Validate nested configurations
-            errors.AddRange(MinorDegradation.Validate("Minor"));
-            errors.AddRange(ModerateDegradation.Validate("Moderate"));
-            errors.AddRange(SevereDegradation.Validate("Severe"));
-            errors.AddRange(DisabledState.Validate("Disabled"));
-
-            foreach (var rule in CustomRules)
-            {
-                errors.AddRange(rule.Validate());
-            }
-
-            errors.AddRange(CircuitBreakerIntegration.Validate());
-            errors.AddRange(LoadShedding.Validate());
-            errors.AddRange(PerformanceThrottling.Validate());
-            errors.AddRange(FeatureFlagIntegration.Validate());
-            errors.AddRange(Monitoring.Validate());
+            if (WeightCriticalChecks && CriticalCheckWeight < 1.0)
+                errors.Add("CriticalCheckWeight must be at least 1.0 when WeightCriticalChecks is enabled");
 
             return errors;
         }
 
         /// <summary>
-        /// Creates degradation thresholds optimized for critical systems
+        /// Creates degradation thresholds optimized for high-availability systems.
         /// </summary>
-        /// <returns>Critical system degradation configuration</returns>
-        public static DegradationThresholds ForCriticalSystem()
-        {
-            return new DegradationThresholds
-            {
-                Name = "Critical System Degradation",
-                MinorThreshold = 0.05, // 5% unhealthy triggers minor
-                ModerateThreshold = 0.15, // 15% unhealthy triggers moderate
-                SevereThreshold = 0.3, // 30% unhealthy triggers severe
-                DisabledThreshold = 0.5, // 50% unhealthy triggers disabled
-                EvaluationWindow = TimeSpan.FromMinutes(2),
-                EscalationDelay = TimeSpan.FromSeconds(30),
-                DeEscalationDelay = TimeSpan.FromMinutes(10),
-                RecoveryThreshold = 0.9,
-                MinorDegradation = DegradationLevelConfig.ForCriticalMinor(),
-                ModerateDegradation = DegradationLevelConfig.ForCriticalModerate(),
-                SevereDegradation = DegradationLevelConfig.ForCriticalSevere(),
-                DisabledState = DegradationLevelConfig.ForCriticalDisabled()
-            };
-        }
-
-        /// <summary>
-        /// Creates degradation thresholds optimized for high-availability systems
-        /// </summary>
-        /// <returns>High-availability degradation configuration</returns>
+        /// <returns>High-availability degradation thresholds</returns>
         public static DegradationThresholds ForHighAvailability()
         {
             return new DegradationThresholds
             {
-                Name = "High Availability Degradation",
-                MinorThreshold = 0.1, // 10% unhealthy triggers minor
-                ModerateThreshold = 0.25, // 25% unhealthy triggers moderate
-                SevereThreshold = 0.5, // 50% unhealthy triggers severe
-                DisabledThreshold = 0.8, // 80% unhealthy triggers disabled
-                EvaluationWindow = TimeSpan.FromMinutes(5),
-                EscalationDelay = TimeSpan.FromMinutes(2),
-                DeEscalationDelay = TimeSpan.FromMinutes(5),
-                RecoveryThreshold = 0.8,
-                EnableAutoRecovery = true,
-                LoadShedding = LoadSheddingConfig.ForHighAvailability(),
-                PerformanceThrottling = PerformanceThrottlingConfig.ForHighAvailability()
+                MinorThreshold = 0.05,     // 5% failures
+                ModerateThreshold = 0.15,  // 15% failures
+                SevereThreshold = 0.30,    // 30% failures
+                DisabledThreshold = 0.60,  // 60% failures
+                RecoveryThreshold = 0.90,  // 90% success for recovery
+                MinimumHealthChecks = 10,
+                EvaluationWindow = TimeSpan.FromMinutes(3),
+                HysteresisDelay = TimeSpan.FromMinutes(1),
+                AutomaticDegradation = true,
+                WeightCriticalChecks = true,
+                CriticalCheckWeight = 3.0
             };
         }
 
         /// <summary>
-        /// Creates degradation thresholds optimized for development environments
+        /// Creates degradation thresholds optimized for development environments.
         /// </summary>
-        /// <returns>Development degradation configuration</returns>
+        /// <returns>Development degradation thresholds</returns>
         public static DegradationThresholds ForDevelopment()
         {
             return new DegradationThresholds
             {
-                Name = "Development Degradation",
-                Enabled = false, // Often disabled in development
-                MinorThreshold = 0.2,
-                ModerateThreshold = 0.4,
-                SevereThreshold = 0.7,
-                DisabledThreshold = 0.9,
-                EvaluationWindow = TimeSpan.FromMinutes(1),
-                EscalationDelay = TimeSpan.FromSeconds(10),
-                DeEscalationDelay = TimeSpan.FromSeconds(30),
-                EnableAutoRecovery = true,
-                RecoveryThreshold = 0.6
+                MinorThreshold = 0.20,     // 20% failures
+                ModerateThreshold = 0.40,  // 40% failures
+                SevereThreshold = 0.60,    // 60% failures
+                DisabledThreshold = 0.80,  // 80% failures
+                RecoveryThreshold = 0.70,  // 70% success for recovery
+                MinimumHealthChecks = 3,
+                EvaluationWindow = TimeSpan.FromMinutes(10),
+                HysteresisDelay = TimeSpan.FromSeconds(30),
+                AutomaticDegradation = false, // Manual control in development
+                WeightCriticalChecks = false,
+                CriticalCheckWeight = 1.0
             };
         }
 
         /// <summary>
-        /// Generates a unique identifier for configurations
+        /// Returns a string representation of the degradation thresholds.
         /// </summary>
-        /// <returns>Unique configuration ID</returns>
-        private static FixedString64Bytes GenerateId()
+        /// <returns>Degradation thresholds string</returns>
+        public override string ToString()
         {
-            return new FixedString64Bytes(Guid.NewGuid().ToString("N")[..16]);
+            return $"DegradationThresholds: Minor={MinorThreshold:P0}, Moderate={ModerateThreshold:P0}, " +
+                   $"Severe={SevereThreshold:P0}, Disabled={DisabledThreshold:P0}";
         }
     }
 }

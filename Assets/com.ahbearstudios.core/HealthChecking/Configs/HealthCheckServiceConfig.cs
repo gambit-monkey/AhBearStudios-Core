@@ -10,14 +10,13 @@ namespace AhBearStudios.Core.HealthChecking.Configs
     /// Comprehensive configuration for the HealthCheck Service with circuit breaker integration,
     /// graceful degradation, and comprehensive monitoring capabilities
     /// </summary>
-    public sealed record HealthCheckServiceConfig
+    public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
     {
         #region Core Health Check Settings
 
         /// <summary>
         /// Default interval between automatic health checks
         /// </summary>
-        [Range(1, 3600)]
         public TimeSpan AutomaticCheckInterval { get; init; } = TimeSpan.FromSeconds(30);
 
         /// <summary>
@@ -67,7 +66,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs
         /// <summary>
         /// Default circuit breaker configuration for health checks
         /// </summary>
-        public CircuitBreakerConfig DefaultCircuitBreakerConfig { get; init; } = new();
+        public ICircuitBreakerConfig DefaultCircuitBreakerConfig { get; init; } = new CircuitBreakerConfig();
 
         /// <summary>
         /// Whether to raise alerts for circuit breaker state changes

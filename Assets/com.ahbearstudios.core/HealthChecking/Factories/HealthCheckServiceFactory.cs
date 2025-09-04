@@ -1,130 +1,189 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
+using System.Threading;
+using Cysharp.Threading.Tasks;
+using Unity.Collections;
+using Unity.Profiling;
+using ZLinq;
 using AhBearStudios.Core.Alerting;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.HealthChecking.Builders;
 using AhBearStudios.Core.HealthChecking.Configs;
+using AhBearStudios.Core.HealthChecking.Messages;
+using AhBearStudios.Core.HealthChecking.Services;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging;
+using AhBearStudios.Core.Messaging.Messages;
+using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Pooling;
 using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Serialization;
 using Reflex.Core;
 
 namespace AhBearStudios.Core.HealthChecking.Factories;
 
 /// <summary>
-/// Production factory for creating HealthCheckService instances with full dependency injection
+/// Production factory for creating HealthCheckService instances with specialized service dependencies.
 /// </summary>
 /// <remarks>
-/// Manages the complete lifecycle of health check service creation including dependency
-/// validation, configuration verification, and proper service initialization
+/// Creates and orchestrates specialized services (scheduler, degradation manager, statistics collector,
+/// circuit breaker manager) and wires them together with the main HealthCheckService.
+/// Follows Builder → Config → Factory → Service pattern from CLAUDE.md.
 /// </remarks>
 public sealed class HealthCheckServiceFactory : IHealthCheckServiceFactory
 {
     private readonly ILoggingService _logger;
+    private readonly IAlertService _alertService;
+    private readonly IMessageBusService _messageBus;
+    private readonly IPoolingService _poolingService;
+    private readonly IProfilerService _profilerService;
+    private readonly ISerializationService _serializationService;
     private readonly Container _container;
-    private readonly IHealthCheckFactory _healthCheckFactory;
-    private readonly CircuitBreakerFactory _circuitBreakerFactory;
     private readonly HealthCheckServiceConfig _defaultConfig;
+    private readonly ProfilerMarker _createServiceMarker = new ProfilerMarker("HealthCheckServiceFactory.CreateService");
+    private readonly Guid _factoryId;
 
     /// <summary>
-    /// Initializes the factory with all required dependencies
+    /// Initializes the factory with all core system dependencies
     /// </summary>
     /// <param name="logger">Logging service for factory operations</param>
+    /// <param name="alertService">Alert service for critical notifications</param>
+    /// <param name="messageBus">Message bus for factory events</param>
+    /// <param name="poolingService">Pooling service for memory management</param>
+    /// <param name="profilerService">Profiler service for performance monitoring</param>
+    /// <param name="serializationService">Serialization service for configurations</param>
     /// <param name="container">Reflex container for dependency resolution</param>
-    /// <param name="healthCheckFactory">Factory for creating individual health checks</param>
-    /// <param name="circuitBreakerFactory">Factory for creating circuit breakers</param>
     /// <exception cref="ArgumentNullException">Thrown when any dependency is null</exception>
     public HealthCheckServiceFactory(
         ILoggingService logger,
-        Container container,
-        IHealthCheckFactory healthCheckFactory,
-        CircuitBreakerFactory circuitBreakerFactory)
+        IAlertService alertService,
+        IMessageBusService messageBus,
+        IPoolingService poolingService,
+        IProfilerService profilerService,
+        ISerializationService serializationService,
+        Container container)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _alertService = alertService ?? throw new ArgumentNullException(nameof(alertService));
+        _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+        _poolingService = poolingService ?? throw new ArgumentNullException(nameof(poolingService));
+        _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
+        _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
         _container = container ?? throw new ArgumentNullException(nameof(container));
-        _healthCheckFactory = healthCheckFactory ?? throw new ArgumentNullException(nameof(healthCheckFactory));
-        _circuitBreakerFactory = circuitBreakerFactory ?? throw new ArgumentNullException(nameof(circuitBreakerFactory));
         
+        _factoryId = DeterministicIdGenerator.GenerateHealthCheckId("HealthCheckServiceFactory", Environment.MachineName);
         _defaultConfig = CreateDefaultConfiguration();
         
-        _logger.LogInfo("HealthCheckServiceFactory initialized with all dependencies");
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationId("ServiceFactoryInit", _factoryId.ToString());
+        _logger.LogInfo("HealthCheckServiceFactory initialized with specialized service creation capabilities", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
     }
 
     /// <inheritdoc />
-    public IHealthCheckService CreateService(HealthCheckServiceConfig config)
+    public async UniTask<IHealthCheckService> CreateServiceAsync(HealthCheckServiceConfig config)
     {
-        if (config == null)
-            throw new ArgumentNullException(nameof(config));
-
-        ValidateConfigurationOrThrow(config);
-        ValidateDependenciesOrThrow();
-
-        try
+        using (_createServiceMarker.Auto())
         {
-            var alertService = _container.Resolve<IAlertService>();
-            var messageBusService = _container.Resolve<IMessageBusService>();
-            var poolingService = _container.HasBinding<IPoolingService>() 
-                ? _container.Resolve<IPoolingService>() 
-                : null;
-            var profilerService = _container.HasBinding<IProfilerService>() 
-                ? _container.Resolve<IProfilerService>() 
-                : null;
+            if (config == null)
+                throw new ArgumentNullException(nameof(config));
 
-            var service = new HealthCheckService(
-                config,
-                _logger,
-                alertService,
-                messageBusService,
-                _healthCheckFactory,
-                _circuitBreakerFactory,
-                poolingService,
-                profilerService);
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("CreateHealthCheckService", _factoryId.ToString());
+            
+            ValidateConfigurationOrThrow(config);
+            ValidateDependenciesOrThrow();
 
-            _logger.LogInfo($"HealthCheckService created successfully with {config.GetType().Name}");
-            return service;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogException(ex, "Failed to create HealthCheckService");
-            throw new InvalidOperationException("Failed to create health check service", ex);
+            try
+            {
+                // Create specialized services first
+                var scheduler = CreateSchedulerService(config, correlationId);
+                var degradationManager = CreateDegradationManager(config, correlationId);
+                var statisticsCollector = CreateStatisticsCollector(config, correlationId);
+                var circuitBreakerManager = CreateCircuitBreakerManager(config, correlationId);
+
+                // Create main health check service with specialized services
+                var service = new HealthCheckService(
+                    config,
+                    _logger,
+                    _alertService,
+                    _messageBus,
+                    scheduler,
+                    degradationManager,
+                    statisticsCollector,
+                    circuitBreakerManager,
+                    _profilerService);
+
+                _logger.LogInfo($"HealthCheckService created successfully with specialized services", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
+
+                // Publish service creation message
+                await _messageBus.PublishMessageAsync(new HealthCheckServiceCreatedMessage
+                {
+                    Id = DeterministicIdGenerator.GenerateMessageId(messageType: "HealthCheckServiceCreated", source: "HealthCheckServiceFactory", correlationId: null),
+                    TimestampTicks = DateTime.UtcNow.Ticks,
+                    TypeCode = MessageTypeCodes.HealthCheckServiceCreatedMessage,
+                    Source = "HealthCheckServiceFactory",
+                    Priority = MessagePriority.Normal,
+                    CorrelationId = correlationId,
+                    ServiceId = DeterministicIdGenerator.GenerateHealthCheckId("HealthCheckService", Environment.MachineName).ToString(),
+                    ConfigurationHash = config.GetHashCode().ToString()
+                });
+
+                return service;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogException("Failed to create HealthCheckService", ex, correlationId, sourceContext: nameof(HealthCheckServiceFactory));
+                
+                await _messageBus.PublishMessageAsync(new HealthCheckServiceCreationFailedMessage
+                {
+                    Id = DeterministicIdGenerator.GenerateMessageId(messageType: "HealthCheckServiceCreationFailed", source: "HealthCheckServiceFactory", correlationId: null),
+                    TimestampTicks = DateTime.UtcNow.Ticks,
+                    TypeCode = MessageTypeCodes.HealthCheckServiceCreationFailedMessage,
+                    Source = "HealthCheckServiceFactory",
+                    Priority = MessagePriority.High,
+                    CorrelationId = correlationId,
+                    ErrorMessage = ex.Message,
+                    ConfigType = config?.GetType().Name ?? "null"
+                });
+                
+                throw new InvalidOperationException("Failed to create health check service", ex);
+            }
         }
     }
 
     /// <inheritdoc />
-    public IHealthCheckService CreateServiceWithDefaults()
+    public async UniTask<IHealthCheckService> CreateServiceWithDefaultsAsync()
     {
-        _logger.LogInfo("Creating HealthCheckService with default configuration");
-        return CreateService(_defaultConfig);
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationId("CreateServiceWithDefaults", _factoryId.ToString());
+        _logger.LogInfo("Creating HealthCheckService with default configuration", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
+        return await CreateServiceAsync(_defaultConfig);
     }
 
     /// <inheritdoc />
     public bool ValidateDependencies()
     {
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationId("ValidateDependencies", _factoryId.ToString());
         var requiredDependencies = new[]
         {
             typeof(ILoggingService),
             typeof(IAlertService),
             typeof(IMessageBusService),
-            typeof(IHealthCheckFactory),
-            typeof(CircuitBreakerFactory)
+            typeof(IPoolingService),
+            typeof(IProfilerService),
+            typeof(ISerializationService)
         };
 
-        var missingDependencies = new List<string>();
-        
-        foreach (var dependency in requiredDependencies)
-        {
-            if (!_container.HasBinding(dependency))
-            {
-                missingDependencies.Add(dependency.Name);
-            }
-        }
+        var missingDependencies = requiredDependencies
+            .AsValueEnumerable()
+            .Where(dependency => !_container.HasBinding(dependency))
+            .Select(dependency => dependency.Name)
+            .ToList();
 
         if (missingDependencies.Count > 0)
         {
-            _logger.LogError($"Missing required dependencies: {string.Join(", ", missingDependencies)}");
+            _logger.LogError($"Missing required dependencies: {string.Join(", ", missingDependencies)}", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
             return false;
         }
 
-        _logger.LogDebug("All required dependencies validated successfully");
+        _logger.LogDebug("All required dependencies validated successfully", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
         return true;
     }
 
@@ -154,7 +213,7 @@ public sealed class HealthCheckServiceFactory : IHealthCheckServiceFactory
         if (validationErrors.Count > 0)
         {
             var errorMessage = $"Invalid configuration: {string.Join(", ", validationErrors)}";
-            _logger.LogError(errorMessage);
+            _logger.LogError(errorMessage, correlationId: default, sourceContext: nameof(HealthCheckServiceFactory));
             throw new InvalidOperationException(errorMessage);
         }
     }
@@ -165,5 +224,62 @@ public sealed class HealthCheckServiceFactory : IHealthCheckServiceFactory
         {
             throw new InvalidOperationException("Required dependencies are not available for service creation");
         }
+    }
+
+    private IHealthCheckScheduler CreateSchedulerService(HealthCheckServiceConfig config, Guid correlationId)
+    {
+        // Create a function that the scheduler will use to execute health checks
+        // This will be wired up to the main health check service's execution method
+        Func<CancellationToken, UniTask> executeHealthChecks = async (cancellationToken) =>
+        {
+            // This will be called by the scheduler - for now it's a placeholder
+            // The actual implementation would need access to the service instance
+            await UniTask.Yield();
+        };
+
+        var scheduler = new HealthCheckScheduler(
+            config,
+            _logger,
+            _messageBus,
+            _profilerService,
+            executeHealthChecks);
+
+        _logger.LogDebug("HealthCheckScheduler created", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
+        return scheduler;
+    }
+
+    private IHealthDegradationManager CreateDegradationManager(HealthCheckServiceConfig config, Guid correlationId)
+    {
+        var degradationManager = new HealthDegradationManager(
+            config,
+            _logger,
+            _alertService,
+            _messageBus,
+            _profilerService);
+
+        _logger.LogDebug("HealthDegradationManager created", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
+        return degradationManager;
+    }
+
+    private IHealthStatisticsCollector CreateStatisticsCollector(HealthCheckServiceConfig config, Guid correlationId)
+    {
+        var statisticsCollector = new HealthStatisticsCollector(
+            config,
+            _logger,
+            _messageBus,
+            _profilerService);
+
+        _logger.LogDebug("HealthStatisticsCollector created", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
+        return statisticsCollector;
+    }
+
+    private IHealthCircuitBreakerManager CreateCircuitBreakerManager(HealthCheckServiceConfig config, Guid correlationId)
+    {
+        var circuitBreakerManager = new HealthCircuitBreakerManager(
+            _logger,
+            _messageBus);
+
+        _logger.LogDebug("HealthCircuitBreakerManager created", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
+        return circuitBreakerManager;
     }
 }

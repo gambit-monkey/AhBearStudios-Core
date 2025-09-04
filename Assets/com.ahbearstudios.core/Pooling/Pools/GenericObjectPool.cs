@@ -10,6 +10,7 @@ using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Pooling.Strategies;
 using AhBearStudios.Core.Pooling.Messages;
 using AhBearStudios.Core.Messaging;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.Pooling.Pools
 {
@@ -40,6 +41,7 @@ namespace AhBearStudios.Core.Pooling.Pools
         private long _totalGets = 0;
         private long _totalReturns = 0;
         private long _totalCreations = 0;
+        private int _objectCounter = 0;
         private DateTime _lastMaintenance = DateTime.UtcNow;
 
         /// <summary>
@@ -178,7 +180,7 @@ namespace AhBearStudios.Core.Pooling.Pools
 
                     // Configure object for use
                     item.PoolName = Name;
-                    item.PoolId = Guid.NewGuid();
+                    item.PoolId = DeterministicIdGenerator.GeneratePooledObjectId(typeof(T).Name, Name, _objectCounter);
                     item.LastUsed = DateTime.UtcNow;
                     item.OnGet();
                     
@@ -370,10 +372,10 @@ namespace AhBearStudios.Core.Pooling.Pools
             
             try
             {
-                var message = PoolObjectRetrievedMessage.Create(
+                var message = PoolObjectRetrievedMessage.CreateFromFixedStrings(
                     poolName: new FixedString64Bytes(Name),
                     objectTypeName: new FixedString64Bytes(typeof(T).Name),
-                    poolId: Guid.NewGuid(), // Pool doesn't have a persistent ID
+                    poolId: DeterministicIdGenerator.GeneratePoolId(typeof(T).Name, Name), // Generate deterministic pool ID
                     objectId: item.PoolId,
                     poolSizeAfter: Count,
                     activeObjectsAfter: ActiveCount
@@ -396,10 +398,10 @@ namespace AhBearStudios.Core.Pooling.Pools
             
             try
             {
-                var message = PoolObjectReturnedMessage.Create(
+                var message = PoolObjectReturnedMessage.CreateFromFixedStrings(
                     poolName: new FixedString64Bytes(Name),
                     objectTypeName: new FixedString64Bytes(typeof(T).Name),
-                    poolId: Guid.NewGuid(), // Pool doesn't have a persistent ID
+                    poolId: DeterministicIdGenerator.GeneratePoolId(typeof(T).Name, Name), // Generate deterministic pool ID
                     objectId: item.PoolId,
                     poolSizeAfter: Count,
                     activeObjectsAfter: ActiveCount,
@@ -421,6 +423,7 @@ namespace AhBearStudios.Core.Pooling.Pools
         /// </summary>
         private T CreateNewObject()
         {
+            var objectId = Interlocked.Increment(ref _objectCounter);
             var item = new T
             {
                 PoolName = Name,

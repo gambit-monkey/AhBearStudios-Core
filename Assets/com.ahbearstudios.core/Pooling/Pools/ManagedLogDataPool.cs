@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.Pooling.Pools
 {
@@ -43,7 +44,7 @@ namespace AhBearStudios.Core.Pooling.Pools
         {
             if (_disposed) throw new ObjectDisposedException(nameof(ManagedLogDataPool));
 
-            var id = Guid.NewGuid();
+            var id = DeterministicIdGenerator.GenerateCoreId($"ManagedLogData-{exception?.GetType().Name ?? "Unknown"}-{DateTime.UtcNow.Ticks}");
             var data = _poolingService.Get<ManagedLogData>();
             
             data.Exception = exception;

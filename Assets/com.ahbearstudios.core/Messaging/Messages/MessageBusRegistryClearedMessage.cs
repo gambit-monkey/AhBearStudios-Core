@@ -1,4 +1,5 @@
 using System;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using Unity.Collections;
@@ -11,6 +12,8 @@ namespace AhBearStudios.Core.Messaging.Messages;
 /// </summary>
 public readonly record struct MessageBusRegistryClearedMessage : IMessage
 {
+    #region IMessage Implementation
+
     /// <summary>
     /// Gets the unique identifier for this message instance.
     /// </summary>
@@ -22,9 +25,9 @@ public readonly record struct MessageBusRegistryClearedMessage : IMessage
     public long TimestampTicks { get; init; }
 
     /// <summary>
-    /// Gets the unique type code for this message type.
+    /// Gets the message type code for efficient routing and filtering.
     /// </summary>
-    public ushort TypeCode { get; init; } = MessageTypeCodes.MessageBusRegistryClearedMessage;
+    public ushort TypeCode { get; init; }
 
     /// <summary>
     /// Gets the source system or component that created this message.
@@ -40,6 +43,10 @@ public readonly record struct MessageBusRegistryClearedMessage : IMessage
     /// Gets optional correlation ID for message tracing across systems.
     /// </summary>
     public Guid CorrelationId { get; init; }
+
+    #endregion
+
+    #region Message-Specific Properties
 
     /// <summary>
     /// Gets the timestamp when the registry was cleared.
@@ -76,27 +83,12 @@ public readonly record struct MessageBusRegistryClearedMessage : IMessage
     /// </summary>
     public FixedString512Bytes ClearContext { get; init; }
 
-    /// <summary>
-    /// Initializes a new instance of the MessageBusRegistryClearedMessage struct.
-    /// </summary>
-    public MessageBusRegistryClearedMessage()
-    {
-        Id = default;
-        TimestampTicks = default;
-        Source = default;
-        Priority = default;
-        CorrelationId = default;
-        ClearedAt = default;
-        TypesRemoved = default;
-        ClearReason = default;
-        IsSuccessful = default;
-        TypeCodesFreed = default;
-        CacheEntriesCleared = default;
-        ClearContext = default;
-    }
+    #endregion
+
+    #region Computed Properties
 
     /// <summary>
-    /// Gets the DateTime representation of the timestamp.
+    /// Gets the DateTime representation of the message timestamp.
     /// </summary>
     public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
@@ -105,8 +97,56 @@ public readonly record struct MessageBusRegistryClearedMessage : IMessage
     /// </summary>
     public int TotalItemsCleared => TypesRemoved + CacheEntriesCleared;
 
+    #endregion
+
+    #region Static Factory Methods
+
     /// <summary>
-    /// Creates a new instance of the MessageBusRegistryClearedMessage.
+    /// Creates a new instance of MessageBusRegistryClearedMessage using FixedString parameters for optimal performance.
+    /// </summary>
+    /// <param name="typesRemoved">Number of types removed</param>
+    /// <param name="clearReason">Reason for clearing</param>
+    /// <param name="isSuccessful">Whether the operation was successful</param>
+    /// <param name="typeCodesFreed">Number of type codes freed</param>
+    /// <param name="cacheEntriesCleared">Number of cache entries cleared</param>
+    /// <param name="clearContext">Additional context</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessageBusRegistryClearedMessage instance</returns>
+    public static MessageBusRegistryClearedMessage CreateFromFixedStrings(
+        int typesRemoved,
+        string clearReason,
+        bool isSuccessful,
+        int typeCodesFreed,
+        int cacheEntriesCleared,
+        string clearContext,
+        FixedString64Bytes source = default,
+        Guid correlationId = default)
+    {
+        var finalCorrelationId = correlationId == default 
+            ? DeterministicIdGenerator.GenerateCorrelationId("MessageBusRegistry", clearReason)
+            : correlationId;
+
+        return new MessageBusRegistryClearedMessage
+        {
+            Id = DeterministicIdGenerator.GenerateMessageId("MessageBusRegistryClearedMessage", "MessagingSystem", correlationId: null),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.MessageBusRegistryClearedMessage,
+            Source = source.IsEmpty ? "MessageBusService" : source,
+            Priority = MessagePriority.Normal,
+            CorrelationId = finalCorrelationId,
+            ClearedAt = DateTime.UtcNow,
+            TypesRemoved = Math.Max(0, typesRemoved),
+            ClearReason = clearReason?.Length <= 128 ? clearReason : clearReason?[..128] ?? "System cleanup",
+            IsSuccessful = isSuccessful,
+            TypeCodesFreed = Math.Max(0, typeCodesFreed),
+            CacheEntriesCleared = Math.Max(0, cacheEntriesCleared),
+            ClearContext = clearContext?.Length <= 512 ? clearContext : clearContext?[..512] ?? string.Empty
+        };
+    }
+
+    /// <summary>
+    /// Creates a new instance of MessageBusRegistryClearedMessage using string parameters.
     /// </summary>
     /// <param name="typesRemoved">Number of types removed</param>
     /// <param name="clearReason">Reason for clearing</param>
@@ -124,24 +164,19 @@ public readonly record struct MessageBusRegistryClearedMessage : IMessage
         int typeCodesFreed = 0,
         int cacheEntriesCleared = 0,
         string clearContext = null,
-        FixedString64Bytes source = default,
+        string source = null,
         Guid correlationId = default)
     {
-        return new MessageBusRegistryClearedMessage
-        {
-            Id = Guid.NewGuid(),
-            TimestampTicks = DateTime.UtcNow.Ticks,
-            TypeCode = MessageTypeCodes.MessageBusRegistryClearedMessage,
-            Source = source.IsEmpty ? "MessageBusService" : source,
-            Priority = MessagePriority.Normal, // Registry clear is a normal maintenance operation
-            CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
-            ClearedAt = DateTime.UtcNow,
-            TypesRemoved = Math.Max(0, typesRemoved),
-            ClearReason = clearReason?.Length <= 128 ? clearReason : clearReason?[..128] ?? "System cleanup",
-            IsSuccessful = isSuccessful,
-            TypeCodesFreed = Math.Max(0, typeCodesFreed),
-            CacheEntriesCleared = Math.Max(0, cacheEntriesCleared),
-            ClearContext = clearContext?.Length <= 256 ? clearContext : clearContext?[..256] ?? string.Empty
-        };
+        return CreateFromFixedStrings(
+            typesRemoved,
+            clearReason,
+            isSuccessful,
+            typeCodesFreed,
+            cacheEntriesCleared,
+            clearContext,
+            source?.Length <= 64 ? source : source?[..64] ?? "MessageBusService",
+            correlationId);
     }
+
+    #endregion
 }

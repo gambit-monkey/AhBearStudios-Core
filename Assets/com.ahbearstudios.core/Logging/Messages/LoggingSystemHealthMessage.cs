@@ -1,4 +1,7 @@
+using System;
 using Unity.Collections;
+using AhBearStudios.Core.Common.Utilities;
+using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 
@@ -8,8 +11,9 @@ namespace AhBearStudios.Core.Logging.Messages
     /// Message published when the logging system health status changes.
     /// Replaces direct EventHandler usage for loose coupling through IMessageBus.
     /// </summary>
-    public readonly struct LoggingSystemHealthMessage : IMessage
+    public readonly record struct LoggingSystemHealthMessage : IMessage
     {
+        #region IMessage Implementation
         /// <summary>
         /// Gets the unique identifier for this message.
         /// </summary>
@@ -23,7 +27,7 @@ namespace AhBearStudios.Core.Logging.Messages
         /// <summary>
         /// Gets the type code for this message type.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.LoggingSystemHealthMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system that published this message.
@@ -39,6 +43,10 @@ namespace AhBearStudios.Core.Logging.Messages
         /// Gets the correlation ID for tracking.
         /// </summary>
         public Guid CorrelationId { get; init; }
+
+        #endregion
+
+        #region Message-Specific Properties
 
         /// <summary>
         /// Gets the overall health status of the logging system.
@@ -90,30 +98,31 @@ namespace AhBearStudios.Core.Logging.Messages
         /// </summary>
         public FixedString512Bytes StatusDetails { get; init; }
 
-        /// <summary>
-        /// Initializes a new instance of the LoggingSystemHealthMessage struct.
-        /// </summary>
-        public LoggingSystemHealthMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-            HealthStatus = default;
-            HealthyTargetCount = default;
-            TotalTargetCount = default;
-            ActiveChannelCount = default;
-            MessagesPerSecond = default;
-            ErrorRatePercent = default;
-            MemoryUsageBytes = default;
-            UptimeTicks = default;
-            HealthCheckCorrelationId = default;
-            StatusDetails = default;
-        }
+        #endregion
+
+        #region Computed Properties
 
         /// <summary>
-        /// Initializes a new instance of the LoggingSystemHealthMessage with parameters.
+        /// Gets the DateTime representation of the message timestamp.
+        /// </summary>
+        public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
+
+        /// <summary>
+        /// Gets the uptime as a TimeSpan.
+        /// </summary>
+        public TimeSpan Uptime => new TimeSpan(UptimeTicks);
+
+        /// <summary>
+        /// Gets the percentage of healthy targets.
+        /// </summary>
+        public float HealthyTargetPercentage => TotalTargetCount > 0 ? (float)HealthyTargetCount / TotalTargetCount * 100f : 0f;
+
+        #endregion
+
+        #region Static Factory Methods
+
+        /// <summary>
+        /// Creates a new LoggingSystemHealthMessage with proper validation and defaults.
         /// </summary>
         /// <param name="healthStatus">The overall health status</param>
         /// <param name="healthyTargetCount">Number of healthy targets</param>
@@ -126,7 +135,9 @@ namespace AhBearStudios.Core.Logging.Messages
         /// <param name="healthCheckCorrelationId">Health check correlation ID</param>
         /// <param name="statusDetails">Additional status details</param>
         /// <param name="correlationId">Message correlation ID</param>
-        public LoggingSystemHealthMessage(
+        /// <param name="source">Source component creating this message</param>
+        /// <returns>New LoggingSystemHealthMessage instance</returns>
+        public static LoggingSystemHealthMessage CreateFromFixedStrings(
             LoggingSystemHealthStatus healthStatus,
             int healthyTargetCount,
             int totalTargetCount,
@@ -137,36 +148,37 @@ namespace AhBearStudios.Core.Logging.Messages
             TimeSpan uptime,
             FixedString64Bytes healthCheckCorrelationId = default,
             FixedString512Bytes statusDetails = default,
-            Guid correlationId = default)
+            Guid correlationId = default,
+            FixedString64Bytes source = default)
         {
-            Id = Guid.NewGuid();
-            TimestampTicks = DateTime.UtcNow.Ticks;
-            TypeCode = MessageTypeCodes.LoggingSystemHealthMessage;
-            Source = new FixedString64Bytes("LoggingSystem");
-            Priority = healthStatus == LoggingSystemHealthStatus.Critical ? MessagePriority.High : MessagePriority.Normal;
-            CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId;
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "LoggingSystem" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("LoggingSystemHealthMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("LoggingSystemHealth", $"{healthStatus}-{healthyTargetCount}-{totalTargetCount}")
+                : correlationId;
             
-            HealthStatus = healthStatus;
-            HealthyTargetCount = healthyTargetCount;
-            TotalTargetCount = totalTargetCount;
-            ActiveChannelCount = activeChannelCount;
-            MessagesPerSecond = messagesPerSecond;
-            ErrorRatePercent = errorRatePercent;
-            MemoryUsageBytes = memoryUsageBytes;
-            UptimeTicks = uptime.Ticks;
-            HealthCheckCorrelationId = healthCheckCorrelationId;
-            StatusDetails = statusDetails;
+            return new LoggingSystemHealthMessage
+            {
+                Id = messageId,
+                TimestampTicks = DateTime.UtcNow.Ticks,
+                TypeCode = MessageTypeCodes.LoggingSystemHealthMessage,
+                Source = source.IsEmpty ? "LoggingSystem" : source,
+                Priority = healthStatus == LoggingSystemHealthStatus.Critical ? MessagePriority.High : MessagePriority.Normal,
+                CorrelationId = finalCorrelationId,
+                
+                HealthStatus = healthStatus,
+                HealthyTargetCount = healthyTargetCount,
+                TotalTargetCount = totalTargetCount,
+                ActiveChannelCount = activeChannelCount,
+                MessagesPerSecond = messagesPerSecond,
+                ErrorRatePercent = errorRatePercent,
+                MemoryUsageBytes = memoryUsageBytes,
+                UptimeTicks = uptime.Ticks,
+                HealthCheckCorrelationId = healthCheckCorrelationId,
+                StatusDetails = statusDetails
+            };
         }
-
-        /// <summary>
-        /// Gets the uptime as a TimeSpan.
-        /// </summary>
-        public TimeSpan Uptime => new TimeSpan(UptimeTicks);
-
-        /// <summary>
-        /// Gets the percentage of healthy targets.
-        /// </summary>
-        public float HealthyTargetPercentage => TotalTargetCount > 0 ? (float)HealthyTargetCount / TotalTargetCount * 100f : 0f;
 
         /// <summary>
         /// Creates a LoggingSystemHealthMessage from individual parameters for convenience.
@@ -181,6 +193,7 @@ namespace AhBearStudios.Core.Logging.Messages
         /// <param name="uptime">System uptime</param>
         /// <param name="details">Additional details</param>
         /// <param name="correlationId">Message correlation ID</param>
+        /// <param name="source">Source component creating this message</param>
         /// <returns>A new LoggingSystemHealthMessage</returns>
         public static LoggingSystemHealthMessage Create(
             bool isHealthy,
@@ -192,13 +205,14 @@ namespace AhBearStudios.Core.Logging.Messages
             long memoryUsage = 0,
             TimeSpan? uptime = null,
             string details = null,
-            Guid correlationId = default)
+            Guid correlationId = default,
+            string source = null)
         {
             var status = isHealthy ? LoggingSystemHealthStatus.Healthy : LoggingSystemHealthStatus.Unhealthy;
             if (errorRate > 50f) status = LoggingSystemHealthStatus.Critical;
             else if (errorRate > 10f) status = LoggingSystemHealthStatus.Degraded;
 
-            return new LoggingSystemHealthMessage(
+            return CreateFromFixedStrings(
                 status,
                 healthyTargets,
                 totalTargets,
@@ -209,8 +223,13 @@ namespace AhBearStudios.Core.Logging.Messages
                 uptime ?? TimeSpan.Zero,
                 default,
                 new FixedString512Bytes(details ?? string.Empty),
-                correlationId);
+                correlationId,
+                new FixedString64Bytes(source ?? "LoggingSystem"));
         }
+
+        #endregion
+
+        #region String Representation
 
         /// <summary>
         /// Returns a string representation of this message.
@@ -221,36 +240,7 @@ namespace AhBearStudios.Core.Logging.Messages
             return $"LoggingSystemHealth: {HealthStatus} - {HealthyTargetCount}/{TotalTargetCount} targets healthy, " +
                    $"{MessagesPerSecond:F1} msg/s, {ErrorRatePercent:F2}% errors, uptime: {Uptime.TotalHours:F1}h";
         }
-    }
 
-    /// <summary>
-    /// Defines the health status levels for the logging system.
-    /// </summary>
-    public enum LoggingSystemHealthStatus : byte
-    {
-        /// <summary>
-        /// System is fully operational with no issues.
-        /// </summary>
-        Healthy = 0,
-
-        /// <summary>
-        /// System is operational but with some performance degradation.
-        /// </summary>
-        Degraded = 1,
-
-        /// <summary>
-        /// System has significant issues but is still functional.
-        /// </summary>
-        Unhealthy = 2,
-
-        /// <summary>
-        /// System is in critical state and may not be functional.
-        /// </summary>
-        Critical = 3,
-
-        /// <summary>
-        /// System status is unknown or cannot be determined.
-        /// </summary>
-        Unknown = 4
+        #endregion
     }
 }

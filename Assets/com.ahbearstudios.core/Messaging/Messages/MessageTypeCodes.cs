@@ -304,6 +304,7 @@
         
         /// <summary>
         /// Type code for health check test messages.
+        /// Sent for testing message bus connectivity during health checks.
         /// </summary>
         public const ushort HealthCheckTestMessage = 1201;
         
@@ -327,6 +328,97 @@
         /// Sent when circuit breakers managed by the health check system change state.
         /// </summary>
         public const ushort HealthCheckCircuitBreakerStateChangedMessage = 1205;
+        
+        /// <summary>
+        /// Type code for health check connection test messages.
+        /// Sent for testing specific service connectivity during health checks.
+        /// </summary>
+        public const ushort HealthCheckConnectionTestMessage = 1206;
+        
+        /// <summary>
+        /// Type code for database test result messages.
+        /// Sent when database health check tests complete.
+        /// </summary>
+        public const ushort HealthCheckDatabaseTestResultMessage = 1207;
+        
+        /// <summary>
+        /// Type code for network test result messages.
+        /// Sent when network health check tests complete.
+        /// </summary>
+        public const ushort HealthCheckNetworkTestResultMessage = 1208;
+        
+        /// <summary>
+        /// Type code for messaging test result messages.
+        /// Sent when messaging health check tests complete.
+        /// </summary>
+        public const ushort HealthCheckMessagingTestResultMessage = 1209;
+        
+        /// <summary>
+        /// Type code for system resource test result messages.
+        /// Sent when system resource health check tests complete.
+        /// </summary>
+        public const ushort HealthCheckSystemResourceTestResultMessage = 1210;
+
+        /// <summary>
+        /// Type code for health check configuration changed messages.
+        /// Sent when individual health check configurations are modified at runtime.
+        /// </summary>
+        public const ushort HealthCheckConfigurationChangedMessage = 1211;
+
+        /// <summary>
+        /// Type code for health check service configuration changed messages.
+        /// Sent when the overall health check service configuration is modified.
+        /// </summary>
+        public const ushort HealthCheckServiceConfigurationChangedMessage = 1212;
+
+        /// <summary>
+        /// Type code for health check factory error messages.
+        /// Sent when health check factory encounters creation errors.
+        /// </summary>
+        public const ushort HealthCheckFactoryErrorMessage = 1213;
+
+        /// <summary>
+        /// Type code for health check created messages.
+        /// Sent when health check factory successfully creates a health check.
+        /// </summary>
+        public const ushort HealthCheckCreatedMessage = 1214;
+
+        /// <summary>
+        /// Type code for health check service created messages.
+        /// Sent when health check service factory successfully creates a service.
+        /// </summary>
+        public const ushort HealthCheckServiceCreatedMessage = 1215;
+
+        /// <summary>
+        /// Type code for health check service creation failed messages.
+        /// Sent when health check service factory fails to create a service.
+        /// </summary>
+        public const ushort HealthCheckServiceCreationFailedMessage = 1216;
+
+        /// <summary>
+        /// Type code for circuit breaker created messages.
+        /// Sent when circuit breaker factory successfully creates a circuit breaker.
+        /// </summary>
+        public const ushort CircuitBreakerCreatedMessage = 1217;
+
+        /// <summary>
+        /// Type code for health check circuit breaker integration configured messages.
+        /// Sent when circuit breaker factory configures health check integration.
+        /// </summary>
+        public const ushort HealthCheckCircuitBreakerIntegrationConfiguredMessage = 1218;
+
+        /// <summary>
+        /// Type code for health check started messages.
+        /// Sent when a health check begins execution.
+        /// </summary>
+        public const ushort HealthCheckStartedMessage = 1219;
+
+        /// <summary>
+        /// Type code for health check completed with results messages.
+        /// Sent when a health check completes execution with detailed results.
+        /// </summary>
+        public const ushort HealthCheckCompletedWithResultsMessage = 1220;
+
         
         #endregion
         

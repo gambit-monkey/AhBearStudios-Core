@@ -1,4 +1,5 @@
 using System;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using Unity.Collections;
@@ -11,6 +12,8 @@ namespace AhBearStudios.Core.Messaging.Messages;
 /// </summary>
 public readonly record struct MessageProcessingFailedEventMessage : IMessage
 {
+    #region IMessage Implementation
+
     /// <summary>
     /// Gets the unique identifier for this message instance.
     /// </summary>
@@ -22,9 +25,9 @@ public readonly record struct MessageProcessingFailedEventMessage : IMessage
     public long TimestampTicks { get; init; }
 
     /// <summary>
-    /// Gets the unique type code for this message type.
+    /// Gets the message type code for efficient routing and filtering.
     /// </summary>
-    public ushort TypeCode { get; init; } = MessageTypeCodes.MessageBusProcessingFailedMessage;
+    public ushort TypeCode { get; init; }
 
     /// <summary>
     /// Gets the source system or component that created this message.
@@ -40,6 +43,10 @@ public readonly record struct MessageProcessingFailedEventMessage : IMessage
     /// Gets optional correlation ID for message tracing across systems.
     /// </summary>
     public Guid CorrelationId { get; init; }
+
+    #endregion
+
+    #region Message-Specific Properties
 
     /// <summary>
     /// Gets the message that failed processing.
@@ -76,32 +83,65 @@ public readonly record struct MessageProcessingFailedEventMessage : IMessage
     /// </summary>
     public FixedString512Bytes FailureContext { get; init; }
 
-    /// <summary>
-    /// Initializes a new instance of the MessageProcessingFailedEventMessage struct.
-    /// </summary>
-    public MessageProcessingFailedEventMessage()
-    {
-        Id = default;
-        TimestampTicks = default;
-        Source = default;
-        Priority = default;
-        CorrelationId = default;
-        FailedMessage = default;
-        Exception = default;
-        FailedAt = default;
-        AttemptCount = default;
-        IsFinalFailure = default;
-        SubscriberName = default;
-        FailureContext = default;
-    }
+    #endregion
+
+    #region Computed Properties
 
     /// <summary>
-    /// Gets the DateTime representation of the timestamp.
+    /// Gets the DateTime representation of the message timestamp.
     /// </summary>
     public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
+    #endregion
+
+    #region Static Factory Methods
+
     /// <summary>
-    /// Creates a new instance of the MessageProcessingFailedEventMessage.
+    /// Creates a new instance of MessageProcessingFailedEventMessage using FixedString parameters for optimal performance.
+    /// </summary>
+    /// <param name="failedMessage">The message that failed processing</param>
+    /// <param name="exception">The exception that caused the failure</param>
+    /// <param name="attemptCount">The number of attempts made</param>
+    /// <param name="isFinalFailure">Whether this was a final failure</param>
+    /// <param name="subscriberName">The subscriber that failed</param>
+    /// <param name="failureContext">Additional context</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessageProcessingFailedEventMessage instance</returns>
+    public static MessageProcessingFailedEventMessage CreateFromFixedStrings(
+        IMessage failedMessage,
+        Exception exception,
+        int attemptCount,
+        bool isFinalFailure,
+        string subscriberName,
+        string failureContext,
+        FixedString64Bytes source = default,
+        Guid correlationId = default)
+    {
+        var finalCorrelationId = correlationId == default 
+            ? DeterministicIdGenerator.GenerateCorrelationId("MessageBusProcessing", null)
+            : correlationId;
+
+        return new MessageProcessingFailedEventMessage
+        {
+            Id = DeterministicIdGenerator.GenerateMessageId("MessageProcessingFailedEventMessage", "MessagingSystem", correlationId: null),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.MessageBusProcessingFailedMessage,
+            Source = source.IsEmpty ? "MessageBusService" : source,
+            Priority = MessagePriority.High,
+            CorrelationId = finalCorrelationId,
+            FailedMessage = failedMessage ?? throw new ArgumentNullException(nameof(failedMessage)),
+            Exception = exception ?? throw new ArgumentNullException(nameof(exception)),
+            FailedAt = DateTime.UtcNow,
+            AttemptCount = Math.Max(1, attemptCount),
+            IsFinalFailure = isFinalFailure,
+            SubscriberName = subscriberName?.Length <= 64 ? subscriberName : subscriberName?[..64] ?? "Unknown",
+            FailureContext = failureContext?.Length <= 512 ? failureContext : failureContext?[..512] ?? string.Empty
+        };
+    }
+
+    /// <summary>
+    /// Creates a new instance of MessageProcessingFailedEventMessage using string parameters.
     /// </summary>
     /// <param name="failedMessage">The message that failed processing</param>
     /// <param name="exception">The exception that caused the failure</param>
@@ -119,24 +159,19 @@ public readonly record struct MessageProcessingFailedEventMessage : IMessage
         bool isFinalFailure = false,
         string subscriberName = null,
         string failureContext = null,
-        FixedString64Bytes source = default,
+        string source = null,
         Guid correlationId = default)
     {
-        return new MessageProcessingFailedEventMessage
-        {
-            Id = Guid.NewGuid(),
-            TimestampTicks = DateTime.UtcNow.Ticks,
-            TypeCode = MessageTypeCodes.MessageBusProcessingFailedMessage,
-            Source = source.IsEmpty ? "MessageBusService" : source,
-            Priority = MessagePriority.High, // Processing failures are high priority
-            CorrelationId = correlationId == default ? failedMessage?.CorrelationId ?? Guid.NewGuid() : correlationId,
-            FailedMessage = failedMessage ?? throw new ArgumentNullException(nameof(failedMessage)),
-            Exception = exception ?? throw new ArgumentNullException(nameof(exception)),
-            FailedAt = DateTime.UtcNow,
-            AttemptCount = Math.Max(1, attemptCount),
-            IsFinalFailure = isFinalFailure,
-            SubscriberName = subscriberName?.Length <= 64 ? subscriberName : subscriberName?[..64] ?? "Unknown",
-            FailureContext = failureContext?.Length <= 256 ? failureContext : failureContext?[..256] ?? string.Empty
-        };
+        return CreateFromFixedStrings(
+            failedMessage,
+            exception,
+            attemptCount,
+            isFinalFailure,
+            subscriberName,
+            failureContext,
+            source?.Length <= 64 ? source : source?[..64] ?? "MessageBusService",
+            correlationId);
     }
+
+    #endregion
 }

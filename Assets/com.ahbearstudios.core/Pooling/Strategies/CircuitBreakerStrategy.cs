@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using AhBearStudios.Core.HealthChecking;
+using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
 

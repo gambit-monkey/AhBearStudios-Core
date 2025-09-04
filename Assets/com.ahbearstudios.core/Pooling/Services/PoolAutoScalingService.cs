@@ -427,7 +427,7 @@ namespace AhBearStudios.Core.Pooling.Services
         {
             try
             {
-                var message = PoolExpansionMessage.Create(
+                var message = PoolExpansionMessage.CreateFromFixedStrings(
                     strategyName: poolTypeName,
                     oldSize: previousSize,
                     newSize: newSize,
@@ -450,7 +450,7 @@ namespace AhBearStudios.Core.Pooling.Services
         {
             try
             {
-                var message = PoolContractionMessage.Create(
+                var message = PoolContractionMessage.CreateFromFixedStrings(
                     strategyName: poolTypeName,
                     oldSize: previousSize,
                     newSize: newSize,

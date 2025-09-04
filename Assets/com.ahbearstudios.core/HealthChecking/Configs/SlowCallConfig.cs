@@ -5,7 +5,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs;
 /// <summary>
 /// Configuration for slow call detection
 /// </summary>
-public sealed record SlowCallConfig
+public sealed record SlowCallConfig : ISlowCallConfig
 {
     /// <summary>
     /// Duration threshold for considering a call slow

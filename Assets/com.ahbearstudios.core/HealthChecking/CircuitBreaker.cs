@@ -1,10 +1,13 @@
-﻿using System.Threading;
+﻿using System;
+using System.Threading;
 using System.Threading.Tasks;
 using AhBearStudios.Core.HealthChecking;
 using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.HealthChecking.Models;
-using Unity.Collections;
+using AhBearStudios.Core.HealthChecking.Messages;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Messaging;
+using Unity.Collections;
 
 namespace AhBearStudios.Core.HealthChecking
 {
@@ -14,6 +17,7 @@ namespace AhBearStudios.Core.HealthChecking
     public sealed class CircuitBreaker : ICircuitBreaker, IDisposable
     {
         private readonly ILoggingService _logger;
+        private readonly IMessageBusService _messageBus;
         private readonly object _stateLock = new();
         private readonly Timer _resetTimer;
         
@@ -27,10 +31,6 @@ namespace AhBearStudios.Core.HealthChecking
         private long _failedRequests;
         private bool _disposed;
 
-        /// <summary>
-        /// Event triggered when circuit breaker state changes
-        /// </summary>
-        public event EventHandler<CircuitBreakerStateChangedEventArgs> StateChanged;
 
         /// <summary>
         /// Unique name of this circuit breaker
@@ -108,7 +108,8 @@ namespace AhBearStudios.Core.HealthChecking
         public CircuitBreaker(
             FixedString64Bytes name,
             CircuitBreakerConfig configuration,
-            ILoggingService logger)
+            ILoggingService logger,
+            IMessageBusService messageBus)
         {
             if (name.IsEmpty)
                 throw new ArgumentException("Circuit breaker name cannot be empty", nameof(name));
@@ -116,6 +117,7 @@ namespace AhBearStudios.Core.HealthChecking
             Name = name;
             Configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
 
             // Validate configuration
             var validationErrors = Configuration.Validate();
@@ -394,15 +396,10 @@ namespace AhBearStudios.Core.HealthChecking
                 {
                     Name = Name,
                     State = _state,
-                    FailureCount = _failureCount,
-                    TotalRequests = totalRequests,
-                    SuccessfulRequests = successfulRequests,
-                    FailedRequests = failedRequests,
-                    SuccessRate = totalRequests > 0 ? (double)successfulRequests / totalRequests : 0.0,
-                    LastFailureTime = _lastFailureTime,
-                    LastStateChangeTime = _lastStateChangeTime,
-                    LastStateChangeReason = _lastStateChangeReason,
-                    Configuration = Configuration
+                    TotalExecutions = totalRequests,
+                    TotalFailures = failedRequests,
+                    TotalSuccesses = successfulRequests,
+                    LastStateChange = _lastStateChangeTime
                 };
             }
         }
@@ -471,18 +468,20 @@ namespace AhBearStudios.Core.HealthChecking
         {
             try
             {
-                StateChanged?.Invoke(this, new CircuitBreakerStateChangedEventArgs
-                {
-                    CircuitBreakerName = Name,
-                    OldState = oldState,
-                    NewState = newState,
-                    Reason = reason,
-                    Timestamp = DateTime.UtcNow
-                });
+                var message = HealthCheckCircuitBreakerStateChangedMessage.Create(
+                    circuitBreakerName: Name,
+                    oldState: oldState,
+                    newState: newState,
+                    reason: reason,
+                    consecutiveFailures: _failureCount,
+                    totalActivations: _totalRequests,
+                    source: "CircuitBreaker");
+
+                _messageBus.PublishMessage(message);
             }
             catch (Exception ex)
             {
-                _logger.LogException(ex, $"Error raising StateChanged event for circuit breaker '{Name}'");
+                _logger.LogException($"Error publishing circuit breaker state change message for '{Name}'", ex);
             }
         }
 

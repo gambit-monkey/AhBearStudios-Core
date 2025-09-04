@@ -79,6 +79,62 @@ namespace AhBearStudios.Core.Logging
         void LogCritical(string message, FixedString64Bytes correlationId = default, 
             string sourceContext = null, IReadOnlyDictionary<string, object> properties = null);
 
+        // Guid overloads for improved developer experience
+        /// <summary>
+        /// Logs a debug message with Guid correlation tracking.
+        /// Convenience overload that accepts Guid directly instead of FixedString64Bytes.
+        /// </summary>
+        /// <param name="message">The message to log</param>
+        /// <param name="correlationId">Correlation ID for tracking as Guid</param>
+        /// <param name="sourceContext">Source context (typically class name)</param>
+        /// <param name="properties">Additional structured properties</param>
+        void LogDebug(string message, Guid correlationId, string sourceContext = null, 
+            IReadOnlyDictionary<string, object> properties = null);
+
+        /// <summary>
+        /// Logs an informational message with Guid correlation tracking.
+        /// Convenience overload that accepts Guid directly instead of FixedString64Bytes.
+        /// </summary>
+        /// <param name="message">The message to log</param>
+        /// <param name="correlationId">Correlation ID for tracking as Guid</param>
+        /// <param name="sourceContext">Source context (typically class name)</param>
+        /// <param name="properties">Additional structured properties</param>
+        void LogInfo(string message, Guid correlationId, string sourceContext = null, 
+            IReadOnlyDictionary<string, object> properties = null);
+
+        /// <summary>
+        /// Logs a warning message with Guid correlation tracking.
+        /// Convenience overload that accepts Guid directly instead of FixedString64Bytes.
+        /// </summary>
+        /// <param name="message">The message to log</param>
+        /// <param name="correlationId">Correlation ID for tracking as Guid</param>
+        /// <param name="sourceContext">Source context (typically class name)</param>
+        /// <param name="properties">Additional structured properties</param>
+        void LogWarning(string message, Guid correlationId, string sourceContext = null, 
+            IReadOnlyDictionary<string, object> properties = null);
+
+        /// <summary>
+        /// Logs an error message with Guid correlation tracking.
+        /// Convenience overload that accepts Guid directly instead of FixedString64Bytes.
+        /// </summary>
+        /// <param name="message">The message to log</param>
+        /// <param name="correlationId">Correlation ID for tracking as Guid</param>
+        /// <param name="sourceContext">Source context (typically class name)</param>
+        /// <param name="properties">Additional structured properties</param>
+        void LogError(string message, Guid correlationId, string sourceContext = null, 
+            IReadOnlyDictionary<string, object> properties = null);
+
+        /// <summary>
+        /// Logs a critical message with Guid correlation tracking and automatic alerting.
+        /// Convenience overload that accepts Guid directly instead of FixedString64Bytes.
+        /// </summary>
+        /// <param name="message">The message to log</param>
+        /// <param name="correlationId">Correlation ID for tracking as Guid</param>
+        /// <param name="sourceContext">Source context (typically class name)</param>
+        /// <param name="properties">Additional structured properties</param>
+        void LogCritical(string message, Guid correlationId, string sourceContext = null, 
+            IReadOnlyDictionary<string, object> properties = null);
+
         // Unity Job System and Burst-compatible logging methods
         /// <summary>
         /// Logs a debug message with structured data using generic type constraints for Burst compatibility.
@@ -139,6 +195,18 @@ namespace AhBearStudios.Core.Logging
         /// <param name="sourceContext">Source context (typically class name)</param>
         /// <param name="properties">Additional structured properties</param>
         void LogException(string message, Exception exception, FixedString64Bytes correlationId = default, 
+            string sourceContext = null, IReadOnlyDictionary<string, object> properties = null);
+
+        /// <summary>
+        /// Logs an exception with context and Guid correlation tracking.
+        /// Convenience overload that accepts Guid directly instead of FixedString64Bytes.
+        /// </summary>
+        /// <param name="message">Context message for the exception</param>
+        /// <param name="exception">The exception to log</param>
+        /// <param name="correlationId">Correlation ID for tracking as Guid</param>
+        /// <param name="sourceContext">Source context (typically class name)</param>
+        /// <param name="properties">Additional structured properties</param>
+        void LogException(string message, Exception exception, Guid correlationId, 
             string sourceContext = null, IReadOnlyDictionary<string, object> properties = null);
 
         /// <summary>

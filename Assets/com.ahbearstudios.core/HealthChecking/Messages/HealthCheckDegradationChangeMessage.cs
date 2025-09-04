@@ -3,6 +3,7 @@ using Unity.Collections;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.HealthChecking.Messages
 {
@@ -26,7 +27,7 @@ namespace AhBearStudios.Core.HealthChecking.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.HealthCheckDegradationChangeMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -69,22 +70,6 @@ namespace AhBearStudios.Core.HealthChecking.Messages
         /// </summary>
         public bool IsAutomatic { get; init; }
 
-        /// <summary>
-        /// Initializes a new instance of the HealthCheckDegradationChangeMessage struct.
-        /// </summary>
-        public HealthCheckDegradationChangeMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-            SystemName = default;
-            OldLevel = default;
-            NewLevel = default;
-            Reason = default;
-            IsAutomatic = default;
-        }
 
         /// <summary>
         /// Gets the DateTime representation of the message timestamp.
@@ -114,7 +99,6 @@ namespace AhBearStudios.Core.HealthChecking.Messages
             // Determine priority based on degradation severity
             var priority = newLevel switch
             {
-                DegradationLevel.Critical => MessagePriority.Critical,
                 DegradationLevel.Severe => MessagePriority.Critical,
                 DegradationLevel.Moderate => MessagePriority.High,
                 DegradationLevel.Minor => MessagePriority.Normal,
@@ -122,14 +106,20 @@ namespace AhBearStudios.Core.HealthChecking.Messages
                 _ => MessagePriority.Low
             };
 
+            var sourceString = source.IsEmpty ? "HealthCheckService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("HealthCheckDegradationChangeMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("DegradationChange", $"{systemName}-{oldLevel}-{newLevel}")
+                : correlationId;
+
             return new HealthCheckDegradationChangeMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
                 TimestampTicks = DateTime.UtcNow.Ticks,
                 TypeCode = MessageTypeCodes.HealthCheckDegradationChangeMessage,
                 Source = source.IsEmpty ? "HealthCheckService" : source,
                 Priority = priority,
-                CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
+                CorrelationId = finalCorrelationId,
                 SystemName = systemName?.Length <= 64 ? systemName : systemName?[..64] ?? "Unknown",
                 OldLevel = oldLevel,
                 NewLevel = newLevel,

@@ -5,13 +5,14 @@ using Unity.Collections;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Logging.Models;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.HealthChecking.Builders
 {
     /// <summary>
     /// Production-ready builder for individual HealthCheckConfiguration with comprehensive options
     /// </summary>
-    public sealed class HealthCheckConfigBuilder
+    public sealed class HealthCheckConfigBuilder : IHealthCheckConfigBuilder
     {
         private readonly ILoggingService _logger;
         private readonly List<string> _validationErrors = new();
@@ -88,7 +89,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="name">Display name (required)</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentException">Thrown when name is null or empty</exception>
-        public HealthCheckConfigBuilder WithName(string name)
+        public IHealthCheckConfigBuilder WithName(string name)
         {
             ThrowIfAlreadyBuilt();
             
@@ -105,7 +106,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// </summary>
         /// <param name="description">Description of what the health check validates</param>
         /// <returns>Builder instance for method chaining</returns>
-        public HealthCheckConfigBuilder WithDescription(string description)
+        public IHealthCheckConfigBuilder WithDescription(string description)
         {
             ThrowIfAlreadyBuilt();
             
@@ -120,7 +121,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="category">Health check category</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentException">Thrown when category is invalid</exception>
-        public HealthCheckConfigBuilder WithCategory(HealthCheckCategory category)
+        public IHealthCheckConfigBuilder WithCategory(HealthCheckCategory category)
         {
             ThrowIfAlreadyBuilt();
             
@@ -137,7 +138,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// </summary>
         /// <param name="enabled">Whether the health check is enabled</param>
         /// <returns>Builder instance for method chaining</returns>
-        public HealthCheckConfigBuilder WithEnabled(bool enabled = true)
+        public IHealthCheckConfigBuilder WithEnabled(bool enabled = true)
         {
             ThrowIfAlreadyBuilt();
             
@@ -152,7 +153,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="interval">Execution interval (must be positive)</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when interval is not positive</exception>
-        public HealthCheckConfigBuilder WithInterval(TimeSpan interval)
+        public IHealthCheckConfigBuilder WithInterval(TimeSpan interval)
         {
             ThrowIfAlreadyBuilt();
             
@@ -173,7 +174,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="timeout">Execution timeout (must be positive)</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when timeout is not positive</exception>
-        public HealthCheckConfigBuilder WithTimeout(TimeSpan timeout)
+        public IHealthCheckConfigBuilder WithTimeout(TimeSpan timeout)
         {
             ThrowIfAlreadyBuilt();
             
@@ -194,7 +195,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="priority">Execution priority (higher numbers execute first)</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when priority is negative</exception>
-        public HealthCheckConfigBuilder WithPriority(int priority)
+        public IHealthCheckConfigBuilder WithPriority(int priority)
         {
             ThrowIfAlreadyBuilt();
             
@@ -212,7 +213,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="enabled">Whether to enable circuit breaker</param>
         /// <param name="config">Circuit breaker configuration (optional)</param>
         /// <returns>Builder instance for method chaining</returns>
-        public HealthCheckConfigBuilder WithCircuitBreaker(bool enabled = true, CircuitBreakerConfig config = null)
+        public IHealthCheckConfigBuilder WithCircuitBreaker(bool enabled = true, CircuitBreakerConfig config = null)
         {
             ThrowIfAlreadyBuilt();
             
@@ -242,7 +243,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="weight">Weight for overall status calculation (0.0 to 1.0)</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when weight is out of range</exception>
-        public HealthCheckConfigBuilder WithOverallStatusImpact(bool include = true, double weight = 1.0)
+        public IHealthCheckConfigBuilder WithOverallStatusImpact(bool include = true, double weight = 1.0)
         {
             ThrowIfAlreadyBuilt();
             
@@ -263,7 +264,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="cooldown">Minimum time between alerts</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when cooldown is negative</exception>
-        public HealthCheckConfigBuilder WithAlerting(
+        public IHealthCheckConfigBuilder WithAlerting(
             bool enabled = true,
             bool onlyOnStatusChange = true,
             TimeSpan? cooldown = null)
@@ -289,7 +290,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="severities">Custom alert severities</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when severities is null</exception>
-        public HealthCheckConfigBuilder WithAlertSeverities(Dictionary<HealthStatus, AlertSeverity> severities)
+        public IHealthCheckConfigBuilder WithAlertSeverities(Dictionary<HealthStatus, AlertSeverity> severities)
         {
             ThrowIfAlreadyBuilt();
             
@@ -308,7 +309,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="tags">Tags to add</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when tags is null</exception>
-        public HealthCheckConfigBuilder WithTags(params FixedString64Bytes[] tags)
+        public IHealthCheckConfigBuilder WithTags(params FixedString64Bytes[] tags)
         {
             ThrowIfAlreadyBuilt();
             
@@ -331,7 +332,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="value">Metadata value</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentException">Thrown when key is null or empty</exception>
-        public HealthCheckConfigBuilder WithMetadata(string key, object value)
+        public IHealthCheckConfigBuilder WithMetadata(string key, object value)
         {
             ThrowIfAlreadyBuilt();
             
@@ -349,7 +350,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="metadata">Metadata dictionary</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when metadata is null</exception>
-        public HealthCheckConfigBuilder WithMetadata(Dictionary<string, object> metadata)
+        public IHealthCheckConfigBuilder WithMetadata(Dictionary<string, object> metadata)
         {
             ThrowIfAlreadyBuilt();
             
@@ -375,7 +376,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="skipOnUnhealthy">Whether to skip if dependencies are unhealthy</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when dependencies is null</exception>
-        public HealthCheckConfigBuilder WithDependencies(
+        public IHealthCheckConfigBuilder WithDependencies(
             IEnumerable<FixedString64Bytes> dependencies,
             bool skipOnUnhealthy = true)
         {
@@ -404,7 +405,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="maxSize">Maximum number of history entries to keep</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when maxSize is negative</exception>
-        public HealthCheckConfigBuilder WithHistory(int maxSize)
+        public IHealthCheckConfigBuilder WithHistory(int maxSize)
         {
             ThrowIfAlreadyBuilt();
             
@@ -426,7 +427,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="logLevel">Log level for operations</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentException">Thrown when logLevel is invalid</exception>
-        public HealthCheckConfigBuilder WithLogging(bool enableDetailed = false, LogLevel logLevel = LogLevel.Info)
+        public IHealthCheckConfigBuilder WithLogging(bool enableDetailed = false, LogLevel logLevel = LogLevel.Info)
         {
             ThrowIfAlreadyBuilt();
             
@@ -446,7 +447,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="slowThreshold">Threshold for slow execution in milliseconds</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when slowThreshold is negative</exception>
-        public HealthCheckConfigBuilder WithProfiling(bool enabled = true, int slowThreshold = 1000)
+        public IHealthCheckConfigBuilder WithProfiling(bool enabled = true, int slowThreshold = 1000)
         {
             ThrowIfAlreadyBuilt();
             
@@ -466,7 +467,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="value">Parameter value</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentException">Thrown when key is null or empty</exception>
-        public HealthCheckConfigBuilder WithCustomParameter(string key, object value)
+        public IHealthCheckConfigBuilder WithCustomParameter(string key, object value)
         {
             ThrowIfAlreadyBuilt();
             
@@ -484,7 +485,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="parameters">Parameters dictionary</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when parameters is null</exception>
-        public HealthCheckConfigBuilder WithCustomParameters(Dictionary<string, object> parameters)
+        public IHealthCheckConfigBuilder WithCustomParameters(Dictionary<string, object> parameters)
         {
             ThrowIfAlreadyBuilt();
             
@@ -512,7 +513,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="maxRetryDelay">Maximum delay between retries</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are out of valid range</exception>
-        public HealthCheckConfigBuilder WithRetry(
+        public IHealthCheckConfigBuilder WithRetry(
             int maxRetries = 0,
             TimeSpan? retryDelay = null,
             double backoffMultiplier = 1.0,
@@ -559,7 +560,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="degradedServices">Services to degrade when unhealthy</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentException">Thrown when impact levels are invalid</exception>
-        public HealthCheckConfigBuilder WithDegradationImpact(
+        public IHealthCheckConfigBuilder WithDegradationImpact(
             DegradationLevel degradedImpact = DegradationLevel.Minor,
             DegradationLevel unhealthyImpact = DegradationLevel.Moderate,
             IEnumerable<FixedString64Bytes> disabledFeatures = null,
@@ -597,7 +598,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="requiredDataFields">Required data fields in results</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when execution times are invalid</exception>
-        public HealthCheckConfigBuilder WithValidation(
+        public IHealthCheckConfigBuilder WithValidation(
             bool enabled = true,
             TimeSpan? minExecutionTime = null,
             TimeSpan? maxExecutionTime = null,
@@ -634,7 +635,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="maxConcurrentExecutions">Maximum concurrent executions</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are out of valid range</exception>
-        public HealthCheckConfigBuilder WithResourceLimits(
+        public IHealthCheckConfigBuilder WithResourceLimits(
             long maxMemoryUsage = 0,
             double maxCpuUsage = 0,
             int maxConcurrentExecutions = 1)
@@ -668,7 +669,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// </summary>
         /// <param name="preset">Configuration preset to apply</param>
         /// <returns>Builder instance for method chaining</returns>
-        public HealthCheckConfigBuilder ForScenario(HealthCheckScenario preset)
+        public IHealthCheckConfigBuilder ForScenario(HealthCheckScenario preset)
         {
             ThrowIfAlreadyBuilt();
             
@@ -823,7 +824,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Resets the builder to allow building a new configuration
         /// </summary>
         /// <returns>Builder instance for method chaining</returns>
-        public HealthCheckConfigBuilder Reset()
+        public IHealthCheckConfigBuilder Reset()
         {
             _isBuilt = false;
             _isValidated = false;
@@ -878,7 +879,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Applies critical system preset configuration
         /// </summary>
         /// <returns>Builder instance</returns>
-        private HealthCheckConfigBuilder ApplyCriticalSystemPreset()
+        private IHealthCheckConfigBuilder ApplyCriticalSystemPreset()
         {
             _category = HealthCheckCategory.System;
             _interval = TimeSpan.FromSeconds(15);
@@ -919,7 +920,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Applies database preset configuration
         /// </summary>
         /// <returns>Builder instance</returns>
-        private HealthCheckConfigBuilder ApplyDatabasePreset()
+        private IHealthCheckConfigBuilder ApplyDatabasePreset()
         {
             _category = HealthCheckCategory.Database;
             _interval = TimeSpan.FromSeconds(30);
@@ -959,7 +960,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Applies network service preset configuration
         /// </summary>
         /// <returns>Builder instance</returns>
-        private HealthCheckConfigBuilder ApplyNetworkServicePreset()
+        private IHealthCheckConfigBuilder ApplyNetworkServicePreset()
         {
             _category = HealthCheckCategory.Network;
             _interval = TimeSpan.FromSeconds(45);
@@ -1001,7 +1002,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Applies performance monitoring preset configuration
         /// </summary>
         /// <returns>Builder instance</returns>
-        private HealthCheckConfigBuilder ApplyPerformanceMonitoringPreset()
+        private IHealthCheckConfigBuilder ApplyPerformanceMonitoringPreset()
         {
             _category = HealthCheckCategory.Performance;
             _interval = TimeSpan.FromMinutes(1);
@@ -1042,7 +1043,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Applies development preset configuration
         /// </summary>
         /// <returns>Builder instance</returns>
-        private HealthCheckConfigBuilder ApplyDevelopmentPreset()
+        private IHealthCheckConfigBuilder ApplyDevelopmentPreset()
         {
             _category = HealthCheckCategory.Custom;
             _interval = TimeSpan.FromSeconds(10);
@@ -1106,7 +1107,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Unique configuration ID</returns>
         private static FixedString64Bytes GenerateId()
         {
-            return new FixedString64Bytes(Guid.NewGuid().ToString("N")[..16]);
+            return new FixedString64Bytes(DeterministicIdGenerator.GenerateCoreId("HealthCheckConfig").ToString("N")[..16]);
         }
 
         #endregion

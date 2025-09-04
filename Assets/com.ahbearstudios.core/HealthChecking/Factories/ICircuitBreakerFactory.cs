@@ -1,53 +1,49 @@
+using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.HealthChecking.Configs;
 
 namespace AhBearStudios.Core.HealthChecking.Factories;
 
 /// <summary>
-/// Factory interface for creating circuit breaker instances with proper configuration and monitoring
+/// Factory interface for creating circuit breaker instances with proper configuration and monitoring.
+/// Follows Builder → Config → Factory → Service pattern - factories only create, never manage lifecycle.
 /// </summary>
 public interface ICircuitBreakerFactory
 {
     /// <summary>
-    /// Creates or retrieves a circuit breaker for the specified operation
+    /// Creates a circuit breaker for the specified operation asynchronously
     /// </summary>
     /// <param name="operationName">Unique name for the operation being protected</param>
     /// <param name="config">Optional configuration for the circuit breaker. Uses default if null.</param>
     /// <returns>Circuit breaker instance for the operation</returns>
     /// <exception cref="ArgumentException">Thrown when operation name is null or empty</exception>
-    ICircuitBreaker CreateCircuitBreaker(string operationName, CircuitBreakerConfig config = null);
+    UniTask<ICircuitBreaker> CreateCircuitBreakerAsync(string operationName, CircuitBreakerConfig config = null);
 
     /// <summary>
-    /// Creates a circuit breaker with integrated health check monitoring
+    /// Creates a circuit breaker with integrated health check monitoring asynchronously
     /// </summary>
     /// <param name="operationName">Unique name for the operation being protected</param>
     /// <param name="healthCheckName">Name for the health check integration</param>
     /// <param name="config">Optional configuration for the circuit breaker. Uses default if null.</param>
     /// <returns>Circuit breaker instance with health check integration</returns>
     /// <exception cref="ArgumentException">Thrown when operation name is null or empty</exception>
-    ICircuitBreaker CreateCircuitBreakerWithHealthCheck(
+    UniTask<ICircuitBreaker> CreateCircuitBreakerWithHealthCheckAsync(
         string operationName, 
         string healthCheckName, 
         CircuitBreakerConfig config = null);
 
     /// <summary>
-    /// Gets an existing circuit breaker by operation name
+    /// Gets all available circuit breaker types that can be created
     /// </summary>
-    /// <param name="operationName">Name of the operation</param>
-    /// <returns>Circuit breaker if found, null otherwise</returns>
-    ICircuitBreaker GetCircuitBreaker(string operationName);
+    /// <returns>Collection of available circuit breaker types</returns>
+    IEnumerable<Type> GetAvailableCircuitBreakerTypes();
 
     /// <summary>
-    /// Removes and disposes a circuit breaker for the specified operation
+    /// Validates that a circuit breaker configuration is valid
     /// </summary>
-    /// <param name="operationName">Name of the operation</param>
-    /// <returns>True if circuit breaker was found and removed, false otherwise</returns>
-    bool RemoveCircuitBreaker(string operationName);
-
-    /// <summary>
-    /// Gets all registered circuit breaker names
-    /// </summary>
-    /// <returns>Collection of circuit breaker operation names</returns>
-    IReadOnlyCollection<string> GetRegisteredOperations();
+    /// <param name="config">Configuration to validate</param>
+    /// <returns>True if configuration is valid</returns>
+    bool ValidateConfiguration(CircuitBreakerConfig config);
 
     /// <summary>
     /// Validates that all required dependencies are available

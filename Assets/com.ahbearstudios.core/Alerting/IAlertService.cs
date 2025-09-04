@@ -114,6 +114,36 @@ namespace AhBearStudios.Core.Alerting
             FixedString32Bytes tag = default, Guid correlationId = default,
             CancellationToken cancellationToken = default);
 
+        /// <summary>
+        /// Raises an alert asynchronously using Unity.Collections types for Burst compatibility.
+        /// This overload matches the synchronous RaiseAlert signature for consistency.
+        /// </summary>
+        /// <param name="message">The alert message using FixedString for zero-allocation</param>
+        /// <param name="severity">Alert severity level</param>
+        /// <param name="source">Source system or component</param>
+        /// <param name="tag">Alert categorization tag</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>UniTask representing the operation</returns>
+        UniTask RaiseAlertAsync(FixedString512Bytes message, AlertSeverity severity, FixedString64Bytes source,
+            FixedString32Bytes tag = default, Guid correlationId = default,
+            CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Raises an alert asynchronously with string-based parameters for convenience.
+        /// This overload provides the cleanest API for common usage scenarios.
+        /// </summary>
+        /// <param name="message">The alert message</param>
+        /// <param name="severity">Alert severity level</param>
+        /// <param name="source">Source system or component</param>
+        /// <param name="tag">Alert categorization tag</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <returns>UniTask representing the operation</returns>
+        UniTask RaiseAlertAsync(string message, AlertSeverity severity, string source,
+            string tag = null, Guid correlationId = default,
+            CancellationToken cancellationToken = default);
+
         // Severity management
         /// <summary>
         /// Sets the minimum severity level for alerts.

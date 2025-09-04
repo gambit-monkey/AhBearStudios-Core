@@ -1,5 +1,6 @@
 using System;
 using Unity.Collections;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 
@@ -27,7 +28,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.AlertChannelUnregisteredMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -46,7 +47,7 @@ namespace AhBearStudios.Core.Alerting.Messages
 
         #endregion
 
-        #region Channel-specific Properties
+        #region Message-Specific Properties
 
         /// <summary>
         /// Gets the name of the unregistered channel.
@@ -60,21 +61,7 @@ namespace AhBearStudios.Core.Alerting.Messages
 
         #endregion
 
-        /// <summary>
-        /// Initializes a new instance of the AlertChannelUnregisteredMessage struct.
-        /// </summary>
-        public AlertChannelUnregisteredMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-            ChannelName = default;
-            Reason = default;
-        }
-
-        #region Helper Properties
+        #region Computed Properties
 
         /// <summary>
         /// Gets the DateTime representation of the message timestamp.
@@ -83,31 +70,59 @@ namespace AhBearStudios.Core.Alerting.Messages
 
         #endregion
 
+        #region Static Factory Methods
+
         /// <summary>
-        /// Creates a new AlertChannelUnregisteredMessage.
+        /// Creates a new AlertChannelUnregisteredMessage with proper validation and defaults.
         /// </summary>
         /// <param name="channelName">Name of the unregistered channel</param>
-        /// <param name="correlationId">Correlation ID for tracking</param>
         /// <param name="source">Source component creating this message</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
         /// <param name="reason">Reason for unregistration</param>
+        /// <param name="priority">Message priority level</param>
         /// <returns>New AlertChannelUnregisteredMessage instance</returns>
         public static AlertChannelUnregisteredMessage Create(
             FixedString64Bytes channelName,
-            Guid correlationId = default,
             FixedString64Bytes source = default,
-            FixedString512Bytes reason = default)
+            Guid correlationId = default,
+            FixedString512Bytes reason = default,
+            MessagePriority priority = MessagePriority.Low)
         {
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "AlertChannelService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("AlertChannelUnregisteredMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("AlertChannelUnregistration", channelName.ToString())
+                : correlationId;
+
             return new AlertChannelUnregisteredMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
                 TimestampTicks = DateTime.UtcNow.Ticks,
                 TypeCode = MessageTypeCodes.AlertChannelUnregisteredMessage,
                 Source = source.IsEmpty ? "AlertChannelService" : source,
-                Priority = MessagePriority.Low,
-                CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
+                Priority = priority,
+                CorrelationId = finalCorrelationId,
                 ChannelName = channelName,
                 Reason = reason.IsEmpty ? "Unregistered" : reason
             };
         }
+
+        #endregion
+
+        #region String Representation
+
+        /// <summary>
+        /// Returns a string representation of this message for debugging.
+        /// </summary>
+        /// <returns>Channel unregistered message string representation</returns>
+        public override string ToString()
+        {
+            var channelText = ChannelName.IsEmpty ? "Unknown" : ChannelName.ToString();
+            var reasonText = Reason.IsEmpty ? "No reason specified" : Reason.ToString();
+            return $"AlertChannelUnregistered: {channelText} - {reasonText}";
+        }
+
+        #endregion
     }
 }

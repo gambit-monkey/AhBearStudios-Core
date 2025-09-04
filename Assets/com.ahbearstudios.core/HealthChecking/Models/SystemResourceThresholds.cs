@@ -1,108 +1,132 @@
-﻿namespace AhBearStudios.Core.HealthChecking.Models;
+using System;
 
-/// <summary>
-    /// Configuration for system resource monitoring thresholds
+namespace AhBearStudios.Core.HealthChecking.Models
+{
+    /// <summary>
+    /// Threshold configuration for system resource health checking.
+    /// Defines warning and critical limits for CPU, memory, disk, and other system resources.
     /// </summary>
     public sealed class SystemResourceThresholds
     {
         /// <summary>
-        /// CPU usage percentage that triggers warning status
+        /// CPU usage percentage that triggers warning status (0-100)
         /// </summary>
-        public float CpuWarningThreshold { get; set; } = 70.0f;
+        public double CpuUsageWarningThreshold { get; set; } = 80.0;
 
         /// <summary>
-        /// CPU usage percentage that triggers critical status
+        /// CPU usage percentage that triggers critical status (0-100)
         /// </summary>
-        public float CpuCriticalThreshold { get; set; } = 90.0f;
+        public double CpuUsageCriticalThreshold { get; set; } = 95.0;
 
         /// <summary>
-        /// Managed memory size in bytes that triggers warning status
+        /// Memory usage percentage that triggers warning status (0-100)
         /// </summary>
-        public long MemoryWarningThreshold { get; set; } = 500 * 1024 * 1024; // 500 MB
+        public double MemoryUsageWarningThreshold { get; set; } = 80.0;
 
         /// <summary>
-        /// Managed memory size in bytes that triggers critical status
+        /// Memory usage percentage that triggers critical status (0-100)
         /// </summary>
-        public long MemoryCriticalThreshold { get; set; } = 1024 * 1024 * 1024; // 1 GB
+        public double MemoryUsageCriticalThreshold { get; set; } = 95.0;
 
         /// <summary>
-        /// Working set size in bytes that triggers warning status
+        /// Disk usage percentage that triggers warning status (0-100)
         /// </summary>
-        public long WorkingSetWarningThreshold { get; set; } = 1024 * 1024 * 1024; // 1 GB
+        public double DiskUsageWarningThreshold { get; set; } = 85.0;
 
         /// <summary>
-        /// Working set size in bytes that triggers critical status
+        /// Disk usage percentage that triggers critical status (0-100)
         /// </summary>
-        public long WorkingSetCriticalThreshold { get; set; } = 2L * 1024 * 1024 * 1024; // 2 GB
+        public double DiskUsageCriticalThreshold { get; set; } = 95.0;
 
         /// <summary>
-        /// Thread count that triggers warning status
+        /// Available memory threshold in bytes that triggers warning status
+        /// </summary>
+        public long AvailableMemoryWarningThreshold { get; set; } = 1024 * 1024 * 512; // 512 MB
+
+        /// <summary>
+        /// Available memory threshold in bytes that triggers critical status
+        /// </summary>
+        public long AvailableMemoryCriticalThreshold { get; set; } = 1024 * 1024 * 256; // 256 MB
+
+        /// <summary>
+        /// GC pressure threshold that triggers warning status
+        /// </summary>
+        public double GcPressureWarningThreshold { get; set; } = 0.8;
+
+        /// <summary>
+        /// GC pressure threshold that triggers critical status
+        /// </summary>
+        public double GcPressureCriticalThreshold { get; set; } = 0.95;
+
+        /// <summary>
+        /// Thread count threshold that triggers warning status
         /// </summary>
         public int ThreadCountWarningThreshold { get; set; } = 100;
 
         /// <summary>
-        /// Thread count that triggers critical status
+        /// Thread count threshold that triggers critical status
         /// </summary>
         public int ThreadCountCriticalThreshold { get; set; } = 200;
 
         /// <summary>
-        /// Handle count that triggers warning status
+        /// Handle count threshold that triggers warning status (Windows only)
         /// </summary>
-        public int HandleCountWarningThreshold { get; set; } = 5000;
+        public int HandleCountWarningThreshold { get; set; } = 1000;
 
         /// <summary>
-        /// Handle count that triggers critical status
+        /// Handle count threshold that triggers critical status (Windows only)
         /// </summary>
-        public int HandleCountCriticalThreshold { get; set; } = 10000;
+        public int HandleCountCriticalThreshold { get; set; } = 2000;
 
         /// <summary>
-        /// Creates default system resource thresholds appropriate for most applications
+        /// Creates default system resource thresholds
         /// </summary>
-        /// <returns>Default threshold configuration</returns>
+        /// <returns>SystemResourceThresholds with default settings</returns>
         public static SystemResourceThresholds CreateDefault()
         {
             return new SystemResourceThresholds();
         }
 
         /// <summary>
-        /// Creates conservative thresholds for resource-constrained environments
+        /// Creates conservative system resource thresholds for production environments
         /// </summary>
-        /// <returns>Conservative threshold configuration</returns>
+        /// <returns>SystemResourceThresholds with conservative settings</returns>
         public static SystemResourceThresholds CreateConservative()
         {
             return new SystemResourceThresholds
             {
-                CpuWarningThreshold = 50.0f,
-                CpuCriticalThreshold = 80.0f,
-                MemoryWarningThreshold = 256 * 1024 * 1024, // 256 MB
-                MemoryCriticalThreshold = 512 * 1024 * 1024, // 512 MB
-                WorkingSetWarningThreshold = 512 * 1024 * 1024, // 512 MB
-                WorkingSetCriticalThreshold = 1024 * 1024 * 1024, // 1 GB
+                CpuUsageWarningThreshold = 70.0,
+                CpuUsageCriticalThreshold = 90.0,
+                MemoryUsageWarningThreshold = 70.0,
+                MemoryUsageCriticalThreshold = 90.0,
+                DiskUsageWarningThreshold = 80.0,
+                DiskUsageCriticalThreshold = 90.0,
+                AvailableMemoryWarningThreshold = 1024 * 1024 * 1024, // 1 GB
+                AvailableMemoryCriticalThreshold = 1024 * 1024 * 512,  // 512 MB
                 ThreadCountWarningThreshold = 50,
-                ThreadCountCriticalThreshold = 100,
-                HandleCountWarningThreshold = 2500,
-                HandleCountCriticalThreshold = 5000
+                ThreadCountCriticalThreshold = 100
             };
         }
 
         /// <summary>
-        /// Creates aggressive thresholds for high-performance applications
+        /// Creates aggressive system resource thresholds for high-performance scenarios
         /// </summary>
-        /// <returns>Aggressive threshold configuration</returns>
+        /// <returns>SystemResourceThresholds with aggressive settings</returns>
         public static SystemResourceThresholds CreateAggressive()
         {
             return new SystemResourceThresholds
             {
-                CpuWarningThreshold = 85.0f,
-                CpuCriticalThreshold = 95.0f,
-                MemoryWarningThreshold = 2L * 1024 * 1024 * 1024, // 2 GB
-                MemoryCriticalThreshold = 4L * 1024 * 1024 * 1024, // 4 GB
-                WorkingSetWarningThreshold = 4L * 1024 * 1024 * 1024, // 4 GB
-                WorkingSetCriticalThreshold = 8L * 1024 * 1024 * 1024, // 8 GB
-                ThreadCountWarningThreshold = 200,
-                ThreadCountCriticalThreshold = 500,
-                HandleCountWarningThreshold = 10000,
-                HandleCountCriticalThreshold = 20000
+                CpuUsageWarningThreshold = 90.0,
+                CpuUsageCriticalThreshold = 98.0,
+                MemoryUsageWarningThreshold = 90.0,
+                MemoryUsageCriticalThreshold = 98.0,
+                DiskUsageWarningThreshold = 90.0,
+                DiskUsageCriticalThreshold = 98.0,
+                AvailableMemoryWarningThreshold = 1024 * 1024 * 256, // 256 MB
+                AvailableMemoryCriticalThreshold = 1024 * 1024 * 128, // 128 MB
+                ThreadCountWarningThreshold = 150,
+                ThreadCountCriticalThreshold = 300
             };
         }
     }
+}

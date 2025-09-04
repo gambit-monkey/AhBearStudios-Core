@@ -1,85 +1,65 @@
-﻿using AhBearStudios.Core.HealthChecking.Configs;
+using System;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.HealthChecking.Models;
-
-/// <summary>
-    /// Statistics collected by circuit breakers
+namespace AhBearStudios.Core.HealthChecking.Models
+{
+    /// <summary>
+    /// Statistics for an individual circuit breaker.
     /// </summary>
     public sealed record CircuitBreakerStatistics
     {
         /// <summary>
-        /// Name of the circuit breaker
+        /// Gets the name of the circuit breaker.
         /// </summary>
         public FixedString64Bytes Name { get; init; }
 
         /// <summary>
-        /// Current state of the circuit breaker
+        /// Gets the current state of the circuit breaker.
         /// </summary>
         public CircuitBreakerState State { get; init; }
 
         /// <summary>
-        /// Current failure count
+        /// Gets the total number of executions through this circuit breaker.
         /// </summary>
-        public int FailureCount { get; init; }
+        public long TotalExecutions { get; init; }
 
         /// <summary>
-        /// Total number of requests processed
+        /// Gets the total number of failures.
         /// </summary>
-        public long TotalRequests { get; init; }
+        public long TotalFailures { get; init; }
 
         /// <summary>
-        /// Number of successful requests
+        /// Gets the total number of successful operations.
         /// </summary>
-        public long SuccessfulRequests { get; init; }
+        public long TotalSuccesses { get; init; }
 
         /// <summary>
-        /// Number of failed requests
+        /// Gets the current failure rate (0.0 to 1.0).
         /// </summary>
-        public long FailedRequests { get; init; }
+        public double FailureRate => TotalExecutions > 0 ? (double)TotalFailures / TotalExecutions : 0.0;
 
         /// <summary>
-        /// Success rate (0.0 to 1.0)
+        /// Gets the current success rate (0.0 to 1.0).
         /// </summary>
-        public double SuccessRate { get; init; }
+        public double SuccessRate => TotalExecutions > 0 ? (double)TotalSuccesses / TotalExecutions : 0.0;
 
         /// <summary>
-        /// Timestamp of last failure
+        /// Gets the timestamp of the last state change.
         /// </summary>
-        public DateTime? LastFailureTime { get; init; }
+        public DateTime LastStateChange { get; init; } = DateTime.UtcNow;
 
         /// <summary>
-        /// Timestamp of last state change
+        /// Gets how long the circuit breaker has been in its current state.
         /// </summary>
-        public DateTime LastStateChangeTime { get; init; }
+        public TimeSpan TimeInCurrentState => DateTime.UtcNow - LastStateChange;
 
         /// <summary>
-        /// Reason for last state change
+        /// Returns a string representation of the circuit breaker statistics.
         /// </summary>
-        public string LastStateChangeReason { get; init; }
-
-        /// <summary>
-        /// Configuration used by this circuit breaker
-        /// </summary>
-        public CircuitBreakerConfig Configuration { get; init; }
-
-        /// <summary>
-        /// Number of slow calls detected
-        /// </summary>
-        public long SlowCalls { get; init; }
-
-        /// <summary>
-        /// Average response time
-        /// </summary>
-        public TimeSpan AverageResponseTime { get; init; }
-
-        /// <summary>
-        /// Number of times circuit has been opened
-        /// </summary>
-        public int CircuitOpenedCount { get; init; }
-
-        /// <summary>
-        /// Total time spent in open state
-        /// </summary>
-        public TimeSpan TotalTimeInOpenState { get; init; }
+        /// <returns>Circuit breaker statistics string</returns>
+        public override string ToString()
+        {
+            return $"CircuitBreaker {Name}: {State} ({SuccessRate:P1} success rate, {TotalExecutions} executions)";
+        }
     }
+}

@@ -130,7 +130,7 @@ namespace AhBearStudios.Core.Pooling.Strategies
                 var targetSize = Math.Max(currentSize * 2, currentSize + 10);
                 _loggingService.LogInfo($"Max utilization exceeded ({currentUtilization:P}) - expanding aggressively from {currentSize} to {targetSize}");
                 
-                _messageBusService.PublishMessage(PoolExpansionMessage.Create(
+                _messageBusService.PublishMessage(PoolExpansionMessage.CreateFromFixedStrings(
                     strategyName: Name,
                     oldSize: currentSize,
                     newSize: targetSize,

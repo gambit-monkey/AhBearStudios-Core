@@ -1,5 +1,8 @@
-using Unity.Collections;
+using System;
+using AhBearStudios.Core.Common.Utilities;
+using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
+using Unity.Collections;
 
 namespace AhBearStudios.Core.Messaging.Messages;
 
@@ -7,136 +10,168 @@ namespace AhBearStudios.Core.Messaging.Messages;
 /// Message published when a message subscriber is disposed.
 /// Provides information about disposed subscriber instances for cleanup tracking and diagnostics.
 /// </summary>
-public record struct MessageBusSubscriberDisposedMessage : IMessage
+public readonly record struct MessageBusSubscriberDisposedMessage : IMessage
 {
+    #region IMessage Implementation
+
     /// <summary>
-    /// Gets the unique identifier for this message.
+    /// Gets the unique identifier for this message instance.
     /// </summary>
     public Guid Id { get; init; }
 
     /// <summary>
-    /// Gets the timestamp when the message was created (in ticks).
+    /// Gets the timestamp when this message was created, in UTC ticks.
     /// </summary>
     public long TimestampTicks { get; init; }
 
     /// <summary>
-    /// Gets the message type code for routing and identification.
+    /// Gets the message type code for efficient routing and filtering.
     /// </summary>
     public ushort TypeCode { get; init; }
 
     /// <summary>
-    /// Gets the source system that generated this message.
+    /// Gets the source system or component that created this message.
     /// </summary>
     public FixedString64Bytes Source { get; init; }
 
     /// <summary>
-    /// Gets the message priority level.
+    /// Gets the priority level for message processing.
     /// </summary>
     public MessagePriority Priority { get; init; }
 
     /// <summary>
-    /// Gets the correlation identifier for message tracking.
+    /// Gets optional correlation ID for message tracing across systems.
     /// </summary>
     public Guid CorrelationId { get; init; }
 
-    /// <summary>
-    /// Gets the subscriber disposal event arguments containing detailed information.
-    /// </summary>
-    public SubscriptionDisposedEventArgs EventArgs { get; init; }
+    #endregion
+
+    #region Message-Specific Properties
 
     /// <summary>
-    /// Gets the unique identifier for the disposed subscription.
+    /// Gets the subscriber ID that was disposed.
     /// </summary>
-    public Guid SubscriptionId { get; init; }
+    public Guid SubscriberId { get; init; }
 
     /// <summary>
-    /// Gets the reason for subscription disposal.
+    /// Gets the message type that the subscriber handled.
     /// </summary>
-    public string Reason { get; init; }
+    public Type MessageType { get; init; }
 
     /// <summary>
-    /// Gets the disposal reason code for programmatic handling.
+    /// Gets the subscription category.
     /// </summary>
-    public DisposalReason ReasonCode { get; init; }
+    public FixedString64Bytes Category { get; init; }
 
     /// <summary>
-    /// Gets whether the disposal was due to an error condition.
+    /// Gets the timestamp when the subscriber was disposed.
     /// </summary>
-    public bool IsErrorDisposal { get; init; }
+    public DateTime DisposedAt { get; init; }
 
     /// <summary>
-    /// Initializes a new instance of MessageBusSubscriberDisposedMessage.
+    /// Gets the subscriber name or identifier.
     /// </summary>
-    /// <param name="eventArgs">The subscription disposal event arguments</param>
-    /// <param name="correlationId">Optional correlation ID for message tracking</param>
-    public MessageBusSubscriberDisposedMessage(SubscriptionDisposedEventArgs eventArgs, Guid correlationId = default)
+    public FixedString64Bytes SubscriberName { get; init; }
+
+    /// <summary>
+    /// Gets the reason for disposal.
+    /// </summary>
+    public FixedString128Bytes DisposalReason { get; init; }
+
+    /// <summary>
+    /// Gets additional context about the subscriber disposal.
+    /// </summary>
+    public FixedString512Bytes Context { get; init; }
+
+    #endregion
+
+    #region Computed Properties
+
+    /// <summary>
+    /// Gets the DateTime representation of the message timestamp.
+    /// </summary>
+    public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
+
+    #endregion
+
+    #region Static Factory Methods
+
+    /// <summary>
+    /// Creates a new instance of MessageBusSubscriberDisposedMessage using FixedString parameters for optimal performance.
+    /// </summary>
+    /// <param name="subscriberId">The subscriber ID that was disposed</param>
+    /// <param name="messageType">The message type that the subscriber handled</param>
+    /// <param name="category">The subscription category</param>
+    /// <param name="subscriberName">The subscriber name or identifier</param>
+    /// <param name="disposalReason">The reason for disposal</param>
+    /// <param name="context">Additional context about the subscriber disposal</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessageBusSubscriberDisposedMessage instance</returns>
+    public static MessageBusSubscriberDisposedMessage CreateFromFixedStrings(
+        Guid subscriberId,
+        Type messageType,
+        string category,
+        string subscriberName,
+        string disposalReason,
+        string context,
+        FixedString64Bytes source = default,
+        Guid correlationId = default)
     {
-        Id = Guid.NewGuid();
-        TimestampTicks = DateTime.UtcNow.Ticks;
-        TypeCode = MessageTypeCodes.MessageBusSubscriberDisposedMessage;
-        Source = "MessageBus";
-        Priority = eventArgs.IsErrorDisposal ? MessagePriority.High : MessagePriority.Normal;
-        CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId;
-        
-        EventArgs = eventArgs ?? throw new ArgumentNullException(nameof(eventArgs));
-        SubscriptionId = eventArgs.SubscriptionId;
-        Reason = eventArgs.Reason;
-        ReasonCode = eventArgs.ReasonCode;
-        IsErrorDisposal = eventArgs.IsErrorDisposal;
+        var finalCorrelationId = correlationId == default 
+            ? DeterministicIdGenerator.GenerateCorrelationId("MessageBusSubscriber", null)
+            : correlationId;
+
+        return new MessageBusSubscriberDisposedMessage
+        {
+            Id = DeterministicIdGenerator.GenerateMessageId("MessageBusSubscriberDisposedMessage", "MessagingSystem", correlationId: null),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.MessageBusSubscriberDisposedMessage,
+            Source = source.IsEmpty ? "MessageBusService" : source,
+            Priority = MessagePriority.Low,
+            CorrelationId = finalCorrelationId,
+            SubscriberId = subscriberId,
+            MessageType = messageType ?? throw new ArgumentNullException(nameof(messageType)),
+            Category = category?.Length <= 64 ? category : category?[..64] ?? "Default",
+            DisposedAt = DateTime.UtcNow,
+            SubscriberName = subscriberName?.Length <= 64 ? subscriberName : subscriberName?[..64] ?? "Unknown",
+            DisposalReason = disposalReason?.Length <= 128 ? disposalReason : disposalReason?[..128] ?? "Normal disposal",
+            Context = context?.Length <= 512 ? context : context?[..512] ?? string.Empty
+        };
     }
 
     /// <summary>
-    /// Creates a message for an explicit disposal.
+    /// Creates a new instance of MessageBusSubscriberDisposedMessage using string parameters.
     /// </summary>
-    /// <param name="subscriptionId">The subscription identifier</param>
-    /// <param name="lifetime">The subscription lifetime</param>
-    /// <param name="context">Additional context</param>
-    /// <param name="correlationId">Optional correlation ID</param>
-    /// <returns>Message bus subscriber disposed message</returns>
-    public static MessageBusSubscriberDisposedMessage ForExplicit(Guid subscriptionId, TimeSpan lifetime = default, string context = null, Guid correlationId = default) =>
-        new(SubscriptionDisposedEventArgs.ForExplicit(subscriptionId, lifetime, context), correlationId);
+    /// <param name="subscriberId">The subscriber ID that was disposed</param>
+    /// <param name="messageType">The message type that the subscriber handled</param>
+    /// <param name="category">The subscription category</param>
+    /// <param name="subscriberName">The subscriber name or identifier</param>
+    /// <param name="disposalReason">The reason for disposal</param>
+    /// <param name="context">Additional context about the subscriber disposal</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessageBusSubscriberDisposedMessage instance</returns>
+    public static MessageBusSubscriberDisposedMessage Create(
+        Guid subscriberId,
+        Type messageType,
+        string category = null,
+        string subscriberName = null,
+        string disposalReason = null,
+        string context = null,
+        string source = null,
+        Guid correlationId = default)
+    {
+        return CreateFromFixedStrings(
+            subscriberId,
+            messageType,
+            category,
+            subscriberName,
+            disposalReason,
+            context,
+            source?.Length <= 64 ? source : source?[..64] ?? "MessageBusService",
+            correlationId);
+    }
 
-    /// <summary>
-    /// Creates a message for a scope cleanup disposal.
-    /// </summary>
-    /// <param name="subscriptionId">The subscription identifier</param>
-    /// <param name="scopeId">The scope identifier</param>
-    /// <param name="lifetime">The subscription lifetime</param>
-    /// <param name="correlationId">Optional correlation ID</param>
-    /// <returns>Message bus subscriber disposed message</returns>
-    public static MessageBusSubscriberDisposedMessage ForScopeCleanup(Guid subscriptionId, Guid scopeId, TimeSpan lifetime = default, Guid correlationId = default) =>
-        new(SubscriptionDisposedEventArgs.ForScopeCleanup(subscriptionId, scopeId, lifetime), correlationId);
-
-    /// <summary>
-    /// Creates a message for a service shutdown disposal.
-    /// </summary>
-    /// <param name="subscriptionId">The subscription identifier</param>
-    /// <param name="lifetime">The subscription lifetime</param>
-    /// <param name="correlationId">Optional correlation ID</param>
-    /// <returns>Message bus subscriber disposed message</returns>
-    public static MessageBusSubscriberDisposedMessage ForServiceShutdown(Guid subscriptionId, TimeSpan lifetime = default, Guid correlationId = default) =>
-        new(SubscriptionDisposedEventArgs.ForServiceShutdown(subscriptionId, lifetime), correlationId);
-
-    /// <summary>
-    /// Creates a message for an error disposal.
-    /// </summary>
-    /// <param name="subscriptionId">The subscription identifier</param>
-    /// <param name="exception">The exception that caused disposal</param>
-    /// <param name="lifetime">The subscription lifetime</param>
-    /// <param name="context">Additional context</param>
-    /// <param name="correlationId">Optional correlation ID</param>
-    /// <returns>Message bus subscriber disposed message</returns>
-    public static MessageBusSubscriberDisposedMessage ForError(Guid subscriptionId, Exception exception, TimeSpan lifetime = default, string context = null, Guid correlationId = default) =>
-        new(SubscriptionDisposedEventArgs.ForError(subscriptionId, exception, lifetime, context), correlationId);
-
-    /// <summary>
-    /// Creates a message for a timeout disposal.
-    /// </summary>
-    /// <param name="subscriptionId">The subscription identifier</param>
-    /// <param name="timeout">The timeout that was exceeded</param>
-    /// <param name="lifetime">The subscription lifetime</param>
-    /// <param name="correlationId">Optional correlation ID</param>
-    /// <returns>Message bus subscriber disposed message</returns>
-    public static MessageBusSubscriberDisposedMessage ForTimeout(Guid subscriptionId, TimeSpan timeout, TimeSpan lifetime = default, Guid correlationId = default) =>
-        new(SubscriptionDisposedEventArgs.ForTimeout(subscriptionId, timeout, lifetime), correlationId);
+    #endregion
 }

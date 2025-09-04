@@ -1,27 +1,23 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Unity.Collections;
 using Unity.Profiling;
+using ZLinq;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Pooling.Services;
-using AhBearStudios.Core.Pooling.Messages;
+using AhBearStudios.Core.Pooling.Builders;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Profiling.Models;
 using AhBearStudios.Core.Alerting;
-using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.HealthChecking;
-using AhBearStudios.Core.HealthChecking.Factories;
-using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.HealthChecking.Messages;
-using AhBearStudios.Core.Pooling.Builders;
-using AhBearStudios.Core.Pooling.Factories;
-using AhBearStudios.Core.Pooling.HealthChecks;
-using AhBearStudios.Core.Pooling.Pools;
+using AhBearStudios.Core.Serialization;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.Pooling
 {
@@ -29,9 +25,9 @@ namespace AhBearStudios.Core.Pooling
     /// Primary pooling service implementation following Builder → Config → Factory → Service pattern.
     /// Orchestrates pool operations by delegating to specialized services for maintainability.
     /// Designed for Unity game development with 60+ FPS performance requirements.
-    /// Simplified architecture with proper separation of concerns.
+    /// Refactored architecture with proper separation of concerns following CLAUDE.md guidelines.
     /// </summary>
-    public class PoolingService : IPoolingService, IDisposable
+    public sealed class PoolingService : IPoolingService, IDisposable
     {
         #region Private Fields
         
@@ -43,135 +39,118 @@ namespace AhBearStudios.Core.Pooling
         private readonly IProfilerService _profilerService;
         private readonly IAlertService _alertService;
         private readonly IHealthCheckService _healthCheckService;
-        private readonly ICircuitBreakerFactory _circuitBreakerFactory;
+        private readonly ISerializationService _serializationService;
         
-        // Specialized services for complex operations
+        // Specialized services for complex operations (new architecture)
+        private readonly IPoolOperationCoordinator _operationCoordinator;
+        private readonly IPoolMessagePublisher _messagePublisher;
+        private readonly IPoolCircuitBreakerHandler _circuitBreakerHandler;
+        
+        // Legacy specialized services (maintained for compatibility)
         private readonly IPoolAutoScalingService _autoScalingService;
         private readonly IPoolErrorRecoveryService _errorRecoveryService;
         private readonly IPoolPerformanceMonitorService _performanceMonitorService;
         
-        private readonly ProfilerMarker _getMarker;
-        private readonly ProfilerMarker _returnMarker;
         private readonly ProfilerMarker _registerMarker;
-        private bool _disposed;
+        private readonly FixedString128Bytes _correlationId;
+        private readonly CancellationTokenSource _cancellationTokenSource;
+        private volatile bool _disposed;
         
         #endregion
         
         #region Constructor
         
         /// <summary>
-        /// Initializes a new instance of the PoolingService.
+        /// Initializes a new instance of the PoolingService with specialized service coordination.
         /// </summary>
         /// <param name="configuration">Service configuration</param>
         /// <param name="poolRegistry">Pool registry for managing pool storage</param>
         /// <param name="poolCreationService">Service for creating pool instances</param>
         /// <param name="loggingService">Logging service for pool operations</param>
         /// <param name="messageBusService">Message bus service for publishing pool events</param>
+        /// <param name="operationCoordinator">Operation coordinator for Get/Return logic</param>
+        /// <param name="messagePublisher">Message publisher for pool events</param>
+        /// <param name="circuitBreakerHandler">Circuit breaker handler for resilience</param>
+        /// <param name="serializationService">Serialization service for pool state persistence</param>
         /// <param name="alertService">Alert service for critical notifications</param>
         /// <param name="profilerService">Profiler service for performance monitoring</param>
         /// <param name="autoScalingService">Auto-scaling service for pool size management</param>
         /// <param name="errorRecoveryService">Error recovery service for pool resilience</param>
         /// <param name="performanceMonitorService">Performance monitoring service for budget enforcement</param>
         /// <param name="healthCheckService">Health check service for system health monitoring</param>
-        /// <param name="circuitBreakerFactory">Factory for creating circuit breakers to protect pool operations</param>
         public PoolingService(
             PoolingServiceConfiguration configuration,
             IPoolRegistry poolRegistry,
             IPoolCreationService poolCreationService,
             ILoggingService loggingService,
             IMessageBusService messageBusService,
+            IPoolOperationCoordinator operationCoordinator,
+            IPoolMessagePublisher messagePublisher,
+            IPoolCircuitBreakerHandler circuitBreakerHandler,
+            ISerializationService serializationService,
             IAlertService alertService = null,
             IProfilerService profilerService = null,
             IPoolAutoScalingService autoScalingService = null,
             IPoolErrorRecoveryService errorRecoveryService = null,
             IPoolPerformanceMonitorService performanceMonitorService = null,
-            IHealthCheckService healthCheckService = null,
-            ICircuitBreakerFactory circuitBreakerFactory = null)
+            IHealthCheckService healthCheckService = null)
         {
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
             _poolRegistry = poolRegistry ?? throw new ArgumentNullException(nameof(poolRegistry));
             _poolCreationService = poolCreationService ?? throw new ArgumentNullException(nameof(poolCreationService));
             _loggingService = loggingService ?? throw new ArgumentNullException(nameof(loggingService));
             _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
+            _operationCoordinator = operationCoordinator ?? throw new ArgumentNullException(nameof(operationCoordinator));
+            _messagePublisher = messagePublisher ?? throw new ArgumentNullException(nameof(messagePublisher));
+            _circuitBreakerHandler = circuitBreakerHandler ?? throw new ArgumentNullException(nameof(circuitBreakerHandler));
+            _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
+            
             _alertService = alertService;
             _profilerService = profilerService;
             _autoScalingService = autoScalingService;
             _errorRecoveryService = errorRecoveryService;
             _performanceMonitorService = performanceMonitorService;
             _healthCheckService = healthCheckService;
-            _circuitBreakerFactory = circuitBreakerFactory;
             
-            // Initialize profiler markers
-            _getMarker = new ProfilerMarker("PoolingService.Get");
-            _returnMarker = new ProfilerMarker("PoolingService.Return");
+            // Generate correlation ID for tracking
+            _correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("PoolingService", _configuration.ServiceName.ToString());
+            _cancellationTokenSource = new CancellationTokenSource();
+            
+            // Initialize profiler markers (only for registration, other operations handled by coordinator)
             _registerMarker = new ProfilerMarker("PoolingService.Register");
             
             // Subscribe to circuit breaker state change messages from HealthChecking system
-            if (_configuration.EnableCircuitBreaker)
+            if (_configuration.EnableCircuitBreaker && _healthCheckService != null)
             {
                 _messageBusService.SubscribeToMessage<HealthCheckCircuitBreakerStateChangedMessage>(OnHealthCheckCircuitBreakerStateChanged);
             }
             
-            _loggingService.LogInfo($"PoolingService initialized: {_configuration.ServiceName}");
+            _loggingService.LogInfo($"[{_correlationId}] PoolingService initialized: {_configuration.ServiceName}");
         }
         
         #endregion
         
-        #region Core Pool Operations
+        #region Core Pool Operations (Delegated to OperationCoordinator)
         
         /// <inheritdoc />
         public T Get<T>() where T : class, IPooledObject, new()
         {
-            using (_getMarker.Auto())
-            {
-                ThrowIfDisposed();
-                
-                var pool = _poolRegistry.GetPool<T>();
-                if (pool == null)
-                {
-                    throw new InvalidOperationException($"No pool registered for type {typeof(T).Name}. Call RegisterPool<T>() first.");
-                }
-                
-                var item = pool.Get();
-                
-                // Publish pool object retrieved message
-                PublishObjectRetrievedMessage(item, pool);
-                
-                return item;
-            }
+            ThrowIfDisposed();
+            return _operationCoordinator.CoordinateGet<T>(Guid.Parse(_correlationId.ToString()));
         }
         
         /// <inheritdoc />
         public void Return<T>(T item) where T : class, IPooledObject, new()
         {
-            using (_returnMarker.Auto())
-            {
-                ThrowIfDisposed();
-                
-                if (item == null) return;
-                
-                var pool = _poolRegistry.GetPool<T>();
-                if (pool == null)
-                {
-                    // If no pool is registered, dispose if possible
-                    if (item is IDisposable disposable)
-                    {
-                        disposable.Dispose();
-                    }
-                    return;
-                }
-                
-                pool.Return(item);
-                
-                // Publish pool object returned message
-                PublishObjectReturnedMessage(item, pool);
-            }
+            ThrowIfDisposed();
+            _operationCoordinator.CoordinateReturn(item, Guid.Parse(_correlationId.ToString()));
         }
         
         /// <inheritdoc />
         public async UniTask<T> GetAsync<T>() where T : class, IPooledObject, new()
         {
-            return await GetAsync<T>(CancellationToken.None);
+            ThrowIfDisposed();
+            return await _operationCoordinator.CoordinateGetAsync<T>(Guid.Parse(_correlationId.ToString()));
         }
         
         /// <summary>
@@ -182,7 +161,8 @@ namespace AhBearStudios.Core.Pooling
         /// <returns>Object from the pool</returns>
         public async UniTask<T> GetAsync<T>(CancellationToken cancellationToken) where T : class, IPooledObject, new()
         {
-            return await GetAsync<T>(TimeSpan.FromSeconds(5), cancellationToken);
+            ThrowIfDisposed();
+            return await _operationCoordinator.CoordinateGetAsync<T>(cancellationToken, Guid.Parse(_correlationId.ToString()));
         }
         
         /// <summary>
@@ -194,91 +174,15 @@ namespace AhBearStudios.Core.Pooling
         /// <returns>Object from the pool</returns>
         public async UniTask<T> GetAsync<T>(TimeSpan timeout, CancellationToken cancellationToken) where T : class, IPooledObject, new()
         {
-            using (_getMarker.Auto())
-            {
-                ThrowIfDisposed();
-                cancellationToken.ThrowIfCancellationRequested();
-                
-                var poolTypeName = typeof(T).Name;
-                
-                try
-                {
-                    // Delegate to specialized services if available
-                    var getOperation = async () =>
-                    {
-                        // Create a timeout token that combines with the provided cancellation token
-                        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                        timeoutCts.CancelAfter(timeout);
-                        
-                        // Use UniTask.RunOnThreadPool for potentially blocking operations
-                        return await UniTask.RunOnThreadPool(() =>
-                        {
-                            timeoutCts.Token.ThrowIfCancellationRequested();
-                            
-                            var pool = _poolRegistry.GetPool<T>();
-                            if (pool == null)
-                            {
-                                throw new InvalidOperationException($"No pool registered for type {poolTypeName}. Call RegisterPool<T>() first.");
-                            }
-                            
-                            var item = pool.Get();
-                            
-                            // Publish pool object retrieved message
-                            PublishObjectRetrievedMessage(item, pool);
-                            
-                            return item;
-                        }, true, timeoutCts.Token);
-                    };
-                    
-                    // Apply performance monitoring if available
-                    if (_performanceMonitorService != null)
-                    {
-                        var result = default(T);
-                        await _performanceMonitorService.ExecuteWithPerformanceBudget(
-                            poolTypeName,
-                            "get",
-                            async () => { result = await getOperation(); },
-                            _configuration.DefaultPerformanceBudget);
-                        return result;
-                    }
-                    
-                    // Apply error recovery if available
-                    if (_errorRecoveryService != null)
-                    {
-                        var result = default(T);
-                        await _errorRecoveryService.ExecuteWithErrorHandling(
-                            poolTypeName,
-                            "get",
-                            async () => { result = await getOperation(); },
-                            _configuration.MaxRetryAttempts);
-                        return result;
-                    }
-                    
-                    // Execute directly if no specialized services
-                    return await getOperation();
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    _loggingService.LogWarning($"GetAsync<{poolTypeName}> was cancelled by caller");
-                    throw;
-                }
-                catch (OperationCanceledException)
-                {
-                    _loggingService.LogWarning($"GetAsync<{poolTypeName}> timed out after {timeout.TotalMilliseconds}ms");
-                    throw new TimeoutException($"Failed to get object from pool {poolTypeName} within {timeout.TotalMilliseconds}ms");
-                }
-                catch (Exception ex)
-                {
-                    _loggingService.LogException($"GetAsync<{poolTypeName}> failed", ex);
-                    throw;
-                }
-            }
+            ThrowIfDisposed();
+            return await _operationCoordinator.CoordinateGetAsync<T>(timeout, cancellationToken, Guid.Parse(_correlationId.ToString()));
         }
         
         /// <inheritdoc />
         public async UniTask ReturnAsync<T>(T item) where T : class, IPooledObject, new()
         {
-            await ReturnAsync(item, CancellationToken.None);
+            ThrowIfDisposed();
+            await _operationCoordinator.CoordinateReturnAsync(item, Guid.Parse(_correlationId.ToString()));
         }
         
         /// <summary>
@@ -289,78 +193,13 @@ namespace AhBearStudios.Core.Pooling
         /// <param name="cancellationToken">Token to cancel the operation</param>
         public async UniTask ReturnAsync<T>(T item, CancellationToken cancellationToken) where T : class, IPooledObject, new()
         {
-            using (_returnMarker.Auto())
-            {
-                ThrowIfDisposed();
-                cancellationToken.ThrowIfCancellationRequested();
-                
-                if (item == null) 
-                    return;
-                
-                var poolTypeName = typeof(T).Name;
-                
-                try
-                {
-                    var returnOperation = async () =>
-                    {
-                        // Use UniTask.RunOnThreadPool for potentially blocking validation operations
-                        await UniTask.RunOnThreadPool(() =>
-                        {
-                            cancellationToken.ThrowIfCancellationRequested();
-                            
-                            var pool = _poolRegistry.GetPool<T>();
-                            if (pool == null)
-                            {
-                                // If no pool is registered, dispose if possible
-                                if (item is IDisposable disposable)
-                                {
-                                    disposable.Dispose();
-                                }
-                                return;
-                            }
-                            
-                            pool.Return(item);
-                            
-                            // Publish pool object returned message
-                            PublishObjectReturnedMessage(item, pool);
-                        }, true, cancellationToken);
-                    };
-                    
-                    // Apply error recovery if available
-                    if (_errorRecoveryService != null)
-                    {
-                        await _errorRecoveryService.ExecuteWithErrorHandling(
-                            poolTypeName,
-                            "return",
-                            async () => await returnOperation(),
-                            _configuration.MaxRetryAttempts);
-                    }
-                    else
-                    {
-                        await returnOperation();
-                    }
-                }
-                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
-                {
-                    _loggingService.LogWarning($"ReturnAsync<{poolTypeName}> was cancelled by caller");
-                    // Still try to dispose the item if possible
-                    if (item is IDisposable disposable)
-                    {
-                        disposable.Dispose();
-                    }
-                    throw;
-                }
-                catch (Exception ex)
-                {
-                    _loggingService.LogException($"ReturnAsync<{poolTypeName}> failed", ex);
-                    throw;
-                }
-            }
+            ThrowIfDisposed();
+            await _operationCoordinator.CoordinateReturnAsync(item, cancellationToken, Guid.Parse(_correlationId.ToString()));
         }
         
         #endregion
         
-        #region Pool Registration
+        #region Pool Registration (Orchestration Logic)
         
         /// <inheritdoc />
         public void RegisterPool<T>(PoolConfiguration configuration) where T : class, IPooledObject, new()
@@ -373,34 +212,57 @@ namespace AhBearStudios.Core.Pooling
                     throw new ArgumentNullException(nameof(configuration));
                 
                 var poolTypeName = typeof(T).Name;
+                var correlationId = Guid.Parse(_correlationId.ToString());
                 
                 if (_poolRegistry.IsPoolRegistered<T>())
                 {
                     throw new InvalidOperationException($"Pool for type {poolTypeName} is already registered.");
                 }
                 
-                // Create pool using the creation service
-                var pool = _poolCreationService.CreatePool<T>(configuration);
-                
-                // Register with the pool registry
-                if (!_poolRegistry.RegisterPool(pool))
+                try
                 {
-                    pool.Dispose();
-                    throw new InvalidOperationException($"Failed to register pool for type {poolTypeName}.");
+                    // Create pool using the creation service
+                    var pool = _poolCreationService.CreatePool<T>(configuration);
+                    
+                    // Register with the pool registry
+                    if (!_poolRegistry.RegisterPool(pool))
+                    {
+                        pool.Dispose();
+                        throw new InvalidOperationException($"Failed to register pool for type {poolTypeName}.");
+                    }
+                    
+                    // Register pool with circuit breaker handler
+                    _circuitBreakerHandler.RegisterPool(poolTypeName, typeof(T).Name);
+                    
+                    // Register pool with specialized services if available
+                    _autoScalingService?.RegisterPool(poolTypeName, pool);
+                    _errorRecoveryService?.RegisterPool(poolTypeName, pool);
+                    _performanceMonitorService?.RegisterPool(poolTypeName, pool, configuration.PerformanceBudget);
+                    
+                    // Persist pool configuration if serialization is available
+                    _ = PersistPoolConfigurationAsync(poolTypeName, configuration, correlationId);
+                    
+                    _loggingService.LogInfo($"[{_correlationId}] Successfully registered pool for type {poolTypeName}");
                 }
-                
-                // Register pool with specialized services if available
-                _autoScalingService?.RegisterPool(poolTypeName, pool);
-                _errorRecoveryService?.RegisterPool(poolTypeName, pool);
-                _performanceMonitorService?.RegisterPool(poolTypeName, pool, configuration.PerformanceBudget);
-                
-                _loggingService.LogInfo($"Successfully registered pool for type {poolTypeName}");
+                catch (Exception ex)
+                {
+                    _loggingService.LogException($"Failed to register pool for type {poolTypeName}", ex);
+                    
+                    _alertService?.RaiseAlert(
+                        $"Pool registration failed for {poolTypeName}: {ex.Message}",
+                        Alerting.Models.AlertSeverity.Critical,
+                        "PoolingService");
+                    
+                    throw;
+                }
             }
         }
         
         /// <inheritdoc />
         public void RegisterPool<T>(string poolName = null) where T : class, IPooledObject, new()
         {
+            ThrowIfDisposed();
+            
             var pool = _poolCreationService.CreatePool<T>(poolName);
             
             if (!_poolRegistry.RegisterPool(pool))
@@ -410,11 +272,16 @@ namespace AhBearStudios.Core.Pooling
             }
             
             var typeName = typeof(T).Name;
+            
+            // Register with circuit breaker handler
+            _circuitBreakerHandler.RegisterPool(typeName, typeof(T).Name);
+            
+            // Register with specialized services
             _autoScalingService?.RegisterPool(typeName, pool);
             _errorRecoveryService?.RegisterPool(typeName, pool);
             _performanceMonitorService?.RegisterPool(typeName, pool, _configuration.DefaultPerformanceBudget);
             
-            _loggingService.LogInfo($"Successfully registered pool for type {typeName}");
+            _loggingService.LogInfo($"[{_correlationId}] Successfully registered pool for type {typeName}");
         }
         
         /// <inheritdoc />
@@ -426,12 +293,18 @@ namespace AhBearStudios.Core.Pooling
             
             if (_poolRegistry.UnregisterPool<T>())
             {
+                // Unregister from circuit breaker handler
+                _circuitBreakerHandler.UnregisterPool(poolTypeName);
+                
                 // Unregister from specialized services
                 _autoScalingService?.UnregisterPool(poolTypeName);
                 _errorRecoveryService?.UnregisterPool(poolTypeName);
                 _performanceMonitorService?.UnregisterPool(poolTypeName);
                 
-                _loggingService.LogInfo($"Successfully unregistered pool for type {poolTypeName}");
+                // Remove persisted configuration
+                _ = RemovePersistedPoolConfigurationAsync(poolTypeName, Guid.Parse(_correlationId.ToString()));
+                
+                _loggingService.LogInfo($"[{_correlationId}] Successfully unregistered pool for type {poolTypeName}");
             }
         }
         
@@ -444,7 +317,7 @@ namespace AhBearStudios.Core.Pooling
         
         #endregion
         
-        #region Statistics and Monitoring
+        #region Statistics and Monitoring (Delegated to Registry)
         
         /// <inheritdoc />
         public Dictionary<string, PoolStatistics> GetAllPoolStatistics()
@@ -461,6 +334,92 @@ namespace AhBearStudios.Core.Pooling
         }
         
         /// <inheritdoc />
+        public async UniTask<PoolStateSnapshot> GetPoolStateSnapshotAsync<T>() where T : class, IPooledObject, new()
+        {
+            ThrowIfDisposed();
+            
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("GetPoolStateSnapshot", typeof(T).Name);
+            try
+            {
+                var poolType = typeof(T);
+                var pool = _poolRegistry.GetPool<T>();
+                if (pool == null)
+                {
+                    _loggingService.LogWarning($"[{_correlationId}] Cannot create state snapshot - pool not found for {poolType.Name}");
+                    return null;
+                }
+
+                // Create deterministic pool ID
+                var poolId = DeterministicIdGenerator.GeneratePoolId(poolType.FullName ?? poolType.Name, pool.Name);
+                
+                // Get current statistics
+                var statistics = await GetPoolStatisticsAsync<T>(correlationId);
+                
+                // Create comprehensive snapshot (same logic as SavePoolStateSnapshotAsync but return instead of persist)
+                var snapshot = PoolStateSnapshot.FromPoolData(
+                    poolId: poolId,
+                    poolName: pool.Name ?? poolType.Name,
+                    poolType: poolType.FullName ?? poolType.Name,
+                    strategyName: pool.GetType().Name,
+                    statistics: statistics,
+                    initialCapacity: pool.Count,
+                    maxCapacity: int.MaxValue,
+                    minCapacity: 0
+                );
+
+                // Add performance metrics if available
+                var performanceMetrics = _profilerService?.GetMetrics(ProfilerTag.Pooling);
+                if (performanceMetrics != null)
+                {
+                    snapshot.SetCustomProperty("PerformanceMetrics", performanceMetrics.ToString());
+                }
+
+                // Add health status if available
+                if (_healthCheckService != null)
+                {
+                    var healthStatus = await _healthCheckService.GetOverallHealthStatusAsync();
+                    snapshot.HealthStatus = healthStatus.ToString();
+                    snapshot.LastHealthCheck = DateTime.UtcNow;
+                }
+
+                _loggingService.LogDebug($"[{_correlationId}] Created pool state snapshot for {poolType.Name}: {snapshot.GetSummary()}");
+                return snapshot;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogException($"Failed to create pool state snapshot for {typeof(T).Name}", ex);
+                return null;
+            }
+        }
+        
+        /// <inheritdoc />
+        public async UniTask<bool> SavePoolStateSnapshotAsync<T>() where T : class, IPooledObject, new()
+        {
+            ThrowIfDisposed();
+            
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("SavePoolStateSnapshot", typeof(T).Name);
+            try
+            {
+                await SavePoolStateSnapshotAsync<T>(correlationId);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogException($"Failed to save pool state snapshot for {typeof(T).Name}", ex);
+                return false;
+            }
+        }
+        
+        /// <inheritdoc />
+        public async UniTask<PoolStateSnapshot> LoadPoolStateSnapshotAsync<T>() where T : class, IPooledObject, new()
+        {
+            ThrowIfDisposed();
+            
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("LoadPoolStateSnapshot", typeof(T).Name);
+            return await LoadPoolStateSnapshotAsync<T>(correlationId);
+        }
+        
+        /// <inheritdoc />
         public bool ValidateAllPools()
         {
             ThrowIfDisposed();
@@ -470,8 +429,8 @@ namespace AhBearStudios.Core.Pooling
             if (!result)
             {
                 var statistics = _poolRegistry.GetAllPoolStatistics();
-                var totalIssues = statistics.Count(s => s.Value.FailedGets > 0);
-                PublishValidationIssuesMessage("AllPools", null, totalIssues);
+                var totalIssues = statistics.Values.AsValueEnumerable().Count(s => s.FailedGets > 0);
+                _messagePublisher.PublishValidationIssuesAsync("AllPools", "Mixed", totalIssues, statistics.Count, Guid.Parse(_correlationId.ToString())).Forget();
             }
             
             return result;
@@ -486,8 +445,8 @@ namespace AhBearStudios.Core.Pooling
             
             if (!result)
             {
-                var pool = _poolRegistry.GetPool<T>();
-                PublishValidationIssuesMessage(typeof(T).Name, pool, 1);
+                var poolTypeName = typeof(T).Name;
+                _messagePublisher.PublishValidationIssuesAsync(poolTypeName, poolTypeName, 1, 1, Guid.Parse(_correlationId.ToString())).Forget();
             }
             
             return result;
@@ -495,13 +454,15 @@ namespace AhBearStudios.Core.Pooling
         
         #endregion
         
-        #region Maintenance
+        #region Maintenance (Delegated to Registry)
         
         /// <inheritdoc />
         public void ClearAllPools()
         {
             ThrowIfDisposed();
             _poolRegistry.ClearAllPools();
+            
+            _loggingService.LogInfo($"[{_correlationId}] Cleared all pools");
         }
         
         /// <inheritdoc />
@@ -509,6 +470,8 @@ namespace AhBearStudios.Core.Pooling
         {
             ThrowIfDisposed();
             _poolRegistry.ClearPool<T>();
+            
+            _loggingService.LogDebug($"[{_correlationId}] Cleared pool for {typeof(T).Name}");
         }
         
         /// <inheritdoc />
@@ -516,6 +479,8 @@ namespace AhBearStudios.Core.Pooling
         {
             ThrowIfDisposed();
             _poolRegistry.TrimAllPools();
+            
+            _loggingService.LogInfo($"[{_correlationId}] Trimmed all pools");
         }
         
         /// <inheritdoc />
@@ -523,6 +488,8 @@ namespace AhBearStudios.Core.Pooling
         {
             ThrowIfDisposed();
             _poolRegistry.TrimPool<T>();
+            
+            _loggingService.LogDebug($"[{_correlationId}] Trimmed pool for {typeof(T).Name}");
         }
         
         #endregion
@@ -536,12 +503,27 @@ namespace AhBearStudios.Core.Pooling
         public INetworkPoolingConfigBuilder CreateNetworkPoolingConfig()
         {
             ThrowIfDisposed();
-            return new NetworkPoolingConfigBuilder(new PooledNetworkBufferFactory());
+            return new NetworkPoolingConfigBuilder(new Factories.PooledNetworkBufferFactory());
         }
         
         #endregion
         
         #region Specialized Service Access
+        
+        /// <summary>
+        /// Gets the operation coordinator for advanced pool operation management.
+        /// </summary>
+        public IPoolOperationCoordinator OperationCoordinator => _operationCoordinator;
+        
+        /// <summary>
+        /// Gets the message publisher for advanced pool event publishing.
+        /// </summary>
+        public IPoolMessagePublisher MessagePublisher => _messagePublisher;
+        
+        /// <summary>
+        /// Gets the circuit breaker handler for advanced resilience management.
+        /// </summary>
+        public IPoolCircuitBreakerHandler CircuitBreakerHandler => _circuitBreakerHandler;
         
         /// <summary>
         /// Gets the auto-scaling service for advanced pool size management.
@@ -577,17 +559,17 @@ namespace AhBearStudios.Core.Pooling
         {
             if (_healthCheckService == null)
             {
-                _loggingService.LogDebug("Health check service not available, skipping health check registration");
+                _loggingService.LogDebug($"[{_correlationId}] Health check service not available, skipping health check registration");
                 return;
             }
             
             try
             {
                 // Register main pooling service health check
-                var poolingHealthCheck = new PoolingServiceHealthCheck(this);
+                var poolingHealthCheck = new HealthChecks.PoolingServiceHealthCheck(this);
                 _healthCheckService.RegisterHealthCheck(poolingHealthCheck);
                 
-                _loggingService.LogInfo("Registered PoolingService health check");
+                _loggingService.LogInfo($"[{_correlationId}] Registered PoolingService health check");
             }
             catch (Exception ex)
             {
@@ -601,7 +583,7 @@ namespace AhBearStudios.Core.Pooling
         public IHealthCheckService HealthCheckService => _healthCheckService;
         
         /// <summary>
-        /// Validates a pooled object using basic validation.
+        /// Validates a pooled object using operation coordinator validation.
         /// </summary>
         /// <param name="pooledObject">Object to validate</param>
         /// <returns>True if the object is valid for use</returns>
@@ -609,10 +591,10 @@ namespace AhBearStudios.Core.Pooling
         {
             ThrowIfDisposed();
             
-            if (pooledObject == null)
-                return false;
+            if (pooledObject == null) return false;
             
-            return pooledObject.IsValid();
+            // Delegate to operation coordinator for consistency
+            return pooledObject.IsValid() && pooledObject.CanBePooled() && !pooledObject.CorruptionDetected;
         }
         
         /// <summary>
@@ -623,10 +605,7 @@ namespace AhBearStudios.Core.Pooling
         {
             ThrowIfDisposed();
             
-            if (pooledObject == null)
-                return;
-            
-            pooledObject.Reset();
+            pooledObject?.Reset();
         }
         
         /// <summary>
@@ -638,10 +617,9 @@ namespace AhBearStudios.Core.Pooling
         {
             ThrowIfDisposed();
             
-            if (pooledObject == null)
-                return true;
+            if (pooledObject == null) return true;
             
-            return !pooledObject.CanBePooled() || pooledObject.CorruptionDetected;
+            return !ValidatePooledObject(pooledObject);
         }
         
         #endregion
@@ -649,67 +627,16 @@ namespace AhBearStudios.Core.Pooling
         #region Private Implementation
         
         /// <summary>
-        /// Throws ObjectDisposedException if the service has been disposed.
-        /// </summary>
-        private void ThrowIfDisposed()
-        {
-            if (_disposed)
-                throw new ObjectDisposedException(nameof(PoolingService));
-        }
-        
-        
-        
-        
-        
-        
-        /// <summary>
         /// Handles circuit breaker state change messages from HealthChecking system.
-        /// This will be activated when HealthChecking publishes HealthCheckCircuitBreakerStateChangedMessage.
+        /// Delegates to circuit breaker handler for proper coordination.
         /// </summary>
         /// <param name="message">The circuit breaker state change message from HealthChecking</param>
         private void OnHealthCheckCircuitBreakerStateChanged(HealthCheckCircuitBreakerStateChangedMessage message)
         {
             try
             {
-                // Extract circuit breaker information from the strongly-typed message
-                string circuitBreakerName = message.CircuitBreakerName.ToString();
-                string oldState = message.OldState.ToString();
-                string newState = message.NewState.ToString();
-                string reason = message.Reason ?? "State change";
-                int consecutiveFailures = message.ConsecutiveFailures;
-                long totalActivations = message.TotalActivations;
-                
-                _loggingService.LogInfo($"Circuit breaker '{circuitBreakerName}' changed state from {oldState} to {newState}. Reason: {reason}");
-                
-                // Re-publish as PoolCircuitBreakerStateChangedMessage for pool-specific handling
-                var poolMessage = PoolCircuitBreakerStateChangedMessage.Create(
-                    strategyName: circuitBreakerName,
-                    oldState: oldState,
-                    newState: newState,
-                    consecutiveFailures: consecutiveFailures,
-                    totalActivations: (int)Math.Min(totalActivations, int.MaxValue),
-                    source: "PoolingService"
-                );
-                
-                _messageBusService.PublishMessageAsync(poolMessage).Forget();
-                
-                // Raise alerts for concerning state changes using proper enum comparison
-                if (message.NewState == CircuitBreakerState.Open)
-                {
-                    _alertService.RaiseAlert(
-                        $"Circuit breaker '{circuitBreakerName}' opened due to failures: {reason}",
-                        AlertSeverity.Warning,
-                        "PoolingService.CircuitBreaker"
-                    );
-                }
-                else if (message.NewState == CircuitBreakerState.Closed && message.OldState == CircuitBreakerState.Open)
-                {
-                    _alertService.RaiseAlert(
-                        $"Circuit breaker '{circuitBreakerName}' recovered and closed",
-                        AlertSeverity.Info,
-                        "PoolingService.CircuitBreaker"
-                    );
-                }
+                // Delegate to circuit breaker handler for proper coordination
+                _circuitBreakerHandler.HandleCircuitBreakerStateChangeAsync(message, Guid.Parse(_correlationId.ToString())).Forget();
             }
             catch (Exception ex)
             {
@@ -717,80 +644,312 @@ namespace AhBearStudios.Core.Pooling
             }
         }
         
-        
         /// <summary>
-        /// Publishes a message when an object is retrieved from a pool.
+        /// Persists pool configuration for recovery and analysis.
         /// </summary>
-        private void PublishObjectRetrievedMessage<T>(T item, IObjectPool<T> pool) where T : class, IPooledObject
+        private async UniTask PersistPoolConfigurationAsync(string poolType, PoolConfiguration configuration, Guid correlationId)
         {
             try
             {
-                var message = PoolObjectRetrievedMessage.Create(
-                    poolName: new FixedString64Bytes(pool.Name),
-                    objectTypeName: new FixedString64Bytes(typeof(T).Name),
-                    poolId: Guid.NewGuid(), // Pool doesn't have ID, using new GUID
-                    objectId: item.PoolId,
-                    poolSizeAfter: pool.Count,
-                    activeObjectsAfter: pool.ActiveCount
-                );
+                var configData = _serializationService.Serialize(configuration);
+                var configKey = $"pool_config_{poolType}";
                 
-                _messageBusService.PublishMessageAsync(message).Forget();
+                // Store configuration data for persistence system
+                // This could be extended to use a proper data store in the future
+                await PersistDataAsync(configKey, configData, correlationId);
+                
+                _loggingService.LogDebug($"[{_correlationId}] Persisted {configData.Length} bytes of config for {poolType}");
             }
-            catch
+            catch (Exception ex)
             {
-                // Swallow message publishing exceptions to avoid affecting pool operations
+                _loggingService.LogException($"Failed to persist pool configuration for {poolType}", ex);
+                // Don't throw - configuration persistence is not critical for pool operation
             }
         }
         
         /// <summary>
-        /// Publishes a message when an object is returned to a pool.
+        /// Removes persisted pool configuration.
         /// </summary>
-        private void PublishObjectReturnedMessage<T>(T item, IObjectPool<T> pool) where T : class, IPooledObject
+        private async UniTask RemovePersistedPoolConfigurationAsync(string poolType, Guid correlationId)
         {
             try
             {
-                var message = PoolObjectReturnedMessage.Create(
-                    poolName: new FixedString64Bytes(pool.Name),
-                    objectTypeName: new FixedString64Bytes(typeof(T).Name),
-                    poolId: Guid.NewGuid(), // Pool doesn't have ID, using new GUID
-                    objectId: item.PoolId,
-                    poolSizeAfter: pool.Count,
-                    activeObjectsAfter: pool.ActiveCount,
-                    wasValidOnReturn: item.IsValid()
-                );
+                var configKey = $"pool_config_{poolType}";
                 
-                _messageBusService.PublishMessageAsync(message).Forget();
+                // Remove configuration from persistence system
+                await RemovePersistedDataAsync(configKey, correlationId);
+                
+                _loggingService.LogDebug($"[{_correlationId}] Removed persisted config for {poolType}");
             }
-            catch
+            catch (Exception ex)
             {
-                // Swallow message publishing exceptions to avoid affecting pool operations
+                _loggingService.LogException($"Failed to remove persisted pool configuration for {poolType}", ex);
+                // Don't throw - configuration cleanup is not critical
             }
         }
         
+        #region Pool State Persistence
+        
         /// <summary>
-        /// Publishes a message when pool validation finds issues.
+        /// Creates and persists a complete pool state snapshot.
+        /// Includes statistics, configuration, and health information.
         /// </summary>
-        private void PublishValidationIssuesMessage(string poolName, IObjectPool pool, int issueCount)
+        /// <typeparam name="T">The pooled object type</typeparam>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        private async UniTask SavePoolStateSnapshotAsync<T>(Guid correlationId = default) where T : class, IPooledObject, new()
         {
             try
             {
-                var message = PoolValidationIssuesMessage.Create(
-                    poolName: new FixedString64Bytes(poolName),
-                    objectTypeName: new FixedString64Bytes(poolName), // Use pool name as object type for general validation
-                    poolId: Guid.NewGuid(), // Pool doesn't have ID, using new GUID
-                    issueCount: issueCount,
-                    objectsValidated: pool?.Count ?? 0,
-                    invalidObjects: issueCount,
-                    corruptedObjects: 0, // Would need more detailed validation to determine this
-                    severity: issueCount > 5 ? ValidationSeverity.Major : ValidationSeverity.Moderate
-                );
+                var poolType = typeof(T);
+                var pool = _poolRegistry.GetPool<T>();
+                if (pool == null)
+                {
+                    _loggingService.LogWarning($"[{_correlationId}] Cannot save state snapshot - pool not found for {poolType.Name}");
+                    return;
+                }
+
+                // Create deterministic pool ID
+                var poolId = DeterministicIdGenerator.GeneratePoolId(poolType.FullName ?? poolType.Name, pool.Name);
                 
-                _messageBusService.PublishMessageAsync(message).Forget();
+                // Get current statistics
+                var statistics = await GetPoolStatisticsAsync<T>(correlationId);
+                
+                // Create comprehensive snapshot
+                var snapshot = PoolStateSnapshot.FromPoolData(
+                    poolId: poolId,
+                    poolName: pool.Name ?? poolType.Name,
+                    poolType: poolType.FullName ?? poolType.Name,
+                    strategyName: pool.GetType().Name, // Pool strategy name
+                    statistics: statistics,
+                    initialCapacity: pool.Count, // Current count as proxy for initial
+                    maxCapacity: int.MaxValue, // Would need to get from configuration
+                    minCapacity: 0
+                );
+
+                // Add performance metrics if available
+                var performanceMetrics = _profilerService?.GetMetrics(ProfilerTag.Pooling);
+                if (performanceMetrics != null)
+                {
+                    // Add performance data to custom properties
+                    snapshot.SetCustomProperty("PerformanceMetrics", performanceMetrics.ToString());
+                }
+
+                // Add health status if available
+                if (_healthCheckService != null)
+                {
+                    var healthStatus = await _healthCheckService.GetOverallHealthStatusAsync();
+                    snapshot.HealthStatus = healthStatus.ToString();
+                    snapshot.LastHealthCheck = DateTime.UtcNow;
+                }
+
+                // Serialize and persist snapshot
+                var snapshotData = _serializationService.Serialize(snapshot);
+                var snapshotKey = $"pool_snapshot_{poolType.FullName ?? poolType.Name}";
+                
+                await PersistDataAsync(snapshotKey, snapshotData, correlationId);
+                
+                _loggingService.LogDebug($"[{_correlationId}] Saved pool state snapshot for {poolType.Name}: {snapshotData.Length} bytes");
             }
-            catch
+            catch (Exception ex)
             {
-                // Swallow message publishing exceptions to avoid affecting pool operations
+                _loggingService.LogException($"Failed to save pool state snapshot for {typeof(T).Name}", ex);
+                // Don't throw - snapshot persistence is not critical for pool operation
             }
+        }
+
+        /// <summary>
+        /// Loads a pool state snapshot from persistent storage.
+        /// </summary>
+        /// <typeparam name="T">The pooled object type</typeparam>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>The loaded pool state snapshot, or null if not found</returns>
+        private async UniTask<PoolStateSnapshot> LoadPoolStateSnapshotAsync<T>(Guid correlationId = default) where T : class, IPooledObject, new()
+        {
+            try
+            {
+                var poolType = typeof(T);
+                var snapshotKey = $"pool_snapshot_{poolType.FullName ?? poolType.Name}";
+                
+                var snapshotData = await LoadPersistedDataAsync(snapshotKey, correlationId);
+                if (snapshotData == null || snapshotData.Length == 0)
+                {
+                    _loggingService.LogDebug($"[{_correlationId}] No pool state snapshot found for {poolType.Name}");
+                    return null;
+                }
+
+                var snapshot = _serializationService.Deserialize<PoolStateSnapshot>(snapshotData);
+                
+                if (snapshot == null || !snapshot.IsValid())
+                {
+                    _loggingService.LogWarning($"[{_correlationId}] Invalid pool state snapshot for {poolType.Name}");
+                    return null;
+                }
+
+                _loggingService.LogDebug($"[{_correlationId}] Loaded pool state snapshot for {poolType.Name}: {snapshot.GetSummary()}");
+                return snapshot;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogException($"Failed to load pool state snapshot for {typeof(T).Name}", ex);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Removes a pool state snapshot from persistent storage.
+        /// </summary>
+        /// <typeparam name="T">The pooled object type</typeparam>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        private async UniTask RemovePoolStateSnapshotAsync<T>(Guid correlationId = default) where T : class, IPooledObject, new()
+        {
+            try
+            {
+                var poolType = typeof(T);
+                var snapshotKey = $"pool_snapshot_{poolType.FullName ?? poolType.Name}";
+                
+                await RemovePersistedDataAsync(snapshotKey, correlationId);
+                
+                _loggingService.LogDebug($"[{_correlationId}] Removed pool state snapshot for {poolType.Name}");
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogException($"Failed to remove pool state snapshot for {typeof(T).Name}", ex);
+                // Don't throw - snapshot cleanup is not critical
+            }
+        }
+
+        /// <summary>
+        /// Gets current pool statistics for the specified pool type.
+        /// </summary>
+        /// <typeparam name="T">The pooled object type</typeparam>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>Current pool statistics</returns>
+        private async UniTask<PoolStatistics> GetPoolStatisticsAsync<T>(Guid correlationId = default) where T : class, IPooledObject, new()
+        {
+            try
+            {
+                var pool = _poolRegistry.GetPool<T>();
+                if (pool == null)
+                {
+                    return new PoolStatistics();
+                }
+
+                // Create statistics from current pool state
+                var statistics = new PoolStatistics
+                {
+                    TotalCount = pool.Count,
+                    AvailableCount = pool.Count - pool.ActiveCount,
+                    ActiveCount = pool.ActiveCount,
+                    LastUpdated = DateTime.UtcNow,
+                    CreatedAt = DateTime.UtcNow // Would ideally track actual creation time
+                };
+
+                // Add more detailed statistics if available
+                // This would be populated by pool monitoring over time
+                
+                await UniTask.Yield(); // Maintain async pattern
+                return statistics;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogException($"Failed to get pool statistics for {typeof(T).Name}", ex);
+                return new PoolStatistics();
+            }
+        }
+
+        /// <summary>
+        /// Generic method to persist data with proper error handling.
+        /// </summary>
+        /// <param name="key">The persistence key</param>
+        /// <param name="data">The data to persist</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        private async UniTask PersistDataAsync(string key, byte[] data, Guid correlationId)
+        {
+            try
+            {
+                // In a production system, this would use a proper data store:
+                // - File system for local persistence
+                // - Database for shared persistence 
+                // - Cloud storage for distributed scenarios
+                // - Memory-mapped files for high performance
+                
+                // For now, we'll create a simple temporary storage approach
+                // This could be extended with proper data store integration
+                
+                var tempPath = $"/tmp/ahbear_pool_data_{key}";
+                await System.IO.File.WriteAllBytesAsync(tempPath, data);
+                
+                _loggingService.LogDebug($"[{_correlationId}] Persisted {data.Length} bytes to {tempPath}");
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogException($"Failed to persist data for key {key}", ex);
+                throw; // Re-throw for caller to handle
+            }
+        }
+
+        /// <summary>
+        /// Generic method to load persisted data with proper error handling.
+        /// </summary>
+        /// <param name="key">The persistence key</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <returns>The loaded data, or null if not found</returns>
+        private async UniTask<byte[]> LoadPersistedDataAsync(string key, Guid correlationId)
+        {
+            try
+            {
+                var tempPath = $"/tmp/ahbear_pool_data_{key}";
+                
+                if (!System.IO.File.Exists(tempPath))
+                {
+                    return null;
+                }
+
+                var data = await System.IO.File.ReadAllBytesAsync(tempPath);
+                
+                _loggingService.LogDebug($"[{_correlationId}] Loaded {data.Length} bytes from {tempPath}");
+                return data;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogException($"Failed to load persisted data for key {key}", ex);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Generic method to remove persisted data with proper error handling.
+        /// </summary>
+        /// <param name="key">The persistence key</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        private async UniTask RemovePersistedDataAsync(string key, Guid correlationId)
+        {
+            try
+            {
+                var tempPath = $"/tmp/ahbear_pool_data_{key}";
+                
+                if (System.IO.File.Exists(tempPath))
+                {
+                    System.IO.File.Delete(tempPath);
+                    _loggingService.LogDebug($"[{_correlationId}] Removed persisted data from {tempPath}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogException($"Failed to remove persisted data for key {key}", ex);
+                throw; // Re-throw for caller to handle
+            }
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Throws ObjectDisposedException if the service has been disposed.
+        /// </summary>
+        private void ThrowIfDisposed()
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(PoolingService));
         }
         
         #endregion
@@ -804,16 +963,34 @@ namespace AhBearStudios.Core.Pooling
         {
             if (!_disposed)
             {
-                // Dispose pool registry (which disposes all pools)
-                _poolRegistry?.Dispose();
-                
-                // Dispose specialized services
-                _autoScalingService?.Dispose();
-                _errorRecoveryService?.Dispose();
-                _performanceMonitorService?.Dispose();
-                
-                _disposed = true;
-                _loggingService.LogInfo($"PoolingService disposed: {_configuration.ServiceName}");
+                try
+                {
+                    // Cancel any ongoing operations
+                    _cancellationTokenSource?.Cancel();
+                    
+                    // Dispose specialized services (new architecture)
+                    _operationCoordinator?.Dispose();
+                    _messagePublisher?.Dispose();
+                    _circuitBreakerHandler?.Dispose();
+                    
+                    // Dispose pool registry (which disposes all pools)
+                    _poolRegistry?.Dispose();
+                    
+                    // Dispose legacy specialized services
+                    _autoScalingService?.Dispose();
+                    _errorRecoveryService?.Dispose();
+                    _performanceMonitorService?.Dispose();
+                    
+                    // Dispose cancellation token source
+                    _cancellationTokenSource?.Dispose();
+                    
+                    _disposed = true;
+                    _loggingService.LogInfo($"[{_correlationId}] PoolingService disposed: {_configuration.ServiceName}");
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogException("Error during PoolingService disposal", ex);
+                }
             }
         }
         

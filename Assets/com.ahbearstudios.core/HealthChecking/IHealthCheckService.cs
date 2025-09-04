@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Threading;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.HealthChecking.Checks;
 using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.HealthChecking.Models;
@@ -59,21 +59,21 @@ namespace AhBearStudios.Core.HealthChecking
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Health check result</returns>
         /// <exception cref="ArgumentException">Thrown when health check name is not found</exception>
-        Task<HealthCheckResult> ExecuteHealthCheckAsync(FixedString64Bytes name, CancellationToken cancellationToken = default);
+        UniTask<HealthCheckResult> ExecuteHealthCheckAsync(FixedString64Bytes name, CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Executes all registered health checks
         /// </summary>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Comprehensive health report</returns>
-        Task<HealthReport> ExecuteAllHealthChecksAsync(CancellationToken cancellationToken = default);
+        UniTask<HealthReport> ExecuteAllHealthChecksAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Gets the overall health status of the system
         /// </summary>
         /// <param name="cancellationToken">Cancellation token</param>
         /// <returns>Overall system health status</returns>
-        Task<HealthStatus> GetOverallHealthStatusAsync(CancellationToken cancellationToken = default);
+        UniTask<HealthStatus> GetOverallHealthStatusAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
         /// Gets the current degradation level of the system

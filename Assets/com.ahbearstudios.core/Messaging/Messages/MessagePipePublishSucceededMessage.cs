@@ -1,4 +1,5 @@
 using System;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using Unity.Collections;
@@ -11,6 +12,8 @@ namespace AhBearStudios.Core.Messaging.Messages;
 /// </summary>
 public readonly record struct MessagePipePublishSucceededMessage : IMessage
 {
+    #region IMessage Implementation
+
     /// <summary>
     /// Gets the unique identifier for this message instance.
     /// </summary>
@@ -22,9 +25,9 @@ public readonly record struct MessagePipePublishSucceededMessage : IMessage
     public long TimestampTicks { get; init; }
 
     /// <summary>
-    /// Gets the unique type code for this message type.
+    /// Gets the message type code for efficient routing and filtering.
     /// </summary>
-    public ushort TypeCode { get; init; } = MessageTypeCodes.MessagePipePublishSucceededMessage;
+    public ushort TypeCode { get; init; }
 
     /// <summary>
     /// Gets the source system or component that created this message.
@@ -40,6 +43,10 @@ public readonly record struct MessagePipePublishSucceededMessage : IMessage
     /// Gets optional correlation ID for message tracing across systems.
     /// </summary>
     public Guid CorrelationId { get; init; }
+
+    #endregion
+
+    #region Message-Specific Properties
 
     /// <summary>
     /// Gets the message type that was published.
@@ -71,31 +78,64 @@ public readonly record struct MessagePipePublishSucceededMessage : IMessage
     /// </summary>
     public FixedString64Bytes ChannelName { get; init; }
 
-    /// <summary>
-    /// Initializes a new instance of the MessagePipePublishSucceededMessage struct.
-    /// </summary>
-    public MessagePipePublishSucceededMessage()
-    {
-        Id = default;
-        TimestampTicks = default;
-        Source = default;
-        Priority = default;
-        CorrelationId = default;
-        MessageType = default;
-        MessageId = default;
-        ProcessingTime = default;
-        SerializedSize = default;
-        SubscriberCount = default;
-        ChannelName = default;
-    }
+    #endregion
+
+    #region Computed Properties
 
     /// <summary>
-    /// Gets the DateTime representation of the timestamp.
+    /// Gets the DateTime representation of the message timestamp.
     /// </summary>
     public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
+    #endregion
+
+    #region Static Factory Methods
+
     /// <summary>
-    /// Creates a new instance of the MessagePipePublishSucceededMessage.
+    /// Creates a new instance of MessagePipePublishSucceededMessage using FixedString parameters for optimal performance.
+    /// </summary>
+    /// <param name="messageType">The message type that was published</param>
+    /// <param name="messageId">The published message ID</param>
+    /// <param name="processingTime">The processing time for publish</param>
+    /// <param name="serializedSize">The serialized message size</param>
+    /// <param name="subscriberCount">Number of subscribers that received the message</param>
+    /// <param name="channelName">The MessagePipe channel name</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessagePipePublishSucceededMessage instance</returns>
+    public static MessagePipePublishSucceededMessage CreateFromFixedStrings(
+        Type messageType,
+        Guid messageId,
+        TimeSpan processingTime = default,
+        int serializedSize = 0,
+        int subscriberCount = 0,
+        FixedString64Bytes channelName = default,
+        FixedString64Bytes source = default,
+        Guid correlationId = default)
+    {
+        var finalCorrelationId = correlationId == default 
+            ? DeterministicIdGenerator.GenerateCorrelationId("MessagePipe", null)
+            : correlationId;
+
+        return new MessagePipePublishSucceededMessage
+        {
+            Id = DeterministicIdGenerator.GenerateMessageId("MessagePipePublishSucceededMessage", "MessagingSystem", correlationId: null),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.MessagePipePublishSucceededMessage,
+            Source = source.IsEmpty ? "MessagePipe" : source,
+            Priority = MessagePriority.Low, // Publish success events are informational
+            CorrelationId = finalCorrelationId,
+            MessageType = messageType ?? throw new ArgumentNullException(nameof(messageType)),
+            MessageId = messageId,
+            ProcessingTime = processingTime,
+            SerializedSize = Math.Max(0, serializedSize),
+            SubscriberCount = Math.Max(0, subscriberCount),
+            ChannelName = channelName.IsEmpty ? "Default" : channelName
+        };
+    }
+
+    /// <summary>
+    /// Creates a new instance of MessagePipePublishSucceededMessage using string parameters.
     /// </summary>
     /// <param name="messageType">The message type that was published</param>
     /// <param name="messageId">The published message ID</param>
@@ -113,23 +153,19 @@ public readonly record struct MessagePipePublishSucceededMessage : IMessage
         int serializedSize = 0,
         int subscriberCount = 0,
         string channelName = null,
-        FixedString64Bytes source = default,
+        string source = null,
         Guid correlationId = default)
     {
-        return new MessagePipePublishSucceededMessage
-        {
-            Id = Guid.NewGuid(),
-            TimestampTicks = DateTime.UtcNow.Ticks,
-            TypeCode = MessageTypeCodes.MessagePipePublishSucceededMessage,
-            Source = source.IsEmpty ? "MessagePipe" : source,
-            Priority = MessagePriority.Low, // Publish success events are informational
-            CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
-            MessageType = messageType ?? throw new ArgumentNullException(nameof(messageType)),
-            MessageId = messageId,
-            ProcessingTime = processingTime,
-            SerializedSize = Math.Max(0, serializedSize),
-            SubscriberCount = Math.Max(0, subscriberCount),
-            ChannelName = channelName?.Length <= 64 ? channelName : channelName?[..64] ?? "Default"
-        };
+        return CreateFromFixedStrings(
+            messageType,
+            messageId,
+            processingTime,
+            serializedSize,
+            subscriberCount,
+            channelName?.Length <= 64 ? channelName : channelName?[..64] ?? "Default",
+            source?.Length <= 64 ? source : source?[..64] ?? "MessagePipe",
+            correlationId);
     }
+
+    #endregion
 }

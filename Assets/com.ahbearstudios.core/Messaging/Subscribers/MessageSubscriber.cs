@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Threading;
 using Cysharp.Threading.Tasks;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
@@ -82,7 +83,8 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
         _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
 
         // Generate correlation ID for tracking
-        _correlationId = $"Subscriber_{typeof(TMessage).Name}_{Guid.NewGuid():N}"[..32];
+        var correlationGuid = DeterministicIdGenerator.GenerateCorrelationId("MessageSubscriber", typeof(TMessage).Name);
+        _correlationId = $"Subscriber_{typeof(TMessage).Name}_{correlationGuid:N}"[..32];
 
         _subscriptions = new ConcurrentDictionary<Guid, SubscriptionInfo>();
         _subscriptionSemaphore = new SemaphoreSlim(_config.MaxConcurrentHandlers, _config.MaxConcurrentHandlers);
@@ -128,7 +130,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
 
         using (_subscribeMarker.Auto())
         {
-            var subscriptionId = Guid.NewGuid();
+            var subscriptionId = DeterministicIdGenerator.GenerateCorrelationId("Subscription", typeof(TMessage).Name);
             var subscriptionCorrelationId = $"{_correlationId}_{subscriptionId:N}"[..32];
 
             try
@@ -186,7 +188,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
 
         using (_subscribeMarker.Auto())
         {
-            var subscriptionId = Guid.NewGuid();
+            var subscriptionId = DeterministicIdGenerator.GenerateCorrelationId("AsyncSubscription", typeof(TMessage).Name);
             var subscriptionCorrelationId = $"{_correlationId}_{subscriptionId:N}"[..32];
 
             try
@@ -247,7 +249,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
 
         using (_subscribeMarker.Auto())
         {
-            var subscriptionId = Guid.NewGuid();
+            var subscriptionId = DeterministicIdGenerator.GenerateCorrelationId("FilteredSubscription", typeof(TMessage).Name);
             var subscriptionCorrelationId = $"{_correlationId}_{subscriptionId:N}"[..32];
 
             try
@@ -309,7 +311,7 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
 
         using (_subscribeMarker.Auto())
         {
-            var subscriptionId = Guid.NewGuid();
+            var subscriptionId = DeterministicIdGenerator.GenerateCorrelationId("AsyncFilteredSubscription", typeof(TMessage).Name);
             var subscriptionCorrelationId = $"{_correlationId}_{subscriptionId:N}"[..32];
 
             try
@@ -627,8 +629,11 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
     {
         try
         {
-            var eventArgs = SubscriptionCreatedEventArgs.ForStandard(Guid.NewGuid(), typeof(TMessage));
-            var message = new MessageBusSubscriberCreatedMessage(eventArgs);
+            var subscriberId = DeterministicIdGenerator.GenerateCorrelationId("Subscriber", typeof(TMessage).Name);
+            var message = MessageBusSubscriberCreatedMessage.Create(
+                subscriberId,
+                typeof(TMessage),
+                nameof(SubscriptionCategory.Standard));
             _messageBusService.PublishMessage(message);
         }
         catch (Exception ex)
@@ -646,8 +651,10 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
     {
         try
         {
-            var eventArgs = new SubscriptionCreatedEventArgs(subscriptionId, typeof(TMessage), category);
-            var message = new MessageBusSubscriberCreatedMessage(eventArgs);
+            var message = MessageBusSubscriberCreatedMessage.Create(
+                subscriptionId,
+                typeof(TMessage),
+                nameof(category));
             _messageBusService.PublishMessage(message);
         }
         catch (Exception ex)
@@ -665,8 +672,12 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
     {
         try
         {
-            var eventArgs = SubscriptionDisposedEventArgs.ForExplicit(subscriptionId, TimeSpan.Zero, reason);
-            var message = new MessageBusSubscriberDisposedMessage(eventArgs);
+            var message = MessageBusSubscriberDisposedMessage.Create(
+                subscriptionId,
+                typeof(TMessage),
+                "Standard",
+                $"Subscriber_{typeof(TMessage).Name}",
+                reason ?? "Unknown");
             _messageBusService.PublishMessage(message);
         }
         catch (Exception ex)
@@ -682,7 +693,12 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
     {
         try
         {
-            var processedMessage = MessageBusSubscriptionProcessedMessage.ForSync(subscriptionId, message, processingTime, category);
+            var processedMessage = MessageBusSubscriptionProcessedMessage.Create(
+                subscriptionId,
+                typeof(TMessage),
+                $"Subscriber_{typeof(TMessage).Name}",
+                processingTime,
+                true); // isSuccessful = true
             _messageBusService.PublishMessage(processedMessage);
         }
         catch (Exception ex)
@@ -698,7 +714,11 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
     {
         try
         {
-            var failedMessage = MessageBusSubscriptionFailedMessage.ForSync(subscriptionId, message, exception, processingTime, category);
+            var failedMessage = MessageBusSubscriptionFailedMessage.Create(
+                subscriptionId,
+                typeof(TMessage),
+                $"Subscriber_{typeof(TMessage).Name}",
+                exception); // Exception parameter
             _messageBusService.PublishMessage(failedMessage);
         }
         catch (Exception ex)
@@ -750,8 +770,13 @@ internal sealed class MessageSubscriber<TMessage> : IMessageSubscriber<TMessage>
             {
                 try
                 {
-                    var eventArgs = SubscriptionDisposedEventArgs.ForExplicit(Guid.NewGuid(), TimeSpan.Zero, "Subscriber disposal");
-                    var message = new MessageBusSubscriberDisposedMessage(eventArgs);
+                    var subscriberId = DeterministicIdGenerator.GenerateCorrelationId("SubscriberDisposal", typeof(TMessage).Name);
+                    var message = MessageBusSubscriberDisposedMessage.Create(
+                        subscriberId,
+                        typeof(TMessage),
+                        "Standard",
+                        $"Subscriber_{typeof(TMessage).Name}",
+                        "Subscriber disposal");
                     _messageBusService.PublishMessage(message);
                 }
                 catch (Exception ex)

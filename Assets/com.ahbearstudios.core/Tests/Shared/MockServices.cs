@@ -514,12 +514,6 @@ namespace AhBearStudios.Core.Tests.Shared
     /// <summary>
     /// Mock types for health check system testing
     /// </summary>
-    public enum CircuitBreakerState
-    {
-        Closed = 0,
-        Open = 1,
-        HalfOpen = 2
-    }
 
     public interface IHealthCheck
     {

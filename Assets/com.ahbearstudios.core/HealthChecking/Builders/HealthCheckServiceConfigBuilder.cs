@@ -16,7 +16,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
     /// Provides a fluent interface for building health check service configurations
     /// with comprehensive validation and support for different deployment environments
     /// </remarks>
-    public sealed class HealthCheckServiceConfigBuilder
+    public sealed class HealthCheckServiceConfigBuilder : IHealthCheckServiceConfigBuilder
     {
         private readonly ILoggingService _logger;
         private bool _isBuilt;
@@ -130,7 +130,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when interval is invalid</exception>
-        public HealthCheckServiceConfigBuilder WithAutomaticCheckInterval(TimeSpan interval)
+        public IHealthCheckServiceConfigBuilder WithAutomaticCheckInterval(TimeSpan interval)
         {
             ThrowIfAlreadyBuilt();
             
@@ -152,7 +152,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when value is invalid</exception>
-        public HealthCheckServiceConfigBuilder WithMaxConcurrentHealthChecks(int maxConcurrent)
+        public IHealthCheckServiceConfigBuilder WithMaxConcurrentHealthChecks(int maxConcurrent)
         {
             ThrowIfAlreadyBuilt();
             
@@ -174,7 +174,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when timeout is invalid</exception>
-        public HealthCheckServiceConfigBuilder WithDefaultTimeout(TimeSpan timeout)
+        public IHealthCheckServiceConfigBuilder WithDefaultTimeout(TimeSpan timeout)
         {
             ThrowIfAlreadyBuilt();
             
@@ -195,7 +195,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="enabled">Whether to enable automatic checks</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder WithAutomaticChecks(bool enabled = true)
+        public IHealthCheckServiceConfigBuilder WithAutomaticChecks(bool enabled = true)
         {
             ThrowIfAlreadyBuilt();
             _enableAutomaticChecks = enabled;
@@ -210,7 +210,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when value is invalid</exception>
-        public HealthCheckServiceConfigBuilder WithMaxHistorySize(int maxHistory)
+        public IHealthCheckServiceConfigBuilder WithMaxHistorySize(int maxHistory)
         {
             ThrowIfAlreadyBuilt();
             
@@ -233,7 +233,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when values are invalid</exception>
-        public HealthCheckServiceConfigBuilder WithRetrySettings(int maxRetries, TimeSpan retryDelay)
+        public IHealthCheckServiceConfigBuilder WithRetrySettings(int maxRetries, TimeSpan retryDelay)
         {
             ThrowIfAlreadyBuilt();
             
@@ -265,7 +265,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="enabled">Whether to enable circuit breakers</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder WithCircuitBreaker(bool enabled = true)
+        public IHealthCheckServiceConfigBuilder WithCircuitBreaker(bool enabled = true)
         {
             ThrowIfAlreadyBuilt();
             _enableCircuitBreaker = enabled;
@@ -280,7 +280,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
-        public HealthCheckServiceConfigBuilder WithDefaultCircuitBreakerConfig(CircuitBreakerConfig config)
+        public IHealthCheckServiceConfigBuilder WithDefaultCircuitBreakerConfig(CircuitBreakerConfig config)
         {
             ThrowIfAlreadyBuilt();
             
@@ -304,7 +304,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="enabled">Whether to enable circuit breaker alerts</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder WithCircuitBreakerAlerts(bool enabled = true)
+        public IHealthCheckServiceConfigBuilder WithCircuitBreakerAlerts(bool enabled = true)
         {
             ThrowIfAlreadyBuilt();
             _enableCircuitBreakerAlerts = enabled;
@@ -319,7 +319,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is invalid</exception>
-        public HealthCheckServiceConfigBuilder WithDefaultFailureThreshold(int threshold)
+        public IHealthCheckServiceConfigBuilder WithDefaultFailureThreshold(int threshold)
         {
             ThrowIfAlreadyBuilt();
             
@@ -341,7 +341,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when timeout is invalid</exception>
-        public HealthCheckServiceConfigBuilder WithDefaultCircuitBreakerTimeout(TimeSpan timeout)
+        public IHealthCheckServiceConfigBuilder WithDefaultCircuitBreakerTimeout(TimeSpan timeout)
         {
             ThrowIfAlreadyBuilt();
             
@@ -366,7 +366,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="enabled">Whether to enable graceful degradation</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder WithGracefulDegradation(bool enabled = true)
+        public IHealthCheckServiceConfigBuilder WithGracefulDegradation(bool enabled = true)
         {
             ThrowIfAlreadyBuilt();
             _enableGracefulDegradation = enabled;
@@ -381,7 +381,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentNullException">Thrown when thresholds is null</exception>
-        public HealthCheckServiceConfigBuilder WithDegradationThresholds(DegradationThresholds thresholds)
+        public IHealthCheckServiceConfigBuilder WithDegradationThresholds(DegradationThresholds thresholds)
         {
             ThrowIfAlreadyBuilt();
             
@@ -405,7 +405,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="enabled">Whether to enable degradation alerts</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder WithDegradationAlerts(bool enabled = true)
+        public IHealthCheckServiceConfigBuilder WithDegradationAlerts(bool enabled = true)
         {
             ThrowIfAlreadyBuilt();
             _enableDegradationAlerts = enabled;
@@ -419,7 +419,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="enabled">Whether to enable automatic degradation</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder WithAutomaticDegradation(bool enabled = true)
+        public IHealthCheckServiceConfigBuilder WithAutomaticDegradation(bool enabled = true)
         {
             ThrowIfAlreadyBuilt();
             _enableAutomaticDegradation = enabled;
@@ -438,7 +438,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="severities">Custom alert severities for different health statuses</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder WithHealthAlerts(
+        public IHealthCheckServiceConfigBuilder WithHealthAlerts(
             bool enabled = true,
             Dictionary<HealthStatus, AlertSeverity> severities = null)
         {
@@ -463,7 +463,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentNullException">Thrown when tags is null</exception>
-        public HealthCheckServiceConfigBuilder WithAlertTags(params FixedString64Bytes[] tags)
+        public IHealthCheckServiceConfigBuilder WithAlertTags(params FixedString64Bytes[] tags)
         {
             ThrowIfAlreadyBuilt();
             
@@ -482,7 +482,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentNullException">Thrown when tags is null</exception>
-        public HealthCheckServiceConfigBuilder AddAlertTags(params FixedString64Bytes[] tags)
+        public IHealthCheckServiceConfigBuilder AddAlertTags(params FixedString64Bytes[] tags)
         {
             ThrowIfAlreadyBuilt();
             
@@ -505,7 +505,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is invalid</exception>
-        public HealthCheckServiceConfigBuilder WithAlertFailureThreshold(int threshold)
+        public IHealthCheckServiceConfigBuilder WithAlertFailureThreshold(int threshold)
         {
             ThrowIfAlreadyBuilt();
             
@@ -531,7 +531,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="logLevel">Log level for health check operations</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder WithHealthCheckLogging(bool enabled = true, LogLevel logLevel = LogLevel.Info)
+        public IHealthCheckServiceConfigBuilder WithHealthCheckLogging(bool enabled = true, LogLevel logLevel = LogLevel.Info)
         {
             ThrowIfAlreadyBuilt();
             
@@ -549,7 +549,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when slowThreshold is invalid</exception>
-        public HealthCheckServiceConfigBuilder WithProfiling(bool enabled = true, int slowThreshold = 1000)
+        public IHealthCheckServiceConfigBuilder WithProfiling(bool enabled = true, int slowThreshold = 1000)
         {
             ThrowIfAlreadyBuilt();
             
@@ -571,7 +571,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="enabled">Whether to enable detailed logging</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder WithDetailedLogging(bool enabled = true)
+        public IHealthCheckServiceConfigBuilder WithDetailedLogging(bool enabled = true)
         {
             ThrowIfAlreadyBuilt();
             _enableDetailedLogging = enabled;
@@ -592,7 +592,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when values are invalid</exception>
-        public HealthCheckServiceConfigBuilder WithMemorySettings(
+        public IHealthCheckServiceConfigBuilder WithMemorySettings(
             int maxMemoryUsageMB,
             TimeSpan historyCleanupInterval,
             TimeSpan maxHistoryAge)
@@ -624,7 +624,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="priority">Thread priority</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder WithThreadPriority(System.Threading.ThreadPriority priority)
+        public IHealthCheckServiceConfigBuilder WithThreadPriority(System.Threading.ThreadPriority priority)
         {
             ThrowIfAlreadyBuilt();
             _healthCheckThreadPriority = priority;
@@ -643,7 +643,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentNullException">Thrown when thresholds is null</exception>
-        public HealthCheckServiceConfigBuilder WithHealthThresholds(HealthThresholds thresholds)
+        public IHealthCheckServiceConfigBuilder WithHealthThresholds(HealthThresholds thresholds)
         {
             ThrowIfAlreadyBuilt();
             
@@ -668,7 +668,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is invalid</exception>
-        public HealthCheckServiceConfigBuilder WithUnhealthyThreshold(double threshold)
+        public IHealthCheckServiceConfigBuilder WithUnhealthyThreshold(double threshold)
         {
             ThrowIfAlreadyBuilt();
             
@@ -687,7 +687,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is invalid</exception>
-        public HealthCheckServiceConfigBuilder WithWarningThreshold(double threshold)
+        public IHealthCheckServiceConfigBuilder WithWarningThreshold(double threshold)
         {
             ThrowIfAlreadyBuilt();
             
@@ -709,7 +709,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="enabled">Whether to enable dependency validation</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder WithDependencyValidation(bool enabled = true)
+        public IHealthCheckServiceConfigBuilder WithDependencyValidation(bool enabled = true)
         {
             ThrowIfAlreadyBuilt();
             _enableDependencyValidation = enabled;
@@ -725,7 +725,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when cacheDuration is invalid</exception>
-        public HealthCheckServiceConfigBuilder WithResultCaching(bool enabled, TimeSpan cacheDuration)
+        public IHealthCheckServiceConfigBuilder WithResultCaching(bool enabled, TimeSpan cacheDuration)
         {
             ThrowIfAlreadyBuilt();
             
@@ -747,7 +747,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="enabled">Whether to enable execution timeouts</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder WithExecutionTimeouts(bool enabled = true)
+        public IHealthCheckServiceConfigBuilder WithExecutionTimeouts(bool enabled = true)
         {
             ThrowIfAlreadyBuilt();
             _enableExecutionTimeouts = enabled;
@@ -761,7 +761,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="enabled">Whether to enable correlation IDs</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder WithCorrelationIds(bool enabled = true)
+        public IHealthCheckServiceConfigBuilder WithCorrelationIds(bool enabled = true)
         {
             ThrowIfAlreadyBuilt();
             _enableCorrelationIds = enabled;
@@ -776,7 +776,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentNullException">Thrown when metadata is null</exception>
-        public HealthCheckServiceConfigBuilder WithDefaultMetadata(Dictionary<string, object> metadata)
+        public IHealthCheckServiceConfigBuilder WithDefaultMetadata(Dictionary<string, object> metadata)
         {
             ThrowIfAlreadyBuilt();
             
@@ -796,7 +796,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
         /// <exception cref="ArgumentNullException">Thrown when key is null</exception>
-        public HealthCheckServiceConfigBuilder AddMetadata(string key, object value)
+        public IHealthCheckServiceConfigBuilder AddMetadata(string key, object value)
         {
             ThrowIfAlreadyBuilt();
             
@@ -818,7 +818,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="environment">Target environment</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder ForEnvironment(HealthCheckEnvironment environment)
+        public IHealthCheckServiceConfigBuilder ForEnvironment(HealthCheckEnvironment environment)
         {
             ThrowIfAlreadyBuilt();
             
@@ -837,7 +837,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// </summary>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder ApplyDevelopmentPreset()
+        public IHealthCheckServiceConfigBuilder ApplyDevelopmentPreset()
         {
             ThrowIfAlreadyBuilt();
             
@@ -870,7 +870,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// </summary>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder ApplyTestingPreset()
+        public IHealthCheckServiceConfigBuilder ApplyTestingPreset()
         {
             ThrowIfAlreadyBuilt();
             
@@ -907,7 +907,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// </summary>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder ApplyStagingPreset()
+        public IHealthCheckServiceConfigBuilder ApplyStagingPreset()
         {
             ThrowIfAlreadyBuilt();
             
@@ -943,7 +943,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// </summary>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-        public HealthCheckServiceConfigBuilder ApplyProductionPreset()
+        public IHealthCheckServiceConfigBuilder ApplyProductionPreset()
         {
             ThrowIfAlreadyBuilt();
             
@@ -1128,7 +1128,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Resets the builder to its initial state
         /// </summary>
         /// <returns>Builder instance for method chaining</returns>
-        public HealthCheckServiceConfigBuilder Reset()
+        public IHealthCheckServiceConfigBuilder Reset()
         {
             _isBuilt = false;
             

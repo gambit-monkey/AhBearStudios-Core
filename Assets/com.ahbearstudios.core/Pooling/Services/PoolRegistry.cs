@@ -77,7 +77,7 @@ namespace AhBearStudios.Core.Pooling.Services
         {
             ThrowIfDisposed();
             
-            var poolTypes = _pools.Keys.AsValueEnumerable().ToList();
+            var poolTypes = _pools.Keys.AsValueEnumerable().ToArray();
             
             foreach (var poolType in poolTypes)
             {
@@ -154,7 +154,7 @@ namespace AhBearStudios.Core.Pooling.Services
         public IEnumerable<Type> GetRegisteredPoolTypes()
         {
             ThrowIfDisposed();
-            return _pools.Keys.AsValueEnumerable().ToList(); // Return a copy to prevent modification
+            return _pools.Keys.AsValueEnumerable().ToArray(); // Return a copy to prevent modification
         }
 
         /// <inheritdoc />

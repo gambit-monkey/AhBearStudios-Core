@@ -1,4 +1,5 @@
 using System;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using Unity.Collections;
@@ -11,6 +12,8 @@ namespace AhBearStudios.Core.Messaging.Messages;
 /// </summary>
 public readonly record struct MessagePublishedEventMessage : IMessage
 {
+    #region IMessage Implementation
+
     /// <summary>
     /// Gets the unique identifier for this message instance.
     /// </summary>
@@ -22,9 +25,9 @@ public readonly record struct MessagePublishedEventMessage : IMessage
     public long TimestampTicks { get; init; }
 
     /// <summary>
-    /// Gets the unique type code for this message type.
+    /// Gets the message type code for efficient routing and filtering.
     /// </summary>
-    public ushort TypeCode { get; init; } = MessageTypeCodes.MessageBusPublishedMessage;
+    public ushort TypeCode { get; init; }
 
     /// <summary>
     /// Gets the source system or component that created this message.
@@ -40,6 +43,10 @@ public readonly record struct MessagePublishedEventMessage : IMessage
     /// Gets optional correlation ID for message tracing across systems.
     /// </summary>
     public Guid CorrelationId { get; init; }
+
+    #endregion
+
+    #region Message-Specific Properties
 
     /// <summary>
     /// Gets the message that was published.
@@ -71,31 +78,62 @@ public readonly record struct MessagePublishedEventMessage : IMessage
     /// </summary>
     public FixedString512Bytes Context { get; init; }
 
-    /// <summary>
-    /// Initializes a new instance of the MessagePublishedEventMessage struct.
-    /// </summary>
-    public MessagePublishedEventMessage()
-    {
-        Id = default;
-        TimestampTicks = default;
-        Source = default;
-        Priority = default;
-        CorrelationId = default;
-        PublishedMessage = default;
-        PublishedAt = default;
-        PublisherName = default;
-        PublishDuration = default;
-        SubscriberCount = default;
-        Context = default;
-    }
+    #endregion
+
+    #region Computed Properties
 
     /// <summary>
-    /// Gets the DateTime representation of the timestamp.
+    /// Gets the DateTime representation of the message timestamp.
     /// </summary>
     public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
+    #endregion
+
+    #region Static Factory Methods
+
     /// <summary>
-    /// Creates a new instance of the MessagePublishedEventMessage.
+    /// Creates a new instance of MessagePublishedEventMessage using FixedString parameters for optimal performance.
+    /// </summary>
+    /// <param name="publishedMessage">The message that was published</param>
+    /// <param name="publisherName">The name of the publisher</param>
+    /// <param name="publishDuration">The time it took to publish</param>
+    /// <param name="subscriberCount">The number of subscribers</param>
+    /// <param name="context">Additional context</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessagePublishedEventMessage instance</returns>
+    public static MessagePublishedEventMessage CreateFromFixedStrings(
+        IMessage publishedMessage,
+        string publisherName,
+        TimeSpan publishDuration,
+        int subscriberCount,
+        string context,
+        FixedString64Bytes source = default,
+        Guid correlationId = default)
+    {
+        var finalCorrelationId = correlationId == default 
+            ? DeterministicIdGenerator.GenerateCorrelationId("MessageBusPublish", null)
+            : correlationId;
+
+        return new MessagePublishedEventMessage
+        {
+            Id = DeterministicIdGenerator.GenerateMessageId("MessagePublishedEventMessage", "MessagingSystem", correlationId: null),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.MessageBusPublishedMessage,
+            Source = source.IsEmpty ? "MessageBusService" : source,
+            Priority = MessagePriority.Low,
+            CorrelationId = finalCorrelationId,
+            PublishedMessage = publishedMessage,
+            PublishedAt = DateTime.UtcNow,
+            PublisherName = publisherName?.Length <= 64 ? publisherName : publisherName?[..64] ?? string.Empty,
+            PublishDuration = publishDuration,
+            SubscriberCount = Math.Max(0, subscriberCount),
+            Context = context?.Length <= 512 ? context : context?[..512] ?? string.Empty
+        };
+    }
+
+    /// <summary>
+    /// Creates a new instance of MessagePublishedEventMessage using string parameters.
     /// </summary>
     /// <param name="publishedMessage">The message that was published</param>
     /// <param name="publisherName">The name of the publisher</param>
@@ -111,23 +149,18 @@ public readonly record struct MessagePublishedEventMessage : IMessage
         TimeSpan publishDuration = default,
         int subscriberCount = 0,
         string context = null,
-        FixedString64Bytes source = default,
+        string source = null,
         Guid correlationId = default)
     {
-        return new MessagePublishedEventMessage
-        {
-            Id = Guid.NewGuid(),
-            TimestampTicks = DateTime.UtcNow.Ticks,
-            TypeCode = MessageTypeCodes.MessageBusPublishedMessage,
-            Source = source.IsEmpty ? "MessageBusService" : source,
-            Priority = MessagePriority.Low, // Publication events are informational
-            CorrelationId = correlationId == default ? publishedMessage?.CorrelationId ?? Guid.NewGuid() : correlationId,
-            PublishedMessage = publishedMessage ?? throw new ArgumentNullException(nameof(publishedMessage)),
-            PublishedAt = DateTime.UtcNow,
-            PublisherName = publisherName?.Length <= 64 ? publisherName : publisherName?[..64] ?? "Unknown",
-            PublishDuration = publishDuration,
-            SubscriberCount = Math.Max(0, subscriberCount),
-            Context = context?.Length <= 256 ? context : context?[..256] ?? string.Empty
-        };
+        return CreateFromFixedStrings(
+            publishedMessage,
+            publisherName,
+            publishDuration,
+            subscriberCount,
+            context,
+            source?.Length <= 64 ? source : source?[..64] ?? "MessageBusService",
+            correlationId);
     }
+
+    #endregion
 }

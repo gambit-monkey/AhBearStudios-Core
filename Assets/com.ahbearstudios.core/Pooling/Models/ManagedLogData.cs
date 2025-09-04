@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using AhBearStudios.Core.HealthChecking.Models;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.Pooling.Models
 {
@@ -109,7 +110,7 @@ namespace AhBearStudios.Core.Pooling.Models
         public ManagedLogData()
         {
             var now = DateTime.UtcNow;
-            PoolId = Guid.NewGuid();
+            PoolId = DeterministicIdGenerator.GeneratePooledObjectId("ManagedLogData", "LogData", GetHashCode());
             CreatedAt = now;
             LastUsed = now;
             LastValidationTime = now;

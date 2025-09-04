@@ -5,7 +5,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs;
 /// <summary>
 /// Configuration for bulkhead isolation pattern
 /// </summary>
-public sealed record BulkheadConfig
+public sealed record BulkheadConfig : IBulkheadConfig
 {
     /// <summary>
     /// Whether bulkhead isolation is enabled

@@ -5,7 +5,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs;
 /// <summary>
 /// Retry configuration for failed health checks
 /// </summary>
-public sealed record RetryConfig
+public sealed record RetryConfig : IRetryConfig
 {
     /// <summary>
     /// Maximum number of retry attempts

@@ -1,5 +1,6 @@
 using System;
 using Unity.Collections;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Alerting.Channels;
@@ -13,6 +14,8 @@ namespace AhBearStudios.Core.Alerting.Messages
     /// </summary>
     public readonly record struct AlertChannelHealthChangedMessage : IMessage
     {
+        #region IMessage Implementation
+
         /// <summary>
         /// Gets the unique identifier for this message instance.
         /// </summary>
@@ -26,7 +29,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.AlertChannelHealthChangedMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -43,7 +46,9 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// </summary>
         public Guid CorrelationId { get; init; }
 
-        // Channel health-specific properties
+        #endregion
+
+        #region Message-Specific Properties
         /// <summary>
         /// Gets the name of the channel whose health changed.
         /// </summary>
@@ -64,29 +69,21 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// </summary>
         public ChannelHealthResult HealthResult { get; init; }
 
-        /// <summary>
-        /// Initializes a new instance of the AlertChannelHealthChangedMessage struct.
-        /// </summary>
-        public AlertChannelHealthChangedMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-            ChannelName = default;
-            PreviousHealthStatus = default;
-            CurrentHealthStatus = default;
-            HealthResult = default;
-        }
+        #endregion
+
+        #region Computed Properties
 
         /// <summary>
         /// Gets the DateTime representation of the message timestamp.
         /// </summary>
         public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
+        #endregion
+
+        #region Static Factory Methods
+
         /// <summary>
-        /// Creates a new AlertChannelHealthChangedMessage.
+        /// Creates a new AlertChannelHealthChangedMessage with proper validation and defaults.
         /// </summary>
         /// <param name="channelName">Name of the channel</param>
         /// <param name="previousHealth">Previous health status</param>
@@ -94,6 +91,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// <param name="healthResult">Health check result</param>
         /// <param name="source">Source component creating this message</param>
         /// <param name="correlationId">Optional correlation ID</param>
+        /// <param name="priority">Message priority level (defaults based on health status)</param>
         /// <returns>New AlertChannelHealthChangedMessage instance</returns>
         public static AlertChannelHealthChangedMessage Create(
             FixedString64Bytes channelName,
@@ -101,16 +99,28 @@ namespace AhBearStudios.Core.Alerting.Messages
             bool currentHealth,
             ChannelHealthResult healthResult,
             FixedString64Bytes source = default,
-            Guid correlationId = default)
+            Guid correlationId = default,
+            MessagePriority? priority = null)
         {
+
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "AlertChannelService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("AlertChannelHealthChangedMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("AlertChannelHealthChange", channelName.ToString())
+                : correlationId;
+
+            // Default priority based on health status (unhealthy = higher priority)
+            var messagePriority = priority ?? (currentHealth ? MessagePriority.Low : MessagePriority.High);
+
             return new AlertChannelHealthChangedMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
                 TimestampTicks = DateTime.UtcNow.Ticks,
                 TypeCode = MessageTypeCodes.AlertChannelHealthChangedMessage,
                 Source = source.IsEmpty ? "AlertChannelService" : source,
-                Priority = currentHealth ? MessagePriority.Low : MessagePriority.High,
-                CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
+                Priority = messagePriority,
+                CorrelationId = finalCorrelationId,
                 ChannelName = channelName,
                 PreviousHealthStatus = previousHealth,
                 CurrentHealthStatus = currentHealth,
@@ -118,14 +128,22 @@ namespace AhBearStudios.Core.Alerting.Messages
             };
         }
 
+        #endregion
+
+        #region String Representation
+
         /// <summary>
         /// Returns a string representation of this message for debugging.
         /// </summary>
         /// <returns>Channel health change message string representation</returns>
         public override string ToString()
         {
+            var channelText = ChannelName.IsEmpty ? "Unknown" : ChannelName.ToString();
             var statusChange = CurrentHealthStatus ? "became healthy" : "became unhealthy";
-            return $"ChannelHealthChanged: {ChannelName} {statusChange} - {HealthResult.StatusMessage}";
+            var statusMessage = HealthResult.StatusMessage.IsEmpty ? "No status message" : HealthResult.StatusMessage.ToString();
+            return $"ChannelHealthChanged: {channelText} {statusChange} - {statusMessage}";
         }
+
+        #endregion
     }
 }

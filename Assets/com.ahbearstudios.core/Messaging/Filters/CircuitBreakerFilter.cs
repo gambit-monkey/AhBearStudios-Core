@@ -6,6 +6,8 @@ using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.HealthChecking;
+using AhBearStudios.Core.HealthChecking.Models;
 using Unity.Collections;
 
 namespace AhBearStudios.Core.Messaging.Filters;
@@ -38,15 +40,6 @@ public sealed class CircuitBreakerFilter<TMessage> : MessageHandlerFilter<TMessa
     
     private static readonly ProfilerMarker _staticFilterMarker = new("CircuitBreakerFilter.Handle");
 
-    /// <summary>
-    /// Represents the state of the circuit breaker.
-    /// </summary>
-    public enum CircuitBreakerState
-    {
-        Closed,     // Normal operation
-        Open,       // Blocking requests due to failures
-        HalfOpen    // Testing if service has recovered
-    }
 
     /// <summary>
     /// Initializes a new CircuitBreakerFilter with production-ready circuit breaker settings.

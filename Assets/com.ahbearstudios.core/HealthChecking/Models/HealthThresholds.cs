@@ -1,280 +1,239 @@
-﻿using System.Collections.Generic;
-using System.Linq;
-using AhBearStudios.Core.HealthChecking.Configs;
-using Unity.Collections;
+using System;
+using System.Collections.Generic;
 
-namespace AhBearStudios.Core.HealthChecking.Models;
-
-/// <summary>
-/// Health thresholds configuration for determining overall system health with advanced calculation methods
-/// </summary>
-public sealed record HealthThresholds
+namespace AhBearStudios.Core.HealthChecking.Models
 {
     /// <summary>
-    /// Unique identifier for this health thresholds configuration
+    /// Configuration for health status thresholds that control overall system health determination.
+    /// Used to aggregate individual health check results into overall system health status.
     /// </summary>
-    public FixedString64Bytes Id { get; init; } = GenerateId();
-
-    /// <summary>
-    /// Display name for this health thresholds configuration
-    /// </summary>
-    public string Name { get; init; } = "Default Health Thresholds";
-
-    /// <summary>
-    /// Percentage of healthy checks required for overall healthy status (0.0 to 1.0)
-    /// </summary>
-    public double HealthyThreshold { get; init; } = 0.9;
-
-    /// <summary>
-    /// Percentage of unhealthy checks that triggers degraded status (0.0 to 1.0)
-    /// </summary>
-    public double DegradedThreshold { get; init; } = 0.2;
-
-    /// <summary>
-    /// Percentage of unhealthy checks that triggers unhealthy status (0.0 to 1.0)
-    /// </summary>
-    public double UnhealthyThreshold { get; init; } = 0.5;
-
-    /// <summary>
-    /// Whether to use weighted calculation based on health check categories
-    /// </summary>
-    public bool UseWeightedCalculation { get; init; } = true;
-
-    /// <summary>
-    /// Whether to consider degraded checks as partially unhealthy in calculations
-    /// </summary>
-    public bool IncludeDegradedInCalculation { get; init; } = true;
-
-    /// <summary>
-    /// Weight factor for degraded checks when included in calculation (0.0 to 1.0)
-    /// </summary>
-    public double DegradedWeight { get; init; } = 0.5;
-
-    /// <summary>
-    /// Weights for different health check categories in overall health calculation
-    /// </summary>
-    public Dictionary<HealthCheckCategory, double> CategoryWeights { get; init; } = new()
+    public sealed record HealthThresholds
     {
-        { HealthCheckCategory.System, 1.0 },        // Critical system checks
-        { HealthCheckCategory.Database, 0.9 },      // Database connectivity
-        { HealthCheckCategory.Network, 0.7 },       // Network services
-        { HealthCheckCategory.Performance, 0.5 },   // Performance metrics
-        { HealthCheckCategory.Security, 0.8 },      // Security checks
-        { HealthCheckCategory.CircuitBreaker, 0.6 }, // Circuit breaker status
-        { HealthCheckCategory.Custom, 0.4 }         // Custom checks
-    };
+        /// <summary>
+        /// Gets the threshold for determining overall healthy status (0.0 to 1.0).
+        /// Represents the minimum percentage of healthy checks required for overall healthy status.
+        /// </summary>
+        public double HealthyThreshold { get; init; } = 0.95; // 95% healthy required
 
-    /// <summary>
-    /// Critical health checks that immediately affect overall status regardless of thresholds
-    /// </summary>
-    public HashSet<FixedString64Bytes> CriticalHealthChecks { get; init; } = new();
+        /// <summary>
+        /// Gets the threshold for determining overall warning status (0.0 to 1.0).
+        /// Represents the minimum percentage of non-failing checks for warning status.
+        /// </summary>
+        public double WarningThreshold { get; init; } = 0.80; // 80% non-failing for warning
 
-    /// <summary>
-    /// Health checks that should be ignored in overall status calculation
-    /// </summary>
-    public HashSet<FixedString64Bytes> IgnoredHealthChecks { get; init; } = new();
+        /// <summary>
+        /// Gets the threshold for determining overall degraded status (0.0 to 1.0).
+        /// Represents the minimum percentage of non-critical checks for degraded status.
+        /// </summary>
+        public double DegradedThreshold { get; init; } = 0.60; // 60% non-critical for degraded
 
-    /// <summary>
-    /// Minimum number of health checks required for valid threshold calculation
-    /// </summary>
-    public int MinimumHealthChecks { get; init; } = 1;
+        /// <summary>
+        /// Gets the threshold for critical health check failures.
+        /// If this percentage of critical checks fail, status is immediately unhealthy.
+        /// </summary>
+        public double CriticalFailureThreshold { get; init; } = 0.20; // 20% critical failures = unhealthy
 
-    /// <summary>
-    /// Time window for evaluating health check results for threshold calculation
-    /// </summary>
-    public TimeSpan EvaluationWindow { get; init; } = TimeSpan.FromMinutes(5);
+        /// <summary>
+        /// Gets the maximum allowed response time before considering a check as slow.
+        /// Slow checks contribute to degraded status even if they pass.
+        /// </summary>
+        public TimeSpan SlowResponseThreshold { get; init; } = TimeSpan.FromSeconds(5);
 
-    /// <summary>
-    /// Whether to use sliding window for threshold evaluation
-    /// </summary>
-    public bool UseSlidingWindow { get; init; } = true;
+        /// <summary>
+        /// Gets the percentage of slow responses that trigger degraded status.
+        /// Even if checks pass, too many slow responses indicate degradation.
+        /// </summary>
+        public double SlowResponseThreshold_Percentage { get; init; } = 0.30; // 30% slow = degraded
 
-    /// <summary>
-    /// Calculation method for determining overall health status
-    /// </summary>
-    public HealthCalculationMethod CalculationMethod { get; init; } = HealthCalculationMethod.WeightedAverage;
+        /// <summary>
+        /// Gets the time window for evaluating health thresholds.
+        /// Only recent health check results within this window are considered.
+        /// </summary>
+        public TimeSpan EvaluationWindow { get; init; } = TimeSpan.FromMinutes(5);
 
-    /// <summary>
-    /// Hysteresis configuration to prevent status flapping
-    /// </summary>
-    public HysteresisConfig HysteresisConfig { get; init; } = new();
+        /// <summary>
+        /// Gets the minimum number of health check results required for threshold evaluation.
+        /// Prevents status changes with insufficient data.
+        /// </summary>
+        public int MinimumSampleSize { get; init; } = 3;
 
-    /// <summary>
-    /// Configuration for trend-based health evaluation
-    /// </summary>
-    public TrendAnalysisConfig TrendAnalysis { get; init; } = new();
+        /// <summary>
+        /// Gets whether to use weighted scoring for different health check categories.
+        /// Critical system checks have higher weight than optional feature checks.
+        /// </summary>
+        public bool UseWeightedScoring { get; init; } = true;
 
-    /// <summary>
-    /// Configuration for time-based health evaluation
-    /// </summary>
-    public TimeBasedEvaluationConfig TimeBasedEvaluation { get; init; } = new();
+        /// <summary>
+        /// Gets the weight assigned to critical system health checks.
+        /// Only used when UseWeightedScoring is true.
+        /// </summary>
+        public double CriticalSystemWeight { get; init; } = 3.0;
 
-    /// <summary>
-    /// Advanced threshold rules for complex scenarios
-    /// </summary>
-    public List<AdvancedThresholdRule> AdvancedRules { get; init; } = new();
+        /// <summary>
+        /// Gets the weight assigned to important feature health checks.
+        /// Only used when UseWeightedScoring is true.
+        /// </summary>
+        public double ImportantFeatureWeight { get; init; } = 2.0;
 
-    /// <summary>
-    /// Custom metadata for this health thresholds configuration
-    /// </summary>
-    public Dictionary<string, object> Metadata { get; init; } = new();
+        /// <summary>
+        /// Gets the weight assigned to optional feature health checks.
+        /// Only used when UseWeightedScoring is true.
+        /// </summary>
+        public double OptionalFeatureWeight { get; init; } = 1.0;
 
-    /// <summary>
-    /// Validates the health thresholds configuration
-    /// </summary>
-    /// <returns>List of validation error messages, empty if valid</returns>
-    public List<string> Validate()
-    {
-        var errors = new List<string>();
+        /// <summary>
+        /// Gets whether to apply hysteresis to prevent rapid status changes.
+        /// Status must remain consistent for HysteresisDelay before change is applied.
+        /// </summary>
+        public bool ApplyHysteresis { get; init; } = true;
 
-        if (string.IsNullOrWhiteSpace(Name))
-            errors.Add("Name cannot be null or empty");
+        /// <summary>
+        /// Gets the hysteresis delay for status changes.
+        /// Only used when ApplyHysteresis is true.
+        /// </summary>
+        public TimeSpan HysteresisDelay { get; init; } = TimeSpan.FromSeconds(30);
 
-        if (HealthyThreshold < 0.0 || HealthyThreshold > 1.0)
-            errors.Add("HealthyThreshold must be between 0.0 and 1.0");
-
-        if (DegradedThreshold < 0.0 || DegradedThreshold > 1.0)
-            errors.Add("DegradedThreshold must be between 0.0 and 1.0");
-
-        if (UnhealthyThreshold < 0.0 || UnhealthyThreshold > 1.0)
-            errors.Add("UnhealthyThreshold must be between 0.0 and 1.0");
-
-        if (DegradedWeight < 0.0 || DegradedWeight > 1.0)
-            errors.Add("DegradedWeight must be between 0.0 and 1.0");
-
-        // Validate threshold ordering
-        if (DegradedThreshold >= UnhealthyThreshold)
-            errors.Add("DegradedThreshold must be less than UnhealthyThreshold");
-
-        if (MinimumHealthChecks <= 0)
-            errors.Add("MinimumHealthChecks must be greater than zero");
-
-        if (EvaluationWindow <= TimeSpan.Zero)
-            errors.Add("EvaluationWindow must be greater than zero");
-
-        if (!Enum.IsDefined(typeof(HealthCalculationMethod), CalculationMethod))
-            errors.Add($"Invalid calculation method: {CalculationMethod}");
-
-        // Validate category weights
-        foreach (var kvp in CategoryWeights)
+        /// <summary>
+        /// Validates the health thresholds configuration.
+        /// </summary>
+        /// <returns>List of validation errors, empty if valid</returns>
+        public List<string> Validate()
         {
-            if (kvp.Value < 0.0 || kvp.Value > 2.0)
-                errors.Add($"Category weight for {kvp.Key} must be between 0.0 and 2.0, found: {kvp.Value}");
-        }
+            var errors = new List<string>();
 
-        // Validate that critical and ignored health checks don't overlap
-        var overlapping = CriticalHealthChecks.Intersect(IgnoredHealthChecks);
-        if (overlapping.Any())
-        {
-            errors.Add($"Health checks cannot be both critical and ignored: {string.Join(", ", overlapping)}");
-        }
+            // Threshold range validation
+            if (HealthyThreshold < 0.0 || HealthyThreshold > 1.0)
+                errors.Add("HealthyThreshold must be between 0.0 and 1.0");
 
-        // Validate nested configurations
-        errors.AddRange(HysteresisConfig.Validate());
-        errors.AddRange(TrendAnalysis.Validate());
-        errors.AddRange(TimeBasedEvaluation.Validate());
+            if (WarningThreshold < 0.0 || WarningThreshold > 1.0)
+                errors.Add("WarningThreshold must be between 0.0 and 1.0");
 
-        foreach (var rule in AdvancedRules)
-        {
-            errors.AddRange(rule.Validate());
-        }
+            if (DegradedThreshold < 0.0 || DegradedThreshold > 1.0)
+                errors.Add("DegradedThreshold must be between 0.0 and 1.0");
 
-        return errors;
-    }
+            if (CriticalFailureThreshold < 0.0 || CriticalFailureThreshold > 1.0)
+                errors.Add("CriticalFailureThreshold must be between 0.0 and 1.0");
 
-    /// <summary>
-    /// Creates health thresholds optimized for critical systems
-    /// </summary>
-    /// <returns>Critical system health thresholds</returns>
-    public static HealthThresholds ForCriticalSystem()
-    {
-        return new HealthThresholds
-        {
-            Name = "Critical System Health Thresholds",
-            HealthyThreshold = 0.95,        // 95% healthy required
-            DegradedThreshold = 0.1,        // 10% unhealthy triggers degraded
-            UnhealthyThreshold = 0.25,      // 25% unhealthy triggers unhealthy
-            UseWeightedCalculation = true,
-            IncludeDegradedInCalculation = true,
-            DegradedWeight = 0.7,          // Degraded checks count as 70% unhealthy
-            MinimumHealthChecks = 3,
-            EvaluationWindow = TimeSpan.FromMinutes(2),
-            CalculationMethod = HealthCalculationMethod.WeightedAverage,
-            CategoryWeights = new Dictionary<HealthCheckCategory, double>
+            if (SlowResponseThreshold_Percentage < 0.0 || SlowResponseThreshold_Percentage > 1.0)
+                errors.Add("SlowResponseThreshold_Percentage must be between 0.0 and 1.0");
+
+            // Threshold ordering validation (higher status requires higher threshold)
+            if (DegradedThreshold >= WarningThreshold)
+                errors.Add("DegradedThreshold must be less than WarningThreshold");
+
+            if (WarningThreshold >= HealthyThreshold)
+                errors.Add("WarningThreshold must be less than HealthyThreshold");
+
+            // Time validation
+            if (SlowResponseThreshold <= TimeSpan.Zero)
+                errors.Add("SlowResponseThreshold must be greater than zero");
+
+            if (EvaluationWindow <= TimeSpan.Zero)
+                errors.Add("EvaluationWindow must be greater than zero");
+
+            if (ApplyHysteresis && HysteresisDelay < TimeSpan.Zero)
+                errors.Add("HysteresisDelay must be non-negative when ApplyHysteresis is enabled");
+
+            // Sample size validation
+            if (MinimumSampleSize < 1)
+                errors.Add("MinimumSampleSize must be at least 1");
+
+            // Weight validation
+            if (UseWeightedScoring)
             {
-                { HealthCheckCategory.System, 1.5 },      // Extra weight for system checks
-                { HealthCheckCategory.Database, 1.2 },
-                { HealthCheckCategory.Network, 0.8 },
-                { HealthCheckCategory.Performance, 0.4 },
-                { HealthCheckCategory.Security, 1.0 },
-                { HealthCheckCategory.CircuitBreaker, 0.7 },
-                { HealthCheckCategory.Custom, 0.3 }
-            },
-            HysteresisConfig = HysteresisConfig.ForCriticalSystem(),
-            TrendAnalysis = TrendAnalysisConfig.ForCriticalSystem()
-        };
-    }
+                if (CriticalSystemWeight < 1.0)
+                    errors.Add("CriticalSystemWeight must be at least 1.0");
 
-    /// <summary>
-    /// Creates health thresholds optimized for high-availability systems
-    /// </summary>
-    /// <returns>High-availability health thresholds</returns>
-    public static HealthThresholds ForHighAvailability()
-    {
-        return new HealthThresholds
+                if (ImportantFeatureWeight < 1.0)
+                    errors.Add("ImportantFeatureWeight must be at least 1.0");
+
+                if (OptionalFeatureWeight < 1.0)
+                    errors.Add("OptionalFeatureWeight must be at least 1.0");
+            }
+
+            return errors;
+        }
+
+        /// <summary>
+        /// Creates health thresholds optimized for production environments.
+        /// </summary>
+        /// <returns>Production-optimized health thresholds</returns>
+        public static HealthThresholds ForProduction()
         {
-            Name = "High Availability Health Thresholds",
-            HealthyThreshold = 0.85,        // 85% healthy required
-            DegradedThreshold = 0.2,        // 20% unhealthy triggers degraded
-            UnhealthyThreshold = 0.4,       // 40% unhealthy triggers unhealthy
-            UseWeightedCalculation = true,
-            IncludeDegradedInCalculation = true,
-            DegradedWeight = 0.5,
-            MinimumHealthChecks = 5,
-            EvaluationWindow = TimeSpan.FromMinutes(5),
-            CalculationMethod = HealthCalculationMethod.WeightedAverage,
-            HysteresisConfig = HysteresisConfig.ForHighAvailability(),
-            TrendAnalysis = TrendAnalysisConfig.ForHighAvailability(),
-            TimeBasedEvaluation = TimeBasedEvaluationConfig.ForHighAvailability()
-        };
-    }
+            return new HealthThresholds
+            {
+                HealthyThreshold = 0.95,           // 95% healthy required
+                WarningThreshold = 0.85,           // 85% for warning
+                DegradedThreshold = 0.70,          // 70% for degraded
+                CriticalFailureThreshold = 0.10,   // 10% critical failures = unhealthy
+                SlowResponseThreshold = TimeSpan.FromSeconds(3),
+                SlowResponseThreshold_Percentage = 0.20, // 20% slow = degraded
+                EvaluationWindow = TimeSpan.FromMinutes(3),
+                MinimumSampleSize = 5,
+                UseWeightedScoring = true,
+                CriticalSystemWeight = 4.0,
+                ImportantFeatureWeight = 2.0,
+                OptionalFeatureWeight = 1.0,
+                ApplyHysteresis = true,
+                HysteresisDelay = TimeSpan.FromMinutes(1)
+            };
+        }
 
-    /// <summary>
-    /// Creates health thresholds optimized for development environments
-    /// </summary>
-    /// <returns>Development health thresholds</returns>
-    public static HealthThresholds ForDevelopment()
-    {
-        return new HealthThresholds
+        /// <summary>
+        /// Creates health thresholds optimized for development environments.
+        /// </summary>
+        /// <returns>Development-optimized health thresholds</returns>
+        public static HealthThresholds ForDevelopment()
         {
-            Name = "Development Health Thresholds",
-            HealthyThreshold = 0.7,         // 70% healthy required
-            DegradedThreshold = 0.3,        // 30% unhealthy triggers degraded
-            UnhealthyThreshold = 0.6,       // 60% unhealthy triggers unhealthy
-            UseWeightedCalculation = false,  // Simple calculation for development
-            IncludeDegradedInCalculation = false,
-            MinimumHealthChecks = 1,
-            EvaluationWindow = TimeSpan.FromMinutes(1),
-            CalculationMethod = HealthCalculationMethod.Simple,
-            HysteresisConfig = new HysteresisConfig { Enabled = false }
-        };
-    }
+            return new HealthThresholds
+            {
+                HealthyThreshold = 0.80,           // 80% healthy required
+                WarningThreshold = 0.60,           // 60% for warning
+                DegradedThreshold = 0.40,          // 40% for degraded
+                CriticalFailureThreshold = 0.30,   // 30% critical failures = unhealthy
+                SlowResponseThreshold = TimeSpan.FromSeconds(10),
+                SlowResponseThreshold_Percentage = 0.50, // 50% slow = degraded
+                EvaluationWindow = TimeSpan.FromMinutes(10),
+                MinimumSampleSize = 2,
+                UseWeightedScoring = false,
+                CriticalSystemWeight = 1.0,
+                ImportantFeatureWeight = 1.0,
+                OptionalFeatureWeight = 1.0,
+                ApplyHysteresis = false,
+                HysteresisDelay = TimeSpan.Zero
+            };
+        }
 
-    /// <summary>
-    /// Creates health thresholds with balanced settings for general use
-    /// </summary>
-    /// <returns>Balanced health thresholds</returns>
-    public static HealthThresholds Balanced()
-    {
-        return new HealthThresholds(); // Uses default values which are already balanced
-    }
+        /// <summary>
+        /// Creates health thresholds optimized for testing environments.
+        /// </summary>
+        /// <returns>Testing-optimized health thresholds</returns>
+        public static HealthThresholds ForTesting()
+        {
+            return new HealthThresholds
+            {
+                HealthyThreshold = 1.0,            // 100% healthy required
+                WarningThreshold = 0.90,           // 90% for warning
+                DegradedThreshold = 0.70,          // 70% for degraded
+                CriticalFailureThreshold = 0.50,   // 50% critical failures = unhealthy
+                SlowResponseThreshold = TimeSpan.FromSeconds(30),
+                SlowResponseThreshold_Percentage = 0.80, // 80% slow = degraded
+                EvaluationWindow = TimeSpan.FromMinutes(1),
+                MinimumSampleSize = 1,
+                UseWeightedScoring = false,
+                ApplyHysteresis = false,
+                HysteresisDelay = TimeSpan.Zero
+            };
+        }
 
-    /// <summary>
-    /// Generates a unique identifier for configurations
-    /// </summary>
-    /// <returns>Unique configuration ID</returns>
-    private static FixedString64Bytes GenerateId()
-    {
-        return new FixedString64Bytes(Guid.NewGuid().ToString("N")[..16]);
+        /// <summary>
+        /// Returns a string representation of the health thresholds.
+        /// </summary>
+        /// <returns>Health thresholds string</returns>
+        public override string ToString()
+        {
+            return $"HealthThresholds: Healthy={HealthyThreshold:P0}, Warning={WarningThreshold:P0}, " +
+                   $"Degraded={DegradedThreshold:P0}, Critical={CriticalFailureThreshold:P0}";
+        }
     }
 }

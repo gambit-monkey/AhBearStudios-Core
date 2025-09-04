@@ -2,6 +2,7 @@ using System;
 using Unity.Collections;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.Pooling.Messages
 {
@@ -11,6 +12,7 @@ namespace AhBearStudios.Core.Pooling.Messages
     /// </summary>
     public readonly record struct PoolOperationFailedMessage : IMessage
     {
+        #region IMessage Implementation
         /// <summary>
         /// Gets the unique identifier for this message instance.
         /// </summary>
@@ -24,7 +26,7 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.PoolOperationFailedMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -40,6 +42,10 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// Gets optional correlation ID for message tracing across systems.
         /// </summary>
         public Guid CorrelationId { get; init; }
+
+        #endregion
+
+        #region Message-Specific Properties
 
         // Pool operation-specific properties
         /// <summary>
@@ -82,30 +88,71 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// </summary>
         public int ActiveObjectsAtFailure { get; init; }
 
-        /// <summary>
-        /// Initializes a new instance of the PoolOperationFailedMessage struct.
-        /// </summary>
-        public PoolOperationFailedMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-            PoolName = default;
-            StrategyName = default;
-            OperationType = default;
-            ErrorMessage = default;
-            ExceptionType = default;
-            ErrorCount = default;
-            PoolSizeAtFailure = default;
-            ActiveObjectsAtFailure = default;
-        }
+        #endregion
+
+        #region Computed Properties
 
         /// <summary>
         /// Gets the timestamp when the operation failed.
         /// </summary>
         public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
+
+        #endregion
+
+        #region Static Factory Methods
+
+        /// <summary>
+        /// Creates a new PoolOperationFailedMessage with proper validation and defaults.
+        /// </summary>
+        /// <param name="poolName">Name of the pool</param>
+        /// <param name="strategyName">Name of the strategy</param>
+        /// <param name="operationType">Type of operation</param>
+        /// <param name="errorMessage">Error message</param>
+        /// <param name="exceptionType">Exception type name</param>
+        /// <param name="errorCount">Current error count</param>
+        /// <param name="poolSizeAtFailure">Pool size at failure</param>
+        /// <param name="activeObjectsAtFailure">Active objects at failure</param>
+        /// <param name="correlationId">Optional correlation ID</param>
+        /// <param name="source">Source component</param>
+        /// <returns>New PoolOperationFailedMessage instance</returns>
+        public static PoolOperationFailedMessage CreateFromFixedStrings(
+            FixedString64Bytes poolName,
+            FixedString64Bytes strategyName,
+            FixedString64Bytes operationType,
+            FixedString512Bytes errorMessage,
+            FixedString128Bytes exceptionType,
+            int errorCount,
+            int poolSizeAtFailure,
+            int activeObjectsAtFailure,
+            Guid correlationId = default,
+            FixedString64Bytes source = default)
+        {
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "PoolingService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("PoolOperationFailedMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("PoolOperationFailed", $"{poolName}-{operationType}")
+                : correlationId;
+            
+            return new PoolOperationFailedMessage
+            {
+                Id = messageId,
+                TimestampTicks = DateTime.UtcNow.Ticks,
+                TypeCode = MessageTypeCodes.PoolOperationFailedMessage,
+                Source = source.IsEmpty ? "PoolStrategy" : source,
+                Priority = MessagePriority.High, // Errors should be processed with priority
+                CorrelationId = finalCorrelationId,
+                
+                PoolName = poolName,
+                StrategyName = strategyName,
+                OperationType = operationType,
+                ErrorMessage = errorMessage,
+                ExceptionType = exceptionType,
+                ErrorCount = errorCount,
+                PoolSizeAtFailure = poolSizeAtFailure,
+                ActiveObjectsAtFailure = activeObjectsAtFailure
+            };
+        }
 
         /// <summary>
         /// Creates a new PoolOperationFailedMessage with the specified details.
@@ -117,8 +164,8 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// <param name="errorCount">Current error count</param>
         /// <param name="poolSizeAtFailure">Pool size at failure</param>
         /// <param name="activeObjectsAtFailure">Active objects at failure</param>
-        /// <param name="source">Source component</param>
         /// <param name="correlationId">Optional correlation ID</param>
+        /// <param name="source">Source component</param>
         /// <returns>New PoolOperationFailedMessage instance</returns>
         public static PoolOperationFailedMessage Create(
             string poolName,
@@ -128,26 +175,22 @@ namespace AhBearStudios.Core.Pooling.Messages
             int errorCount,
             int poolSizeAtFailure,
             int activeObjectsAtFailure,
-            FixedString64Bytes source = default,
-            Guid correlationId = default)
+            Guid correlationId = default,
+            string source = null)
         {
-            return new PoolOperationFailedMessage
-            {
-                Id = Guid.NewGuid(),
-                TimestampTicks = DateTime.UtcNow.Ticks,
-                TypeCode = MessageTypeCodes.PoolOperationFailedMessage,
-                Source = source.IsEmpty ? "PoolStrategy" : source,
-                Priority = MessagePriority.High, // Errors should be processed with priority
-                CorrelationId = correlationId,
-                PoolName = poolName?.Length <= 64 ? poolName : poolName?[..64] ?? "Unknown",
-                StrategyName = strategyName?.Length <= 64 ? strategyName : strategyName?[..64] ?? "Unknown",
-                OperationType = operationType?.Length <= 64 ? operationType : operationType?[..64] ?? "Unknown",
-                ErrorMessage = error?.Message?.Length <= 512 ? error.Message : error?.Message?[..512] ?? "Unknown error",
-                ExceptionType = error?.GetType().Name?.Length <= 128 ? error.GetType().Name : error?.GetType().Name?[..128] ?? "Exception",
-                ErrorCount = errorCount,
-                PoolSizeAtFailure = poolSizeAtFailure,
-                ActiveObjectsAtFailure = activeObjectsAtFailure
-            };
+            return CreateFromFixedStrings(
+                new FixedString64Bytes(poolName?.Length <= 64 ? poolName : poolName?[..64] ?? "Unknown"),
+                new FixedString64Bytes(strategyName?.Length <= 64 ? strategyName : strategyName?[..64] ?? "Unknown"),
+                new FixedString64Bytes(operationType?.Length <= 64 ? operationType : operationType?[..64] ?? "Unknown"),
+                new FixedString512Bytes(error?.Message?.Length <= 512 ? error.Message : error?.Message?[..512] ?? "Unknown error"),
+                new FixedString128Bytes(error?.GetType().Name?.Length <= 128 ? error.GetType().Name : error?.GetType().Name?[..128] ?? "Exception"),
+                errorCount,
+                poolSizeAtFailure,
+                activeObjectsAtFailure,
+                correlationId,
+                new FixedString64Bytes(source ?? "PoolingService"));
         }
+
+        #endregion
     }
 }

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using Unity.Collections;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 
@@ -13,6 +14,8 @@ namespace AhBearStudios.Core.Alerting.Messages
     /// </summary>
     public readonly record struct AlertFilterConfigurationChangedMessage : IMessage
     {
+        #region IMessage Implementation
+
         /// <summary>
         /// Gets the unique identifier for this message instance.
         /// </summary>
@@ -26,7 +29,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.AlertFilterConfigurationChangedMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -43,7 +46,9 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// </summary>
         public Guid CorrelationId { get; init; }
 
-        // Filter configuration-specific properties
+        #endregion
+
+        #region Message-Specific Properties
         /// <summary>
         /// Gets the name of the filter whose configuration changed.
         /// </summary>
@@ -79,32 +84,21 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// </summary>
         public int NewPriority { get; init; }
 
-        /// <summary>
-        /// Initializes a new instance of the AlertFilterConfigurationChangedMessage struct.
-        /// </summary>
-        public AlertFilterConfigurationChangedMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-            FilterName = default;
-            ConfigurationChangeSummary = default;
-            PreviousConfigurationJson = default;
-            NewConfigurationJson = default;
-            WasSuccessful = default;
-            IsFilterEnabled = default;
-            NewPriority = default;
-        }
+        #endregion
+
+        #region Computed Properties
 
         /// <summary>
         /// Gets the DateTime representation of the message timestamp.
         /// </summary>
         public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
+        #endregion
+
+        #region Static Factory Methods
+
         /// <summary>
-        /// Creates a new AlertFilterConfigurationChangedMessage.
+        /// Creates a new AlertFilterConfigurationChangedMessage with proper validation and defaults.
         /// </summary>
         /// <param name="filterName">Name of the filter</param>
         /// <param name="changeSummary">Summary of changes</param>
@@ -131,14 +125,21 @@ namespace AhBearStudios.Core.Alerting.Messages
             var prevJson = SerializeDictionaryToJson(previousConfig);
             var newJson = SerializeDictionaryToJson(newConfig);
 
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "AlertFilterService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("AlertFilterConfigurationChangedMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("AlertFilterConfigChange", filterName.ToString())
+                : correlationId;
+
             return new AlertFilterConfigurationChangedMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
                 TimestampTicks = DateTime.UtcNow.Ticks,
                 TypeCode = MessageTypeCodes.AlertFilterConfigurationChangedMessage,
                 Source = source.IsEmpty ? "AlertFilterService" : source,
                 Priority = wasSuccessful ? MessagePriority.Low : MessagePriority.Normal,
-                CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
+                CorrelationId = finalCorrelationId,
                 FilterName = filterName,
                 ConfigurationChangeSummary = changeSummary?.Length <= 256 ? changeSummary : changeSummary?[..256] ?? "Configuration updated",
                 PreviousConfigurationJson = prevJson.Length <= 512 ? prevJson : prevJson[..512],
@@ -169,14 +170,22 @@ namespace AhBearStudios.Core.Alerting.Messages
             return "{" + string.Join(",", items) + "}";
         }
 
+        #endregion
+
+        #region String Representation
+
         /// <summary>
         /// Returns a string representation of this message for debugging.
         /// </summary>
         /// <returns>Filter configuration change message string representation</returns>
         public override string ToString()
         {
+            var filterText = FilterName.IsEmpty ? "Unknown" : FilterName.ToString();
+            var summaryText = ConfigurationChangeSummary.IsEmpty ? "No summary" : ConfigurationChangeSummary.ToString();
             var status = WasSuccessful ? "successfully updated" : "failed to update";
-            return $"FilterConfigurationChanged: {FilterName} {status} - {ConfigurationChangeSummary}";
+            return $"FilterConfigurationChanged: {filterText} {status} - {summaryText}";
         }
+
+        #endregion
     }
 }

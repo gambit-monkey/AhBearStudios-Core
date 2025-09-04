@@ -1,32 +1,31 @@
-﻿namespace AhBearStudios.Core.HealthChecking.Models;
+namespace AhBearStudios.Core.HealthChecking.Models;
 
 /// <summary>
-/// Failover strategies available when circuit is open
+/// Enumeration of failover strategies for circuit breaker behavior when the circuit is open.
 /// </summary>
-public enum FailoverStrategy
+public enum FailoverStrategy : byte
 {
     /// <summary>
-    /// Return a default value
+    /// Return a predetermined default value when the circuit is open.
+    /// Uses the DefaultValue property from FailoverConfig.
     /// </summary>
-    ReturnDefault,
+    ReturnDefault = 0,
 
     /// <summary>
-    /// Throw an exception
+    /// Retry the operation using alternative endpoints or services.
+    /// Requires AlternativeEndpoints to be configured in FailoverConfig.
     /// </summary>
-    ThrowException,
+    Retry = 1,
 
     /// <summary>
-    /// Retry with alternative endpoints
+    /// Use cached fallback data when available.
+    /// Utilizes the FallbackCache mechanism when enabled.
     /// </summary>
-    Retry,
+    Fallback = 2,
 
     /// <summary>
-    /// Return cached result if available
+    /// Throw an exception immediately when circuit is open.
+    /// No fallback behavior is applied.
     /// </summary>
-    ReturnCached,
-
-    /// <summary>
-    /// Execute a custom fallback function
-    /// </summary>
-    CustomFallback
+    ThrowException = 3
 }

@@ -158,7 +158,7 @@ namespace AhBearStudios.Core.Alerting.Services
                 await PerformHealthCheckForChannel(channel, correlationId);
 
                 // Publish message
-                var message = AlertChannelRegisteredMessage.Create(channelName, config, correlationId, new FixedString64Bytes("AlertChannelService"));
+                var message = AlertChannelRegisteredMessage.Create(channelName, config, new FixedString64Bytes("AlertChannelService"), correlationId);
                 await _messageBus.PublishMessageAsync(message);
 
                 LogInfo($"Channel registered successfully: {channelName}", correlationId);
@@ -206,7 +206,7 @@ namespace AhBearStudios.Core.Alerting.Services
                 channel.Dispose();
 
                 // Publish message
-                var message = AlertChannelUnregisteredMessage.Create(channelName, correlationId, new FixedString64Bytes("AlertChannelService"), new FixedString512Bytes("Manual unregistration"));
+                var message = AlertChannelUnregisteredMessage.Create(channelName, new FixedString64Bytes("AlertChannelService"), correlationId, new FixedString512Bytes("Manual unregistration"));
                 await _messageBus.PublishMessageAsync(message);
 
                 LogInfo($"Channel unregistered: {channelName}", correlationId);

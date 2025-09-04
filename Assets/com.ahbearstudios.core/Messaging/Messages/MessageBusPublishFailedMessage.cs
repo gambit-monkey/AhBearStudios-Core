@@ -1,4 +1,5 @@
 using System;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using Unity.Collections;
@@ -11,6 +12,8 @@ namespace AhBearStudios.Core.Messaging.Messages;
 /// </summary>
 public readonly record struct MessageBusPublishFailedMessage : IMessage
 {
+    #region IMessage Implementation
+
     /// <summary>
     /// Gets the unique identifier for this message instance.
     /// </summary>
@@ -24,7 +27,7 @@ public readonly record struct MessageBusPublishFailedMessage : IMessage
     /// <summary>
     /// Gets the unique type code for this message type.
     /// </summary>
-    public ushort TypeCode { get; init; } = MessageTypeCodes.MessageBusPublishFailedMessage;
+    public ushort TypeCode { get; init; }
 
     /// <summary>
     /// Gets the source system or component that created this message.
@@ -40,6 +43,10 @@ public readonly record struct MessageBusPublishFailedMessage : IMessage
     /// Gets optional correlation ID for message tracing across systems.
     /// </summary>
     public Guid CorrelationId { get; init; }
+
+    #endregion
+
+    #region Message-Specific Properties
 
     /// <summary>
     /// Gets the message that failed to publish.
@@ -76,32 +83,65 @@ public readonly record struct MessageBusPublishFailedMessage : IMessage
     /// </summary>
     public FixedString512Bytes FailureContext { get; init; }
 
-    /// <summary>
-    /// Initializes a new instance of the MessageBusPublishFailedMessage struct.
-    /// </summary>
-    public MessageBusPublishFailedMessage()
-    {
-        Id = default;
-        TimestampTicks = default;
-        Source = default;
-        Priority = default;
-        CorrelationId = default;
-        FailedMessage = default;
-        Exception = default;
-        FailedAt = default;
-        PublisherName = default;
-        AttemptCount = default;
-        IsFinalFailure = default;
-        FailureContext = default;
-    }
+    #endregion
+
+    #region Computed Properties
 
     /// <summary>
     /// Gets the DateTime representation of the timestamp.
     /// </summary>
     public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
+    #endregion
+
+    #region Static Factory Methods
+
     /// <summary>
-    /// Creates a new instance of the MessageBusPublishFailedMessage.
+    /// Creates a new instance of MessageBusPublishFailedMessage using FixedString parameters for optimal performance.
+    /// </summary>
+    /// <param name="failedMessage">The message that failed to publish</param>
+    /// <param name="exception">The exception that caused the failure</param>
+    /// <param name="publisherName">The name of the publisher</param>
+    /// <param name="attemptCount">The number of attempts made</param>
+    /// <param name="isFinalFailure">Whether this was a final failure</param>
+    /// <param name="failureContext">Additional context</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessageBusPublishFailedMessage instance</returns>
+    public static MessageBusPublishFailedMessage CreateFromFixedStrings(
+        IMessage failedMessage,
+        Exception exception,
+        FixedString64Bytes publisherName = default,
+        int attemptCount = 1,
+        bool isFinalFailure = false,
+        FixedString512Bytes failureContext = default,
+        FixedString64Bytes source = default,
+        Guid correlationId = default)
+    {
+        var finalCorrelationId = correlationId == default 
+            ? (failedMessage?.CorrelationId ?? DeterministicIdGenerator.GenerateCorrelationId("MessageBusPublishFailed", publisherName.ToString()))
+            : correlationId;
+
+        return new MessageBusPublishFailedMessage
+        {
+            Id = DeterministicIdGenerator.GenerateMessageId("MessageBusPublishFailedMessage", "MessagingSystem", correlationId: null),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.MessageBusPublishFailedMessage,
+            Source = source.IsEmpty ? "MessageBusService" : source,
+            Priority = MessagePriority.High, // Publish failures are high priority
+            CorrelationId = finalCorrelationId,
+            FailedMessage = failedMessage ?? throw new ArgumentNullException(nameof(failedMessage)),
+            Exception = exception ?? throw new ArgumentNullException(nameof(exception)),
+            FailedAt = DateTime.UtcNow,
+            PublisherName = publisherName.IsEmpty ? "Unknown" : publisherName,
+            AttemptCount = Math.Max(1, attemptCount),
+            IsFinalFailure = isFinalFailure,
+            FailureContext = failureContext.IsEmpty ? string.Empty : failureContext
+        };
+    }
+
+    /// <summary>
+    /// Creates a new instance of MessageBusPublishFailedMessage using string parameters.
     /// </summary>
     /// <param name="failedMessage">The message that failed to publish</param>
     /// <param name="exception">The exception that caused the failure</param>
@@ -119,24 +159,19 @@ public readonly record struct MessageBusPublishFailedMessage : IMessage
         int attemptCount = 1,
         bool isFinalFailure = false,
         string failureContext = null,
-        FixedString64Bytes source = default,
+        string source = null,
         Guid correlationId = default)
     {
-        return new MessageBusPublishFailedMessage
-        {
-            Id = Guid.NewGuid(),
-            TimestampTicks = DateTime.UtcNow.Ticks,
-            TypeCode = MessageTypeCodes.MessageBusPublishFailedMessage,
-            Source = source.IsEmpty ? "MessageBusService" : source,
-            Priority = MessagePriority.High, // Publish failures are high priority
-            CorrelationId = correlationId == default ? failedMessage?.CorrelationId ?? Guid.NewGuid() : correlationId,
-            FailedMessage = failedMessage ?? throw new ArgumentNullException(nameof(failedMessage)),
-            Exception = exception ?? throw new ArgumentNullException(nameof(exception)),
-            FailedAt = DateTime.UtcNow,
-            PublisherName = publisherName?.Length <= 64 ? publisherName : publisherName?[..64] ?? "Unknown",
-            AttemptCount = Math.Max(1, attemptCount),
-            IsFinalFailure = isFinalFailure,
-            FailureContext = failureContext?.Length <= 256 ? failureContext : failureContext?[..256] ?? string.Empty
-        };
+        return CreateFromFixedStrings(
+            failedMessage,
+            exception,
+            publisherName?.Length <= 64 ? publisherName : publisherName?[..64] ?? "Unknown",
+            attemptCount,
+            isFinalFailure,
+            failureContext?.Length <= 256 ? failureContext : failureContext?[..256] ?? string.Empty,
+            source?.Length <= 64 ? source : source?[..64] ?? "MessageBusService",
+            correlationId);
     }
+
+    #endregion
 }

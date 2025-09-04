@@ -265,7 +265,7 @@ namespace AhBearStudios.Core.Pooling.Services
         }
         
         /// <inheritdoc />
-        public List<string> GetPoolsWithPerformanceIssues()
+        public string[] GetPoolsWithPerformanceIssues()
         {
             ThrowIfDisposed();
             
@@ -281,7 +281,7 @@ namespace AhBearStudios.Core.Pooling.Services
                            averageTime.TotalMilliseconds > budgetLimit.TotalMilliseconds * 0.8;
                 })
                 .Select(kvp => kvp.Key)
-                .ToList();
+                .ToArray();
         }
         
         #endregion

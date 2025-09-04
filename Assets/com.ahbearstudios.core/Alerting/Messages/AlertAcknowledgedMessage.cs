@@ -1,5 +1,6 @@
 using System;
 using Unity.Collections;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Alerting.Models;
@@ -13,6 +14,8 @@ namespace AhBearStudios.Core.Alerting.Messages
     /// </summary>
     public readonly record struct AlertAcknowledgedMessage : IMessage
     {
+        #region IMessage Implementation
+
         /// <summary>
         /// Gets the unique identifier for this message instance.
         /// </summary>
@@ -26,7 +29,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.AlertAcknowledgedMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -43,7 +46,9 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// </summary>
         public Guid CorrelationId { get; init; }
 
-        // Alert acknowledgment-specific properties
+        #endregion
+
+        #region Message-Specific Properties
         /// <summary>
         /// Gets the unique identifier of the acknowledged alert.
         /// </summary>
@@ -99,28 +104,9 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// </summary>
         public int AlertCount { get; init; }
 
-        /// <summary>
-        /// Initializes a new instance of the AlertAcknowledgedMessage struct.
-        /// </summary>
-        public AlertAcknowledgedMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-            AlertId = default;
-            AlertMessage = default;
-            AlertSeverity = default;
-            AlertSource = default;
-            AlertTag = default;
-            OperationId = default;
-            AcknowledgedBy = default;
-            AcknowledgedTimestampTicks = default;
-            OriginalAlertTimestampTicks = default;
-            AcknowledgmentDurationTicks = default;
-            AlertCount = default;
-        }
+        #endregion
+
+        #region Computed Properties
 
         /// <summary>
         /// Gets the DateTime representation of the acknowledgment timestamp.
@@ -137,8 +123,12 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// </summary>
         public TimeSpan AcknowledgmentDuration => new TimeSpan(AcknowledgmentDurationTicks);
 
+        #endregion
+
+        #region Static Factory Methods
+
         /// <summary>
-        /// Creates a new AlertAcknowledgedMessage from an acknowledged Alert instance.
+        /// Creates a new AlertAcknowledgedMessage from an acknowledged Alert instance with proper validation and defaults.
         /// </summary>
         /// <param name="acknowledgedAlert">The acknowledged alert</param>
         /// <param name="source">Source component creating this message</param>
@@ -149,11 +139,19 @@ namespace AhBearStudios.Core.Alerting.Messages
             FixedString64Bytes source = default,
             Guid correlationId = default)
         {
+            // Input validation
             if (acknowledgedAlert == null)
                 throw new ArgumentNullException(nameof(acknowledgedAlert));
 
             if (!acknowledgedAlert.IsAcknowledged)
                 throw new ArgumentException("Alert must be acknowledged", nameof(acknowledgedAlert));
+
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "AlertService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("AlertAcknowledgedMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? acknowledgedAlert.CorrelationId 
+                : correlationId;
 
             var acknowledgmentDuration = acknowledgedAlert.AcknowledgedTimestampTicks.HasValue
                 ? acknowledgedAlert.AcknowledgedTimestampTicks.Value - acknowledgedAlert.TimestampTicks
@@ -161,12 +159,12 @@ namespace AhBearStudios.Core.Alerting.Messages
 
             return new AlertAcknowledgedMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
                 TimestampTicks = DateTime.UtcNow.Ticks,
                 TypeCode = MessageTypeCodes.AlertAcknowledgedMessage,
                 Source = source.IsEmpty ? "AlertService" : source,
                 Priority = GetMessagePriority(acknowledgedAlert.Severity),
-                CorrelationId = correlationId == default ? acknowledgedAlert.CorrelationId : correlationId,
+                CorrelationId = finalCorrelationId,
                 AlertId = acknowledgedAlert.Id,
                 AlertMessage = acknowledgedAlert.Message,
                 AlertSeverity = acknowledgedAlert.Severity,
@@ -182,7 +180,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         }
 
         /// <summary>
-        /// Creates a new AlertAcknowledgedMessage with explicit alert details.
+        /// Creates a new AlertAcknowledgedMessage with explicit alert details and proper validation.
         /// </summary>
         /// <param name="alertId">Alert unique identifier</param>
         /// <param name="message">Alert message</param>
@@ -209,6 +207,17 @@ namespace AhBearStudios.Core.Alerting.Messages
             FixedString64Bytes source = default,
             Guid correlationId = default)
         {
+            // Input validation
+            if (alertId == Guid.Empty)
+                throw new ArgumentException("Alert ID cannot be empty", nameof(alertId));
+
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "AlertService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("AlertAcknowledgedMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("AlertAcknowledgment", alertId.ToString())
+                : correlationId;
+
             var now = DateTime.UtcNow;
             var nowTicks = now.Ticks;
             var originalTicks = originalAlertTimestamp.Ticks;
@@ -216,12 +225,12 @@ namespace AhBearStudios.Core.Alerting.Messages
 
             return new AlertAcknowledgedMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
                 TimestampTicks = nowTicks,
                 TypeCode = MessageTypeCodes.AlertAcknowledgedMessage,
                 Source = source.IsEmpty ? "AlertService" : source,
                 Priority = GetMessagePriority(severity),
-                CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
+                CorrelationId = finalCorrelationId,
                 AlertId = alertId,
                 AlertMessage = message,
                 AlertSeverity = severity,
@@ -258,14 +267,23 @@ namespace AhBearStudios.Core.Alerting.Messages
             };
         }
 
+        #endregion
+
+        #region String Representation
+
         /// <summary>
         /// Returns a string representation of this message for debugging.
         /// </summary>
         /// <returns>Alert acknowledged message string representation</returns>
         public override string ToString()
         {
-            return $"AlertAcknowledged: [{AlertSeverity}] {AlertSource} - {AlertMessage} " +
-                   $"(ID: {AlertId}, AckedBy: {AcknowledgedBy}, Duration: {AcknowledgmentDuration:mm\\:ss})";
+            var sourceText = AlertSource.IsEmpty ? "Unknown" : AlertSource.ToString();
+            var messageText = AlertMessage.IsEmpty ? "No message" : AlertMessage.ToString();
+            var acknowledgedByText = AcknowledgedBy.IsEmpty ? "Unknown" : AcknowledgedBy.ToString();
+            return $"AlertAcknowledged: [{AlertSeverity}] {sourceText} - {messageText} " +
+                   $"(ID: {AlertId}, AckedBy: {acknowledgedByText}, Duration: {AcknowledgmentDuration:mm\\:ss})";
         }
+
+        #endregion
     }
 }

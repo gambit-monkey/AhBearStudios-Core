@@ -1,4 +1,5 @@
-﻿using AhBearStudios.Core.HealthChecking.Configs;
+﻿using Cysharp.Threading.Tasks;
+using AhBearStudios.Core.HealthChecking.Configs;
 
 namespace AhBearStudios.Core.HealthChecking.Factories;
 
@@ -12,19 +13,19 @@ namespace AhBearStudios.Core.HealthChecking.Factories;
 public interface IHealthCheckServiceFactory
 {
     /// <summary>
-    /// Creates a new HealthCheckService instance with validated configuration
+    /// Creates a new HealthCheckService instance with validated configuration asynchronously
     /// </summary>
     /// <param name="config">Service configuration</param>
     /// <returns>Configured and validated health check service</returns>
-    /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
+    /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
     /// <exception cref="InvalidOperationException">Thrown when configuration validation fails</exception>
-    IHealthCheckService CreateService(HealthCheckServiceConfig config);
+    UniTask<IHealthCheckService> CreateServiceAsync(HealthCheckServiceConfig config);
     
     /// <summary>
-    /// Creates a health check service with default configuration
+    /// Creates a health check service with default configuration asynchronously
     /// </summary>
     /// <returns>Health check service with system defaults</returns>
-    IHealthCheckService CreateServiceWithDefaults();
+    UniTask<IHealthCheckService> CreateServiceWithDefaultsAsync();
     
     /// <summary>
     /// Validates that all required dependencies are available for service creation

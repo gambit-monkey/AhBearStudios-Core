@@ -1,5 +1,6 @@
 using System;
 using Unity.Collections;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Alerting.Configs;
@@ -28,7 +29,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.AlertChannelRegisteredMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -61,20 +62,6 @@ namespace AhBearStudios.Core.Alerting.Messages
 
         #endregion
 
-        /// <summary>
-        /// Initializes a new instance of the AlertChannelRegisteredMessage struct.
-        /// </summary>
-        public AlertChannelRegisteredMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-            ChannelName = default;
-            Configuration = default;
-        }
-
         #region Helper Properties
 
         /// <summary>
@@ -84,31 +71,48 @@ namespace AhBearStudios.Core.Alerting.Messages
 
         #endregion
 
+        #region Static Factory Methods
+
         /// <summary>
-        /// Creates a new AlertChannelRegisteredMessage.
+        /// Creates a new AlertChannelRegisteredMessage with proper validation and defaults.
         /// </summary>
         /// <param name="channelName">Name of the registered channel</param>
         /// <param name="configuration">Channel configuration</param>
-        /// <param name="correlationId">Correlation ID for tracking</param>
         /// <param name="source">Source component creating this message</param>
+        /// <param name="correlationId">Correlation ID for tracking</param>
+        /// <param name="priority">Message priority level</param>
         /// <returns>New AlertChannelRegisteredMessage instance</returns>
         public static AlertChannelRegisteredMessage Create(
             FixedString64Bytes channelName,
             ChannelConfig configuration,
+            FixedString64Bytes source = default,
             Guid correlationId = default,
-            FixedString64Bytes source = default)
+            MessagePriority priority = MessagePriority.Low)
         {
+            // Input validation
+            if (configuration == null)
+                throw new ArgumentNullException(nameof(configuration));
+
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "AlertChannelService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("AlertChannelRegisteredMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("AlertChannelRegistration", channelName.ToString())
+                : correlationId;
+
             return new AlertChannelRegisteredMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
                 TimestampTicks = DateTime.UtcNow.Ticks,
                 TypeCode = MessageTypeCodes.AlertChannelRegisteredMessage,
                 Source = source.IsEmpty ? "AlertChannelService" : source,
-                Priority = MessagePriority.Low,
-                CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
+                Priority = priority,
+                CorrelationId = finalCorrelationId,
                 ChannelName = channelName,
                 Configuration = configuration
             };
         }
+
+        #endregion
     }
 }

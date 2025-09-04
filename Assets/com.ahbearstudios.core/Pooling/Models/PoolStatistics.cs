@@ -1,5 +1,6 @@
 using System;
 using Unity.Collections;
+using MemoryPack;
 
 namespace AhBearStudios.Core.Pooling.Models
 {
@@ -7,97 +8,117 @@ namespace AhBearStudios.Core.Pooling.Models
     /// Statistics for object pool usage and performance monitoring.
     /// Provides metrics for pool sizing decisions and health monitoring.
     /// Uses Unity-optimized collections for high performance.
+    /// Serializable for persistence and analysis.
     /// </summary>
-    public class PoolStatistics
+    [MemoryPackable]
+    public partial class PoolStatistics
     {
         /// <summary>
         /// Gets or sets the total number of objects in the pool.
         /// </summary>
+        [MemoryPackOrder(0)]
         public int TotalCount { get; set; }
         
         /// <summary>
         /// Gets or sets the number of objects available for use.
         /// </summary>
+        [MemoryPackOrder(1)]
         public int AvailableCount { get; set; }
         
         /// <summary>
         /// Gets or sets the number of objects currently in use.
         /// </summary>
+        [MemoryPackOrder(2)]
         public int ActiveCount { get; set; }
         
         /// <summary>
         /// Gets or sets the peak number of active objects.
         /// </summary>
+        [MemoryPackOrder(3)]
         public int PeakActiveCount { get; set; }
         
         /// <summary>
         /// Gets or sets the peak total size of the pool (total objects).
         /// </summary>
+        [MemoryPackOrder(4)]
         public int PeakSize { get; set; }
         
         /// <summary>
         /// Gets or sets the total number of objects created.
         /// </summary>
+        [MemoryPackOrder(5)]
         public long TotalCreated { get; set; }
         
         /// <summary>
         /// Gets or sets the total number of objects destroyed.
         /// </summary>
+        [MemoryPackOrder(6)]
         public long TotalDestroyed { get; set; }
         
         /// <summary>
         /// Gets or sets the total number of get operations.
         /// </summary>
+        [MemoryPackOrder(7)]
         public long TotalGets { get; set; }
         
         /// <summary>
         /// Gets or sets the total number of return operations.
         /// </summary>
+        [MemoryPackOrder(8)]
         public long TotalReturns { get; set; }
         
         /// <summary>
         /// Gets or sets the total number of failed get operations.
         /// </summary>
+        [MemoryPackOrder(9)]
         public long FailedGets { get; set; }
         
         /// <summary>
         /// Gets or sets the number of cache hits (objects reused from pool).
         /// </summary>
+        [MemoryPackOrder(10)]
         public long CacheHits { get; set; }
         
         /// <summary>
         /// Gets or sets the number of cache misses (new objects created).
         /// </summary>
+        [MemoryPackOrder(11)]
         public long CacheMisses { get; set; }
         
         /// <summary>
         /// Gets or sets the timestamp when statistics were last updated.
         /// </summary>
+        [MemoryPackOrder(12)]
         public DateTime LastUpdated { get; set; }
         
         /// <summary>
         /// Gets or sets the timestamp when the pool was created.
         /// </summary>
+        [MemoryPackOrder(13)]
         public DateTime CreatedAt { get; set; }
         
         /// <summary>
         /// Gets or sets the timestamp when maintenance was last performed.
         /// </summary>
+        [MemoryPackOrder(14)]
         public DateTime LastMaintenance { get; set; }
         
         /// <summary>
         /// Gets or sets the initial capacity of the pool when it was created.
         /// </summary>
+        [MemoryPackOrder(15)]
         public int InitialCapacity { get; set; }
         
         /// <summary>
         /// Gets or sets the maximum allowed capacity of the pool.
         /// </summary>
+        [MemoryPackOrder(16)]
         public int MaxCapacity { get; set; }
         
         /// <summary>
         /// Gets or sets the total number of requests made to the pool.
         /// </summary>
+        [MemoryPackOrder(17)]
         public long TotalRequestCount { get; set; }
         
         /// <summary>

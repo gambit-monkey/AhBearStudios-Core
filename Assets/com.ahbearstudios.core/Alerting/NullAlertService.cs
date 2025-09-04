@@ -9,6 +9,7 @@ using AhBearStudios.Core.Alerting.Filters;
 using AhBearStudios.Core.Alerting.Services;
 using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Common.Models;
+using AhBearStudios.Core.Common.Extensions;
 
 namespace AhBearStudios.Core.Alerting
 {
@@ -73,6 +74,22 @@ namespace AhBearStudios.Core.Alerting
         /// <inheritdoc />
         public UniTask RaiseAlertAsync(string message, AlertSeverity severity, FixedString64Bytes source,
             FixedString32Bytes tag = default, Guid correlationId = default,
+            CancellationToken cancellationToken = default)
+        {
+            return UniTask.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public UniTask RaiseAlertAsync(FixedString512Bytes message, AlertSeverity severity, FixedString64Bytes source,
+            FixedString32Bytes tag = default, Guid correlationId = default,
+            CancellationToken cancellationToken = default)
+        {
+            return UniTask.CompletedTask;
+        }
+
+        /// <inheritdoc />
+        public UniTask RaiseAlertAsync(string message, AlertSeverity severity, string source,
+            string tag = null, Guid correlationId = default,
             CancellationToken cancellationToken = default)
         {
             return UniTask.CompletedTask;

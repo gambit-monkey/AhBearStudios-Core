@@ -1,6 +1,7 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.HealthChecking.Builders;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Logging.Models;
@@ -780,7 +781,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs
         /// <returns>Unique configuration ID</returns>
         private static FixedString64Bytes GenerateId()
         {
-            return new FixedString64Bytes(Guid.NewGuid().ToString("N")[..16]);
+            return new FixedString64Bytes(DeterministicIdGenerator.GenerateHealthCheckId("HealthCheckConfiguration", "System").ToString("N")[..16]);
         }
 
         /// <summary>

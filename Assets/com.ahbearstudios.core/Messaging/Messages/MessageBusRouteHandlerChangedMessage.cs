@@ -1,4 +1,5 @@
 using System;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using Unity.Collections;
@@ -6,27 +7,13 @@ using Unity.Collections;
 namespace AhBearStudios.Core.Messaging.Messages;
 
 /// <summary>
-/// Operations performed on route handlers.
-/// </summary>
-public enum RouteHandlerOperation
-{
-    /// <summary>
-    /// Handler was registered.
-    /// </summary>
-    Registered,
-
-    /// <summary>
-    /// Handler was unregistered.
-    /// </summary>
-    Unregistered
-}
-
-/// <summary>
 /// Message sent when route handlers are registered or unregistered.
 /// Replaces RouteHandlerEventArgs with IMessage pattern for consistent event handling.
 /// </summary>
 public readonly record struct MessageBusRouteHandlerChangedMessage : IMessage
 {
+    #region IMessage Implementation
+
     /// <summary>
     /// Gets the unique identifier for this message instance.
     /// </summary>
@@ -38,9 +25,9 @@ public readonly record struct MessageBusRouteHandlerChangedMessage : IMessage
     public long TimestampTicks { get; init; }
 
     /// <summary>
-    /// Gets the unique type code for this message type.
+    /// Gets the message type code for efficient routing and filtering.
     /// </summary>
-    public ushort TypeCode { get; init; } = MessageTypeCodes.MessageBusRouteHandlerChangedMessage;
+    public ushort TypeCode { get; init; }
 
     /// <summary>
     /// Gets the source system or component that created this message.
@@ -56,6 +43,10 @@ public readonly record struct MessageBusRouteHandlerChangedMessage : IMessage
     /// Gets optional correlation ID for message tracing across systems.
     /// </summary>
     public Guid CorrelationId { get; init; }
+
+    #endregion
+
+    #region Message-Specific Properties
 
     /// <summary>
     /// Gets the unique identifier of the route handler.
@@ -92,32 +83,67 @@ public readonly record struct MessageBusRouteHandlerChangedMessage : IMessage
     /// </summary>
     public FixedString512Bytes ChangeContext { get; init; }
 
-    /// <summary>
-    /// Initializes a new instance of the MessageBusRouteHandlerChangedMessage struct.
-    /// </summary>
-    public MessageBusRouteHandlerChangedMessage()
-    {
-        Id = default;
-        TimestampTicks = default;
-        Source = default;
-        Priority = default;
-        CorrelationId = default;
-        HandlerId = default;
-        HandlerName = default;
-        Operation = default;
-        ChangedAt = default;
-        MessageType = default;
-        RegisteredAt = default;
-        ChangeContext = default;
-    }
+    #endregion
+
+    #region Computed Properties
 
     /// <summary>
-    /// Gets the DateTime representation of the timestamp.
+    /// Gets the DateTime representation of the message timestamp.
     /// </summary>
     public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
+    #endregion
+
+    #region Static Factory Methods
+
     /// <summary>
-    /// Creates a new instance of the MessageBusRouteHandlerChangedMessage.
+    /// Creates a new instance of MessageBusRouteHandlerChangedMessage using FixedString parameters for optimal performance.
+    /// </summary>
+    /// <param name="handlerId">The unique identifier of the handler</param>
+    /// <param name="handlerName">The name of the handler</param>
+    /// <param name="operation">The operation performed</param>
+    /// <param name="changedAt">When the operation occurred</param>
+    /// <param name="messageType">The message type this handler processes</param>
+    /// <param name="registeredAt">When the handler was registered</param>
+    /// <param name="changeContext">Additional context</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessageBusRouteHandlerChangedMessage instance</returns>
+    public static MessageBusRouteHandlerChangedMessage CreateFromFixedStrings(
+        Guid handlerId,
+        FixedString64Bytes handlerName,
+        RouteHandlerOperation operation,
+        DateTime changedAt,
+        Type messageType,
+        DateTime registeredAt,
+        FixedString512Bytes changeContext,
+        FixedString64Bytes source = default,
+        Guid correlationId = default)
+    {
+        var finalCorrelationId = correlationId == default 
+            ? DeterministicIdGenerator.GenerateCorrelationId("MessageBusRoute", null)
+            : correlationId;
+
+        return new MessageBusRouteHandlerChangedMessage
+        {
+            Id = DeterministicIdGenerator.GenerateMessageId("MessageBusRouteHandlerChangedMessage", "MessagingSystem", correlationId: null),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.MessageBusRouteHandlerChangedMessage,
+            Source = source.IsEmpty ? "MessageBusService" : source,
+            Priority = MessagePriority.Low, // Route handler changes are informational
+            CorrelationId = finalCorrelationId,
+            HandlerId = handlerId,
+            HandlerName = handlerName,
+            Operation = operation,
+            ChangedAt = changedAt,
+            MessageType = messageType,
+            RegisteredAt = registeredAt == default ? DateTime.UtcNow : registeredAt,
+            ChangeContext = changeContext
+        };
+    }
+
+    /// <summary>
+    /// Creates a new instance of MessageBusRouteHandlerChangedMessage using string parameters.
     /// </summary>
     /// <param name="handlerId">The unique identifier of the handler</param>
     /// <param name="handlerName">The name of the handler</param>
@@ -135,24 +161,20 @@ public readonly record struct MessageBusRouteHandlerChangedMessage : IMessage
         Type messageType = null,
         DateTime registeredAt = default,
         string changeContext = null,
-        FixedString64Bytes source = default,
+        string source = null,
         Guid correlationId = default)
     {
-        return new MessageBusRouteHandlerChangedMessage
-        {
-            Id = Guid.NewGuid(),
-            TimestampTicks = DateTime.UtcNow.Ticks,
-            TypeCode = MessageTypeCodes.MessageBusRouteHandlerChangedMessage,
-            Source = source.IsEmpty ? "MessageBusService" : source,
-            Priority = MessagePriority.Low, // Route handler changes are informational
-            CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
-            HandlerId = handlerId,
-            HandlerName = handlerName?.Length <= 64 ? handlerName : handlerName?[..64] ?? throw new ArgumentNullException(nameof(handlerName)),
-            Operation = operation,
-            ChangedAt = DateTime.UtcNow,
-            MessageType = messageType,
-            RegisteredAt = registeredAt == default ? DateTime.UtcNow : registeredAt,
-            ChangeContext = changeContext?.Length <= 256 ? changeContext : changeContext?[..256] ?? string.Empty
-        };
+        return CreateFromFixedStrings(
+            handlerId,
+            new FixedString64Bytes(handlerName ?? throw new ArgumentNullException(nameof(handlerName))),
+            operation,
+            DateTime.UtcNow,
+            messageType,
+            registeredAt,
+            new FixedString512Bytes(changeContext ?? string.Empty),
+            source?.Length <= 64 ? source : source?[..64] ?? "MessageBusService",
+            correlationId);
     }
+
+    #endregion
 }

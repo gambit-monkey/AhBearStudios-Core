@@ -5,7 +5,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs;
 /// <summary>
 /// Configuration for rate limiting
 /// </summary>
-public sealed record RateLimitConfig
+public sealed record RateLimitConfig : IRateLimitConfig
 {
     /// <summary>
     /// Whether rate limiting is enabled

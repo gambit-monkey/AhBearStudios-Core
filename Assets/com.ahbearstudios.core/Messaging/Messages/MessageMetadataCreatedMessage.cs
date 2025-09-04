@@ -1,7 +1,8 @@
 using System;
-using Unity.Collections;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
+using Unity.Collections;
 
 namespace AhBearStudios.Core.Messaging.Messages;
 
@@ -9,25 +10,43 @@ namespace AhBearStudios.Core.Messaging.Messages;
 /// Message sent when new message metadata is created.
 /// Used for tracking and monitoring metadata creation events.
 /// </summary>
-public record struct MessageMetadataCreatedMessage : IMessage
+public readonly record struct MessageMetadataCreatedMessage : IMessage
 {
-    /// <inheritdoc/>
+    #region IMessage Implementation
+
+    /// <summary>
+    /// Gets the unique identifier for this message instance.
+    /// </summary>
     public Guid Id { get; init; }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Gets the timestamp when this message was created, in UTC ticks.
+    /// </summary>
     public long TimestampTicks { get; init; }
 
-    /// <inheritdoc/>
-    public ushort TypeCode { get; init; } = MessageTypeCodes.MessageBusMetadataCreatedMessage;
+    /// <summary>
+    /// Gets the message type code for efficient routing and filtering.
+    /// </summary>
+    public ushort TypeCode { get; init; }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Gets the source system or component that created this message.
+    /// </summary>
     public FixedString64Bytes Source { get; init; }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Gets the priority level for message processing.
+    /// </summary>
     public MessagePriority Priority { get; init; }
 
-    /// <inheritdoc/>
+    /// <summary>
+    /// Gets optional correlation ID for message tracing across systems.
+    /// </summary>
     public Guid CorrelationId { get; init; }
+
+    #endregion
+
+    #region Message-Specific Properties
 
     /// <summary>
     /// Gets the ID of the metadata that was created.
@@ -49,50 +68,82 @@ public record struct MessageMetadataCreatedMessage : IMessage
     /// </summary>
     public bool IsPersistent { get; init; }
 
-    /// <summary>
-    /// Initializes a new instance of the MessageMetadataCreatedMessage struct.
-    /// </summary>
-    public MessageMetadataCreatedMessage()
-    {
-        Id = default;
-        TimestampTicks = default;
-        Source = default;
-        Priority = default;
-        CorrelationId = default;
-        MetadataId = default;
-        MessageTypeCode = default;
-        DeliveryMode = default;
-        IsPersistent = default;
-    }
+    #endregion
+
+    #region Computed Properties
 
     /// <summary>
-    /// Gets the DateTime representation of the timestamp.
+    /// Gets the DateTime representation of the message timestamp.
     /// </summary>
     public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
+    #endregion
+
+    #region Static Factory Methods
+
     /// <summary>
-    /// Creates a new MessageMetadataCreatedMessage with default values.
+    /// Creates a new instance of MessageMetadataCreatedMessage using FixedString parameters for optimal performance.
     /// </summary>
-    public static MessageMetadataCreatedMessage Create(
+    /// <param name="metadataId">The ID of the metadata that was created</param>
+    /// <param name="messageTypeCode">The type code of the message associated with the metadata</param>
+    /// <param name="deliveryMode">The delivery mode of the created metadata</param>
+    /// <param name="isPersistent">Whether the metadata is for a persistent message</param>
+    /// <param name="source">Source system or component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessageMetadataCreatedMessage instance</returns>
+    public static MessageMetadataCreatedMessage CreateFromFixedStrings(
         Guid metadataId,
         ushort messageTypeCode,
         MessageDeliveryMode deliveryMode = MessageDeliveryMode.Standard,
         bool isPersistent = false,
         FixedString64Bytes source = default,
-        Guid? correlationId = null)
+        Guid correlationId = default)
     {
+        var finalCorrelationId = correlationId == default 
+            ? DeterministicIdGenerator.GenerateCorrelationId("MessageMetadata", null)
+            : correlationId;
+
         return new MessageMetadataCreatedMessage
         {
-            Id = Guid.NewGuid(),
+            Id = DeterministicIdGenerator.GenerateMessageId("MessageMetadataCreatedMessage", "MessagingSystem", correlationId: null),
             TimestampTicks = DateTime.UtcNow.Ticks,
             TypeCode = MessageTypeCodes.MessageBusMetadataCreatedMessage,
-            Source = source,
+            Source = source.IsEmpty ? "MessageMetadata" : source,
             Priority = MessagePriority.Normal,
-            CorrelationId = correlationId ?? Guid.NewGuid(),
+            CorrelationId = finalCorrelationId,
             MetadataId = metadataId,
             MessageTypeCode = messageTypeCode,
             DeliveryMode = deliveryMode,
             IsPersistent = isPersistent
         };
     }
+
+    /// <summary>
+    /// Creates a new instance of MessageMetadataCreatedMessage using string parameters.
+    /// </summary>
+    /// <param name="metadataId">The ID of the metadata that was created</param>
+    /// <param name="messageTypeCode">The type code of the message associated with the metadata</param>
+    /// <param name="deliveryMode">The delivery mode of the created metadata</param>
+    /// <param name="isPersistent">Whether the metadata is for a persistent message</param>
+    /// <param name="source">Source system or component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessageMetadataCreatedMessage instance</returns>
+    public static MessageMetadataCreatedMessage Create(
+        Guid metadataId,
+        ushort messageTypeCode,
+        MessageDeliveryMode deliveryMode = MessageDeliveryMode.Standard,
+        bool isPersistent = false,
+        string source = null,
+        Guid correlationId = default)
+    {
+        return CreateFromFixedStrings(
+            metadataId,
+            messageTypeCode,
+            deliveryMode,
+            isPersistent,
+            source?.Length <= 64 ? source : source?[..64] ?? "MessageMetadata",
+            correlationId);
+    }
+
+    #endregion
 }

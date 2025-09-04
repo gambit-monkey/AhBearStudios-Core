@@ -18,6 +18,8 @@ using AhBearStudios.Core.Pooling;
 using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Alerting.Builders;
 using AhBearStudios.Core.Pooling.Models;
+using AhBearStudios.Core.Common.Extensions;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.Alerting
 {
@@ -169,7 +171,7 @@ namespace AhBearStudios.Core.Alerting
             // Initialize alert pooling if pooling service is available
             InitializeAlertPooling();
 
-            LogInfo("Alert service initialized with integrated subsystems", Guid.NewGuid());
+            LogInfo("Alert service initialized with integrated subsystems", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "Initialization"));
         }
         
         /// <summary>
@@ -205,7 +207,7 @@ namespace AhBearStudios.Core.Alerting
             // Initialize alert pooling if pooling service is available
             InitializeAlertPooling();
 
-            LogInfo("Alert service initialized with legacy constructor", Guid.NewGuid());
+            LogInfo("Alert service initialized with legacy constructor", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "LegacyInitialization"));
         }
 
         #region Core Alerting Methods
@@ -295,7 +297,7 @@ namespace AhBearStudios.Core.Alerting
                 }
                 catch (Exception ex)
                 {
-                    LogError($"Error raising alert: {ex.Message}", alert?.CorrelationId ?? Guid.NewGuid());
+                    LogError($"Error raising alert: {ex.Message}", alert?.CorrelationId ?? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "ErrorRaising"));
                     UpdateStatistics(false, DateTime.UtcNow - startTime);
                 }
             }
@@ -317,6 +319,26 @@ namespace AhBearStudios.Core.Alerting
             CancellationToken cancellationToken = default)
         {
             var alert = CreateAlert(message, severity, source, tag, correlationId);
+            await RaiseAlertAsync(alert, cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public async UniTask RaiseAlertAsync(FixedString512Bytes message, AlertSeverity severity, FixedString64Bytes source,
+            FixedString32Bytes tag = default, Guid correlationId = default,
+            CancellationToken cancellationToken = default)
+        {
+            var alert = CreateAlert(message.ToString(), severity, source, tag, correlationId);
+            await RaiseAlertAsync(alert, cancellationToken);
+        }
+
+        /// <inheritdoc />
+        public async UniTask RaiseAlertAsync(string message, AlertSeverity severity, string source,
+            string tag = null, Guid correlationId = default,
+            CancellationToken cancellationToken = default)
+        {
+            var fixedSource = source.ToFixedString64();
+            var fixedTag = string.IsNullOrEmpty(tag) ? default : tag.ToFixedString32();
+            var alert = CreateAlert(message, severity, fixedSource, fixedTag, correlationId);
             await RaiseAlertAsync(alert, cancellationToken);
         }
 
@@ -403,7 +425,7 @@ namespace AhBearStudios.Core.Alerting
         public void SetMinimumSeverity(AlertSeverity minimumSeverity)
         {
             _globalMinimumSeverity = minimumSeverity;
-            LogInfo($"Global minimum severity set to {minimumSeverity}", Guid.NewGuid());
+            LogInfo($"Global minimum severity set to {minimumSeverity}", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "SetGlobalMinimumSeverity"));
         }
 
         /// <summary>
@@ -416,7 +438,7 @@ namespace AhBearStudios.Core.Alerting
             {
                 _sourceMinimumSeverities[sourceStr] = minimumSeverity;
             }
-            LogInfo($"Minimum severity for {sourceStr} set to {minimumSeverity}", Guid.NewGuid());
+            LogInfo($"Minimum severity for {sourceStr} set to {minimumSeverity}", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "SetSourceMinimumSeverity"));
         }
 
         /// <summary>
@@ -452,7 +474,7 @@ namespace AhBearStudios.Core.Alerting
                 if (_channelService != null)
                 {
                     // Use integrated channel service
-                    _channelService.RegisterChannelAsync(channel, null, correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString())).Forget();
+                    _channelService.RegisterChannelAsync(channel, null, correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "RegisterChannel") : Guid.Parse(correlationId.ToString())).Forget();
                 }
                 else
                 {
@@ -466,7 +488,7 @@ namespace AhBearStudios.Core.Alerting
                     }
                 }
                 
-                LogInfo($"Alert channel registered: {channel.Name}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
+                LogInfo($"Alert channel registered: {channel.Name}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "ChannelRegistered") : Guid.Parse(correlationId.ToString()));
             }
             catch (Exception ex)
             {
@@ -485,7 +507,7 @@ namespace AhBearStudios.Core.Alerting
                 {
                     // Use integrated channel service
                     var result = _channelService.UnregisterChannelAsync(channelName, correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString())).GetAwaiter().GetResult();
-                    LogInfo($"Alert channel unregistered: {channelName}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
+                    LogInfo($"Alert channel unregistered: {channelName}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "ChannelUnregistered") : Guid.Parse(correlationId.ToString()));
                     return result;
                 }
                 else
@@ -498,7 +520,7 @@ namespace AhBearStudios.Core.Alerting
                         if (channel != null)
                         {
                             _channels.Remove(channel);
-                            LogInfo($"Alert channel unregistered: {channelName}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
+                            LogInfo($"Alert channel unregistered: {channelName}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "ChannelUnregistered") : Guid.Parse(correlationId.ToString()));
                             return true;
                         }
                     }
@@ -507,7 +529,7 @@ namespace AhBearStudios.Core.Alerting
             }
             catch (Exception ex)
             {
-                LogError($"Failed to unregister channel {channelName}: {ex.Message}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
+                LogError($"Failed to unregister channel {channelName}: {ex.Message}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "ChannelUnregisterFailed") : Guid.Parse(correlationId.ToString()));
                 return false;
             }
         }
@@ -534,7 +556,7 @@ namespace AhBearStudios.Core.Alerting
             }
             catch (Exception ex)
             {
-                LogError($"Failed to get registered channels: {ex.Message}", Guid.NewGuid());
+                LogError($"Failed to get registered channels: {ex.Message}", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "GetRegisteredChannelsFailed"));
                 return new List<IAlertChannel>();
             }
         }
@@ -555,7 +577,7 @@ namespace AhBearStudios.Core.Alerting
                 if (_filterService != null)
                 {
                     // Use integrated filter service
-                    _filterService.RegisterFilter(filter, null, correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
+                    _filterService.RegisterFilter(filter, null, correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "RegisterFilter") : Guid.Parse(correlationId.ToString()));
                 }
                 else
                 {
@@ -570,11 +592,11 @@ namespace AhBearStudios.Core.Alerting
                     }
                 }
                 
-                LogInfo($"Alert filter added: {filter.Name}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
+                LogInfo($"Alert filter added: {filter.Name}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "FilterAdded") : Guid.Parse(correlationId.ToString()));
             }
             catch (Exception ex)
             {
-                LogError($"Failed to add filter {filter.Name}: {ex.Message}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
+                LogError($"Failed to add filter {filter.Name}: {ex.Message}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "AddFilterFailed") : Guid.Parse(correlationId.ToString()));
             }
         }
 
@@ -590,10 +612,10 @@ namespace AhBearStudios.Core.Alerting
                 if (_filterService != null)
                 {
                     // Use integrated filter service
-                    var result = _filterService.UnregisterFilter(nameStr, correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
+                    var result = _filterService.UnregisterFilter(nameStr, correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "UnregisterFilter") : Guid.Parse(correlationId.ToString()));
                     if (result)
                     {
-                        LogInfo($"Alert filter removed: {filterName}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
+                        LogInfo($"Alert filter removed: {filterName}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "FilterRemoved") : Guid.Parse(correlationId.ToString()));
                     }
                     return result;
                 }
@@ -606,7 +628,7 @@ namespace AhBearStudios.Core.Alerting
                         if (filter != null)
                         {
                             _filters.Remove(filter);
-                            LogInfo($"Alert filter removed: {filterName}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
+                            LogInfo($"Alert filter removed: {filterName}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "FilterRemoved") : Guid.Parse(correlationId.ToString()));
                             return true;
                         }
                     }
@@ -615,7 +637,7 @@ namespace AhBearStudios.Core.Alerting
             }
             catch (Exception ex)
             {
-                LogError($"Failed to remove filter {filterName}: {ex.Message}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
+                LogError($"Failed to remove filter {filterName}: {ex.Message}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "RemoveFilterFailed") : Guid.Parse(correlationId.ToString()));
                 return false;
             }
         }
@@ -704,7 +726,7 @@ namespace AhBearStudios.Core.Alerting
                     _activeAlerts.Remove(id);
                 }
 
-                LogDebug($"Maintenance completed: {toRemove.Count} old alerts cleaned up", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
+                LogDebug($"Maintenance completed: {toRemove.Count} old alerts cleaned up", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "MaintenanceCompleted") : Guid.Parse(correlationId.ToString()));
             }
         }
 
@@ -714,7 +736,7 @@ namespace AhBearStudios.Core.Alerting
         public async UniTask FlushAsync(FixedString64Bytes correlationId = default)
         {
             var channels = GetRegisteredChannels();
-            var correlationGuid = correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString());
+            var correlationGuid = correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "InitializeAlertPooling") : Guid.Parse(correlationId.ToString());
             var flushTasks = channels.AsValueEnumerable().Select(c => c.FlushAsync(correlationGuid)).ToList();
             
             await UniTask.WhenAll(flushTasks);
@@ -732,7 +754,7 @@ namespace AhBearStudios.Core.Alerting
         {
             if (_poolingService == null)
             {
-                LogInfo("No pooling service provided - using direct alert creation", Guid.NewGuid());
+                LogInfo("No pooling service provided - using direct alert creation", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "NoPoolingService"));
                 return;
             }
 
@@ -741,7 +763,7 @@ namespace AhBearStudios.Core.Alerting
                 // Check if pool is already registered
                 if (_poolingService.IsPoolRegistered<PooledAlertContainer>())
                 {
-                    LogInfo("Alert pool already registered", Guid.NewGuid());
+                    LogInfo("Alert pool already registered", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "PoolAlreadyRegistered"));
                     return;
                 }
 
@@ -756,11 +778,11 @@ namespace AhBearStudios.Core.Alerting
                 // Register the pool with the pooling service
                 _poolingService.RegisterPool<PooledAlertContainer>(config);
                 
-                LogInfo($"Alert pool registered with {config.InitialCapacity} initial capacity", Guid.NewGuid());
+                LogInfo($"Alert pool registered with {config.InitialCapacity} initial capacity", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "PoolRegistered"));
             }
             catch (Exception ex)
             {
-                LogError($"Failed to initialize alert pooling: {ex.Message}", Guid.NewGuid());
+                LogError($"Failed to initialize alert pooling: {ex.Message}", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "InitializePoolingFailed"));
             }
         }
 
@@ -778,7 +800,7 @@ namespace AhBearStudios.Core.Alerting
             }
             catch (Exception ex)
             {
-                LogError($"Failed to get pooling statistics: {ex.Message}", Guid.NewGuid());
+                LogError($"Failed to get pooling statistics: {ex.Message}", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "GetPoolingStatsFailed"));
                 return null;
             }
         }
@@ -1314,11 +1336,11 @@ namespace AhBearStudios.Core.Alerting
                     _sourceMinimumSeverities.Clear();
                 }
 
-                LogInfo("Alert service disposed", Guid.NewGuid());
+                LogInfo("Alert service disposed", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "Disposed"));
             }
             catch (Exception ex)
             {
-                LogError($"Error during disposal: {ex.Message}", Guid.NewGuid());
+                LogError($"Error during disposal: {ex.Message}", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "DisposalError"));
             }
         }
 

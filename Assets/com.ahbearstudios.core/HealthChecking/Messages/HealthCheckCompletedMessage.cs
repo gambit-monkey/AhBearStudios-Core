@@ -3,6 +3,7 @@ using Unity.Collections;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.HealthChecking.Messages
 {
@@ -26,7 +27,7 @@ namespace AhBearStudios.Core.HealthChecking.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.HealthCheckCompletedMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -64,21 +65,6 @@ namespace AhBearStudios.Core.HealthChecking.Messages
         /// </summary>
         public long DurationTicks { get; init; }
 
-        /// <summary>
-        /// Initializes a new instance of the HealthCheckCompletedMessage struct.
-        /// </summary>
-        public HealthCheckCompletedMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-            HealthCheckName = default;
-            Status = default;
-            Message = default;
-            DurationTicks = default;
-        }
 
         /// <summary>
         /// Gets the DateTime representation of the message timestamp.
@@ -108,14 +94,20 @@ namespace AhBearStudios.Core.HealthChecking.Messages
             FixedString64Bytes source = default,
             Guid correlationId = default)
         {
+            var sourceString = source.IsEmpty ? "HealthCheckService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("HealthCheckCompletedMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("HealthCheck", healthCheckName ?? "Unknown")
+                : correlationId;
+
             return new HealthCheckCompletedMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
                 TimestampTicks = DateTime.UtcNow.Ticks,
                 TypeCode = MessageTypeCodes.HealthCheckCompletedMessage,
                 Source = source.IsEmpty ? "HealthCheckService" : source,
                 Priority = status == HealthStatus.Healthy ? MessagePriority.Low : MessagePriority.Normal,
-                CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
+                CorrelationId = finalCorrelationId,
                 HealthCheckName = healthCheckName?.Length <= 64 ? healthCheckName : healthCheckName?[..64] ?? "Unknown",
                 Status = status,
                 Message = message?.Length <= 512 ? message : message?[..512] ?? string.Empty,

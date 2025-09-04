@@ -6,7 +6,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs;
 /// <summary>
     /// Configuration for failover behavior when circuit is open
     /// </summary>
-    public sealed record FailoverConfig
+    public sealed record FailoverConfig : IFailoverConfig
     {
         /// <summary>
         /// Whether failover is enabled

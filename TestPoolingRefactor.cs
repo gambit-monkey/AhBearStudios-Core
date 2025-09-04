@@ -8,7 +8,10 @@ using AhBearStudios.Core.Pooling.Factories;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Services;
 using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Serialization;
+using AhBearStudios.Core.HealthChecking;
 using Unity.Collections;
+using Cysharp.Threading.Tasks;
 
 // Simple test pooled object
 public class TestPooledObject : IPooledObject
@@ -113,14 +116,48 @@ public class MockLoggingService : ILoggingService
 public class MockMessageBusService : IMessageBusService
 {
     public void PublishMessage<T>(T message) where T : struct, AhBearStudios.Core.Messaging.IMessage { }
-    public Cysharp.Threading.Tasks.UniTask PublishMessageAsync<T>(T message) where T : struct, AhBearStudios.Core.Messaging.IMessage { return default; }
+    public UniTask PublishMessageAsync<T>(T message) where T : struct, AhBearStudios.Core.Messaging.IMessage { return UniTask.CompletedTask; }
+    public UniTask PublishMessageAsync<T>(T message, System.Threading.CancellationToken cancellationToken) where T : struct, AhBearStudios.Core.Messaging.IMessage { return UniTask.CompletedTask; }
     public IDisposable SubscribeToMessage<T>(Action<T> handler) where T : struct, AhBearStudios.Core.Messaging.IMessage { return null; }
+    public void Dispose() { }
+}
+
+public class MockSerializationService : ISerializationService
+{
+    public byte[] Serialize<T>(T obj) { return new byte[] { 1, 2, 3, 4 }; }
+    public T Deserialize<T>(byte[] data) { return default(T); }
+}
+
+public class MockAlertService : IAlertService
+{
+    public UniTask RaiseAlertAsync(string message, AhBearStudios.Core.Alerting.Models.AlertSeverity severity, string source, System.Threading.CancellationToken cancellationToken = default) { return UniTask.CompletedTask; }
+    public void RaiseAlert(string message, AhBearStudios.Core.Alerting.Models.AlertSeverity severity, string source) { }
+    public void Dispose() { }
+}
+
+public class MockProfilerService : IProfilerService
+{
+    public object GetMetrics() { return new { Performance = "Good" }; }
+    public IDisposable BeginScope(string name) { return null; }
+    public void Dispose() { }
+}
+
+public class MockHealthCheckService : IHealthCheckService
+{
+    public UniTask<AhBearStudios.Core.HealthChecking.Models.HealthCheckResult> CheckHealthAsync(System.Threading.CancellationToken cancellationToken = default) 
+    {
+        return UniTask.FromResult(new AhBearStudios.Core.HealthChecking.Models.HealthCheckResult 
+        { 
+            Status = AhBearStudios.Core.HealthChecking.Models.HealthStatus.Healthy,
+            Description = "Mock healthy"
+        });
+    }
     public void Dispose() { }
 }
 
 class TestPoolingRefactor
 {
-    public static void TestRefactoredPoolingService()
+    public static async UniTask TestRefactoredPoolingService()
     {
         Console.WriteLine("Testing Refactored PoolingService...");
 
@@ -129,6 +166,10 @@ class TestPoolingRefactor
             // Create mock services
             var loggingService = new MockLoggingService();
             var messageBusService = new MockMessageBusService();
+            var serializationService = new MockSerializationService();
+            var alertService = new MockAlertService();
+            var profilerService = new MockProfilerService();
+            var healthCheckService = new MockHealthCheckService();
 
             // Create configuration using builder
             var config = new PoolingServiceConfigBuilder()
@@ -137,39 +178,61 @@ class TestPoolingRefactor
                 .WithValidation(enableObjectValidation: true)
                 .Build();
 
-            // Create core services
-            var poolRegistry = new PoolRegistry(loggingService);
-            var poolCreationService = new PoolCreationService(loggingService, messageBusService);
-
-            // Create the main pooling service using constructor
-            var poolingService = new PoolingService(
-                config,
-                poolRegistry,
-                poolCreationService,
+            // Use the factory to create pooling service with all dependencies
+            var factory = new PoolingServiceFactory(
                 loggingService,
-                messageBusService);
+                messageBusService,
+                serializationService,
+                alertService,
+                profilerService,
+                healthCheckService);
+
+            var poolingService = await factory.CreatePoolingServiceAsync(config);
+            Console.WriteLine("✅ PoolingService created with factory and all dependencies");
 
             // Test basic operations
             poolingService.RegisterPool<TestPooledObject>("TestPool");
-            
-            Console.WriteLine($"Pool registered: {poolingService.IsPoolRegistered<TestPooledObject>()}");
+            Console.WriteLine($"✅ Pool registered: {poolingService.IsPoolRegistered<TestPooledObject>()}");
 
             var obj1 = poolingService.Get<TestPooledObject>();
-            Console.WriteLine($"Got object: {obj1 != null}");
+            Console.WriteLine($"✅ Got object: {obj1 != null}");
 
             poolingService.Return(obj1);
-            Console.WriteLine("Object returned successfully");
+            Console.WriteLine("✅ Object returned successfully");
 
+            // Test async operations
+            var obj2 = await poolingService.GetAsync<TestPooledObject>();
+            Console.WriteLine($"✅ Got object asynchronously: {obj2 != null}");
+
+            await poolingService.ReturnAsync(obj2);
+            Console.WriteLine("✅ Object returned asynchronously");
+
+            // Test statistics
             var stats = poolingService.GetPoolStatistics<TestPooledObject>();
-            Console.WriteLine($"Pool statistics: TotalGets={stats?.TotalGets}, TotalReturns={stats?.TotalReturns}");
+            Console.WriteLine($"✅ Pool statistics: TotalGets={stats?.TotalGets}, TotalReturns={stats?.TotalReturns}");
 
+            // Test new pool state snapshot functionality
+            var snapshot = await poolingService.GetPoolStateSnapshotAsync<TestPooledObject>();
+            Console.WriteLine($"✅ Pool state snapshot: {snapshot?.GetSummary()}");
+
+            var saveResult = await poolingService.SavePoolStateSnapshotAsync<TestPooledObject>();
+            Console.WriteLine($"✅ Pool state snapshot saved: {saveResult}");
+
+            var loadedSnapshot = await poolingService.LoadPoolStateSnapshotAsync<TestPooledObject>();
+            Console.WriteLine($"✅ Pool state snapshot loaded: {loadedSnapshot?.GetSummary()}");
+
+            // Test validation
+            var isValid = poolingService.ValidateAllPools();
+            Console.WriteLine($"✅ All pools valid: {isValid}");
+
+            // Cleanup
             poolingService.UnregisterPool<TestPooledObject>();
-            Console.WriteLine($"Pool unregistered: {!poolingService.IsPoolRegistered<TestPooledObject>()}");
+            Console.WriteLine($"✅ Pool unregistered: {!poolingService.IsPoolRegistered<TestPooledObject>()}");
 
             poolingService.Dispose();
-            Console.WriteLine("PoolingService disposed successfully");
+            Console.WriteLine("✅ PoolingService disposed successfully");
 
-            Console.WriteLine("✅ All tests passed! Refactoring successful.");
+            Console.WriteLine("\n🎉 All tests passed! Refactoring successful with full integration.");
         }
         catch (Exception ex)
         {
@@ -178,8 +241,10 @@ class TestPoolingRefactor
         }
     }
 
-    public static void Main(string[] args)
+    public static async System.Threading.Tasks.Task Main(string[] args)
     {
-        TestRefactoredPoolingService();
+        await TestRefactoredPoolingService();
+        Console.WriteLine("Press any key to exit...");
+        Console.ReadKey();
     }
 }

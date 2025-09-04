@@ -1,16 +1,17 @@
 ﻿using System.Collections.Generic;
-using System.Linq;
+using ZLinq;
 using Unity.Collections;
 using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.HealthChecking.Builders
 {
     /// <summary>
     /// Production-ready builder for CircuitBreakerConfig with comprehensive fault tolerance options
     /// </summary>
-    public sealed class CircuitBreakerConfigBuilder
+    public sealed class CircuitBreakerConfigBuilder : ICircuitBreakerConfigBuilder
     {
         private readonly ILoggingService _logger;
         private readonly List<string> _validationErrors = new();
@@ -84,7 +85,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="name">Circuit breaker name (required)</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentException">Thrown when name is null or empty</exception>
-        public CircuitBreakerConfigBuilder WithName(string name)
+        public ICircuitBreakerConfigBuilder WithName(string name)
         {
             ThrowIfAlreadyBuilt();
             
@@ -102,7 +103,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="threshold">Number of consecutive failures (must be positive)</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is not positive</exception>
-        public CircuitBreakerConfigBuilder WithFailureThreshold(int threshold)
+        public ICircuitBreakerConfigBuilder WithFailureThreshold(int threshold)
         {
             ThrowIfAlreadyBuilt();
             
@@ -123,7 +124,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="timeout">Timeout duration (must be positive)</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when timeout is not positive</exception>
-        public CircuitBreakerConfigBuilder WithTimeout(TimeSpan timeout)
+        public ICircuitBreakerConfigBuilder WithTimeout(TimeSpan timeout)
         {
             ThrowIfAlreadyBuilt();
             
@@ -144,7 +145,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="duration">Sampling duration (must be positive)</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when duration is not positive</exception>
-        public CircuitBreakerConfigBuilder WithSamplingDuration(TimeSpan duration)
+        public ICircuitBreakerConfigBuilder WithSamplingDuration(TimeSpan duration)
         {
             ThrowIfAlreadyBuilt();
             
@@ -162,7 +163,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="minimum">Minimum number of requests (must be non-negative)</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when minimum is negative</exception>
-        public CircuitBreakerConfigBuilder WithMinimumThroughput(int minimum)
+        public ICircuitBreakerConfigBuilder WithMinimumThroughput(int minimum)
         {
             ThrowIfAlreadyBuilt();
             
@@ -180,7 +181,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="threshold">Success rate percentage (0-100)</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is out of range</exception>
-        public CircuitBreakerConfigBuilder WithSuccessThreshold(double threshold)
+        public ICircuitBreakerConfigBuilder WithSuccessThreshold(double threshold)
         {
             ThrowIfAlreadyBuilt();
             
@@ -198,7 +199,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="maxCalls">Maximum calls (must be positive)</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when maxCalls is not positive</exception>
-        public CircuitBreakerConfigBuilder WithHalfOpenMaxCalls(int maxCalls)
+        public ICircuitBreakerConfigBuilder WithHalfOpenMaxCalls(int maxCalls)
         {
             ThrowIfAlreadyBuilt();
             
@@ -222,7 +223,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentException">Thrown when type is invalid</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when size is not positive</exception>
-        public CircuitBreakerConfigBuilder WithSlidingWindow(
+        public ICircuitBreakerConfigBuilder WithSlidingWindow(
             bool enabled = true,
             SlidingWindowType type = SlidingWindowType.CountBased,
             int size = 100)
@@ -249,7 +250,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="duration">Window duration (must be positive)</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when duration is not positive</exception>
-        public CircuitBreakerConfigBuilder WithSlidingWindowDuration(TimeSpan duration)
+        public ICircuitBreakerConfigBuilder WithSlidingWindowDuration(TimeSpan duration)
         {
             ThrowIfAlreadyBuilt();
             
@@ -270,7 +271,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="maxTimeout">Maximum timeout value</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are out of valid range</exception>
-        public CircuitBreakerConfigBuilder WithAutomaticRecovery(
+        public ICircuitBreakerConfigBuilder WithAutomaticRecovery(
             bool enabled = true,
             int maxAttempts = 5,
             double timeoutMultiplier = 1.5,
@@ -305,7 +306,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when exceptionTypes is null</exception>
         /// <exception cref="ArgumentException">Thrown when any type is not an exception type</exception>
-        public CircuitBreakerConfigBuilder WithIgnoredExceptions(params Type[] exceptionTypes)
+        public ICircuitBreakerConfigBuilder WithIgnoredExceptions(params Type[] exceptionTypes)
         {
             ThrowIfAlreadyBuilt();
             
@@ -331,7 +332,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when exceptionTypes is null</exception>
         /// <exception cref="ArgumentException">Thrown when any type is not an exception type</exception>
-        public CircuitBreakerConfigBuilder WithImmediateFailureExceptions(params Type[] exceptionTypes)
+        public ICircuitBreakerConfigBuilder WithImmediateFailureExceptions(params Type[] exceptionTypes)
         {
             ThrowIfAlreadyBuilt();
             
@@ -356,7 +357,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="predicates">Custom failure predicate functions</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when predicates is null</exception>
-        public CircuitBreakerConfigBuilder WithFailurePredicates(params Func<Exception, bool>[] predicates)
+        public ICircuitBreakerConfigBuilder WithFailurePredicates(params Func<Exception, bool>[] predicates)
         {
             ThrowIfAlreadyBuilt();
             
@@ -374,7 +375,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="enableMetrics">Whether to enable metrics collection</param>
         /// <param name="enableEvents">Whether to enable event notifications</param>
         /// <returns>Builder instance for method chaining</returns>
-        public CircuitBreakerConfigBuilder WithMonitoring(bool enableMetrics = true, bool enableEvents = true)
+        public ICircuitBreakerConfigBuilder WithMonitoring(bool enableMetrics = true, bool enableEvents = true)
         {
             ThrowIfAlreadyBuilt();
             
@@ -390,7 +391,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="tags">Tags to add</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentNullException">Thrown when tags is null</exception>
-        public CircuitBreakerConfigBuilder WithTags(params FixedString64Bytes[] tags)
+        public ICircuitBreakerConfigBuilder WithTags(params FixedString64Bytes[] tags)
         {
             ThrowIfAlreadyBuilt();
             
@@ -413,7 +414,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="value">Metadata value</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentException">Thrown when key is null or empty</exception>
-        public CircuitBreakerConfigBuilder WithMetadata(string key, object value)
+        public ICircuitBreakerConfigBuilder WithMetadata(string key, object value)
         {
             ThrowIfAlreadyBuilt();
             
@@ -434,7 +435,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="treatAsFailures">Whether to treat slow calls as failures</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are out of valid range</exception>
-        public CircuitBreakerConfigBuilder WithSlowCallDetection(
+        public ICircuitBreakerConfigBuilder WithSlowCallDetection(
             TimeSpan threshold,
             double rateThreshold = 50.0,
             int minimumCalls = 5,
@@ -472,7 +473,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="maxQueueSize">Maximum queue size for waiting calls</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are out of valid range</exception>
-        public CircuitBreakerConfigBuilder WithBulkhead(
+        public ICircuitBreakerConfigBuilder WithBulkhead(
             bool enabled = false,
             int maxConcurrentCalls = 10,
             TimeSpan? maxWaitDuration = null,
@@ -511,7 +512,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="burstSize">Burst allowance</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are out of valid range</exception>
-        public CircuitBreakerConfigBuilder WithRateLimit(
+        public ICircuitBreakerConfigBuilder WithRateLimit(
             bool enabled = false,
             double requestsPerSecond = 100.0,
             int burstSize = 150)
@@ -543,7 +544,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="defaultValue">Default value for ReturnDefault strategy</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentException">Thrown when strategy is invalid</exception>
-        public CircuitBreakerConfigBuilder WithFailover(
+        public ICircuitBreakerConfigBuilder WithFailover(
             bool enabled = false,
             FailoverStrategy strategy = FailoverStrategy.ReturnDefault,
             object defaultValue = null)
@@ -569,7 +570,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// </summary>
         /// <param name="scenario">Circuit breaker scenario</param>
         /// <returns>Builder instance for method chaining</returns>
-        public CircuitBreakerConfigBuilder ForScenario(CircuitBreakerScenario scenario)
+        public ICircuitBreakerConfigBuilder ForScenario(CircuitBreakerScenario scenario)
         {
             ThrowIfAlreadyBuilt();
             
@@ -653,9 +654,21 @@ namespace AhBearStudios.Core.HealthChecking.Builders
                 _validationErrors.Add("Max timeout must be greater than or equal to base timeout");
             
             // Validate exception configurations
-            var conflictingExceptions = _ignoredExceptions.Intersect(_immediateFailureExceptions);
-            if (conflictingExceptions.Any())
-                _validationErrors.Add($"Exceptions cannot be both ignored and immediate failures: {string.Join(", ", conflictingExceptions.Select(t => t.Name))}");
+            if (_ignoredExceptions.Count > 0 && _immediateFailureExceptions.Count > 0)
+            {
+                var ignoredArray = new Type[_ignoredExceptions.Count];
+                _ignoredExceptions.CopyTo(ignoredArray);
+                var immediateArray = new Type[_immediateFailureExceptions.Count];
+                _immediateFailureExceptions.CopyTo(immediateArray);
+                
+                var conflictingExceptions = ignoredArray.AsValueEnumerable().Where(ignored => immediateArray.AsValueEnumerable().Contains(ignored));
+                var conflictingList = conflictingExceptions.ToList();
+                if (conflictingList.Count > 0)
+                {
+                    var conflictingNames = conflictingList.AsValueEnumerable().Select(t => t.Name).ToArray();
+                    _validationErrors.Add($"Exceptions cannot be both ignored and immediate failures: {string.Join(", ", conflictingNames)}");
+                }
+            }
             
             // Validate nested configurations
             _validationErrors.AddRange(_slowCallConfig.Validate());
@@ -736,7 +749,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Resets the builder to allow building a new configuration
         /// </summary>
         /// <returns>Builder instance for method chaining</returns>
-        public CircuitBreakerConfigBuilder Reset()
+        public ICircuitBreakerConfigBuilder Reset()
         {
             _isBuilt = false;
             _isValidated = false;
@@ -752,7 +765,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Applies critical service preset configuration
         /// </summary>
         /// <returns>Builder instance</returns>
-        private CircuitBreakerConfigBuilder ApplyCriticalServicePreset()
+        private ICircuitBreakerConfigBuilder ApplyCriticalServicePreset()
         {
             _name = "Critical Service Circuit Breaker";
             _failureThreshold = 3;
@@ -785,7 +798,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Applies database preset configuration
         /// </summary>
         /// <returns>Builder instance</returns>
-        private CircuitBreakerConfigBuilder ApplyDatabasePreset()
+        private ICircuitBreakerConfigBuilder ApplyDatabasePreset()
         {
             _name = "Database Circuit Breaker";
             _failureThreshold = 5;
@@ -822,7 +835,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Applies network service preset configuration
         /// </summary>
         /// <returns>Builder instance</returns>
-        private CircuitBreakerConfigBuilder ApplyNetworkServicePreset()
+        private ICircuitBreakerConfigBuilder ApplyNetworkServicePreset()
         {
             _name = "Network Service Circuit Breaker";
             _failureThreshold = 8;
@@ -861,7 +874,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Applies high throughput preset configuration
         /// </summary>
         /// <returns>Builder instance</returns>
-        private CircuitBreakerConfigBuilder ApplyHighThroughputPreset()
+        private ICircuitBreakerConfigBuilder ApplyHighThroughputPreset()
         {
             _name = "High Throughput Circuit Breaker";
             _failureThreshold = 20;
@@ -896,7 +909,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Applies development preset configuration
         /// </summary>
         /// <returns>Builder instance</returns>
-        private CircuitBreakerConfigBuilder ApplyDevelopmentPreset()
+        private ICircuitBreakerConfigBuilder ApplyDevelopmentPreset()
         {
             _name = "Development Circuit Breaker";
             _failureThreshold = 2;
@@ -933,7 +946,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <returns>Unique configuration ID</returns>
         private static FixedString64Bytes GenerateId()
         {
-            return new FixedString64Bytes(Guid.NewGuid().ToString("N")[..16]);
+            return new FixedString64Bytes(DeterministicIdGenerator.GenerateCoreId("CircuitBreakerConfig").ToString("N")[..16]);
         }
 
         #endregion

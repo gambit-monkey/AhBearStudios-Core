@@ -1,4 +1,7 @@
+using System;
 using Unity.Collections;
+using AhBearStudios.Core.Common.Utilities;
+using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 
@@ -8,8 +11,10 @@ namespace AhBearStudios.Core.Logging.Messages
     /// Message published when logging configuration changes.
     /// Replaces direct EventHandler usage for loose coupling through IMessageBus.
     /// </summary>
-    public readonly struct LoggingConfigurationChangedMessage : IMessage
+    public readonly record struct LoggingConfigurationChangedMessage : IMessage
     {
+        #region IMessage Implementation
+
         /// <summary>
         /// Gets the unique identifier for this message.
         /// </summary>
@@ -23,7 +28,7 @@ namespace AhBearStudios.Core.Logging.Messages
         /// <summary>
         /// Gets the type code for this message type.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.LoggingConfigurationChangedMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system that published this message.
@@ -39,6 +44,10 @@ namespace AhBearStudios.Core.Logging.Messages
         /// Gets the correlation ID for tracking.
         /// </summary>
         public Guid CorrelationId { get; init; }
+
+        #endregion
+
+        #region Message-Specific Properties
 
         /// <summary>
         /// Gets the type of configuration change that occurred.
@@ -90,30 +99,21 @@ namespace AhBearStudios.Core.Logging.Messages
         /// </summary>
         public FixedString64Bytes ConfigurationCorrelationId { get; init; }
 
-        /// <summary>
-        /// Initializes a new instance of the LoggingConfigurationChangedMessage struct.
-        /// </summary>
-        public LoggingConfigurationChangedMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-            ChangeType = default;
-            ComponentName = default;
-            PropertyName = default;
-            PreviousValue = default;
-            NewValue = default;
-            ChangedBy = default;
-            ChangeReason = default;
-            RequiresRestart = default;
-            AppliedSuccessfully = default;
-            ConfigurationCorrelationId = default;
-        }
+        #endregion
+
+        #region Computed Properties
 
         /// <summary>
-        /// Initializes a new instance of the LoggingConfigurationChangedMessage with parameters.
+        /// Gets the DateTime representation of the message timestamp.
+        /// </summary>
+        public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
+
+        #endregion
+
+        #region Static Factory Methods
+
+        /// <summary>
+        /// Creates a new LoggingConfigurationChangedMessage with proper validation and defaults.
         /// </summary>
         /// <param name="changeType">The type of change</param>
         /// <param name="componentName">The component that was changed</param>
@@ -126,7 +126,9 @@ namespace AhBearStudios.Core.Logging.Messages
         /// <param name="appliedSuccessfully">Whether the change was applied successfully</param>
         /// <param name="configurationCorrelationId">Configuration correlation ID</param>
         /// <param name="correlationId">Message correlation ID</param>
-        public LoggingConfigurationChangedMessage(
+        /// <param name="source">Source component creating this message</param>
+        /// <returns>New LoggingConfigurationChangedMessage instance</returns>
+        public static LoggingConfigurationChangedMessage CreateFromFixedStrings(
             LogConfigurationChangeType changeType,
             FixedString64Bytes componentName,
             FixedString128Bytes propertyName,
@@ -137,25 +139,36 @@ namespace AhBearStudios.Core.Logging.Messages
             bool requiresRestart = false,
             bool appliedSuccessfully = true,
             FixedString64Bytes configurationCorrelationId = default,
-            Guid correlationId = default)
+            Guid correlationId = default,
+            FixedString64Bytes source = default)
         {
-            Id = Guid.NewGuid();
-            TimestampTicks = DateTime.UtcNow.Ticks;
-            TypeCode = MessageTypeCodes.LoggingConfigurationChangedMessage;
-            Source = new FixedString64Bytes("LoggingSystem");
-            Priority = !appliedSuccessfully ? MessagePriority.High : MessagePriority.Normal;
-            CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId;
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "LoggingSystem" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("LoggingConfigurationChangedMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("LoggingConfigChange", $"{changeType}-{componentName}")
+                : correlationId;
             
-            ChangeType = changeType;
-            ComponentName = componentName;
-            PropertyName = propertyName;
-            PreviousValue = previousValue;
-            NewValue = newValue;
-            ChangedBy = changedBy.IsEmpty ? new FixedString64Bytes("System") : changedBy;
-            ChangeReason = changeReason;
-            RequiresRestart = requiresRestart;
-            AppliedSuccessfully = appliedSuccessfully;
-            ConfigurationCorrelationId = configurationCorrelationId;
+            return new LoggingConfigurationChangedMessage
+            {
+                Id = messageId,
+                TimestampTicks = DateTime.UtcNow.Ticks,
+                TypeCode = MessageTypeCodes.LoggingConfigurationChangedMessage,
+                Source = source.IsEmpty ? "LoggingSystem" : source,
+                Priority = !appliedSuccessfully ? MessagePriority.High : MessagePriority.Normal,
+                CorrelationId = finalCorrelationId,
+                
+                ChangeType = changeType,
+                ComponentName = componentName,
+                PropertyName = propertyName,
+                PreviousValue = previousValue,
+                NewValue = newValue,
+                ChangedBy = changedBy.IsEmpty ? "System" : changedBy,
+                ChangeReason = changeReason,
+                RequiresRestart = requiresRestart,
+                AppliedSuccessfully = appliedSuccessfully,
+                ConfigurationCorrelationId = configurationCorrelationId
+            };
         }
 
         /// <summary>
@@ -172,6 +185,7 @@ namespace AhBearStudios.Core.Logging.Messages
         /// <param name="appliedSuccessfully">Whether the change was applied successfully</param>
         /// <param name="configurationCorrelationId">Configuration correlation ID</param>
         /// <param name="correlationId">Message correlation ID</param>
+        /// <param name="source">Source component creating this message</param>
         /// <returns>A new LoggingConfigurationChangedMessage</returns>
         public static LoggingConfigurationChangedMessage Create(
             LogConfigurationChangeType changeType,
@@ -184,9 +198,10 @@ namespace AhBearStudios.Core.Logging.Messages
             bool requiresRestart = false,
             bool appliedSuccessfully = true,
             string configurationCorrelationId = null,
-            Guid correlationId = default)
+            Guid correlationId = default,
+            string source = null)
         {
-            return new LoggingConfigurationChangedMessage(
+            return CreateFromFixedStrings(
                 changeType,
                 new FixedString64Bytes(componentName ?? "Unknown"),
                 new FixedString128Bytes(propertyName ?? "Unknown"),
@@ -197,8 +212,13 @@ namespace AhBearStudios.Core.Logging.Messages
                 requiresRestart,
                 appliedSuccessfully,
                 new FixedString64Bytes(configurationCorrelationId ?? string.Empty),
-                correlationId);
+                correlationId,
+                new FixedString64Bytes(source ?? "LoggingSystem"));
         }
+
+        #endregion
+
+        #region String Representation
 
         /// <summary>
         /// Returns a string representation of this message.
@@ -208,84 +228,16 @@ namespace AhBearStudios.Core.Logging.Messages
         {
             var status = AppliedSuccessfully ? "Applied" : "Failed";
             var restart = RequiresRestart ? " (restart required)" : "";
-            return $"LogConfigurationChanged: {ChangeType} - {ComponentName}.{PropertyName} = '{NewValue}' " +
-                   $"(was '{PreviousValue}') by {ChangedBy} - {status}{restart}";
+            var componentName = ComponentName.IsEmpty ? "Unknown" : ComponentName.ToString();
+            var propertyName = PropertyName.IsEmpty ? "Unknown" : PropertyName.ToString();
+            var newValue = NewValue.IsEmpty ? string.Empty : NewValue.ToString();
+            var previousValue = PreviousValue.IsEmpty ? string.Empty : PreviousValue.ToString();
+            var changedBy = ChangedBy.IsEmpty ? "System" : ChangedBy.ToString();
+            
+            return $"LogConfigurationChanged: {ChangeType} - {componentName}.{propertyName} = '{newValue}' " +
+                   $"(was '{previousValue}') by {changedBy} - {status}{restart}";
         }
-    }
 
-    /// <summary>
-    /// Defines the types of configuration changes.
-    /// </summary>
-    public enum LogConfigurationChangeType : byte
-    {
-        /// <summary>
-        /// A target was added to the logging system.
-        /// </summary>
-        TargetAdded = 0,
-
-        /// <summary>
-        /// A target was removed from the logging system.
-        /// </summary>
-        TargetRemoved = 1,
-
-        /// <summary>
-        /// A target's configuration was modified.
-        /// </summary>
-        TargetModified = 2,
-
-        /// <summary>
-        /// A channel was added to the logging system.
-        /// </summary>
-        ChannelAdded = 3,
-
-        /// <summary>
-        /// A channel was removed from the logging system.
-        /// </summary>
-        ChannelRemoved = 4,
-
-        /// <summary>
-        /// A channel's configuration was modified.
-        /// </summary>
-        ChannelModified = 5,
-
-        /// <summary>
-        /// A filter was added to the logging system.
-        /// </summary>
-        FilterAdded = 6,
-
-        /// <summary>
-        /// A filter was removed from the logging system.
-        /// </summary>
-        FilterRemoved = 7,
-
-        /// <summary>
-        /// A filter's configuration was modified.
-        /// </summary>
-        FilterModified = 8,
-
-        /// <summary>
-        /// The global logging level was changed.
-        /// </summary>
-        GlobalLevelChanged = 9,
-
-        /// <summary>
-        /// The logging system was enabled or disabled.
-        /// </summary>
-        SystemEnabledChanged = 10,
-
-        /// <summary>
-        /// Logging performance settings were modified.
-        /// </summary>
-        PerformanceSettingsChanged = 11,
-
-        /// <summary>
-        /// Security or audit settings were modified.
-        /// </summary>
-        SecuritySettingsChanged = 12,
-
-        /// <summary>
-        /// A complete configuration reload was performed.
-        /// </summary>
-        ConfigurationReloaded = 13
+        #endregion
     }
 }

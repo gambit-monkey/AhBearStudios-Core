@@ -149,7 +149,7 @@ namespace AhBearStudios.Core.Pooling.Strategies
                 _spikeTriggeredAllocations += targetSize - currentSize;
                 
                 _loggingService.LogInfo($"Network spike detected - Expanding pool from {currentSize} to {targetSize}");
-                _messageBusService.PublishMessage(PoolExpansionMessage.Create(
+                _messageBusService.PublishMessage(PoolExpansionMessage.CreateFromFixedStrings(
                     strategyName: Name,
                     oldSize: currentSize,
                     newSize: targetSize,
@@ -496,7 +496,7 @@ namespace AhBearStudios.Core.Pooling.Strategies
                     _networkSpikes.Add(DateTime.UtcNow);
                     _loggingService.LogInfo($"Network spike detected - Operations per second: {recentOpsPerSecond:F1}");
                     
-                    _messageBusService.PublishMessage(PoolNetworkSpikeDetectedMessage.Create(
+                    _messageBusService.PublishMessage(PoolNetworkSpikeDetectedMessage.CreateFromFixedStrings(
                         strategyName: Name,
                         operationsPerSecond: recentOpsPerSecond,
                         source: AlertSource

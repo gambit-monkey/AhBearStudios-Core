@@ -13,10 +13,12 @@ using AhBearStudios.Core.Logging.HealthChecks;
 using AhBearStudios.Core.HealthChecking;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Common.Extensions;
 using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Logging.Messages;
 using AhBearStudios.Core.Logging.Filters;
+using AhBearStudios.Core.Common.Utilities;
 using Cysharp.Threading.Tasks;
 using ZLinq;
 
@@ -171,6 +173,47 @@ namespace AhBearStudios.Core.Logging
                 TriggerCriticalAlert(message, null);
             }
         }
+
+        // Guid overloads - delegate to FixedString implementations using extension methods
+        /// <inheritdoc />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void LogDebug(string message, Guid correlationId, string sourceContext = null, 
+            IReadOnlyDictionary<string, object> properties = null)
+        {
+            LogDebug(message, correlationId.ToCorrelationFixedString(), sourceContext, properties);
+        }
+
+        /// <inheritdoc />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void LogInfo(string message, Guid correlationId, string sourceContext = null, 
+            IReadOnlyDictionary<string, object> properties = null)
+        {
+            LogInfo(message, correlationId.ToCorrelationFixedString(), sourceContext, properties);
+        }
+
+        /// <inheritdoc />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void LogWarning(string message, Guid correlationId, string sourceContext = null, 
+            IReadOnlyDictionary<string, object> properties = null)
+        {
+            LogWarning(message, correlationId.ToCorrelationFixedString(), sourceContext, properties);
+        }
+
+        /// <inheritdoc />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void LogError(string message, Guid correlationId, string sourceContext = null, 
+            IReadOnlyDictionary<string, object> properties = null)
+        {
+            LogError(message, correlationId.ToCorrelationFixedString(), sourceContext, properties);
+        }
+
+        /// <inheritdoc />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void LogCritical(string message, Guid correlationId, string sourceContext = null, 
+            IReadOnlyDictionary<string, object> properties = null)
+        {
+            LogCritical(message, correlationId.ToCorrelationFixedString(), sourceContext, properties);
+        }
         
         /// <inheritdoc />
         public void LogException(string message, Exception exception, FixedString64Bytes correlationId = default, 
@@ -187,6 +230,14 @@ namespace AhBearStudios.Core.Logging
                 
                 Interlocked.Increment(ref _totalErrorsEncountered);
             }
+        }
+
+        /// <inheritdoc />
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public void LogException(string message, Exception exception, Guid correlationId, 
+            string sourceContext = null, IReadOnlyDictionary<string, object> properties = null)
+        {
+            LogException(message, exception, correlationId.ToCorrelationFixedString(), sourceContext, properties);
         }
         
         /// <inheritdoc />
@@ -570,7 +621,10 @@ namespace AhBearStudios.Core.Logging
         {
             if (string.IsNullOrEmpty(correlationId) && _config.AutoCorrelationId)
             {
-                correlationId = Guid.NewGuid().ToString("N");
+                correlationId = DeterministicIdGenerator.GenerateLogCorrelationId(
+                    sourceContext ?? "LoggingService",
+                    message?.GetHashCode().ToString()
+                ).ToString("N");
             }
             
             return LogMessage.Create(

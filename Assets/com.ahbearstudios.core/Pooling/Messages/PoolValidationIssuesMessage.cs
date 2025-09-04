@@ -3,6 +3,8 @@ using Unity.Collections;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
+using AhBearStudios.Core.Pooling.Models;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.Pooling.Messages
 {
@@ -13,15 +15,40 @@ namespace AhBearStudios.Core.Pooling.Messages
     /// </summary>
     public readonly record struct PoolValidationIssuesMessage : IMessage
     {
+        #region IMessage Implementation
         /// <summary>
         /// Gets the unique identifier for this message instance.
         /// </summary>
         public Guid Id { get; init; }
 
         /// <summary>
+        /// Gets the timestamp when this message was created, in UTC ticks.
+        /// </summary>
+        public long TimestampTicks { get; init; }
+
+        /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.PoolValidationIssuesMessage;
+        public ushort TypeCode { get; init; }
+
+        /// <summary>
+        /// Gets the source system or component that created this message.
+        /// </summary>
+        public FixedString64Bytes Source { get; init; }
+
+        /// <summary>
+        /// Gets the priority level for message processing.
+        /// </summary>
+        public MessagePriority Priority { get; init; }
+
+        /// <summary>
+        /// Gets optional correlation ID for message tracing across systems.
+        /// </summary>
+        public Guid CorrelationId { get; init; }
+
+        #endregion
+
+        #region Message-Specific Properties
 
         /// <summary>
         /// Gets the name of the pool with validation issues.
@@ -37,11 +64,6 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// Gets the unique identifier of the pool.
         /// </summary>
         public Guid PoolId { get; init; }
-
-        /// <summary>
-        /// Gets the timestamp when validation issues were detected (UTC ticks).
-        /// </summary>
-        public long TimestampTicks { get; init; }
 
         /// <summary>
         /// Gets the number of validation issues found.
@@ -69,16 +91,6 @@ namespace AhBearStudios.Core.Pooling.Messages
         public float ErrorPercentage { get; init; }
 
         /// <summary>
-        /// Gets the correlation ID for tracking related operations.
-        /// </summary>
-        public Guid CorrelationId { get; init; }
-
-        /// <summary>
-        /// Gets the source that triggered the validation.
-        /// </summary>
-        public FixedString64Bytes Source { get; init; }
-
-        /// <summary>
         /// Gets the severity level of the validation issues.
         /// </summary>
         public ValidationSeverity Severity { get; init; }
@@ -93,41 +105,21 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// </summary>
         public bool AutoCleanupPerformed { get; init; }
 
-        /// <summary>
-        /// Gets the priority level for message processing.
-        /// </summary>
-        public MessagePriority Priority { get; init; }
+        #endregion
+
+        #region Computed Properties
 
         /// <summary>
-        /// Initializes a new instance of the PoolValidationIssuesMessage struct.
-        /// </summary>
-        public PoolValidationIssuesMessage()
-        {
-            Id = default;
-            PoolName = default;
-            ObjectTypeName = default;
-            PoolId = default;
-            TimestampTicks = default;
-            IssueCount = default;
-            ObjectsValidated = default;
-            InvalidObjects = default;
-            CorruptedObjects = default;
-            ErrorPercentage = default;
-            CorrelationId = default;
-            Source = default;
-            Severity = default;
-            PrimaryIssueDescription = default;
-            AutoCleanupPerformed = default;
-            Priority = default;
-        }
-
-        /// <summary>
-        /// Gets the DateTime representation of the timestamp.
+        /// Gets the timestamp when validation issues were detected.
         /// </summary>
         public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
+        #endregion
+
+        #region Static Factory Methods
+
         /// <summary>
-        /// Creates a new PoolValidationIssuesMessage.
+        /// Creates a new PoolValidationIssuesMessage with proper validation and defaults.
         /// </summary>
         /// <param name="poolName">Name of the pool</param>
         /// <param name="objectTypeName">Type name of pooled objects</param>
@@ -139,10 +131,10 @@ namespace AhBearStudios.Core.Pooling.Messages
         /// <param name="severity">Severity of validation issues</param>
         /// <param name="primaryIssueDescription">Description of the primary issue</param>
         /// <param name="autoCleanupPerformed">Whether cleanup was performed</param>
-        /// <param name="correlationId">Correlation ID for tracking</param>
-        /// <param name="source">Source that triggered validation</param>
-        /// <returns>New message instance</returns>
-        public static PoolValidationIssuesMessage Create(
+        /// <param name="correlationId">Optional correlation ID</param>
+        /// <param name="source">Source component</param>
+        /// <returns>New PoolValidationIssuesMessage instance</returns>
+        public static PoolValidationIssuesMessage CreateFromFixedStrings(
             FixedString64Bytes poolName,
             FixedString64Bytes objectTypeName,
             Guid poolId,
@@ -168,54 +160,83 @@ namespace AhBearStudios.Core.Pooling.Messages
                 _ => MessagePriority.Normal
             };
 
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "PoolingService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("PoolValidationIssuesMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("PoolValidation", poolName.ToString())
+                : correlationId;
+            
             return new PoolValidationIssuesMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
+                TimestampTicks = DateTime.UtcNow.Ticks,
                 TypeCode = MessageTypeCodes.PoolValidationIssuesMessage,
+                Source = source.IsEmpty ? "PoolingService" : source,
+                Priority = messagePriority,
+                CorrelationId = finalCorrelationId,
+                
                 PoolName = poolName,
                 ObjectTypeName = objectTypeName,
                 PoolId = poolId,
-                TimestampTicks = DateTime.UtcNow.Ticks,
                 IssueCount = issueCount,
                 ObjectsValidated = objectsValidated,
                 InvalidObjects = invalidObjects,
                 CorruptedObjects = corruptedObjects,
                 ErrorPercentage = errorPercentage,
-                Priority = messagePriority, // Priority based on validation severity
                 Severity = severity,
                 PrimaryIssueDescription = primaryIssueDescription.IsEmpty 
                     ? new FixedString512Bytes($"Pool validation found {issueCount} issues")
                     : primaryIssueDescription,
-                AutoCleanupPerformed = autoCleanupPerformed,
-                CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
-                Source = source.IsEmpty ? new FixedString64Bytes("PoolingService") : source
+                AutoCleanupPerformed = autoCleanupPerformed
             };
         }
-    }
-
-    /// <summary>
-    /// Severity levels for pool validation issues.
-    /// </summary>
-    public enum ValidationSeverity : byte
-    {
-        /// <summary>
-        /// Minor validation issues that don't affect functionality.
-        /// </summary>
-        Minor = 0,
 
         /// <summary>
-        /// Moderate validation issues that may affect performance.
+        /// Creates a new PoolValidationIssuesMessage with the specified details.
         /// </summary>
-        Moderate = 1,
+        /// <param name="poolName">Name of the pool</param>
+        /// <param name="objectTypeName">Type name of pooled objects</param>
+        /// <param name="poolId">Pool unique identifier</param>
+        /// <param name="issueCount">Number of validation issues</param>
+        /// <param name="objectsValidated">Total objects validated</param>
+        /// <param name="invalidObjects">Number of invalid objects</param>
+        /// <param name="corruptedObjects">Number of corrupted objects</param>
+        /// <param name="severity">Severity of validation issues</param>
+        /// <param name="primaryIssueDescription">Description of the primary issue</param>
+        /// <param name="autoCleanupPerformed">Whether cleanup was performed</param>
+        /// <param name="correlationId">Optional correlation ID</param>
+        /// <param name="source">Source component</param>
+        /// <returns>New PoolValidationIssuesMessage instance</returns>
+        public static PoolValidationIssuesMessage Create(
+            string poolName,
+            string objectTypeName,
+            Guid poolId,
+            int issueCount,
+            int objectsValidated,
+            int invalidObjects,
+            int corruptedObjects,
+            ValidationSeverity severity,
+            string primaryIssueDescription = null,
+            bool autoCleanupPerformed = false,
+            Guid correlationId = default,
+            string source = null)
+        {
+            return CreateFromFixedStrings(
+                new FixedString64Bytes(poolName?.Length <= 64 ? poolName : poolName?[..64] ?? "Unknown"),
+                new FixedString64Bytes(objectTypeName?.Length <= 64 ? objectTypeName : objectTypeName?[..64] ?? "Unknown"),
+                poolId,
+                issueCount,
+                objectsValidated,
+                invalidObjects,
+                corruptedObjects,
+                severity,
+                new FixedString512Bytes(primaryIssueDescription?.Length <= 512 ? primaryIssueDescription : primaryIssueDescription?[..512] ?? ""),
+                autoCleanupPerformed,
+                correlationId,
+                new FixedString64Bytes(source ?? "PoolingService"));
+        }
 
-        /// <summary>
-        /// Major validation issues that affect functionality.
-        /// </summary>
-        Major = 2,
-
-        /// <summary>
-        /// Critical validation issues requiring immediate action.
-        /// </summary>
-        Critical = 3
+        #endregion
     }
 }

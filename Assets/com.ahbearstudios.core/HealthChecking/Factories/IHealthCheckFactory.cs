@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.HealthChecking.Checks;
 using AhBearStudios.Core.HealthChecking.Configs;
 
@@ -13,31 +14,31 @@ namespace AhBearStudios.Core.HealthChecking.Factories;
 public interface IHealthCheckFactory
 {
     /// <summary>
-    /// Creates a health check instance of the specified type
+    /// Creates a health check instance of the specified type asynchronously
     /// </summary>
     /// <typeparam name="T">Type of health check to create</typeparam>
     /// <param name="config">Optional configuration for the health check</param>
     /// <returns>Configured health check instance</returns>
     /// <exception cref="InvalidOperationException">Thrown when type cannot be created</exception>
-    T CreateHealthCheck<T>(HealthCheckConfiguration config = null) where T : class, IHealthCheck;
+    UniTask<T> CreateHealthCheckAsync<T>(HealthCheckConfiguration config = null) where T : class, IHealthCheck;
     
     /// <summary>
-    /// Creates a health check instance by type name
+    /// Creates a health check instance by type name asynchronously
     /// </summary>
     /// <param name="typeName">Full type name of the health check</param>
     /// <param name="config">Optional configuration for the health check</param>
     /// <returns>Configured health check instance</returns>
     /// <exception cref="ArgumentException">Thrown when type name is invalid</exception>
     /// <exception cref="InvalidOperationException">Thrown when type cannot be created</exception>
-    IHealthCheck CreateHealthCheck(string typeName, HealthCheckConfiguration config = null);
+    UniTask<IHealthCheck> CreateHealthCheckAsync(string typeName, HealthCheckConfiguration config = null);
     
     /// <summary>
-    /// Creates multiple health checks from a collection of types
+    /// Creates multiple health checks from a collection of types asynchronously
     /// </summary>
     /// <param name="healthCheckTypes">Types of health checks to create</param>
     /// <param name="defaultConfig">Default configuration for all health checks</param>
     /// <returns>Dictionary of created health checks indexed by type name</returns>
-    Dictionary<string, IHealthCheck> CreateHealthChecks(
+    UniTask<Dictionary<string, IHealthCheck>> CreateHealthChecksAsync(
         IEnumerable<Type> healthCheckTypes, 
         HealthCheckConfiguration defaultConfig = null);
     

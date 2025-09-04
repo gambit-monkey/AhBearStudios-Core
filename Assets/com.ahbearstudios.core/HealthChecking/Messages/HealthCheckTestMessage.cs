@@ -2,6 +2,7 @@ using System;
 using Unity.Collections;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.HealthChecking.Messages
 {
@@ -25,7 +26,7 @@ namespace AhBearStudios.Core.HealthChecking.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.HealthCheckTestMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -42,17 +43,6 @@ namespace AhBearStudios.Core.HealthChecking.Messages
         /// </summary>
         public Guid CorrelationId { get; init; }
 
-        /// <summary>
-        /// Initializes a new instance of the HealthCheckTestMessage struct.
-        /// </summary>
-        public HealthCheckTestMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-        }
 
         /// <summary>
         /// Gets the DateTime representation of the message timestamp.
@@ -69,14 +59,20 @@ namespace AhBearStudios.Core.HealthChecking.Messages
             FixedString64Bytes source = default,
             Guid correlationId = default)
         {
+            var sourceString = source.IsEmpty ? "HealthCheckService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("HealthCheckTestMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("HealthCheckTest", sourceString)
+                : correlationId;
+
             return new HealthCheckTestMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
                 TimestampTicks = DateTime.UtcNow.Ticks,
                 TypeCode = MessageTypeCodes.HealthCheckTestMessage,
                 Source = source.IsEmpty ? "HealthCheckService" : source,
                 Priority = MessagePriority.Low,
-                CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId
+                CorrelationId = finalCorrelationId
             };
         }
 

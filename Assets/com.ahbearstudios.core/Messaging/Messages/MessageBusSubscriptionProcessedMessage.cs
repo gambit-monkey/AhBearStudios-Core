@@ -1,5 +1,8 @@
-using Unity.Collections;
+using System;
+using AhBearStudios.Core.Common.Utilities;
+using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
+using Unity.Collections;
 
 namespace AhBearStudios.Core.Messaging.Messages;
 
@@ -7,140 +10,168 @@ namespace AhBearStudios.Core.Messaging.Messages;
 /// Message published when a subscription successfully processes a message.
 /// Provides processing metrics and performance information for monitoring.
 /// </summary>
-public record struct MessageBusSubscriptionProcessedMessage : IMessage
+public readonly record struct MessageBusSubscriptionProcessedMessage : IMessage
 {
+    #region IMessage Implementation
+
     /// <summary>
-    /// Gets the unique identifier for this message.
+    /// Gets the unique identifier for this message instance.
     /// </summary>
     public Guid Id { get; init; }
 
     /// <summary>
-    /// Gets the timestamp when the message was created (in ticks).
+    /// Gets the timestamp when this message was created, in UTC ticks.
     /// </summary>
     public long TimestampTicks { get; init; }
 
     /// <summary>
-    /// Gets the message type code for routing and identification.
+    /// Gets the message type code for efficient routing and filtering.
     /// </summary>
     public ushort TypeCode { get; init; }
 
     /// <summary>
-    /// Gets the source system that generated this message.
+    /// Gets the source system or component that created this message.
     /// </summary>
     public FixedString64Bytes Source { get; init; }
 
     /// <summary>
-    /// Gets the message priority level.
+    /// Gets the priority level for message processing.
     /// </summary>
     public MessagePriority Priority { get; init; }
 
     /// <summary>
-    /// Gets the correlation identifier for message tracking.
+    /// Gets optional correlation ID for message tracing across systems.
     /// </summary>
     public Guid CorrelationId { get; init; }
 
+    #endregion
+
+    #region Message-Specific Properties
+
     /// <summary>
-    /// Gets the subscription identifier that processed the message.
+    /// Gets the subscription ID that processed the message.
     /// </summary>
     public Guid SubscriptionId { get; init; }
 
     /// <summary>
-    /// Gets the identifier of the original message that was processed.
+    /// Gets the message type that was processed.
     /// </summary>
-    public Guid ProcessedMessageId { get; init; }
+    public Type MessageType { get; init; }
 
     /// <summary>
-    /// Gets the type code of the original message that was processed.
+    /// Gets the timestamp when processing was completed.
     /// </summary>
-    public ushort ProcessedMessageTypeCode { get; init; }
+    public DateTime ProcessedAt { get; init; }
 
     /// <summary>
-    /// Gets the processing time in milliseconds.
+    /// Gets the subscriber name that processed the message.
     /// </summary>
-    public double ProcessingTimeMs { get; init; }
+    public FixedString64Bytes SubscriberName { get; init; }
 
     /// <summary>
-    /// Gets the name of the message type that was processed.
+    /// Gets the processing duration.
     /// </summary>
-    public FixedString64Bytes ProcessedMessageTypeName { get; init; }
+    public TimeSpan ProcessingDuration { get; init; }
 
     /// <summary>
-    /// Gets whether the processing was completed synchronously.
+    /// Gets whether the processing was successful.
     /// </summary>
-    public bool IsAsyncProcessing { get; init; }
+    public bool IsSuccessful { get; init; }
 
     /// <summary>
-    /// Gets the subscription category that processed the message.
+    /// Gets additional context about the processing operation.
     /// </summary>
-    public SubscriptionCategory Category { get; init; }
+    public FixedString512Bytes Context { get; init; }
+
+    #endregion
+
+    #region Computed Properties
 
     /// <summary>
-    /// Initializes a new instance of MessageBusSubscriptionProcessedMessage.
+    /// Gets the DateTime representation of the message timestamp.
     /// </summary>
-    /// <param name="subscriptionId">The subscription identifier</param>
-    /// <param name="processedMessage">The original message that was processed</param>
-    /// <param name="processingTime">The processing time</param>
-    /// <param name="isAsyncProcessing">Whether processing was asynchronous</param>
-    /// <param name="category">The subscription category</param>
-    /// <param name="correlationId">Optional correlation ID for message tracking</param>
-    public MessageBusSubscriptionProcessedMessage(
+    public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
+
+    #endregion
+
+    #region Static Factory Methods
+
+    /// <summary>
+    /// Creates a new instance of MessageBusSubscriptionProcessedMessage using FixedString parameters for optimal performance.
+    /// </summary>
+    /// <param name="subscriptionId">The subscription ID that processed the message</param>
+    /// <param name="messageType">The message type that was processed</param>
+    /// <param name="subscriberName">The subscriber name that processed the message</param>
+    /// <param name="processingDuration">The processing duration</param>
+    /// <param name="isSuccessful">Whether the processing was successful</param>
+    /// <param name="context">Additional context about the processing operation</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessageBusSubscriptionProcessedMessage instance</returns>
+    public static MessageBusSubscriptionProcessedMessage CreateFromFixedStrings(
         Guid subscriptionId,
-        IMessage processedMessage,
-        TimeSpan processingTime,
-        bool isAsyncProcessing = false,
-        SubscriptionCategory category = SubscriptionCategory.Standard,
+        Type messageType,
+        string subscriberName,
+        TimeSpan processingDuration,
+        bool isSuccessful,
+        string context,
+        FixedString64Bytes source = default,
         Guid correlationId = default)
     {
-        if (processedMessage == null)
-            throw new ArgumentNullException(nameof(processedMessage));
+        var finalCorrelationId = correlationId == default 
+            ? DeterministicIdGenerator.GenerateCorrelationId("MessageBusSubscriptionProcessing", null)
+            : correlationId;
 
-        Id = Guid.NewGuid();
-        TimestampTicks = DateTime.UtcNow.Ticks;
-        TypeCode = MessageTypeCodes.MessageBusSubscriptionProcessedMessage;
-        Source = "MessageBus";
-        Priority = MessagePriority.Low; // Processing success is informational
-        CorrelationId = correlationId == default ? processedMessage.CorrelationId : correlationId;
-        
-        SubscriptionId = subscriptionId;
-        ProcessedMessageId = processedMessage.Id;
-        ProcessedMessageTypeCode = processedMessage.TypeCode;
-        ProcessingTimeMs = processingTime.TotalMilliseconds;
-        ProcessedMessageTypeName = processedMessage.GetType().Name;
-        IsAsyncProcessing = isAsyncProcessing;
-        Category = category;
+        return new MessageBusSubscriptionProcessedMessage
+        {
+            Id = DeterministicIdGenerator.GenerateMessageId("MessageBusSubscriptionProcessedMessage", "MessagingSystem", correlationId: null),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.MessageBusSubscriptionProcessedMessage,
+            Source = source.IsEmpty ? "MessageBusService" : source,
+            Priority = MessagePriority.Low,
+            CorrelationId = finalCorrelationId,
+            SubscriptionId = subscriptionId,
+            MessageType = messageType ?? throw new ArgumentNullException(nameof(messageType)),
+            ProcessedAt = DateTime.UtcNow,
+            SubscriberName = subscriberName?.Length <= 64 ? subscriberName : subscriberName?[..64] ?? "Unknown",
+            ProcessingDuration = processingDuration,
+            IsSuccessful = isSuccessful,
+            Context = context?.Length <= 512 ? context : context?[..512] ?? string.Empty
+        };
     }
 
     /// <summary>
-    /// Creates a message for synchronous subscription processing.
+    /// Creates a new instance of MessageBusSubscriptionProcessedMessage using string parameters.
     /// </summary>
-    /// <param name="subscriptionId">The subscription identifier</param>
-    /// <param name="processedMessage">The processed message</param>
-    /// <param name="processingTime">The processing time</param>
-    /// <param name="category">The subscription category</param>
-    /// <param name="correlationId">Optional correlation ID</param>
-    /// <returns>Subscription processed message</returns>
-    public static MessageBusSubscriptionProcessedMessage ForSync(
+    /// <param name="subscriptionId">The subscription ID that processed the message</param>
+    /// <param name="messageType">The message type that was processed</param>
+    /// <param name="subscriberName">The subscriber name that processed the message</param>
+    /// <param name="processingDuration">The processing duration</param>
+    /// <param name="isSuccessful">Whether the processing was successful</param>
+    /// <param name="context">Additional context about the processing operation</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessageBusSubscriptionProcessedMessage instance</returns>
+    public static MessageBusSubscriptionProcessedMessage Create(
         Guid subscriptionId,
-        IMessage processedMessage,
-        TimeSpan processingTime,
-        SubscriptionCategory category = SubscriptionCategory.Standard,
-        Guid correlationId = default) =>
-        new(subscriptionId, processedMessage, processingTime, false, category, correlationId);
+        Type messageType,
+        string subscriberName = null,
+        TimeSpan processingDuration = default,
+        bool isSuccessful = true,
+        string context = null,
+        string source = null,
+        Guid correlationId = default)
+    {
+        return CreateFromFixedStrings(
+            subscriptionId,
+            messageType,
+            subscriberName,
+            processingDuration,
+            isSuccessful,
+            context,
+            source?.Length <= 64 ? source : source?[..64] ?? "MessageBusService",
+            correlationId);
+    }
 
-    /// <summary>
-    /// Creates a message for asynchronous subscription processing.
-    /// </summary>
-    /// <param name="subscriptionId">The subscription identifier</param>
-    /// <param name="processedMessage">The processed message</param>
-    /// <param name="processingTime">The processing time</param>
-    /// <param name="category">The subscription category</param>
-    /// <param name="correlationId">Optional correlation ID</param>
-    /// <returns>Subscription processed message</returns>
-    public static MessageBusSubscriptionProcessedMessage ForAsync(
-        Guid subscriptionId,
-        IMessage processedMessage,
-        TimeSpan processingTime,
-        SubscriptionCategory category = SubscriptionCategory.Async,
-        Guid correlationId = default) =>
-        new(subscriptionId, processedMessage, processingTime, true, category, correlationId);
+    #endregion
 }

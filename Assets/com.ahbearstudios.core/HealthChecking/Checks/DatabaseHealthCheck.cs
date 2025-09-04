@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Data;
 using System.Diagnostics;
 using System.Threading;
-using System.Threading.Tasks;
+using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.HealthChecking.Checks;
 using AhBearStudios.Core.HealthChecking.Configs;
@@ -91,7 +91,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
         }
 
         /// <inheritdoc />
-        public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
+        public async UniTask<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
         {
             var stopwatch = Stopwatch.StartNew();
             var data = new Dictionary<string, object>();
@@ -192,7 +192,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
 
         #region Private Implementation
 
-        private async Task<HealthCheckResult> ExecuteHealthCheckInternal(
+        private async UniTask<HealthCheckResult> ExecuteHealthCheckInternal(
             Dictionary<string, object> data, 
             CancellationToken cancellationToken)
         {
@@ -255,7 +255,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
             }
         }
 
-        private async Task<DatabaseTestResult> TestDatabaseConnection(CancellationToken cancellationToken)
+        private async UniTask<DatabaseTestResult> TestDatabaseConnection(CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
             
@@ -311,7 +311,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
             }
         }
 
-        private async Task<DatabaseTestResult> TestQueryExecution(CancellationToken cancellationToken)
+        private async UniTask<DatabaseTestResult> TestQueryExecution(CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
             
@@ -364,7 +364,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
             }
         }
 
-        private async Task<DatabaseTestResult> TestTransactionCapability(CancellationToken cancellationToken)
+        private async UniTask<DatabaseTestResult> TestTransactionCapability(CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
             
@@ -411,7 +411,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
             }
         }
 
-        private async Task<DatabaseTestResult> ExecuteCustomHealthQuery(CancellationToken cancellationToken)
+        private async UniTask<DatabaseTestResult> ExecuteCustomHealthQuery(CancellationToken cancellationToken)
         {
             var stopwatch = Stopwatch.StartNew();
             
@@ -461,7 +461,7 @@ namespace AhBearStudios.Core.HealthChecking.Checks
             }
         }
 
-        private async Task<Dictionary<string, object>> CollectDatabaseMetrics(CancellationToken cancellationToken)
+        private async UniTask<Dictionary<string, object>> CollectDatabaseMetrics(CancellationToken cancellationToken)
         {
             var metrics = new Dictionary<string, object>();
             

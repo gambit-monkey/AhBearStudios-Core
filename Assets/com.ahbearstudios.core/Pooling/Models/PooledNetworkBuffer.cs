@@ -2,6 +2,7 @@ using System;
 using Unity.Collections;
 using AhBearStudios.Core.Pooling;
 using AhBearStudios.Core.HealthChecking.Models;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.Pooling.Models
 {
@@ -119,7 +120,7 @@ namespace AhBearStudios.Core.Pooling.Models
             _length = 0;
             
             var now = DateTime.UtcNow;
-            PoolId = Guid.NewGuid();
+            PoolId = DeterministicIdGenerator.GeneratePooledObjectId("PooledNetworkBuffer", "NetworkBuffer", _capacity);
             CreatedAt = now;
             LastUsed = now;
             LastValidationTime = now;

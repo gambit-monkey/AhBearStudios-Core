@@ -1,23 +1,15 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:github.com)",
-      "WebFetch(domain:docs.anthropic.com)",
-      "WebFetch(domain:docs.unity3d.com)",
-      "Bash(rg:*)",
-      "Bash(find:*)",
-      "Bash(mkdir:*)",
-      "Bash(grep:*)",
-      "Bash(dotnet:*)",
-      "Bash(unity:*)",
-      "Bash(git:*)",
-      "Bash(cp:*)",
-      "Bash(rm:*)",
-      "Bash(mv:*)",
-      "Bash(true)",
-      "WebSearch"
+      "Bash(do echo \"Processing $file\")",
+      "Bash(for:*)",
+      "Bash(do echo \"Fixing TypeCode in $file...\")",
+      "Bash(do echo \"Adding import to $file...\")",
+      "Bash(if ! grep -q \"AhBearStudios.Core.Common.Utilities\" \"$file\")",
+      "Bash(then sed -i '2 a using AhBearStudios.Core.Common.Utilities;' \"$file\")"
     ],
-    "deny": []
+    "deny": [],
+    "ask": []
   },
   "enableAllProjectMcpServers": false,
   "projectContext": {

@@ -1,5 +1,6 @@
 using System;
 using Unity.Collections;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Alerting.Configs;
@@ -13,6 +14,7 @@ namespace AhBearStudios.Core.Alerting.Messages
     /// </summary>
     public readonly record struct AlertChannelConfigurationChangedMessage : IMessage
     {
+        #region IMessage Implementation
         /// <summary>
         /// Gets the unique identifier for this message instance.
         /// </summary>
@@ -26,7 +28,7 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// <summary>
         /// Gets the message type code for efficient routing and filtering.
         /// </summary>
-        public ushort TypeCode { get; init; } = MessageTypeCodes.AlertChannelConfigurationChangedMessage;
+        public ushort TypeCode { get; init; }
 
         /// <summary>
         /// Gets the source system or component that created this message.
@@ -42,8 +44,10 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// Gets optional correlation ID for message tracing across systems.
         /// </summary>
         public Guid CorrelationId { get; init; }
+        
+        #endregion
 
-        // Channel configuration-specific properties
+        #region Message-Specific Properties
         /// <summary>
         /// Gets the name of the channel whose configuration changed.
         /// </summary>
@@ -59,28 +63,21 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// </summary>
         public ChannelConfig NewConfiguration { get; init; }
 
-        /// <summary>
-        /// Initializes a new instance of the AlertChannelConfigurationChangedMessage struct.
-        /// </summary>
-        public AlertChannelConfigurationChangedMessage()
-        {
-            Id = default;
-            TimestampTicks = default;
-            Source = default;
-            Priority = default;
-            CorrelationId = default;
-            ChannelName = default;
-            PreviousConfiguration = default;
-            NewConfiguration = default;
-        }
+        #endregion
+
+        #region Computed Properties
 
         /// <summary>
         /// Gets the DateTime representation of the message timestamp.
         /// </summary>
         public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
+        #endregion
+
+        #region Static Factory Methods
+
         /// <summary>
-        /// Creates a new AlertChannelConfigurationChangedMessage.
+        /// Creates a new AlertChannelConfigurationChangedMessage with proper validation and defaults.
         /// </summary>
         /// <param name="channelName">Name of the channel</param>
         /// <param name="previousConfig">Previous configuration</param>
@@ -95,19 +92,34 @@ namespace AhBearStudios.Core.Alerting.Messages
             FixedString64Bytes source = default,
             Guid correlationId = default)
         {
+            // Input validation
+            if (newConfig == null)
+                throw new ArgumentNullException(nameof(newConfig));
+
+            // ID generation with explicit parameters to avoid ambiguity
+            var sourceString = source.IsEmpty ? "AlertChannelService" : source.ToString();
+            var messageId = DeterministicIdGenerator.GenerateMessageId("AlertChannelConfigurationChangedMessage", sourceString, correlationId: null);
+            var finalCorrelationId = correlationId == default 
+                ? DeterministicIdGenerator.GenerateCorrelationId("AlertChannelConfigChange", channelName.ToString())
+                : correlationId;
+
             return new AlertChannelConfigurationChangedMessage
             {
-                Id = Guid.NewGuid(),
+                Id = messageId,
                 TimestampTicks = DateTime.UtcNow.Ticks,
                 TypeCode = MessageTypeCodes.AlertChannelConfigurationChangedMessage,
                 Source = source.IsEmpty ? "AlertChannelService" : source,
                 Priority = MessagePriority.Low,
-                CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
+                CorrelationId = finalCorrelationId,
                 ChannelName = channelName,
                 PreviousConfiguration = previousConfig,
                 NewConfiguration = newConfig
             };
         }
+
+        #endregion
+
+        #region String Representation
 
         /// <summary>
         /// Returns a string representation of this message for debugging.
@@ -115,7 +127,10 @@ namespace AhBearStudios.Core.Alerting.Messages
         /// <returns>Configuration change message string representation</returns>
         public override string ToString()
         {
-            return $"ChannelConfigurationChanged: {ChannelName} configuration updated - enabled: {NewConfiguration?.IsEnabled}, severity: {NewConfiguration?.MinimumSeverity}";
+            var channelText = ChannelName.IsEmpty ? "Unknown" : ChannelName.ToString();
+            return $"ChannelConfigurationChanged: {channelText} configuration updated - enabled: {NewConfiguration?.IsEnabled}, severity: {NewConfiguration?.MinimumSeverity}";
         }
+
+        #endregion
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using Unity.Collections;
@@ -11,6 +12,8 @@ namespace AhBearStudios.Core.Messaging.Messages;
 /// </summary>
 public readonly record struct MessagePipeSubscriptionDisposedMessage : IMessage
 {
+    #region IMessage Implementation
+
     /// <summary>
     /// Gets the unique identifier for this message instance.
     /// </summary>
@@ -22,9 +25,9 @@ public readonly record struct MessagePipeSubscriptionDisposedMessage : IMessage
     public long TimestampTicks { get; init; }
 
     /// <summary>
-    /// Gets the unique type code for this message type.
+    /// Gets the message type code for efficient routing and filtering.
     /// </summary>
-    public ushort TypeCode { get; init; } = MessageTypeCodes.MessagePipeSubscriptionDisposedMessage;
+    public ushort TypeCode { get; init; }
 
     /// <summary>
     /// Gets the source system or component that created this message.
@@ -40,6 +43,10 @@ public readonly record struct MessagePipeSubscriptionDisposedMessage : IMessage
     /// Gets optional correlation ID for message tracing across systems.
     /// </summary>
     public Guid CorrelationId { get; init; }
+
+    #endregion
+
+    #region Message-Specific Properties
 
     /// <summary>
     /// Gets the subscription identifier that was disposed.
@@ -76,27 +83,12 @@ public readonly record struct MessagePipeSubscriptionDisposedMessage : IMessage
     /// </summary>
     public FixedString128Bytes DisposalReason { get; init; }
 
-    /// <summary>
-    /// Initializes a new instance of the MessagePipeSubscriptionDisposedMessage struct.
-    /// </summary>
-    public MessagePipeSubscriptionDisposedMessage()
-    {
-        Id = default;
-        TimestampTicks = default;
-        Source = default;
-        Priority = default;
-        CorrelationId = default;
-        SubscriptionId = default;
-        MessageType = default;
-        ChannelName = default;
-        SubscriberName = default;
-        SubscriptionDurationMs = default;
-        MessagesReceived = default;
-        DisposalReason = default;
-    }
+    #endregion
+
+    #region Computed Properties
 
     /// <summary>
-    /// Gets the DateTime representation of the timestamp.
+    /// Gets the DateTime representation of the message timestamp.
     /// </summary>
     public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
@@ -105,8 +97,58 @@ public readonly record struct MessagePipeSubscriptionDisposedMessage : IMessage
     /// </summary>
     public TimeSpan SubscriptionDuration => TimeSpan.FromMilliseconds(SubscriptionDurationMs);
 
+    #endregion
+
+    #region Static Factory Methods
+
     /// <summary>
-    /// Creates a new instance of the MessagePipeSubscriptionDisposedMessage.
+    /// Creates a new instance of MessagePipeSubscriptionDisposedMessage using FixedString parameters for optimal performance.
+    /// </summary>
+    /// <param name="subscriptionId">The subscription identifier that was disposed</param>
+    /// <param name="messageType">The message type for the disposed subscription</param>
+    /// <param name="channelName">The MessagePipe channel name</param>
+    /// <param name="subscriberName">The subscriber name or identifier</param>
+    /// <param name="subscriptionDurationMs">The subscription duration in milliseconds</param>
+    /// <param name="messagesReceived">Total messages received by this subscription</param>
+    /// <param name="disposalReason">The reason for disposal</param>
+    /// <param name="source">Source component</param>
+    /// <param name="correlationId">Correlation ID for tracking</param>
+    /// <returns>New MessagePipeSubscriptionDisposedMessage instance</returns>
+    public static MessagePipeSubscriptionDisposedMessage CreateFromFixedStrings(
+        Guid subscriptionId,
+        Type messageType,
+        FixedString64Bytes channelName,
+        FixedString64Bytes subscriberName,
+        double subscriptionDurationMs,
+        int messagesReceived,
+        FixedString128Bytes disposalReason,
+        FixedString64Bytes source = default,
+        Guid correlationId = default)
+    {
+        var finalCorrelationId = correlationId == default 
+            ? DeterministicIdGenerator.GenerateCorrelationId("MessagePipe", null)
+            : correlationId;
+
+        return new MessagePipeSubscriptionDisposedMessage
+        {
+            Id = DeterministicIdGenerator.GenerateMessageId("MessagePipeSubscriptionDisposedMessage", "MessagingSystem", correlationId: null),
+            TimestampTicks = DateTime.UtcNow.Ticks,
+            TypeCode = MessageTypeCodes.MessagePipeSubscriptionDisposedMessage,
+            Source = source.IsEmpty ? "MessagePipe" : source,
+            Priority = MessagePriority.Low, // Subscription disposal is informational
+            CorrelationId = finalCorrelationId,
+            SubscriptionId = subscriptionId,
+            MessageType = messageType ?? throw new ArgumentNullException(nameof(messageType)),
+            ChannelName = channelName.IsEmpty ? "Default" : channelName,
+            SubscriberName = subscriberName.IsEmpty ? "Unknown" : subscriberName,
+            SubscriptionDurationMs = Math.Max(0, subscriptionDurationMs),
+            MessagesReceived = Math.Max(0, messagesReceived),
+            DisposalReason = disposalReason.IsEmpty ? "Normal disposal" : disposalReason
+        };
+    }
+
+    /// <summary>
+    /// Creates a new instance of MessagePipeSubscriptionDisposedMessage using string parameters.
     /// </summary>
     /// <param name="subscriptionId">The subscription identifier that was disposed</param>
     /// <param name="messageType">The message type for the disposed subscription</param>
@@ -126,24 +168,20 @@ public readonly record struct MessagePipeSubscriptionDisposedMessage : IMessage
         double subscriptionDurationMs = 0,
         int messagesReceived = 0,
         string disposalReason = null,
-        FixedString64Bytes source = default,
+        string source = null,
         Guid correlationId = default)
     {
-        return new MessagePipeSubscriptionDisposedMessage
-        {
-            Id = Guid.NewGuid(),
-            TimestampTicks = DateTime.UtcNow.Ticks,
-            TypeCode = MessageTypeCodes.MessagePipeSubscriptionDisposedMessage,
-            Source = source.IsEmpty ? "MessagePipe" : source,
-            Priority = MessagePriority.Low, // Subscription disposal is informational
-            CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
-            SubscriptionId = subscriptionId,
-            MessageType = messageType ?? throw new ArgumentNullException(nameof(messageType)),
-            ChannelName = channelName?.Length <= 64 ? channelName : channelName?[..64] ?? "Default",
-            SubscriberName = subscriberName?.Length <= 64 ? subscriberName : subscriberName?[..64] ?? "Unknown",
-            SubscriptionDurationMs = Math.Max(0, subscriptionDurationMs),
-            MessagesReceived = Math.Max(0, messagesReceived),
-            DisposalReason = disposalReason?.Length <= 128 ? disposalReason : disposalReason?[..128] ?? "Normal disposal"
-        };
+        return CreateFromFixedStrings(
+            subscriptionId,
+            messageType,
+            new FixedString64Bytes(channelName ?? "Default"),
+            new FixedString64Bytes(subscriberName ?? "Unknown"),
+            subscriptionDurationMs,
+            messagesReceived,
+            new FixedString128Bytes(disposalReason ?? "Normal disposal"),
+            source?.Length <= 64 ? source : source?[..64] ?? "MessagePipe",
+            correlationId);
     }
+
+    #endregion
 }

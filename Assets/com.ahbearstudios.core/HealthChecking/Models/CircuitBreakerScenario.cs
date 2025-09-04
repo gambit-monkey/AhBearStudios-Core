@@ -1,32 +1,38 @@
-﻿namespace AhBearStudios.Core.HealthChecking.Models;
+namespace AhBearStudios.Core.HealthChecking.Models;
 
 /// <summary>
-/// Preset scenarios for circuit breaker configuration
+/// Enumeration of predefined circuit breaker scenarios with optimized configurations.
+/// Each scenario provides preset configurations tailored for specific use cases.
 /// </summary>
-public enum CircuitBreakerScenario
+public enum CircuitBreakerScenario : byte
 {
     /// <summary>
-    /// Critical service with strict fault tolerance
+    /// Configuration optimized for critical service operations.
+    /// Features aggressive failure detection and quick recovery.
     /// </summary>
-    CriticalService,
+    CriticalService = 0,
 
     /// <summary>
-    /// Database connection with recovery strategies
+    /// Configuration optimized for database connections.
+    /// Features longer timeouts and time-based sliding windows.
     /// </summary>
-    Database,
+    Database = 1,
 
     /// <summary>
-    /// External network service with retry logic
+    /// Configuration optimized for network service calls.
+    /// Features balanced thresholds and count-based windows.
     /// </summary>
-    NetworkService,
+    NetworkService = 2,
 
     /// <summary>
-    /// High throughput system with load management
+    /// Configuration optimized for high-throughput scenarios.
+    /// Features higher thresholds and larger sliding windows.
     /// </summary>
-    HighThroughput,
+    HighThroughput = 3,
 
     /// <summary>
-    /// Development environment with relaxed settings
+    /// Configuration optimized for development and testing.
+    /// Features lower thresholds and faster recovery for quick iteration.
     /// </summary>
-    Development
+    Development = 4
 }
