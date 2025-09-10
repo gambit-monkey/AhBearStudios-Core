@@ -1437,6 +1437,853 @@ namespace AhBearStudios.Unity.CharacterController.Animation
 
 ---
 
+## Visual-Network Synchronization & Lag Compensation
+
+The dual trajectory system introduces complex synchronization challenges when network reconciliation occurs. This section details strategies for maintaining visual quality while preserving network determinism.
+
+### Core Challenge: Animation-Movement Desynchronization
+
+When FishNet reconciliation corrects network predictions, the visual animation system can become desynchronized from the authoritative movement state. This creates several problems:
+
+#### Problem 1: Animation State Conflicts
+```
+Frame 100: Player starts 1-second jump animation
+Frame 105: Network reconciliation reveals player was stunned instead
+Problem: Animation is 50% through jump, should be in stun state
+```
+
+#### Problem 2: Root Motion vs Network Authority
+```
+Network State: Character at position (10, 0, 5) after reconciliation
+Visual State: Root motion moved character to (10.5, 0, 5.2)
+Problem: Visual position conflicts with network authority
+```
+
+#### Problem 3: Animation Event Timing
+```
+Attack animation triggers "damage" event at 0.3 seconds
+Network rollback changes attack timing by 100ms
+Problem: Damage event executed at wrong time
+```
+
+### Animation State Checkpointing System
+
+#### Animation State Snapshots
+```csharp
+namespace AhBearStudios.Unity.CharacterController.Animation
+{
+    /// <summary>
+    /// Lightweight animation state checkpoint for rollback scenarios.
+    /// Captures essential animation data without full Animator state complexity.
+    /// </summary>
+    [MemoryPackable]
+    public struct AnimationCheckpoint
+    {
+        /// <summary>
+        /// Network tick when checkpoint was created.
+        /// </summary>
+        public uint Tick { get; set; }
+        
+        /// <summary>
+        /// Hash of the current animation state.
+        /// </summary>
+        public int StateHash { get; set; }
+        
+        /// <summary>
+        /// Normalized progress through current animation (0-1).
+        /// </summary>
+        public float NormalizedTime { get; set; }
+        
+        /// <summary>
+        /// Animation layer weights for blend trees.
+        /// </summary>
+        public float[] BlendWeights { get; set; }
+        
+        /// <summary>
+        /// Root motion delta since last checkpoint.
+        /// </summary>
+        public Vector3 RootMotionDelta { get; set; }
+        
+        /// <summary>
+        /// Animation speed multiplier at checkpoint time.
+        /// </summary>
+        public float SpeedMultiplier { get; set; }
+        
+        /// <summary>
+        /// Create checkpoint from current MxM animator state.
+        /// </summary>
+        public static AnimationCheckpoint Create(
+            uint tick,
+            MxMAnimator animator,
+            ISerializationService serialization)
+        {
+            return new AnimationCheckpoint
+            {
+                Tick = tick,
+                StateHash = animator.GetCurrentAnimatorStateInfo(0).shortNameHash,
+                NormalizedTime = animator.GetCurrentAnimatorStateInfo(0).normalizedTime,
+                BlendWeights = animator.GetLayerWeights(),
+                RootMotionDelta = animator.deltaPosition,
+                SpeedMultiplier = animator.speed
+            };
+        }
+    }
+    
+    /// <summary>
+    /// Manages animation state checkpointing for network rollback scenarios.
+    /// </summary>
+    public class AnimationStateManager : MonoBehaviour
+    {
+        #region Configuration
+        
+        [SerializeField] private int _maxCheckpoints = 10;
+        [SerializeField] private uint _checkpointInterval = 3; // Every 3 ticks
+        
+        #endregion
+        
+        #region Dependencies
+        
+        [Inject] private ISerializationService _serialization;
+        [Inject] private ILoggingService _logger;
+        
+        private NetworkCharacterController _networkController;
+        private MxMAnimator _mxmAnimator;
+        
+        #endregion
+        
+        #region Checkpoint Storage
+        
+        private readonly CircularBuffer<AnimationCheckpoint> _checkpoints;
+        private uint _lastCheckpointTick = 0;
+        
+        #endregion
+        
+        private void Awake()
+        {
+            _checkpoints = new CircularBuffer<AnimationCheckpoint>(_maxCheckpoints);
+            _networkController = GetComponent<NetworkCharacterController>();
+            _mxmAnimator = GetComponent<MxMAnimator>();
+        }
+        
+        private void Update()
+        {
+            if (_networkController.IsOwner)
+            {
+                CreateCheckpointIfNeeded();
+            }
+        }
+        
+        private void CreateCheckpointIfNeeded()
+        {
+            var currentTick = _networkController.TimeManager.LocalTick;
+            
+            if (currentTick - _lastCheckpointTick >= _checkpointInterval)
+            {
+                var checkpoint = AnimationCheckpoint.Create(
+                    currentTick, 
+                    _mxmAnimator, 
+                    _serialization);
+                
+                _checkpoints.Add(checkpoint);
+                _lastCheckpointTick = currentTick;
+                
+                _logger.LogDebug($"Created animation checkpoint at tick {currentTick}");
+            }
+        }
+        
+        /// <summary>
+        /// Restore animation state to nearest checkpoint before given tick.
+        /// </summary>
+        public bool RestoreToTick(uint targetTick)
+        {
+            AnimationCheckpoint? bestCheckpoint = null;
+            
+            // Find checkpoint closest to but before target tick
+            foreach (var checkpoint in _checkpoints)
+            {
+                if (checkpoint.Tick <= targetTick)
+                {
+                    if (bestCheckpoint == null || checkpoint.Tick > bestCheckpoint.Value.Tick)
+                    {
+                        bestCheckpoint = checkpoint;
+                    }
+                }
+            }
+            
+            if (bestCheckpoint.HasValue)
+            {
+                RestoreAnimationState(bestCheckpoint.Value);
+                return true;
+            }
+            
+            return false;
+        }
+        
+        private void RestoreAnimationState(AnimationCheckpoint checkpoint)
+        {
+            // Fast-forward from checkpoint to current state
+            _mxmAnimator.Play(checkpoint.StateHash, 0, checkpoint.NormalizedTime);
+            _mxmAnimator.speed = checkpoint.SpeedMultiplier;
+            
+            // Restore blend weights
+            for (int i = 0; i < checkpoint.BlendWeights.Length; i++)
+            {
+                _mxmAnimator.SetLayerWeight(i, checkpoint.BlendWeights[i]);
+            }
+            
+            _logger.LogDebug($"Restored animation state from tick {checkpoint.Tick}");
+        }
+    }
+}
+```
+
+### Lag Compensation Strategies
+
+#### Strategy 1: Animation Speed Adjustment
+```csharp
+namespace AhBearStudios.Unity.CharacterController.Animation
+{
+    /// <summary>
+    /// Dynamically adjusts animation playback speed to catch up with network state.
+    /// </summary>
+    public class AnimationSpeedCompensator : MonoBehaviour
+    {
+        #region Configuration
+        
+        [SerializeField] private float _maxSpeedMultiplier = 2.0f;
+        [SerializeField] private float _compensationRate = 0.1f;
+        [SerializeField] private float _normalSpeedThreshold = 0.05f;
+        
+        #endregion
+        
+        #region Dependencies
+        
+        private NetworkCharacterController _networkController;
+        private MxMAnimator _mxmAnimator;
+        private DualTrajectorySystem _trajectorySystem;
+        
+        #endregion
+        
+        private float _currentSpeedMultiplier = 1.0f;
+        private uint _lastReconcileTick = 0;
+        
+        private void Update()
+        {
+            if (_networkController.IsOwner)
+            {
+                AdjustAnimationSpeed();
+            }
+        }
+        
+        private void AdjustAnimationSpeed()
+        {
+            // Calculate how far behind visual state is from network state
+            var visualStateTicksBehind = CalculateVisualLag();
+            
+            if (visualStateTicksBehind > 2)
+            {
+                // Speed up animation to catch up
+                var speedIncrease = 1.0f + (visualStateTicksBehind * _compensationRate);
+                _currentSpeedMultiplier = Mathf.Min(_maxSpeedMultiplier, speedIncrease);
+                
+                _mxmAnimator.speed = _currentSpeedMultiplier;
+            }
+            else if (visualStateTicksBehind < _normalSpeedThreshold)
+            {
+                // Gradually return to normal speed
+                _currentSpeedMultiplier = Mathf.Lerp(
+                    _currentSpeedMultiplier, 
+                    1.0f, 
+                    Time.deltaTime * 2.0f);
+                
+                _mxmAnimator.speed = _currentSpeedMultiplier;
+            }
+        }
+        
+        private float CalculateVisualLag()
+        {
+            // Compare visual trajectory timestamp with network trajectory
+            var networkTime = _trajectorySystem.GetNetworkTrajectoryTime();
+            var visualTime = _trajectorySystem.GetVisualTrajectoryTime();
+            
+            return (networkTime - visualTime) / Time.fixedDeltaTime;
+        }
+    }
+}
+```
+
+#### Strategy 2: Blend Masking for Partial Corrections
+```csharp
+namespace AhBearStudios.Unity.CharacterController.Animation
+{
+    /// <summary>
+    /// Selectively blends different body parts during reconciliation.
+    /// Allows upper body animations to continue while correcting lower body movement.
+    /// </summary>
+    public class ReconciliationBlendMasking : MonoBehaviour
+    {
+        #region Configuration
+        
+        [SerializeField] private AvatarMask _upperBodyMask;
+        [SerializeField] private AvatarMask _lowerBodyMask;
+        [SerializeField] private float _blendDuration = 0.5f;
+        
+        #endregion
+        
+        #region Animation Layers
+        
+        private const int UpperBodyLayer = 1;
+        private const int LowerBodyLayer = 2;
+        private const int CorrectionLayer = 3;
+        
+        #endregion
+        
+        private bool _isReconciling = false;
+        private float _reconcileStartTime;
+        private float _originalUpperWeight;
+        private float _originalLowerWeight;
+        
+        private void Start()
+        {
+            // Setup layer masks
+            _mxmAnimator.SetLayerWeight(UpperBodyLayer, 1.0f);
+            _mxmAnimator.SetLayerWeight(LowerBodyLayer, 1.0f);
+            _mxmAnimator.SetLayerWeight(CorrectionLayer, 0.0f);
+        }
+        
+        /// <summary>
+        /// Begin reconciliation blending process.
+        /// </summary>
+        public void StartReconciliation(Vector3 positionError, float rotationError)
+        {
+            if (_isReconciling) return;
+            
+            _isReconciling = true;
+            _reconcileStartTime = Time.time;
+            
+            // Store original weights
+            _originalUpperWeight = _mxmAnimator.GetLayerWeight(UpperBodyLayer);
+            _originalLowerWeight = _mxmAnimator.GetLayerWeight(LowerBodyLayer);
+            
+            // Determine blending strategy based on error magnitude
+            if (positionError.magnitude > 0.5f)
+            {
+                // Large position error - blend entire body
+                StartFullBodyCorrection();
+            }
+            else
+            {
+                // Small error - only blend lower body
+                StartLowerBodyCorrection();
+            }
+        }
+        
+        private void StartLowerBodyCorrection()
+        {
+            // Reduce lower body influence, maintain upper body
+            _mxmAnimator.SetLayerWeight(UpperBodyLayer, 1.0f);
+            _mxmAnimator.SetLayerWeight(LowerBodyLayer, 0.3f);
+            _mxmAnimator.SetLayerWeight(CorrectionLayer, 0.7f);
+        }
+        
+        private void StartFullBodyCorrection()
+        {
+            // Blend everything during major corrections
+            _mxmAnimator.SetLayerWeight(UpperBodyLayer, 0.5f);
+            _mxmAnimator.SetLayerWeight(LowerBodyLayer, 0.3f);
+            _mxmAnimator.SetLayerWeight(CorrectionLayer, 1.0f);
+        }
+        
+        private void Update()
+        {
+            if (_isReconciling)
+            {
+                UpdateReconciliationBlend();
+            }
+        }
+        
+        private void UpdateReconciliationBlend()
+        {
+            var elapsed = Time.time - _reconcileStartTime;
+            var blendFactor = Mathf.Clamp01(elapsed / _blendDuration);
+            
+            if (blendFactor >= 1.0f)
+            {
+                // Reconciliation complete, restore original weights
+                _mxmAnimator.SetLayerWeight(UpperBodyLayer, _originalUpperWeight);
+                _mxmAnimator.SetLayerWeight(LowerBodyLayer, _originalLowerWeight);
+                _mxmAnimator.SetLayerWeight(CorrectionLayer, 0.0f);
+                
+                _isReconciling = false;
+            }
+            else
+            {
+                // Gradually return to normal blending
+                var correctionWeight = Mathf.Lerp(1.0f, 0.0f, blendFactor);
+                _mxmAnimator.SetLayerWeight(CorrectionLayer, correctionWeight);
+            }
+        }
+    }
+}
+```
+
+#### Strategy 3: Procedural Correction Layers
+```csharp
+namespace AhBearStudios.Unity.CharacterController.Animation
+{
+    /// <summary>
+    /// Applies procedural adjustments on top of animation to reduce visual errors.
+    /// Uses IK and bone manipulation to maintain visual quality during corrections.
+    /// </summary>
+    public class ProceduralCorrectionSystem : MonoBehaviour
+    {
+        #region Configuration
+        
+        [SerializeField] private Transform _hipBone;
+        [SerializeField] private Transform _leftFoot;
+        [SerializeField] private Transform _rightFoot;
+        [SerializeField] private float _correctionStrength = 0.1f;
+        [SerializeField] private LayerMask _groundLayerMask = 1;
+        
+        #endregion
+        
+        #region State
+        
+        private Vector3 _positionError = Vector3.zero;
+        private Vector3 _targetGroundPosition;
+        private bool _hasPositionError = false;
+        
+        #endregion
+        
+        /// <summary>
+        /// Apply position error that needs procedural correction.
+        /// </summary>
+        public void SetPositionError(Vector3 networkPosition, Vector3 visualPosition)
+        {
+            _positionError = networkPosition - visualPosition;
+            _hasPositionError = _positionError.magnitude > 0.01f;
+            
+            if (_hasPositionError)
+            {
+                // Calculate target ground position for foot IK
+                if (Physics.Raycast(networkPosition + Vector3.up, Vector3.down, 
+                    out RaycastHit hit, 2.0f, _groundLayerMask))
+                {
+                    _targetGroundPosition = hit.point;
+                }
+            }
+        }
+        
+        private void LateUpdate()
+        {
+            if (_hasPositionError)
+            {
+                ApplyProceduralCorrections();
+            }
+        }
+        
+        private void ApplyProceduralCorrections()
+        {
+            // Apply hip position correction
+            var hipCorrection = _positionError * _correctionStrength;
+            _hipBone.position += hipCorrection;
+            
+            // Adjust foot IK to maintain ground contact
+            AdjustFootIK(hipCorrection);
+            
+            // Gradually reduce error
+            _positionError *= (1.0f - _correctionStrength * Time.deltaTime);
+            
+            if (_positionError.magnitude < 0.001f)
+            {
+                _hasPositionError = false;
+            }
+        }
+        
+        private void AdjustFootIK(Vector3 correction)
+        {
+            // Left foot IK adjustment
+            if (Physics.Raycast(_leftFoot.position + Vector3.up, Vector3.down,
+                out RaycastHit leftHit, 2.0f, _groundLayerMask))
+            {
+                var leftFootTarget = leftHit.point;
+                var leftCorrection = leftFootTarget - _leftFoot.position;
+                
+                // Apply gradual IK correction
+                _leftFoot.position += leftCorrection * 0.5f;
+            }
+            
+            // Right foot IK adjustment
+            if (Physics.Raycast(_rightFoot.position + Vector3.up, Vector3.down,
+                out RaycastHit rightHit, 2.0f, _groundLayerMask))
+            {
+                var rightFootTarget = rightHit.point;
+                var rightCorrection = rightFootTarget - _rightFoot.position;
+                
+                // Apply gradual IK correction
+                _rightFoot.position += rightCorrection * 0.5f;
+            }
+        }
+    }
+}
+```
+
+### Prediction Confidence System
+
+#### Dynamic Animation Commitment
+```csharp
+namespace AhBearStudios.Unity.CharacterController.Animation
+{
+    /// <summary>
+    /// Calculates prediction confidence and adjusts animation commitment accordingly.
+    /// Reduces visual artifacts by avoiding complex animations during uncertain predictions.
+    /// </summary>
+    public class PredictionConfidenceManager : MonoBehaviour
+    {
+        #region Configuration
+        
+        [SerializeField] private float _lowConfidenceThreshold = 0.7f;
+        [SerializeField] private int _inputStabilityFrames = 5;
+        [SerializeField] private float _networkLatencyWeight = 0.3f;
+        
+        #endregion
+        
+        #region State Tracking
+        
+        private readonly Queue<Vector2> _recentInputs = new();
+        private float _currentConfidence = 1.0f;
+        private uint _lastValidatedTick = 0;
+        
+        #endregion
+        
+        /// <summary>
+        /// Calculate prediction confidence based on multiple factors.
+        /// </summary>
+        public float CalculatePredictionConfidence(
+            Vector2 currentInput,
+            uint currentTick,
+            float networkLatency)
+        {
+            // Factor 1: Input stability
+            var inputStability = CalculateInputStability(currentInput);
+            
+            // Factor 2: Prediction distance (how far ahead we're predicting)
+            var ticksAhead = currentTick - _lastValidatedTick;
+            var predictionDistance = 1.0f - Mathf.Clamp01(ticksAhead / 10.0f);
+            
+            // Factor 3: Network latency impact
+            var latencyFactor = 1.0f - Mathf.Clamp01(networkLatency * _networkLatencyWeight);
+            
+            // Combined confidence score
+            _currentConfidence = (inputStability + predictionDistance + latencyFactor) / 3.0f;
+            
+            return _currentConfidence;
+        }
+        
+        private float CalculateInputStability(Vector2 currentInput)
+        {
+            _recentInputs.Enqueue(currentInput);
+            
+            if (_recentInputs.Count > _inputStabilityFrames)
+            {
+                _recentInputs.Dequeue();
+            }
+            
+            if (_recentInputs.Count < 2)
+                return 1.0f;
+            
+            // Calculate variance in recent inputs
+            var inputs = _recentInputs.ToArray();
+            var variance = 0f;
+            
+            for (int i = 1; i < inputs.Length; i++)
+            {
+                variance += Vector2.Distance(inputs[i], inputs[i-1]);
+            }
+            
+            variance /= inputs.Length - 1;
+            
+            // Higher variance = lower stability
+            return 1.0f - Mathf.Clamp01(variance);
+        }
+        
+        /// <summary>
+        /// Check if current confidence allows for complex animations.
+        /// </summary>
+        public bool ShouldAllowComplexAnimations()
+        {
+            return _currentConfidence > _lowConfidenceThreshold;
+        }
+        
+        /// <summary>
+        /// Get animation commitment level based on confidence.
+        /// </summary>
+        public AnimationCommitmentLevel GetCommitmentLevel()
+        {
+            if (_currentConfidence > 0.8f)
+                return AnimationCommitmentLevel.Full;
+            else if (_currentConfidence > 0.6f)
+                return AnimationCommitmentLevel.Moderate;
+            else
+                return AnimationCommitmentLevel.Conservative;
+        }
+        
+        /// <summary>
+        /// Update last validated tick from network reconciliation.
+        /// </summary>
+        public void OnNetworkReconciliation(uint validatedTick)
+        {
+            _lastValidatedTick = validatedTick;
+        }
+    }
+    
+    public enum AnimationCommitmentLevel
+    {
+        Conservative,  // Short, easily interruptible animations
+        Moderate,      // Medium-length animations with some commitment
+        Full           // Full animation commitment, including root motion
+    }
+}
+```
+
+### Acceptable vs Unacceptable Visual Artifacts
+
+#### Artifact Classification System
+```csharp
+namespace AhBearStudios.Unity.CharacterController.Animation
+{
+    /// <summary>
+    /// Classifies and manages visual artifacts during network reconciliation.
+    /// Defines thresholds for acceptable visual quality degradation.
+    /// </summary>
+    public class VisualArtifactManager : MonoBehaviour
+    {
+        #region Artifact Thresholds
+        
+        [Header("Acceptable Artifacts")]
+        [SerializeField] private float _acceptableFootSlide = 0.1f;           // 10cm foot sliding
+        [SerializeField] private float _acceptableAnimationHitch = 0.1f;      // 100ms animation speed change
+        [SerializeField] private float _acceptableIKAdjustment = 0.05f;       // 5cm IK adjustment
+        [SerializeField] private float _acceptablePositionError = 0.2f;       // 20cm position error
+        
+        [Header("Unacceptable Artifacts")]
+        [SerializeField] private float _maxTeleportDistance = 1.0f;           // 1m instant movement
+        [SerializeField] private float _maxAnimationDesync = 2.0f;            // 2 second animation mismatch
+        [SerializeField] private float _maxVisualEffectDelay = 0.5f;          // 500ms effect delay
+        
+        #endregion
+        
+        /// <summary>
+        /// Evaluate if visual correction will cause acceptable artifacts.
+        /// </summary>
+        public CorrectionStrategy EvaluateCorrection(
+            Vector3 positionError,
+            float animationTimeError,
+            float effectDelayError)
+        {
+            var strategy = new CorrectionStrategy();
+            
+            // Position correction evaluation
+            if (positionError.magnitude > _maxTeleportDistance)
+            {
+                strategy.PositionCorrectionType = PositionCorrectionType.Gradual;
+                strategy.CorrectionDuration = 1.0f;
+            }
+            else if (positionError.magnitude > _acceptablePositionError)
+            {
+                strategy.PositionCorrectionType = PositionCorrectionType.Smooth;
+                strategy.CorrectionDuration = 0.5f;
+            }
+            else
+            {
+                strategy.PositionCorrectionType = PositionCorrectionType.Immediate;
+                strategy.CorrectionDuration = 0.1f;
+            }
+            
+            // Animation correction evaluation
+            if (animationTimeError > _maxAnimationDesync)
+            {
+                strategy.AnimationCorrectionType = AnimationCorrectionType.Restart;
+            }
+            else if (animationTimeError > _acceptableAnimationHitch)
+            {
+                strategy.AnimationCorrectionType = AnimationCorrectionType.SpeedAdjust;
+            }
+            else
+            {
+                strategy.AnimationCorrectionType = AnimationCorrectionType.Continue;
+            }
+            
+            // Effect correction evaluation
+            if (effectDelayError > _maxVisualEffectDelay)
+            {
+                strategy.EffectCorrectionType = EffectCorrectionType.Cancel;
+            }
+            else
+            {
+                strategy.EffectCorrectionType = EffectCorrectionType.Delay;
+            }
+            
+            return strategy;
+        }
+    }
+    
+    /// <summary>
+    /// Correction strategy based on artifact evaluation.
+    /// </summary>
+    public struct CorrectionStrategy
+    {
+        public PositionCorrectionType PositionCorrectionType;
+        public AnimationCorrectionType AnimationCorrectionType;
+        public EffectCorrectionType EffectCorrectionType;
+        public float CorrectionDuration;
+    }
+    
+    public enum PositionCorrectionType
+    {
+        Immediate,  // Snap instantly (small errors)
+        Smooth,     // Lerp over time (medium errors)
+        Gradual     // Slow correction (large errors)
+    }
+    
+    public enum AnimationCorrectionType
+    {
+        Continue,     // Keep current animation
+        SpeedAdjust,  // Adjust playback speed
+        Restart       // Restart from correct state
+    }
+    
+    public enum EffectCorrectionType
+    {
+        Continue,     // Play effect as scheduled
+        Delay,        // Delay effect to match network
+        Cancel        // Cancel effect entirely
+    }
+}
+```
+
+### Performance Impact Monitoring
+
+#### Dual Trajectory Performance Tracker
+```csharp
+namespace AhBearStudios.Unity.CharacterController.Animation
+{
+    /// <summary>
+    /// Monitors performance impact of dual trajectory system and lag compensation.
+    /// Provides metrics for optimization and quality adjustment.
+    /// </summary>
+    public class DualTrajectoryPerformanceTracker : MonoBehaviour
+    {
+        #region Dependencies
+        
+        [Inject] private IProfilerService _profilerService;
+        [Inject] private ILoggingService _logger;
+        
+        #endregion
+        
+        #region Performance Metrics
+        
+        private readonly ProfilerMarker _trajectoryUpdateMarker = 
+            new("DualTrajectory.Update");
+        private readonly ProfilerMarker _animationCorrectionMarker = 
+            new("DualTrajectory.AnimationCorrection");
+        private readonly ProfilerMarker _checkpointMarker = 
+            new("DualTrajectory.Checkpoint");
+        
+        private float _lastTrajectoryUpdateTime;
+        private int _correctionCount = 0;
+        private int _checkpointCount = 0;
+        private float _totalCorrectionTime = 0f;
+        
+        #endregion
+        
+        /// <summary>
+        /// Record trajectory update performance.
+        /// </summary>
+        public void RecordTrajectoryUpdate(float deltaTime)
+        {
+            using (_trajectoryUpdateMarker.Auto())
+            {
+                _lastTrajectoryUpdateTime = deltaTime;
+            }
+        }
+        
+        /// <summary>
+        /// Record animation correction performance.
+        /// </summary>
+        public void RecordAnimationCorrection(float correctionTime)
+        {
+            using (_animationCorrectionMarker.Auto())
+            {
+                _correctionCount++;
+                _totalCorrectionTime += correctionTime;
+            }
+        }
+        
+        /// <summary>
+        /// Record checkpoint creation performance.
+        /// </summary>
+        public void RecordCheckpointCreation()
+        {
+            using (_checkpointMarker.Auto())
+            {
+                _checkpointCount++;
+            }
+        }
+        
+        /// <summary>
+        /// Get current performance metrics.
+        /// </summary>
+        public DualTrajectoryMetrics GetMetrics()
+        {
+            return new DualTrajectoryMetrics
+            {
+                LastTrajectoryUpdateTime = _lastTrajectoryUpdateTime,
+                CorrectionsPerSecond = _correctionCount / Time.time,
+                AverageCorrectionTime = _correctionCount > 0 ? _totalCorrectionTime / _correctionCount : 0f,
+                CheckpointsCreated = _checkpointCount,
+                MemoryUsage = _profilerService.GetMemoryUsage("DualTrajectory")
+            };
+        }
+        
+        /// <summary>
+        /// Log performance warning if thresholds exceeded.
+        /// </summary>
+        private void Update()
+        {
+            if (Time.frameCount % 300 == 0) // Every 5 seconds at 60fps
+            {
+                var metrics = GetMetrics();
+                
+                if (metrics.LastTrajectoryUpdateTime > 2.0f) // 2ms threshold
+                {
+                    _logger.LogWarning($"Dual trajectory update taking {metrics.LastTrajectoryUpdateTime:F2}ms");
+                }
+                
+                if (metrics.CorrectionsPerSecond > 5.0f)
+                {
+                    _logger.LogWarning($"High correction frequency: {metrics.CorrectionsPerSecond:F1}/sec");
+                }
+            }
+        }
+    }
+    
+    /// <summary>
+    /// Performance metrics for dual trajectory system.
+    /// </summary>
+    public struct DualTrajectoryMetrics
+    {
+        public float LastTrajectoryUpdateTime;
+        public float CorrectionsPerSecond;
+        public float AverageCorrectionTime;
+        public int CheckpointsCreated;
+        public long MemoryUsage;
+    }
+}
+```
+
+---
+
 ## Performance Architecture (Jobs & Burst)
 
 The character controller leverages Unity's Jobs System and Burst compiler for high-performance, parallelizable movement processing. The architecture supports multiple characters processing simultaneously while maintaining deterministic behavior for networking.
