@@ -7,7 +7,9 @@
       "Bash(do echo \"Adding import to $file...\")",
       "Bash(if ! grep -q \"AhBearStudios.Core.Common.Utilities\" \"$file\")",
       "Bash(then sed -i '2 a using AhBearStudios.Core.Common.Utilities;' \"$file\")",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "WebFetch(domain:fish-networking.gitbook.io)",
+      "WebFetch(domain:docs.google.com)"
     ],
     "deny": [],
     "ask": []
