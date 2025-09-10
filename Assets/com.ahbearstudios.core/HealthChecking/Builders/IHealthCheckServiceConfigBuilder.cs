@@ -102,11 +102,13 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         IHealthCheckServiceConfigBuilder WithGracefulDegradation(bool enabled = true);
 
         /// <summary>
-        /// Sets degradation thresholds
+        /// Sets degradation configuration
         /// </summary>
-        /// <param name="thresholds">Degradation thresholds configuration</param>
+        /// <param name="enabled">Whether degradation is enabled</param>
+        /// <param name="config">Degradation configuration</param>
+        /// <param name="enableAlerts">Whether to enable degradation alerts</param>
         /// <returns>Builder instance for method chaining</returns>
-        IHealthCheckServiceConfigBuilder WithDegradationThresholds(DegradationThresholds thresholds);
+        IHealthCheckServiceConfigBuilder WithDegradation(bool enabled = true, DegradationConfig config = null, bool enableAlerts = true);
 
         /// <summary>
         /// Configures degradation alerts

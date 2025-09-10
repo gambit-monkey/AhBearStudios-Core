@@ -1,489 +1,389 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Logging.Models;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.HealthChecking.Configs
+namespace AhBearStudios.Core.HealthChecking.Configs;
+
+/// <summary>
+/// Simplified configuration for the HealthCheck Service focused on game development.
+/// Designed for Unity with performance-first approach and 60+ FPS targets.
+/// Follows CLAUDE.md patterns with static factory methods and no field initializers.
+/// </summary>
+public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
 {
+    #region Core Health Check Settings
+
     /// <summary>
-    /// Comprehensive configuration for the HealthCheck Service with circuit breaker integration,
-    /// graceful degradation, and comprehensive monitoring capabilities
+    /// Default interval between automatic health checks
     /// </summary>
-    public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
+    public TimeSpan AutomaticCheckInterval { get; init; }
+
+    /// <summary>
+    /// Maximum number of concurrent health checks that can run simultaneously
+    /// </summary>
+    public int MaxConcurrentHealthChecks { get; init; }
+
+    /// <summary>
+    /// Default timeout for health checks if not specified
+    /// </summary>
+    public TimeSpan DefaultTimeout { get; init; }
+
+    /// <summary>
+    /// Whether to enable automatic health checks on startup
+    /// </summary>
+    public bool EnableAutomaticChecks { get; init; }
+
+    /// <summary>
+    /// Maximum number of health check results to keep in history per check
+    /// </summary>
+    public int MaxHistorySize { get; init; }
+
+    /// <summary>
+    /// Maximum number of retries for failed health checks
+    /// </summary>
+    public int MaxRetries { get; init; }
+
+    /// <summary>
+    /// Delay between health check retries
+    /// </summary>
+    public TimeSpan RetryDelay { get; init; }
+
+    #endregion
+
+    #region Circuit Breaker Settings
+
+    /// <summary>
+    /// Whether to enable circuit breaker functionality for health checks
+    /// </summary>
+    public bool EnableCircuitBreaker { get; init; }
+
+    /// <summary>
+    /// Default circuit breaker configuration for health checks
+    /// </summary>
+    public CircuitBreakerConfig DefaultCircuitBreakerConfig { get; init; }
+
+    /// <summary>
+    /// Whether to enable alerts when circuit breakers trigger
+    /// </summary>
+    public bool EnableCircuitBreakerAlerts { get; init; }
+
+    #endregion
+
+    #region Degradation Settings
+
+    /// <summary>
+    /// Whether to enable graceful degradation based on health check results
+    /// </summary>
+    public bool EnableGracefulDegradation { get; init; }
+
+    /// <summary>
+    /// Configuration for degradation behavior
+    /// </summary>
+    public DegradationConfig DegradationConfig { get; init; }
+
+    /// <summary>
+    /// Whether to raise alerts for degradation level changes
+    /// </summary>
+    public bool EnableDegradationAlerts { get; init; }
+
+    #endregion
+
+    #region Performance Settings
+
+    /// <summary>
+    /// Performance configuration for health checks
+    /// </summary>
+    public PerformanceConfig PerformanceConfig { get; init; }
+
+    /// <summary>
+    /// Whether to enable performance monitoring
+    /// </summary>
+    public bool EnablePerformanceMonitoring { get; init; }
+
+    #endregion
+
+    #region Alert Settings
+
+    /// <summary>
+    /// Whether to raise alerts for health status changes
+    /// </summary>
+    public bool EnableHealthAlerts { get; init; }
+
+    /// <summary>
+    /// Custom alert severities for different health status levels
+    /// </summary>
+    public Dictionary<HealthStatus, AlertSeverity> AlertSeverities { get; init; }
+
+    /// <summary>
+    /// Tags to apply to health check alerts for filtering and routing
+    /// </summary>
+    public HashSet<FixedString64Bytes> AlertTags { get; init; }
+
+    /// <summary>
+    /// Number of consecutive failures before triggering an alert
+    /// </summary>
+    public int AlertFailureThreshold { get; init; }
+
+    #endregion
+
+    #region Logging Settings
+
+    /// <summary>
+    /// Whether to enable logging for health check operations
+    /// </summary>
+    public bool EnableHealthCheckLogging { get; init; }
+
+    /// <summary>
+    /// Log level for health check operations
+    /// </summary>
+    public LogLevel HealthCheckLogLevel { get; init; }
+
+    /// <summary>
+    /// Whether to enable detailed logging (performance impact)
+    /// </summary>
+    public bool EnableDetailedLogging { get; init; }
+
+    #endregion
+
+    #region Profiling Settings
+
+    /// <summary>
+    /// Whether to enable profiling for health check operations
+    /// </summary>
+    public bool EnableProfiling { get; init; }
+
+    /// <summary>
+    /// Threshold in milliseconds for considering a health check slow
+    /// </summary>
+    public int SlowHealthCheckThreshold { get; init; }
+
+    #endregion
+
+    #region Static Factory Methods
+
+    /// <summary>
+    /// Creates a health check service configuration with proper validation and defaults
+    /// </summary>
+    /// <returns>New HealthCheckServiceConfig instance</returns>
+    public static HealthCheckServiceConfig Create()
     {
-        #region Core Health Check Settings
+        return new HealthCheckServiceConfig
+        {
+            AutomaticCheckInterval = TimeSpan.FromSeconds(30),
+            MaxConcurrentHealthChecks = 10,
+            DefaultTimeout = TimeSpan.FromSeconds(30),
+            EnableAutomaticChecks = true,
+            MaxHistorySize = 100,
+            MaxRetries = 3,
+            RetryDelay = TimeSpan.FromSeconds(1),
+            EnableCircuitBreaker = true,
+            DefaultCircuitBreakerConfig = CircuitBreakerConfig.Create("DefaultHealthCheckCircuitBreaker"),
+            EnableCircuitBreakerAlerts = true,
+            EnableGracefulDegradation = true,
+            DegradationConfig = new DegradationConfig(),
+            EnableDegradationAlerts = true,
+            PerformanceConfig = PerformanceConfig.ForProduction(),
+            EnablePerformanceMonitoring = true,
+            EnableHealthAlerts = true,
+            AlertSeverities = GetDefaultAlertSeverities(),
+            AlertTags = GetDefaultAlertTags(),
+            AlertFailureThreshold = 3,
+            EnableHealthCheckLogging = true,
+            HealthCheckLogLevel = LogLevel.Info,
+            EnableDetailedLogging = false,
+            EnableProfiling = true,
+            SlowHealthCheckThreshold = 1000
+        };
+    }
 
-        /// <summary>
-        /// Default interval between automatic health checks
-        /// </summary>
-        public TimeSpan AutomaticCheckInterval { get; init; } = TimeSpan.FromSeconds(30);
+    /// <summary>
+    /// Creates a configuration optimized for high-performance games (60+ FPS)
+    /// </summary>
+    /// <returns>High-performance game configuration</returns>
+    public static HealthCheckServiceConfig ForHighPerformanceGames()
+    {
+        return new HealthCheckServiceConfig
+        {
+            AutomaticCheckInterval = TimeSpan.FromSeconds(10),
+            MaxConcurrentHealthChecks = 3,
+            DefaultTimeout = TimeSpan.FromSeconds(5),
+            EnableAutomaticChecks = true,
+            MaxHistorySize = 50,
+            MaxRetries = 1,
+            RetryDelay = TimeSpan.FromMilliseconds(100),
+            EnableCircuitBreaker = true,
+            DefaultCircuitBreakerConfig = CircuitBreakerConfig.ForCriticalService(),
+            EnableCircuitBreakerAlerts = true,
+            EnableGracefulDegradation = true,
+            DegradationConfig = DegradationConfig.ForCriticalSystem(),
+            EnableDegradationAlerts = true,
+            PerformanceConfig = PerformanceConfig.ForHighPerformanceGames(),
+            EnablePerformanceMonitoring = true,
+            EnableHealthAlerts = true,
+            AlertSeverities = GetCriticalAlertSeverities(),
+            AlertTags = GetDefaultAlertTags(),
+            AlertFailureThreshold = 1,
+            EnableHealthCheckLogging = true,
+            HealthCheckLogLevel = LogLevel.Warning,
+            EnableDetailedLogging = false,
+            EnableProfiling = true,
+            SlowHealthCheckThreshold = 10
+        };
+    }
 
-        /// <summary>
-        /// Maximum number of concurrent health checks that can run simultaneously
-        /// </summary>
-        [Range(1, 100)]
-        public int MaxConcurrentHealthChecks { get; init; } = 10;
+    /// <summary>
+    /// Creates a configuration optimized for production environments
+    /// </summary>
+    /// <returns>Production configuration</returns>
+    public static HealthCheckServiceConfig ForProduction()
+    {
+        return Create(); // Same as default for now
+    }
 
-        /// <summary>
-        /// Default timeout for health checks if not specified
-        /// </summary>
-        [Range(1, 300)]
-        public TimeSpan DefaultTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    /// <summary>
+    /// Creates a minimal configuration for development environments
+    /// </summary>
+    /// <returns>Development configuration</returns>
+    public static HealthCheckServiceConfig ForDevelopment()
+    {
+        return new HealthCheckServiceConfig
+        {
+            AutomaticCheckInterval = TimeSpan.FromSeconds(60),
+            MaxConcurrentHealthChecks = 20,
+            DefaultTimeout = TimeSpan.FromMinutes(1),
+            EnableAutomaticChecks = true,
+            MaxHistorySize = 200,
+            MaxRetries = 1,
+            RetryDelay = TimeSpan.FromSeconds(2),
+            EnableCircuitBreaker = false,
+            DefaultCircuitBreakerConfig = CircuitBreakerConfig.ForDevelopment(),
+            EnableCircuitBreakerAlerts = false,
+            EnableGracefulDegradation = false,
+            DegradationConfig = DegradationConfig.ForDevelopment(),
+            EnableDegradationAlerts = false,
+            PerformanceConfig = PerformanceConfig.ForDevelopment(),
+            EnablePerformanceMonitoring = false,
+            EnableHealthAlerts = false,
+            AlertSeverities = GetDefaultAlertSeverities(),
+            AlertTags = GetDefaultAlertTags(),
+            AlertFailureThreshold = 10,
+            EnableHealthCheckLogging = true,
+            HealthCheckLogLevel = LogLevel.Debug,
+            EnableDetailedLogging = true,
+            EnableProfiling = false,
+            SlowHealthCheckThreshold = 5000
+        };
+    }
 
-        /// <summary>
-        /// Whether to enable automatic health checks on startup
-        /// </summary>
-        public bool EnableAutomaticChecks { get; init; } = true;
+    #endregion
 
-        /// <summary>
-        /// Maximum number of health check results to keep in history per check
-        /// </summary>
-        [Range(10, 10000)]
-        public int MaxHistorySize { get; init; } = 100;
+    #region Validation
 
-        /// <summary>
-        /// Maximum number of retries for failed health checks
-        /// </summary>
-        [Range(0, 10)]
-        public int MaxRetries { get; init; } = 3;
+    /// <summary>
+    /// Validates this configuration and returns any validation errors
+    /// </summary>
+    /// <returns>List of validation error messages, empty if valid</returns>
+    public List<string> Validate()
+    {
+        var errors = new List<string>();
 
-        /// <summary>
-        /// Delay between retry attempts for failed health checks
-        /// </summary>
-        [Range(1, 60)]
-        public TimeSpan RetryDelay { get; init; } = TimeSpan.FromSeconds(1);
+        // Core validation
+        if (AutomaticCheckInterval <= TimeSpan.Zero)
+            errors.Add("AutomaticCheckInterval must be greater than zero");
 
-        #endregion
+        if (MaxConcurrentHealthChecks < 1)
+            errors.Add("MaxConcurrentHealthChecks must be at least 1");
 
-        #region Circuit Breaker Settings
+        if (DefaultTimeout <= TimeSpan.Zero)
+            errors.Add("DefaultTimeout must be greater than zero");
 
-        /// <summary>
-        /// Whether to enable circuit breaker functionality
-        /// </summary>
-        public bool EnableCircuitBreaker { get; init; } = true;
+        if (MaxHistorySize < 10)
+            errors.Add("MaxHistorySize must be at least 10");
 
-        /// <summary>
-        /// Default circuit breaker configuration for health checks
-        /// </summary>
-        public ICircuitBreakerConfig DefaultCircuitBreakerConfig { get; init; } = new CircuitBreakerConfig();
+        if (MaxRetries < 0)
+            errors.Add("MaxRetries must be non-negative");
 
-        /// <summary>
-        /// Whether to raise alerts for circuit breaker state changes
-        /// </summary>
-        public bool EnableCircuitBreakerAlerts { get; init; } = true;
+        if (RetryDelay < TimeSpan.Zero)
+            errors.Add("RetryDelay must be non-negative");
 
-        /// <summary>
-        /// Default failure threshold for circuit breakers
-        /// </summary>
-        [Range(1, 100)]
-        public int DefaultFailureThreshold { get; init; } = 5;
+        if (AlertFailureThreshold < 1)
+            errors.Add("AlertFailureThreshold must be at least 1");
 
-        /// <summary>
-        /// Default circuit breaker timeout duration
-        /// </summary>
-        [Range(1, 600)]
-        public TimeSpan DefaultCircuitBreakerTimeout { get; init; } = TimeSpan.FromSeconds(30);
+        if (SlowHealthCheckThreshold < 1)
+            errors.Add("SlowHealthCheckThreshold must be at least 1ms");
 
-        #endregion
+        // Unity game development specific validations
+        if (DefaultTimeout > TimeSpan.FromSeconds(30))
+            errors.Add("DefaultTimeout should not exceed 30 seconds for game performance");
 
-        #region Graceful Degradation Settings
+        if (AutomaticCheckInterval < TimeSpan.FromSeconds(1))
+            errors.Add("AutomaticCheckInterval should be at least 1 second for performance");
 
-        /// <summary>
-        /// Whether to enable graceful degradation features
-        /// </summary>
-        public bool EnableGracefulDegradation { get; init; } = true;
+        // Validate nested configurations
+        if (DefaultCircuitBreakerConfig != null)
+            errors.AddRange(DefaultCircuitBreakerConfig.Validate());
 
-        /// <summary>
-        /// Degradation thresholds for automatic system degradation
-        /// </summary>
-        public DegradationThresholds DegradationThresholds { get; init; } = new();
+        if (DegradationConfig != null)
+            errors.AddRange(DegradationConfig.Validate());
 
-        /// <summary>
-        /// Whether to raise alerts for degradation level changes
-        /// </summary>
-        public bool EnableDegradationAlerts { get; init; } = true;
+        if (PerformanceConfig != null)
+            errors.AddRange(PerformanceConfig.Validate());
 
-        /// <summary>
-        /// Whether to automatically adjust degradation levels based on health status
-        /// </summary>
-        public bool EnableAutomaticDegradation { get; init; } = true;
+        return errors;
+    }
 
-        #endregion
+    /// <summary>
+    /// Validates configuration and throws exception if invalid
+    /// </summary>
+    /// <exception cref="System.InvalidOperationException">Thrown when configuration is invalid</exception>
+    public void ValidateAndThrow()
+    {
+        var errors = Validate();
+        if (errors.Count > 0)
+        {
+            throw new System.InvalidOperationException($"Invalid HealthCheckServiceConfig: {string.Join(", ", errors)}");
+        }
+    }
 
-        #region Alert and Notification Settings
+    #endregion
 
-        /// <summary>
-        /// Whether to raise alerts for health status changes
-        /// </summary>
-        public bool EnableHealthAlerts { get; init; } = true;
+    #region Helper Methods
 
-        /// <summary>
-        /// Custom alert severities for different health status levels
-        /// </summary>
-        public Dictionary<HealthStatus, AlertSeverity> AlertSeverities { get; init; } = new()
+    private static Dictionary<HealthStatus, AlertSeverity> GetDefaultAlertSeverities()
+    {
+        return new Dictionary<HealthStatus, AlertSeverity>
         {
             { HealthStatus.Healthy, AlertSeverity.Info },
             { HealthStatus.Warning, AlertSeverity.Warning },
             { HealthStatus.Degraded, AlertSeverity.Warning },
             { HealthStatus.Unhealthy, AlertSeverity.Critical },
             { HealthStatus.Critical, AlertSeverity.Critical },
-            { HealthStatus.Offline, AlertSeverity.Emergency }, 
+            { HealthStatus.Offline, AlertSeverity.Emergency },
             { HealthStatus.Unknown, AlertSeverity.Warning }
         };
-
-        /// <summary>
-        /// Tags to apply to health check alerts for filtering and routing
-        /// </summary>
-        public HashSet<FixedString64Bytes> AlertTags { get; init; } = new()
-        {
-            "HealthCheck",
-            "SystemMonitoring"
-        };
-
-        /// <summary>
-        /// Number of consecutive failures before triggering an alert
-        /// </summary>
-        [Range(1, 10)]
-        public int AlertFailureThreshold { get; init; } = 3;
-
-        #endregion
-
-        #region Logging and Profiling Settings
-
-        /// <summary>
-        /// Whether to log health check executions for debugging
-        /// </summary>
-        public bool EnableHealthCheckLogging { get; init; } = true;
-
-        /// <summary>
-        /// Log level for health check operations
-        /// </summary>
-        public LogLevel HealthCheckLogLevel { get; init; } = LogLevel.Info;
-
-        /// <summary>
-        /// Whether to enable performance profiling for health checks
-        /// </summary>
-        public bool EnableProfiling { get; init; } = true;
-
-        /// <summary>
-        /// Performance threshold for logging slow health checks (in milliseconds)
-        /// </summary>
-        [Range(100, 60000)]
-        public int SlowHealthCheckThreshold { get; init; } = 1000;
-
-        /// <summary>
-        /// Whether to log detailed health check statistics
-        /// </summary>
-        public bool EnableDetailedLogging { get; init; } = false;
-
-        #endregion
-
-        #region Performance and Resource Settings
-
-        /// <summary>
-        /// Maximum memory usage for health check history (in MB)
-        /// </summary>
-        [Range(10, 1000)]
-        public int MaxMemoryUsageMB { get; init; } = 50;
-
-        /// <summary>
-        /// How often to clean up expired health check history
-        /// </summary>
-        [Range(1, 1440)]
-        public TimeSpan HistoryCleanupInterval { get; init; } = TimeSpan.FromMinutes(30);
-
-        /// <summary>
-        /// Maximum age of health check results to keep in history
-        /// </summary>
-        [Range(1, 168)]
-        public TimeSpan MaxHistoryAge { get; init; } = TimeSpan.FromHours(24);
-
-        /// <summary>
-        /// Thread priority for health check execution
-        /// </summary>
-        public System.Threading.ThreadPriority HealthCheckThreadPriority { get; init; } = System.Threading.ThreadPriority.Normal;
-
-        #endregion
-
-        #region Health Status Thresholds
-
-        /// <summary>
-        /// Thresholds for determining overall system health status
-        /// </summary>
-        public HealthThresholds HealthThresholds { get; init; } = new();
-
-        /// <summary>
-        /// Percentage of unhealthy checks that triggers overall unhealthy status
-        /// </summary>
-        [Range(0.1f, 1.0f)]
-        public double UnhealthyThreshold { get; init; } = 0.25;
-
-        /// <summary>
-        /// Percentage of warning checks that triggers overall warning status
-        /// </summary>
-        [Range(0.1f, 1.0f)]
-        public double WarningThreshold { get; init; } = 0.5;
-
-        #endregion
-
-        #region Advanced Settings
-
-        /// <summary>
-        /// Whether to enable health check dependency validation
-        /// </summary>
-        public bool EnableDependencyValidation { get; init; } = true;
-
-        /// <summary>
-        /// Whether to enable health check result caching
-        /// </summary>
-        public bool EnableResultCaching { get; init; } = true;
-
-        /// <summary>
-        /// Duration to cache health check results
-        /// </summary>
-        [Range(1, 300)]
-        public TimeSpan ResultCacheDuration { get; init; } = TimeSpan.FromSeconds(10);
-
-        /// <summary>
-        /// Whether to enable health check execution timeouts
-        /// </summary>
-        public bool EnableExecutionTimeouts { get; init; } = true;
-
-        /// <summary>
-        /// Whether to enable health check correlation IDs for tracing
-        /// </summary>
-        public bool EnableCorrelationIds { get; init; } = true;
-
-        /// <summary>
-        /// Custom metadata to include with all health check results
-        /// </summary>
-        public Dictionary<string, object> DefaultMetadata { get; init; } = new();
-
-        #endregion
-
-        #region Validation Methods
-
-        /// <summary>
-        /// Validates the configuration and returns any validation errors
-        /// </summary>
-        /// <returns>List of validation error messages, empty if valid</returns>
-        public List<string> Validate()
-        {
-            var errors = new List<string>();
-
-            // Core settings validation
-            if (AutomaticCheckInterval <= TimeSpan.Zero)
-                errors.Add("AutomaticCheckInterval must be greater than zero");
-
-            if (MaxConcurrentHealthChecks <= 0)
-                errors.Add("MaxConcurrentHealthChecks must be greater than zero");
-
-            if (DefaultTimeout <= TimeSpan.Zero)
-                errors.Add("DefaultTimeout must be greater than zero");
-
-            if (MaxHistorySize < 0)
-                errors.Add("MaxHistorySize must be non-negative");
-
-            if (SlowHealthCheckThreshold < 0)
-                errors.Add("SlowHealthCheckThreshold must be non-negative");
-
-            if (MaxRetries < 0)
-                errors.Add("MaxRetries must be non-negative");
-
-            if (RetryDelay <= TimeSpan.Zero)
-                errors.Add("RetryDelay must be greater than zero");
-
-            // Circuit breaker validation
-            if (EnableCircuitBreaker)
-            {
-                if (DefaultFailureThreshold <= 0)
-                    errors.Add("DefaultFailureThreshold must be greater than zero");
-
-                if (DefaultCircuitBreakerTimeout <= TimeSpan.Zero)
-                    errors.Add("DefaultCircuitBreakerTimeout must be greater than zero");
-
-                errors.AddRange(DefaultCircuitBreakerConfig.Validate());
-            }
-
-            // Degradation validation
-            if (EnableGracefulDegradation)
-            {
-                errors.AddRange(DegradationThresholds.Validate());
-            }
-
-            // Performance validation
-            if (MaxMemoryUsageMB <= 0)
-                errors.Add("MaxMemoryUsageMB must be greater than zero");
-
-            if (HistoryCleanupInterval <= TimeSpan.Zero)
-                errors.Add("HistoryCleanupInterval must be greater than zero");
-
-            if (MaxHistoryAge <= TimeSpan.Zero)
-                errors.Add("MaxHistoryAge must be greater than zero");
-
-            // Threshold validation
-            if (UnhealthyThreshold < 0.0 || UnhealthyThreshold > 1.0)
-                errors.Add("UnhealthyThreshold must be between 0.0 and 1.0");
-
-            if (WarningThreshold < 0.0 || WarningThreshold > 1.0)
-                errors.Add("WarningThreshold must be between 0.0 and 1.0");
-
-            if (ResultCacheDuration <= TimeSpan.Zero)
-                errors.Add("ResultCacheDuration must be greater than zero");
-
-            errors.AddRange(HealthThresholds.Validate());
-
-            return errors;
-        }
-
-        /// <summary>
-        /// Validates configuration and throws exception if invalid
-        /// </summary>
-        /// <exception cref="InvalidOperationException">Thrown when configuration is invalid</exception>
-        public void ValidateAndThrow()
-        {
-            var errors = Validate();
-            if (errors.Count > 0)
-            {
-                throw new InvalidOperationException($"Invalid HealthCheckServiceConfig: {string.Join(", ", errors)}");
-            }
-        }
-
-        #endregion
-
-        #region Factory Methods
-
-        /// <summary>
-        /// Creates a configuration optimized for development environments
-        /// </summary>
-        /// <returns>Development-optimized configuration</returns>
-        public static HealthCheckServiceConfig ForDevelopment()
-        {
-            return new HealthCheckServiceConfig
-            {
-                AutomaticCheckInterval = TimeSpan.FromSeconds(10),
-                MaxConcurrentHealthChecks = 5,
-                DefaultTimeout = TimeSpan.FromSeconds(10),
-                EnableAutomaticChecks = true,
-                EnableCircuitBreaker = true,
-                EnableGracefulDegradation = false,
-                MaxHistorySize = 50,
-                MaxRetries = 1,
-                RetryDelay = TimeSpan.FromSeconds(1),
-                EnableHealthCheckLogging = true,
-                HealthCheckLogLevel = LogLevel.Debug,
-                EnableProfiling = true,
-                SlowHealthCheckThreshold = 500,
-                EnableDetailedLogging = true,
-                EnableResultCaching = false,
-                ResultCacheDuration = TimeSpan.FromSeconds(5),
-                MaxMemoryUsageMB = 20,
-                HistoryCleanupInterval = TimeSpan.FromMinutes(10),
-                MaxHistoryAge = TimeSpan.FromHours(2)
-            };
-        }
-
-        /// <summary>
-        /// Creates a configuration optimized for production environments
-        /// </summary>
-        /// <returns>Production-optimized configuration</returns>
-        public static HealthCheckServiceConfig ForProduction()
-        {
-            return new HealthCheckServiceConfig
-            {
-                AutomaticCheckInterval = TimeSpan.FromMinutes(1),
-                MaxConcurrentHealthChecks = 20,
-                DefaultTimeout = TimeSpan.FromSeconds(30),
-                EnableAutomaticChecks = true,
-                EnableCircuitBreaker = true,
-                EnableGracefulDegradation = true,
-                MaxHistorySize = 500,
-                MaxRetries = 3,
-                RetryDelay = TimeSpan.FromSeconds(2),
-                EnableHealthCheckLogging = true,
-                HealthCheckLogLevel = LogLevel.Info,
-                EnableProfiling = true,
-                SlowHealthCheckThreshold = 2000,
-                EnableDetailedLogging = false,
-                EnableResultCaching = true,
-                ResultCacheDuration = TimeSpan.FromSeconds(30),
-                MaxMemoryUsageMB = 100,
-                HistoryCleanupInterval = TimeSpan.FromMinutes(30),
-                MaxHistoryAge = TimeSpan.FromHours(24),
-                EnableDependencyValidation = true,
-                EnableExecutionTimeouts = true,
-                EnableCorrelationIds = true
-            };
-        }
-
-        /// <summary>
-        /// Creates a configuration optimized for testing environments
-        /// </summary>
-        /// <returns>Test-optimized configuration</returns>
-        public static HealthCheckServiceConfig ForTesting()
-        {
-            return new HealthCheckServiceConfig
-            {
-                AutomaticCheckInterval = TimeSpan.FromSeconds(1),
-                MaxConcurrentHealthChecks = 1,
-                DefaultTimeout = TimeSpan.FromSeconds(5),
-                EnableAutomaticChecks = false,
-                EnableCircuitBreaker = false,
-                EnableGracefulDegradation = false,
-                MaxHistorySize = 10,
-                MaxRetries = 0,
-                RetryDelay = TimeSpan.FromMilliseconds(100),
-                EnableHealthAlerts = false,
-                EnableCircuitBreakerAlerts = false,
-                EnableDegradationAlerts = false,
-                EnableHealthCheckLogging = false,
-                EnableProfiling = false,
-                EnableDetailedLogging = false,
-                EnableResultCaching = false,
-                ResultCacheDuration = TimeSpan.FromSeconds(1),
-                MaxMemoryUsageMB = 5,
-                HistoryCleanupInterval = TimeSpan.FromMinutes(1),
-                MaxHistoryAge = TimeSpan.FromMinutes(10),
-                EnableDependencyValidation = false,
-                EnableExecutionTimeouts = false,
-                EnableCorrelationIds = false
-            };
-        }
-
-        /// <summary>
-        /// Creates a minimal configuration with only essential features enabled
-        /// </summary>
-        /// <returns>Minimal configuration</returns>
-        public static HealthCheckServiceConfig Minimal()
-        {
-            return new HealthCheckServiceConfig
-            {
-                AutomaticCheckInterval = TimeSpan.FromMinutes(5),
-                MaxConcurrentHealthChecks = 3,
-                DefaultTimeout = TimeSpan.FromSeconds(15),
-                EnableAutomaticChecks = true,
-                EnableCircuitBreaker = false,
-                EnableGracefulDegradation = false,
-                MaxHistorySize = 20,
-                MaxRetries = 1,
-                RetryDelay = TimeSpan.FromSeconds(1),
-                EnableHealthAlerts = false,
-                EnableCircuitBreakerAlerts = false,
-                EnableDegradationAlerts = false,
-                EnableHealthCheckLogging = false,
-                EnableProfiling = false,
-                EnableDetailedLogging = false,
-                EnableResultCaching = false,
-                MaxMemoryUsageMB = 10,
-                HistoryCleanupInterval = TimeSpan.FromHours(1),
-                MaxHistoryAge = TimeSpan.FromHours(1),
-                EnableDependencyValidation = false,
-                EnableExecutionTimeouts = true,
-                EnableCorrelationIds = false
-            };
-        }
-
-        #endregion
     }
+
+    private static Dictionary<HealthStatus, AlertSeverity> GetCriticalAlertSeverities()
+    {
+        return new Dictionary<HealthStatus, AlertSeverity>
+        {
+            { HealthStatus.Healthy, AlertSeverity.Info },
+            { HealthStatus.Warning, AlertSeverity.Critical },
+            { HealthStatus.Degraded, AlertSeverity.Critical },
+            { HealthStatus.Unhealthy, AlertSeverity.Emergency },
+            { HealthStatus.Critical, AlertSeverity.Emergency },
+            { HealthStatus.Offline, AlertSeverity.Emergency },
+            { HealthStatus.Unknown, AlertSeverity.Critical }
+        };
+    }
+
+    private static HashSet<FixedString64Bytes> GetDefaultAlertTags()
+    {
+        return new HashSet<FixedString64Bytes> { "HealthCheck", "SystemMonitoring" };
+    }
+
+    #endregion
 }

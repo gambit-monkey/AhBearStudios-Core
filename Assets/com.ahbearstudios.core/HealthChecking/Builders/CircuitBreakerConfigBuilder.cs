@@ -14,59 +14,50 @@ namespace AhBearStudios.Core.HealthChecking.Builders
     public sealed class CircuitBreakerConfigBuilder : ICircuitBreakerConfigBuilder
     {
         private readonly ILoggingService _logger;
-        private readonly List<string> _validationErrors = new();
+        private readonly List<string> _validationErrors;
         
         // Core configuration properties
         private FixedString64Bytes _id;
-        private string _name = "Default Circuit Breaker";
-        private int _failureThreshold = 5;
-        private TimeSpan _timeout = TimeSpan.FromSeconds(60);
-        private TimeSpan _samplingDuration = TimeSpan.FromMinutes(2);
-        private int _minimumThroughput = 10;
-        private double _successThreshold = 50.0;
-        private int _halfOpenMaxCalls = 3;
+        private string _name;
+        private int _failureThreshold;
+        private TimeSpan _timeout;
+        private TimeSpan _samplingDuration;
+        private int _minimumThroughput;
+        private double _successThreshold;
+        private int _halfOpenMaxCalls;
         
         // Sliding window configuration
-        private bool _useSlidingWindow = true;
-        private SlidingWindowType _slidingWindowType = SlidingWindowType.CountBased;
-        private int _slidingWindowSize = 100;
-        private TimeSpan _slidingWindowDuration = TimeSpan.FromMinutes(1);
+        private bool _useSlidingWindow;
+        private SlidingWindowType _slidingWindowType;
+        private int _slidingWindowSize;
+        private TimeSpan _slidingWindowDuration;
         
         // Recovery configuration
-        private bool _enableAutomaticRecovery = true;
-        private int _maxRecoveryAttempts = 5;
-        private double _timeoutMultiplier = 1.5;
-        private TimeSpan _maxTimeout = TimeSpan.FromMinutes(10);
+        private bool _enableAutomaticRecovery;
+        private int _maxRecoveryAttempts;
+        private double _timeoutMultiplier;
+        private TimeSpan _maxTimeout;
         
         // Exception handling
-        private HashSet<Type> _ignoredExceptions = new()
-        {
-            typeof(ArgumentException),
-            typeof(ArgumentNullException),
-            typeof(InvalidOperationException)
-        };
-        private HashSet<Type> _immediateFailureExceptions = new()
-        {
-            typeof(UnauthorizedAccessException),
-            typeof(System.Security.SecurityException)
-        };
-        private List<Func<Exception, bool>> _failurePredicates = new();
+        private HashSet<Type> _ignoredExceptions;
+        private HashSet<Type> _immediateFailureExceptions;
+        private List<Func<Exception, bool>> _failurePredicates;
         
         // Monitoring and events
-        private bool _enableMetrics = true;
-        private bool _enableEvents = true;
-        private HashSet<FixedString64Bytes> _tags = new();
-        private Dictionary<string, object> _metadata = new();
+        private bool _enableMetrics;
+        private bool _enableEvents;
+        private HashSet<FixedString64Bytes> _tags;
+        private Dictionary<string, object> _metadata;
         
         // Advanced features
-        private SlowCallConfig _slowCallConfig = new();
-        private BulkheadConfig _bulkheadConfig = new();
-        private RateLimitConfig _rateLimitConfig = new();
-        private FailoverConfig _failoverConfig = new();
+        private SlowCallConfig _slowCallConfig;
+        private BulkheadConfig _bulkheadConfig;
+        private RateLimitConfig _rateLimitConfig;
+        private FailoverConfig _failoverConfig;
         
         // Build state tracking
-        private bool _isBuilt = false;
-        private bool _isValidated = false;
+        private bool _isBuilt;
+        private bool _isValidated;
 
         /// <summary>
         /// Initializes a new instance of the CircuitBreakerConfigBuilder class
@@ -76,7 +67,48 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         public CircuitBreakerConfigBuilder(ILoggingService logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            
+            // Initialize all fields to avoid field initializers (CLAUDE.md compliance)
+            _validationErrors = new List<string>();
             _id = GenerateId();
+            _name = "Default Circuit Breaker";
+            _failureThreshold = 5;
+            _timeout = TimeSpan.FromSeconds(60);
+            _samplingDuration = TimeSpan.FromMinutes(2);
+            _minimumThroughput = 10;
+            _successThreshold = 50.0;
+            _halfOpenMaxCalls = 3;
+            _useSlidingWindow = true;
+            _slidingWindowType = SlidingWindowType.CountBased;
+            _slidingWindowSize = 100;
+            _slidingWindowDuration = TimeSpan.FromMinutes(1);
+            _enableAutomaticRecovery = true;
+            _maxRecoveryAttempts = 5;
+            _timeoutMultiplier = 1.5;
+            _maxTimeout = TimeSpan.FromMinutes(10);
+            _ignoredExceptions = new HashSet<Type>
+            {
+                typeof(ArgumentException),
+                typeof(ArgumentNullException),
+                typeof(InvalidOperationException)
+            };
+            _immediateFailureExceptions = new HashSet<Type>
+            {
+                typeof(UnauthorizedAccessException),
+                typeof(System.Security.SecurityException)
+            };
+            _failurePredicates = new List<Func<Exception, bool>>();
+            _enableMetrics = true;
+            _enableEvents = true;
+            _tags = new HashSet<FixedString64Bytes>();
+            _metadata = new Dictionary<string, object>();
+            _slowCallConfig = new SlowCallConfig();
+            _bulkheadConfig = new BulkheadConfig();
+            _rateLimitConfig = new RateLimitConfig();
+            _failoverConfig = new FailoverConfig();
+            _isBuilt = false;
+            _isValidated = false;
+            
             _logger.LogDebug("CircuitBreakerConfigBuilder initialized");
         }
 

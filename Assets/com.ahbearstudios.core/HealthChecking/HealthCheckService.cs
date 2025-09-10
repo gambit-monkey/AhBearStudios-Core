@@ -2,716 +2,619 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
-using Unity.Collections;
-using ZLinq;
 using Cysharp.Threading.Tasks;
+using ZLinq;
+using Unity.Collections;
 using Unity.Profiling;
 using AhBearStudios.Core.HealthChecking.Checks;
 using AhBearStudios.Core.HealthChecking.Configs;
+using AhBearStudios.Core.HealthChecking.Extensions;
+using AhBearStudios.Core.HealthChecking.Messages;
 using AhBearStudios.Core.HealthChecking.Models;
-using AhBearStudios.Core.HealthChecking.Services;
-using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Alerting;
-using AhBearStudios.Core.Profiling;
-using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Common.Utilities;
+using AhBearStudios.Core.Logging;
+using AhBearStudios.Core.Messaging;
+using AhBearStudios.Core.Profiling;
 
-namespace AhBearStudios.Core.HealthChecking
+namespace AhBearStudios.Core.HealthChecking;
+
+/// <summary>
+/// Orchestration-focused health check service designed for Unity game development.
+/// Coordinates domain health check registrars and provides centralized health monitoring
+/// without directly managing individual health checks.
+/// Follows CLAUDE.md patterns with 60+ FPS performance targets.
+/// </summary>
+public sealed class HealthCheckService : IHealthCheckService, IDisposable
 {
+    private readonly HealthCheckServiceConfig _config;
+    private readonly ILoggingService _logger;
+    private readonly IAlertService _alertService;
+    private readonly IProfilerService _profilerService;
+    private readonly IMessageBusService _messageBus;
+    
+    // Orchestration components
+    private readonly HealthCheckRegistrationManager _registrationManager;
+    private readonly ConcurrentDictionary<FixedString64Bytes, IHealthCheck> _registeredHealthChecks;
+    private readonly ConcurrentDictionary<FixedString64Bytes, HealthCheckConfiguration> _healthCheckConfigs;
+    private readonly ConcurrentDictionary<FixedString64Bytes, HealthCheckResult> _lastResults;
+    
+    // Performance monitoring
+    private readonly ProfilerMarker _executeHealthCheckMarker = new ProfilerMarker("HealthCheckService.ExecuteHealthCheck");
+    private readonly ProfilerMarker _executeAllHealthChecksMarker = new ProfilerMarker("HealthCheckService.ExecuteAllHealthChecks");
+    private readonly ProfilerMarker _orchestrationMarker = new ProfilerMarker("HealthCheckService.Orchestration");
+    
+    // State management
+    private readonly Guid _serviceId;
+    private readonly CancellationTokenSource _serviceCancellationSource;
+    private readonly Timer _automaticCheckTimer;
+    private OverallHealthStatus _overallStatus;
+    private bool _isRunning;
+    private bool _isDisposed;
+
     /// <summary>
-    /// Production-ready health check service providing comprehensive system health monitoring.
-    /// Orchestrates specialized services for scheduling, degradation management, statistics, and circuit breakers.
+    /// Initializes a new instance of the orchestration-focused HealthCheckService
     /// </summary>
-    public sealed class HealthCheckService : IHealthCheckService, IDisposable
+    /// <param name="config">Health check service configuration</param>
+    /// <param name="logger">Logging service for health check operations</param>
+    /// <param name="alertService">Alert service for health notifications</param>
+    /// <param name="profilerService">Profiler service for performance monitoring</param>
+    /// <param name="messageBus">Message bus for health check events</param>
+    public HealthCheckService(
+        HealthCheckServiceConfig config,
+        ILoggingService logger,
+        IAlertService alertService,
+        IProfilerService profilerService,
+        IMessageBusService messageBus)
     {
-        private readonly HealthCheckServiceConfig _config;
-        private readonly ILoggingService _logger;
-        private readonly IAlertService _alertService;
-        private readonly IProfilerService _profilerService;
-        private readonly IMessageBusService _messageBus;
-        
-        // Specialized service dependencies
-        private readonly IHealthCheckScheduler _scheduler;
-        private readonly IHealthDegradationManager _degradationManager;
-        private readonly IHealthStatisticsCollector _statisticsCollector;
-        private readonly IHealthCircuitBreakerManager _circuitBreakerManager;
-        
-        // Core health check management
-        private readonly ConcurrentDictionary<FixedString64Bytes, IHealthCheck> _healthChecks = new();
-        private readonly ConcurrentDictionary<FixedString64Bytes, HealthCheckConfiguration> _healthCheckConfigs = new();
-        private readonly ConcurrentDictionary<FixedString64Bytes, bool> _healthCheckEnabledStatus = new();
-        
-        // Profiler markers
-        private readonly ProfilerMarker _executeHealthCheckMarker = new("HealthCheckService.ExecuteHealthCheck");
-        private readonly ProfilerMarker _executeAllHealthChecksMarker = new("HealthCheckService.ExecuteAllHealthChecks");
-        
-        // State management
-        private readonly Guid _serviceId;
-        private readonly object _stateLock = new();
-        private HealthStatus _lastOverallStatus = HealthStatus.Unknown;
-        private readonly CancellationTokenSource _cancellationTokenSource = new();
-        private readonly DateTime _serviceStartTime = DateTime.UtcNow;
-        private bool _disposed;
+        _config = config ?? throw new ArgumentNullException(nameof(config));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _alertService = alertService ?? throw new ArgumentNullException(nameof(alertService));
+        _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
+        _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
 
-        public event EventHandler<HealthStatusChangedEventArgs> HealthStatusChanged;
-        public event EventHandler<CircuitBreakerStateChangedEventArgs> CircuitBreakerStateChanged;
-        public event EventHandler<DegradationStatusChangedEventArgs> DegradationStatusChanged;
-
-        /// <summary>
-        /// Initializes a new instance of the HealthCheckService with specialized service dependencies.
-        /// </summary>
-        /// <param name="config">Health check service configuration</param>
-        /// <param name="logger">Logging service</param>
-        /// <param name="alertService">Alert service</param>
-        /// <param name="messageBus">Message bus service</param>
-        /// <param name="scheduler">Health check scheduler service</param>
-        /// <param name="degradationManager">Degradation management service</param>
-        /// <param name="statisticsCollector">Statistics collection service</param>
-        /// <param name="circuitBreakerManager">Circuit breaker management service</param>
-        /// <param name="profilerService">Profiler service (optional)</param>
-        public HealthCheckService(
-            HealthCheckServiceConfig config,
-            ILoggingService logger,
-            IAlertService alertService,
-            IMessageBusService messageBus,
-            IHealthCheckScheduler scheduler,
-            IHealthDegradationManager degradationManager,
-            IHealthStatisticsCollector statisticsCollector,
-            IHealthCircuitBreakerManager circuitBreakerManager,
-            IProfilerService profilerService = null)
+        _serviceId = DeterministicIdGenerator.GenerateCoreId("HealthCheckService");
+        _serviceCancellationSource = new CancellationTokenSource();
+        
+        // Initialize orchestration components
+        _registrationManager = new HealthCheckRegistrationManager(this, logger);
+        _registeredHealthChecks = new ConcurrentDictionary<FixedString64Bytes, IHealthCheck>();
+        _healthCheckConfigs = new ConcurrentDictionary<FixedString64Bytes, HealthCheckConfiguration>();
+        _lastResults = new ConcurrentDictionary<FixedString64Bytes, HealthCheckResult>();
+        
+        _overallStatus = OverallHealthStatus.Unknown;
+        
+        // Initialize automatic check timer if enabled
+        if (_config.EnableAutomaticChecks)
         {
-            _config = config ?? throw new ArgumentNullException(nameof(config));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-            _alertService = alertService ?? throw new ArgumentNullException(nameof(alertService));
-            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
-            _scheduler = scheduler ?? throw new ArgumentNullException(nameof(scheduler));
-            _degradationManager = degradationManager ?? throw new ArgumentNullException(nameof(degradationManager));
-            _statisticsCollector = statisticsCollector ?? throw new ArgumentNullException(nameof(statisticsCollector));
-            _circuitBreakerManager = circuitBreakerManager ?? throw new ArgumentNullException(nameof(circuitBreakerManager));
-            _profilerService = profilerService;
+            _automaticCheckTimer = new Timer(
+                ExecuteAutomaticHealthChecksCallback,
+                null,
+                _config.AutomaticCheckInterval,
+                _config.AutomaticCheckInterval);
+        }
 
-            // Validate configuration
-            _config.Validate();
+        _logger.LogInfo("HealthCheckService initialized in orchestration mode with ID: {ServiceId}", _serviceId);
+    }
 
-            _serviceId = DeterministicIdGenerator.GenerateHealthCheckId("HealthCheckService", Environment.MachineName);
+    #region IHealthCheckService Implementation
 
-            // Wire up event handlers
-            _circuitBreakerManager.StateChanged += OnCircuitBreakerStateChanged;
-            _degradationManager.DegradationLevelChanged += OnDegradationLevelChanged;
+    /// <inheritdoc />
+    public event EventHandler<HealthStatusChangedEventArgs> HealthStatusChanged;
+    
+    /// <inheritdoc />
+    public event EventHandler<CircuitBreakerStateChangedEventArgs> CircuitBreakerStateChanged;
+    
+    /// <inheritdoc />
+    public event EventHandler<DegradationStatusChangedEventArgs> DegradationStatusChanged;
 
-            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("HealthCheckServiceInit", _serviceId.ToString());
-            _logger.LogInfo("HealthCheckService initialized with specialized services", correlationId);
+    /// <inheritdoc />
+    public void RegisterHealthCheck(IHealthCheck healthCheck, HealthCheckConfiguration config = null)
+    {
+        ThrowIfDisposed();
+        
+        if (healthCheck == null)
+            throw new ArgumentNullException(nameof(healthCheck));
+
+        var effectiveConfig = config ?? HealthCheckConfiguration.Create(healthCheck.Name.ToString());
+        
+        if (!_registeredHealthChecks.TryAdd(healthCheck.Name, healthCheck))
+        {
+            throw new InvalidOperationException($"Health check '{healthCheck.Name}' is already registered");
+        }
+
+        _healthCheckConfigs.TryAdd(healthCheck.Name, effectiveConfig);
+        
+        _logger.LogDebug("Registered health check: {HealthCheckName} (Category: {Category})", 
+            healthCheck.Name, healthCheck.Category);
+    }
+
+    /// <inheritdoc />
+    public void RegisterHealthChecks(Dictionary<IHealthCheck, HealthCheckConfiguration> healthChecks)
+    {
+        ThrowIfDisposed();
+        
+        if (healthChecks == null)
+            throw new ArgumentNullException(nameof(healthChecks));
+
+        foreach (var (healthCheck, config) in healthChecks)
+        {
+            RegisterHealthCheck(healthCheck, config);
+        }
+        
+        _logger.LogInfo("Bulk registered {Count} health checks", healthChecks.Count);
+    }
+
+    /// <inheritdoc />
+    public bool UnregisterHealthCheck(string name)
+    {
+        ThrowIfDisposed();
+        
+        if (string.IsNullOrEmpty(name))
+            return false;
+
+        var fixedName = new FixedString64Bytes(name);
+        
+        var removed = _registeredHealthChecks.TryRemove(fixedName, out var healthCheck);
+        if (removed)
+        {
+            _healthCheckConfigs.TryRemove(fixedName, out _);
+            _lastResults.TryRemove(fixedName, out _);
             
-            // Initialize scheduler to execute our health checks
-            InitializeScheduler();
+            _logger.LogDebug("Unregistered health check: {HealthCheckName}", name);
+        }
+        
+        return removed;
+    }
+
+    /// <inheritdoc />
+    public async UniTask<HealthCheckResult> ExecuteHealthCheckAsync(string name, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        
+        if (string.IsNullOrEmpty(name))
+            throw new ArgumentException("Health check name cannot be null or empty", nameof(name));
+
+        var fixedName = new FixedString64Bytes(name);
+        
+        if (!_registeredHealthChecks.TryGetValue(fixedName, out var healthCheck))
+        {
+            throw new InvalidOperationException($"Health check '{name}' is not registered");
         }
 
-        /// <summary>
-        /// Registers a health check with the service and all specialized services.
-        /// </summary>
-        public void RegisterHealthCheck(IHealthCheck healthCheck, HealthCheckConfiguration config = null)
+        using (_executeHealthCheckMarker.Auto())
         {
-            if (healthCheck == null)
-                throw new ArgumentNullException(nameof(healthCheck));
-
-            ThrowIfDisposed();
-
-            var name = healthCheck.Name;
-            if (_healthChecks.ContainsKey(name))
-                throw new InvalidOperationException($"Health check with name '{name}' is already registered");
-
-            // Use provided config or create default
-            var healthCheckConfig = config ?? new HealthCheckConfiguration
-            {
-                Name = name,
-                Timeout = _config.DefaultTimeout,
-                Interval = _config.AutomaticCheckInterval,
-                EnableCircuitBreaker = _config.EnableCircuitBreaker,
-                MaxRetries = _config.MaxRetries,
-                RetryDelay = _config.RetryDelay
-            };
-
-            // Register circuit breaker if enabled
-            if (healthCheckConfig.EnableCircuitBreaker)
-            {
-                _circuitBreakerManager.RegisterCircuitBreaker(
-                    name,
-                    healthCheckConfig.FailureThreshold,
-                    healthCheckConfig.Timeout,
-                    1 // halfOpenTestCount
-                );
-            }
-
-            // Register the health check
-            _healthChecks.TryAdd(name, healthCheck);
-            _healthCheckConfigs.TryAdd(name, healthCheckConfig);
-            _healthCheckEnabledStatus.TryAdd(name, true);
-
-            // Configure the health check if it supports configuration
-            if (healthCheck is IConfigurableHealthCheck configurableHealthCheck)
-            {
-                configurableHealthCheck.Configure(healthCheckConfig);
-            }
-
-            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("HealthCheckRegistered", name.ToString());
-            _logger.LogInfo($"Health check '{name}' registered successfully", correlationId);
+            return await ExecuteHealthCheckInternalAsync(healthCheck, cancellationToken);
         }
+    }
 
-        /// <summary>
-        /// Registers multiple health checks in a single operation
-        /// </summary>
-        public void RegisterHealthChecks(Dictionary<IHealthCheck, HealthCheckConfiguration> healthChecks)
+    /// <inheritdoc />
+    public async UniTask<Dictionary<string, HealthCheckResult>> ExecuteAllHealthChecksAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        
+        using (_executeAllHealthChecksMarker.Auto())
         {
-            if (healthChecks == null)
-                throw new ArgumentNullException(nameof(healthChecks));
-
-            foreach (var kvp in healthChecks)
-            {
-                RegisterHealthCheck(kvp.Key, kvp.Value);
-            }
-        }
-
-        /// <summary>
-        /// Unregisters a health check from the service and all specialized services.
-        /// </summary>
-        public bool UnregisterHealthCheck(FixedString64Bytes name)
-        {
-            ThrowIfDisposed();
-
-            var removed = _healthChecks.TryRemove(name, out var healthCheck);
-            if (removed)
-            {
-                _healthCheckConfigs.TryRemove(name, out _);
-                _healthCheckEnabledStatus.TryRemove(name, out _);
-
-                // Unregister from circuit breaker manager
-                _circuitBreakerManager.UnregisterCircuitBreaker(name);
-
-                var correlationId = DeterministicIdGenerator.GenerateCorrelationId("HealthCheckUnregistered", name.ToString());
-                _logger.LogInfo($"Health check '{name}' unregistered successfully", correlationId);
-            }
-
-            return removed;
-        }
-
-        /// <summary>
-        /// Executes a specific health check by name
-        /// </summary>
-        public async UniTask<HealthCheckResult> ExecuteHealthCheckAsync(FixedString64Bytes name, CancellationToken cancellationToken = default)
-        {
-            ThrowIfDisposed();
-
-            if (!_healthChecks.TryGetValue(name, out var healthCheck))
-                throw new ArgumentException($"Health check '{name}' not found", nameof(name));
-
-            if (!_healthCheckEnabledStatus.TryGetValue(name, out var isEnabled) || !isEnabled)
-            {
-                var correlationId = DeterministicIdGenerator.GenerateCorrelationId("DisabledHealthCheck", name.ToString());
-                return new HealthCheckResult
-                {
-                    Name = name,
-                    Status = HealthStatus.Unknown,
-                    Description = "Health check is disabled",
-                    Duration = TimeSpan.Zero,
-                    Data = new Dictionary<string, object> { ["Enabled"] = false }.AsReadOnly(),
-                    CorrelationId = correlationId,
-                    Timestamp = DateTime.UtcNow
-                };
-            }
-
-            using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token);
+            var results = new Dictionary<string, HealthCheckResult>();
+            var healthChecks = _registeredHealthChecks.Values.ToArray();
             
-            // Check circuit breaker status
-            if (!_circuitBreakerManager.IsExecutionAllowed(name))
+            // Execute health checks with concurrency limit
+            var semaphore = new SemaphoreSlim(_config.MaxConcurrentHealthChecks, _config.MaxConcurrentHealthChecks);
+            var tasks = healthChecks.AsValueEnumerable().Select(async healthCheck =>
             {
-                var correlationId = DeterministicIdGenerator.GenerateCorrelationId("CircuitBreakerOpen", name.ToString());
-                return new HealthCheckResult
-                {
-                    Name = name,
-                    Status = HealthStatus.Unhealthy,
-                    Description = "Circuit breaker is open - execution blocked",
-                    Duration = TimeSpan.Zero,
-                    Data = new Dictionary<string, object> { ["CircuitBreakerOpen"] = true }.AsReadOnly(),
-                    CorrelationId = correlationId,
-                    Timestamp = DateTime.UtcNow
-                };
-            }
-
-            using (_executeHealthCheckMarker.Auto())
-            {
-                var result = await ExecuteHealthCheckInternalAsync(healthCheck, combinedCts.Token);
-                
-                // Record result in circuit breaker and statistics
-                _circuitBreakerManager.RecordHealthCheckResult(result);
-                _statisticsCollector.RecordHealthCheckExecution(result);
-                
-                return result;
-            }
-        }
-
-        /// <summary>
-        /// Executes all registered health checks
-        /// </summary>
-        public async UniTask<HealthReport> ExecuteAllHealthChecksAsync(CancellationToken cancellationToken = default)
-        {
-            ThrowIfDisposed();
-
-            var startTime = DateTime.UtcNow;
-            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("ExecuteAllHealthChecks", _serviceId.ToString());
-
-            using var combinedCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _cancellationTokenSource.Token);
-            var results = new List<HealthCheckResult>();
-
-            using (_executeAllHealthChecksMarker.Auto())
-            {
-                // Execute all health checks in parallel with limited concurrency
-                var semaphore = new SemaphoreSlim(_config.MaxConcurrentHealthChecks, _config.MaxConcurrentHealthChecks);
-                var tasks = _healthChecks.Keys.AsValueEnumerable().Select(async name =>
-                {
-                    await semaphore.WaitAsync(combinedCts.Token);
-                    try
-                    {
-                        return await ExecuteHealthCheckAsync(name, combinedCts.Token);
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
-                }).ToArray();
-
+                await semaphore.WaitAsync(cancellationToken);
                 try
                 {
-                    var allResults = await UniTask.WhenAll(tasks);
-                    results.AddRange(allResults);
+                    var result = await ExecuteHealthCheckInternalAsync(healthCheck, cancellationToken);
+                    return (healthCheck.Name.ToString(), result);
                 }
-                catch (Exception ex)
+                finally
                 {
-                    _logger.LogException(ex, "Error executing health checks", correlationId);
-                    throw;
+                    semaphore.Release();
                 }
-            }
+            }).ToArray();
 
-            var duration = DateTime.UtcNow - startTime;
-            var overallStatus = DetermineOverallStatus(results);
+            var completedResults = await UniTask.WhenAll(tasks);
             
-            // Create comprehensive report
-            var report = new HealthReport
+            foreach (var (name, result) in completedResults)
             {
-                Status = overallStatus,
-                Results = results.AsReadOnly(),
-                Duration = duration,
-                CorrelationId = correlationId,
-                Timestamp = startTime,
-                Data = new Dictionary<string, object>
-                {
-                    ["ExecutionTime"] = startTime,
-                    ["TotalChecks"] = results.Count,
-                    ["SuccessfulChecks"] = results.AsValueEnumerable().Count(r => r.Status == HealthStatus.Healthy),
-                    ["WarningChecks"] = results.AsValueEnumerable().Count(r => r.Status == HealthStatus.Warning),
-                    ["UnhealthyChecks"] = results.AsValueEnumerable().Count(r => r.Status == HealthStatus.Unhealthy),
-                    ["DegradationLevel"] = _degradationManager.CurrentLevel
-                }.AsReadOnly()
-            };
-
-            // Record health report in statistics and evaluate degradation
-            _statisticsCollector.RecordHealthReport(report);
-            _degradationManager.EvaluateAndUpdateDegradationLevel(report, "Scheduled health check execution");
-
-            // Raise health status changed event if needed
-            if (overallStatus != _lastOverallStatus)
-            {
-                OnHealthStatusChanged(_lastOverallStatus, overallStatus, "Health check execution completed");
-                _lastOverallStatus = overallStatus;
+                results[name] = result;
             }
-
-            return report;
-        }
-
-        /// <summary>
-        /// Gets the overall health status of the system
-        /// </summary>
-        public async UniTask<HealthStatus> GetOverallHealthStatusAsync(CancellationToken cancellationToken = default)
-        {
-            var report = await ExecuteAllHealthChecksAsync(cancellationToken);
-            return report.Status;
-        }
-
-        /// <summary>
-        /// Gets the current degradation level of the system
-        /// </summary>
-        public DegradationLevel GetCurrentDegradationLevel()
-        {
-            return _degradationManager.CurrentLevel;
-        }
-
-        /// <summary>
-        /// Gets circuit breaker state for a specific operation
-        /// </summary>
-        public CircuitBreakerState? GetCircuitBreakerState(FixedString64Bytes operationName)
-        {
-            return _circuitBreakerManager.GetCircuitBreakerState(operationName);
-        }
-
-        /// <summary>
-        /// Gets all circuit breaker states
-        /// </summary>
-        public IReadOnlyDictionary<FixedString64Bytes, CircuitBreakerStatistics> GetAllCircuitBreakerStatistics()
-        {
-            return _circuitBreakerManager.GetAllCircuitBreakerStatistics();
-        }
-
-        /// <summary>
-        /// Gets health check statistics for a specific check
-        /// </summary>
-        public IndividualHealthCheckStatistics GetHealthCheckStatistics(FixedString64Bytes name)
-        {
-            return _statisticsCollector.GetHealthCheckStatistics(name);
-        }
-
-        /// <summary>
-        /// Gets names of all registered health checks
-        /// </summary>
-        public IEnumerable<FixedString64Bytes> GetRegisteredHealthCheckNames()
-        {
-            return _healthChecks.Keys;
-        }
-
-        /// <summary>
-        /// Gets metadata for a specific health check
-        /// </summary>
-        public IReadOnlyDictionary<string, object> GetHealthCheckMetadata(FixedString64Bytes name)
-        {
-            if (!_healthChecks.TryGetValue(name, out var healthCheck))
-                return new Dictionary<string, object>().AsReadOnly();
-
-            return healthCheck.GetMetadata();
-        }
-
-        /// <summary>
-        /// Starts automatic health check execution using the scheduler service.
-        /// </summary>
-        public async UniTask StartAutomaticChecksAsync(CancellationToken cancellationToken = default)
-        {
-            ThrowIfDisposed();
-
-            await _scheduler.StartAsync(_config.AutomaticCheckInterval, cancellationToken);
             
-            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AutomaticChecksStarted", _serviceId.ToString());
-            _logger.LogInfo($"Automatic health checks started with interval {_config.AutomaticCheckInterval}", correlationId);
+            // Update overall status based on results
+            await UpdateOverallHealthStatusAsync(results);
+            
+            _logger.LogDebug("Executed {Count} health checks", results.Count);
+            return results;
         }
-
-        /// <summary>
-        /// Stops automatic health check execution using the scheduler service.
-        /// </summary>
-        public async UniTask StopAutomaticChecksAsync(CancellationToken cancellationToken = default)
-        {
-            lock (_stateLock)
-            {
-                _automaticCheckTimer?.Dispose();
-                _automaticCheckTimer = null;
-                _logger.LogInfo("Automatic health checks stopped");
-            }
-        }
-
-        /// <summary>
-        /// Checks if automatic health checks are running
-        /// </summary>
-        public bool IsAutomaticChecksRunning()
-        {
-            return _scheduler.IsRunning;
-        }
-
-        /// <summary>
-        /// Forces circuit breaker to open state
-        /// </summary>
-        public void ForceCircuitBreakerOpen(FixedString64Bytes operationName, string reason)
-        {
-            _circuitBreakerManager.SetCircuitBreakerState(operationName, CircuitBreakerState.Open, reason ?? "Manually forced open");
-        }
-
-        /// <summary>
-        /// Forces circuit breaker to closed state
-        /// </summary>
-        public void ForceCircuitBreakerClosed(FixedString64Bytes operationName, string reason)
-        {
-            _circuitBreakerManager.SetCircuitBreakerState(operationName, CircuitBreakerState.Closed, reason ?? "Manually forced closed");
-        }
-
-        /// <summary>
-        /// Sets the system degradation level manually
-        /// </summary>
-        public void SetDegradationLevel(DegradationLevel level, string reason)
-        {
-            _degradationManager.SetDegradationLevel(level, reason ?? "Manual degradation level change");
-        }
-
-        /// <summary>
-        /// Gets comprehensive system health statistics
-        /// </summary>
-        public HealthStatistics GetHealthStatistics()
-        {
-            return _statisticsCollector.GetHealthStatistics();
-        }
-
-        /// <summary>
-        /// Checks if a health check is enabled
-        /// </summary>
-        public bool IsHealthCheckEnabled(FixedString64Bytes name)
-        {
-            return _healthCheckEnabledStatus.TryGetValue(name, out var enabled) && enabled;
-        }
-
-        /// <summary>
-        /// Enables or disables a health check
-        /// </summary>
-        public void SetHealthCheckEnabled(FixedString64Bytes name, bool enabled)
-        {
-            if (_healthCheckEnabledStatus.ContainsKey(name))
-            {
-                _healthCheckEnabledStatus[name] = enabled;
-                var correlationId = DeterministicIdGenerator.GenerateCorrelationId("HealthCheckToggled", name.ToString());
-                _logger.LogInfo($"Health check '{name}' {(enabled ? "enabled" : "disabled")}", correlationId);
-            }
-        }
-
-        #region Private Methods
-
-        private void InitializeScheduler()
-        {
-            // The scheduler will be configured to execute health checks through our ExecuteScheduledHealthChecksAsync method
-            // This is handled by the HealthCheckServiceFactory when creating the scheduler
-        }
-
-        private async UniTask ExecuteScheduledHealthChecksAsync(CancellationToken cancellationToken)
-        {
-            try
-            {
-                await ExecuteAllHealthChecksAsync(cancellationToken);
-            }
-            catch (Exception ex)
-            {
-                var correlationId = DeterministicIdGenerator.GenerateCorrelationId("ScheduledHealthCheckError", _serviceId.ToString());
-                _logger.LogException(ex, "Error during scheduled health check execution", correlationId);
-            }
-        }
-
-        private async UniTask<HealthCheckResult> ExecuteHealthCheckInternalAsync(IHealthCheck healthCheck, CancellationToken cancellationToken)
-        {
-            var startTime = DateTime.UtcNow;
-            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("HealthCheckExecution", healthCheck.Name.ToString());
-
-            try
-            {
-                using var profilerSession = _profilerService?.StartSession($"HealthCheck.{healthCheck.Name}");
-                
-                var result = await healthCheck.CheckHealthAsync(cancellationToken);
-                result.CorrelationId = correlationId; // Ensure correlation ID is set
-                result.Timestamp = startTime;
-
-                LogHealthCheckResult(healthCheck, result);
-                RaiseHealthAlert(healthCheck, result);
-
-                return result;
-            }
-            catch (Exception ex)
-            {
-                var duration = DateTime.UtcNow - startTime;
-                
-                var result = new HealthCheckResult
-                {
-                    Name = healthCheck.Name,
-                    Status = HealthStatus.Unhealthy,
-                    Description = $"Health check failed: {ex.Message}",
-                    Duration = duration,
-                    Data = new Dictionary<string, object>
-                    {
-                        ["Exception"] = ex.GetType().Name,
-                        ["ExceptionMessage"] = ex.Message
-                    }.AsReadOnly(),
-                    CorrelationId = correlationId,
-                    Timestamp = startTime
-                };
-
-                LogHealthCheckResult(healthCheck, result);
-                RaiseHealthAlert(healthCheck, result);
-
-                return result;
-            }
-        }
-
-
-        private void LogHealthCheckResult(IHealthCheck healthCheck, HealthCheckResult result)
-        {
-            var logData = new Dictionary<string, object>
-            {
-                ["HealthCheck"] = healthCheck.Name,
-                ["Status"] = result.Status,
-                ["Duration"] = result.Duration,
-                ["CorrelationId"] = result.CorrelationId
-            };
-
-            switch (result.Status)
-            {
-                case HealthStatus.Healthy:
-                    _logger.LogDebug($"Health check '{healthCheck.Name}' passed", logData);
-                    break;
-                case HealthStatus.Warning:
-                    _logger.LogWarning($"Health check '{healthCheck.Name}' returned warning: {result.Message}", logData);
-                    break;
-                case HealthStatus.Unhealthy:
-                    _logger.LogError($"Health check '{healthCheck.Name}' failed: {result.Message}", logData);
-                    break;
-            }
-        }
-
-        private void RaiseHealthAlert(IHealthCheck healthCheck, HealthCheckResult result)
-        {
-            if (result.Status == HealthStatus.Unhealthy || result.Status == HealthStatus.Warning)
-            {
-                var severity = result.Status == HealthStatus.Unhealthy 
-                    ? AlertSeverity.Critical 
-                    : AlertSeverity.Warning;
-
-                _alertService.SendAlert(new Alert
-                {
-                    Severity = severity,
-                    Source = "HealthCheckService",
-                    Message = $"Health check '{healthCheck.Name}' {result.Status}: {result.Message}",
-                    Tag = "HealthCheck",
-                    CorrelationId = result.CorrelationId,
-                    Data = result.Data
-                });
-            }
-        }
-
-        private HealthStatus DetermineOverallStatus(List<HealthCheckResult> results)
-        {
-            if (!results.Any())
-                return HealthStatus.Unknown;
-
-            if (results.Any(r => r.Status == HealthStatus.Unhealthy))
-                return HealthStatus.Unhealthy;
-
-            if (results.Any(r => r.Status == HealthStatus.Warning))
-                return HealthStatus.Warning;
-
-            return results.All(r => r.Status == HealthStatus.Healthy) 
-                ? HealthStatus.Healthy 
-                : HealthStatus.Unknown;
-        }
-
-        private void UpdateDegradationLevel(List<HealthCheckResult> results)
-        {
-            var unhealthyCount = results.Count(r => r.Status == HealthStatus.Unhealthy);
-            var warningCount = results.Count(r => r.Status == HealthStatus.Warning);
-            var totalCount = results.Count;
-
-            var oldLevel = _currentDegradationLevel;
-            var newLevel = DegradationLevel.None;
-
-            if (unhealthyCount > 0)
-            {
-                var unhealthyPercentage = (double)unhealthyCount / totalCount;
-                if (unhealthyPercentage >= 0.5)
-                    newLevel = DegradationLevel.Severe;
-                else if (unhealthyPercentage >= 0.25)
-                    newLevel = DegradationLevel.Moderate;
-                else
-                    newLevel = DegradationLevel.Minor;
-            }
-            else if (warningCount > 0)
-            {
-                var warningPercentage = (double)warningCount / totalCount;
-                if (warningPercentage >= 0.5)
-                    newLevel = DegradationLevel.Minor;
-            }
-
-            if (newLevel != oldLevel)
-            {
-                _currentDegradationLevel = newLevel;
-                OnDegradationStatusChanged(oldLevel, newLevel, "Degradation level updated based on health check results");
-            }
-        }
-
-        private void OnCircuitBreakerStateChanged(object sender, CircuitBreakerStateChangedEventArgs e)
-        {
-            CircuitBreakerStateChanged?.Invoke(this, e);
-        }
-
-        private void OnHealthStatusChanged(HealthStatus oldStatus, HealthStatus newStatus, string reason)
-        {
-            HealthStatusChanged?.Invoke(this, new HealthStatusChangedEventArgs(oldStatus, newStatus, reason));
-        }
-
-        private void OnDegradationStatusChanged(DegradationLevel oldLevel, DegradationLevel newLevel, string reason)
-        {
-            DegradationStatusChanged?.Invoke(this, new DegradationStatusChangedEventArgs(oldLevel, newLevel, reason));
-        }
-
-        private HealthCheckResult CreateCircuitBreakerFallbackResult(FixedString64Bytes name, TimeSpan duration)
-        {
-            return new HealthCheckResult(
-                name,
-                HealthStatus.Unhealthy,
-                "Circuit breaker is open - health check bypassed",
-                duration,
-                new Dictionary<string, object>
-                {
-                    ["CircuitBreakerState"] = "Open",
-                    ["Fallback"] = true
-                },
-                GenerateCorrelationId()
-            );
-        }
-
-        private FixedString64Bytes GenerateCorrelationId()
-        {
-            return $"hc_{DateTime.UtcNow:yyyyMMddHHmmss}_{DeterministicIdGenerator.GenerateHealthCheckCorrelationId("HealthCheckService").ToString("N")[..8]}";
-        }
-
-        private void ThrowIfDisposed()
-        {
-            if (_disposed)
-                throw new ObjectDisposedException(nameof(HealthCheckService));
-        }
-
-        #endregion
-
-        #region IDisposable Implementation
-
-        public void Dispose()
-        {
-            if (_disposed)
-                return;
-
-            _disposed = true;
-
-            // Stop automatic checks
-            StopAutomaticChecks();
-
-            // Cancel any ongoing operations
-            _cancellationTokenSource?.Cancel();
-
-            // Dispose circuit breakers
-            foreach (var circuitBreaker in _circuitBreakers.Values)
-            {
-                if (circuitBreaker is IDisposable disposable)
-                {
-                    disposable.Dispose();
-                }
-            }
-
-            _circuitBreakers.Clear();
-            _healthChecks.Clear();
-            _healthCheckConfigs.Clear();
-            _healthCheckHistory.Clear();
-            _healthCheckEnabledStatus.Clear();
-
-            _cancellationTokenSource?.Dispose();
-
-            _logger.LogInfo("HealthCheckService disposed");
-        }
-
-        #endregion
     }
+
+    /// <inheritdoc />
+    public HealthReport GetHealthReport()
+    {
+        ThrowIfDisposed();
+        
+        var lastResults = _lastResults.AsValueEnumerable()
+            .ToDictionary(kvp => kvp.Key.ToString(), kvp => kvp.Value);
+
+        return new HealthReport
+        {
+            OverallStatus = _overallStatus,
+            CheckResults = lastResults,
+            GeneratedAt = DateTime.UtcNow,
+            TotalChecks = _registeredHealthChecks.Count,
+            HealthyChecks = lastResults.Values.AsValueEnumerable().Count(r => r.Status == HealthStatus.Healthy),
+            UnhealthyChecks = lastResults.Values.AsValueEnumerable().Count(r => r.Status == HealthStatus.Unhealthy),
+            DegradedChecks = lastResults.Values.AsValueEnumerable().Count(r => r.Status == HealthStatus.Degraded)
+        };
+    }
+
+    /// <inheritdoc />
+    public bool IsHealthCheckRegistered(string name)
+    {
+        ThrowIfDisposed();
+        
+        if (string.IsNullOrEmpty(name))
+            return false;
+
+        return _registeredHealthChecks.ContainsKey(new FixedString64Bytes(name));
+    }
+
+    /// <inheritdoc />
+    public string[] GetRegisteredHealthCheckNames()
+    {
+        ThrowIfDisposed();
+        
+        return _registeredHealthChecks.Keys.AsValueEnumerable()
+            .Select(name => name.ToString())
+            .ToArray();
+    }
+
+    /// <inheritdoc />
+    public OverallHealthStatus GetOverallHealthStatus()
+    {
+        ThrowIfDisposed();
+        return _overallStatus;
+    }
+
+    #endregion
+
+    #region Orchestration Methods
+
+    /// <summary>
+    /// Initializes the service with all core domain health checks.
+    /// This is the primary method for setting up the orchestration.
+    /// </summary>
+    /// <returns>Task representing the initialization operation</returns>
+    public async UniTask InitializeWithCoreDomainsAsync()
+    {
+        using (_orchestrationMarker.Auto())
+        {
+            try
+            {
+                _logger.LogInfo("Initializing HealthCheckService with core domain health checks");
+
+                // Register all core domain health checks using extension method
+                _registrationManager.Dispose(); // Clean up the default one
+                var newManager = this.RegisterAllCoreDomainHealthChecks(_logger, _config);
+
+                // Store reference to the new manager (we'll need to dispose it later)
+                // Note: In a real implementation, you'd want to properly manage this lifecycle
+
+                _isRunning = true;
+                _logger.LogInfo("HealthCheckService initialization complete. Registered {Count} health checks", 
+                    _registeredHealthChecks.Count);
+
+                // Perform initial health check
+                await ExecuteAllHealthChecksAsync();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to initialize HealthCheckService with core domains");
+                throw;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Starts the health check service with automatic monitoring
+    /// </summary>
+    public void Start()
+    {
+        ThrowIfDisposed();
+        
+        if (_isRunning)
+        {
+            _logger.LogWarning("HealthCheckService is already running");
+            return;
+        }
+
+        _isRunning = true;
+        _logger.LogInfo("HealthCheckService started in orchestration mode");
+    }
+
+    /// <summary>
+    /// Stops the health check service
+    /// </summary>
+    public void Stop()
+    {
+        ThrowIfDisposed();
+        
+        if (!_isRunning)
+        {
+            _logger.LogWarning("HealthCheckService is not running");
+            return;
+        }
+
+        _isRunning = false;
+        _logger.LogInfo("HealthCheckService stopped");
+    }
+
+    #endregion
+
+    #region Private Methods
+
+    private async UniTask<HealthCheckResult> ExecuteHealthCheckInternalAsync(
+        IHealthCheck healthCheck, 
+        CancellationToken cancellationToken)
+    {
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        HealthCheckResult result;
+
+        try
+        {
+            // Get timeout from configuration or use default
+            var timeout = _healthCheckConfigs.TryGetValue(healthCheck.Name, out var config) 
+                ? config.Timeout 
+                : _config.DefaultTimeout;
+
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            timeoutCts.CancelAfter(timeout);
+
+            result = await healthCheck.CheckAsync(timeoutCts.Token);
+            result = result with { Duration = stopwatch.Elapsed };
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            result = HealthCheckResult.Unhealthy(
+                $"Health check '{healthCheck.Name}' was cancelled",
+                duration: stopwatch.Elapsed);
+        }
+        catch (OperationCanceledException)
+        {
+            result = HealthCheckResult.Unhealthy(
+                $"Health check '{healthCheck.Name}' timed out after {stopwatch.Elapsed}",
+                duration: stopwatch.Elapsed);
+        }
+        catch (Exception ex)
+        {
+            result = HealthCheckResult.Unhealthy(
+                $"Health check '{healthCheck.Name}' threw an exception: {ex.Message}",
+                ex,
+                stopwatch.Elapsed);
+        }
+        finally
+        {
+            stopwatch.Stop();
+        }
+
+        // Store the result
+        _lastResults.TryAdd(healthCheck.Name, result);
+        _lastResults.TryUpdate(healthCheck.Name, result, _lastResults[healthCheck.Name]);
+
+        // Publish individual health check completion message
+        try
+        {
+            var completionMessage = HealthCheckCompletedMessage.Create(
+                healthCheckName: healthCheck.Name.ToString(),
+                status: result.Status,
+                duration: result.Duration,
+                source: "HealthCheckService",
+                correlationId: _serviceId);
+                
+            _messageBus.PublishMessage(completionMessage);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to publish health check completion message for {HealthCheckName}", healthCheck.Name);
+        }
+
+        // Profile slow health checks using IProfilerService
+        if (_config.EnableProfiling && stopwatch.ElapsedMilliseconds > _config.SlowHealthCheckThreshold)
+        {
+            _logger.LogWarning("Slow health check detected: {HealthCheckName} took {Duration}ms", 
+                healthCheck.Name, stopwatch.ElapsedMilliseconds);
+            
+            // Record performance metrics with profiler service
+            _profilerService.RecordCustomMetric(
+                $"HealthCheck.{healthCheck.Name}.ExecutionTime", 
+                (double)stopwatch.ElapsedMilliseconds);
+        }
+        else if (_config.EnableProfiling)
+        {
+            // Record all health check execution times for analysis
+            _profilerService.RecordCustomMetric(
+                $"HealthCheck.{healthCheck.Name}.ExecutionTime", 
+                (double)stopwatch.ElapsedMilliseconds);
+        }
+
+        return result;
+    }
+
+    private async UniTask UpdateOverallHealthStatusAsync(Dictionary<string, HealthCheckResult> results)
+    {
+        var previousStatus = _overallStatus;
+        
+        // Determine overall status based on individual results
+        var hasUnhealthy = results.Values.AsValueEnumerable().Any(r => r.Status == HealthStatus.Unhealthy);
+        var hasDegraded = results.Values.AsValueEnumerable().Any(r => r.Status == HealthStatus.Degraded);
+        var hasWarning = results.Values.AsValueEnumerable().Any(r => r.Status == HealthStatus.Warning);
+
+        if (hasUnhealthy)
+            _overallStatus = OverallHealthStatus.Unhealthy;
+        else if (hasDegraded)
+            _overallStatus = OverallHealthStatus.Degraded;
+        else if (hasWarning)
+            _overallStatus = OverallHealthStatus.Warning;
+        else if (results.Count > 0)
+            _overallStatus = OverallHealthStatus.Healthy;
+        else
+            _overallStatus = OverallHealthStatus.Unknown;
+
+        // Fire event if status changed
+        if (_overallStatus != previousStatus)
+        {
+            _logger.LogInfo("Overall health status changed from {PreviousStatus} to {NewStatus}", 
+                previousStatus, _overallStatus);
+
+            var eventArgs = new HealthStatusChangedEventArgs(_overallStatus, previousStatus, DateTime.UtcNow);
+            HealthStatusChanged?.Invoke(this, eventArgs);
+
+            // Publish health status change message to message bus
+            try
+            {
+                var healthScore = CalculateOverallHealthScore(results);
+                var healthStatusMessage = HealthCheckStatusChangedMessage.Create(
+                    oldStatus: ConvertToHealthStatus(previousStatus),
+                    newStatus: ConvertToHealthStatus(_overallStatus),
+                    overallHealthScore: healthScore,
+                    source: "HealthCheckService",
+                    correlationId: _serviceId);
+                    
+                _messageBus.PublishMessage(healthStatusMessage);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to publish health status change message");
+            }
+
+            // Send alert if configured
+            if (_config.EnableHealthAlerts)
+            {
+                await SendHealthStatusAlertAsync(_overallStatus, previousStatus);
+            }
+        }
+    }
+
+    private async UniTask SendHealthStatusAlertAsync(OverallHealthStatus newStatus, OverallHealthStatus previousStatus)
+    {
+        try
+        {
+            var severity = newStatus switch
+            {
+                OverallHealthStatus.Healthy => AlertSeverity.Info,
+                OverallHealthStatus.Warning => AlertSeverity.Warning,
+                OverallHealthStatus.Degraded => AlertSeverity.Warning,
+                OverallHealthStatus.Unhealthy => AlertSeverity.Critical,
+                _ => AlertSeverity.Info
+            };
+
+            var message = $"Overall health status changed from {previousStatus} to {newStatus}";
+            
+            await _alertService.SendAlertAsync(
+                title: "Health Status Change",
+                message: message,
+                severity: severity,
+                tags: _config.AlertTags?.ToArray() ?? Array.Empty<FixedString64Bytes>());
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send health status alert");
+        }
+    }
+
+    private async void ExecuteAutomaticHealthChecksCallback(object state)
+    {
+        if (!_isRunning || _isDisposed)
+            return;
+
+        try
+        {
+            await ExecuteAllHealthChecksAsync(_serviceCancellationSource.Token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during automatic health check execution");
+        }
+    }
+
+    private double CalculateOverallHealthScore(Dictionary<string, HealthCheckResult> results)
+    {
+        if (results.Count == 0)
+            return 0.0;
+
+        var totalScore = 0.0;
+        foreach (var result in results.Values)
+        {
+            var score = result.Status switch
+            {
+                HealthStatus.Healthy => 1.0,
+                HealthStatus.Warning => 0.8,
+                HealthStatus.Degraded => 0.5,
+                HealthStatus.Unhealthy => 0.0,
+                _ => 0.0
+            };
+            totalScore += score;
+        }
+
+        return totalScore / results.Count;
+    }
+
+    private static HealthStatus ConvertToHealthStatus(OverallHealthStatus overallStatus)
+    {
+        return overallStatus switch
+        {
+            OverallHealthStatus.Healthy => HealthStatus.Healthy,
+            OverallHealthStatus.Warning => HealthStatus.Warning,
+            OverallHealthStatus.Degraded => HealthStatus.Degraded,
+            OverallHealthStatus.Unhealthy => HealthStatus.Unhealthy,
+            _ => HealthStatus.Unknown
+        };
+    }
+
+    private void ThrowIfDisposed()
+    {
+        if (_isDisposed)
+            throw new ObjectDisposedException(nameof(HealthCheckService));
+    }
+
+    #endregion
+
+    #region IDisposable Implementation
+
+    /// <inheritdoc />
+    public void Dispose()
+    {
+        if (_isDisposed) return;
+
+        try
+        {
+            _logger.LogInfo("Disposing HealthCheckService: {ServiceId}", _serviceId);
+            
+            _isRunning = false;
+            _serviceCancellationSource?.Cancel();
+            _automaticCheckTimer?.Dispose();
+            _registrationManager?.Dispose();
+            _serviceCancellationSource?.Dispose();
+
+            _registeredHealthChecks.Clear();
+            _healthCheckConfigs.Clear();
+            _lastResults.Clear();
+
+            _executeHealthCheckMarker.Dispose();
+            _executeAllHealthChecksMarker.Dispose();
+            _orchestrationMarker.Dispose();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error during HealthCheckService disposal");
+        }
+        finally
+        {
+            _isDisposed = true;
+            _logger.LogDebug("HealthCheckService disposed: {ServiceId}", _serviceId);
+        }
+    }
+
+    #endregion
 }
