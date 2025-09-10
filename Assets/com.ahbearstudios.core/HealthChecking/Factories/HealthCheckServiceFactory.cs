@@ -195,12 +195,12 @@ public sealed class HealthCheckServiceFactory : IHealthCheckServiceFactory
 
     private HealthCheckServiceConfig CreateDefaultConfiguration()
     {
-        return new HealthCheckServiceConfigBuilder()
-            .WithDefaultHealthCheckInterval(TimeSpan.FromMinutes(1))
+        return new HealthCheckServiceConfigBuilder(_logger)
+            .WithAutomaticCheckInterval(TimeSpan.FromMinutes(1))
             .WithDefaultTimeout(TimeSpan.FromSeconds(30))
             .WithAutomaticChecks(enabled: true)
-            .WithHistoryRetention(TimeSpan.FromHours(24))
-            .WithCircuitBreakers(enabled: true)
+            .WithMaxHistorySize(100)
+            .WithCircuitBreaker(enabled: true)
             .WithGracefulDegradation(enabled: true)
             .WithProfiling(enabled: true, slowThreshold: 1000)
             .WithHealthCheckLogging(enabled: true)
@@ -213,7 +213,7 @@ public sealed class HealthCheckServiceFactory : IHealthCheckServiceFactory
         if (validationErrors.Count > 0)
         {
             var errorMessage = $"Invalid configuration: {string.Join(", ", validationErrors)}";
-            _logger.LogError(errorMessage, correlationId: default, sourceContext: nameof(HealthCheckServiceFactory));
+            _logger.LogError(errorMessage, (Guid)default, sourceContext: nameof(HealthCheckServiceFactory));
             throw new InvalidOperationException(errorMessage);
         }
     }

@@ -6,7 +6,8 @@
       "Bash(do echo \"Fixing TypeCode in $file...\")",
       "Bash(do echo \"Adding import to $file...\")",
       "Bash(if ! grep -q \"AhBearStudios.Core.Common.Utilities\" \"$file\")",
-      "Bash(then sed -i '2 a using AhBearStudios.Core.Common.Utilities;' \"$file\")"
+      "Bash(then sed -i '2 a using AhBearStudios.Core.Common.Utilities;' \"$file\")",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

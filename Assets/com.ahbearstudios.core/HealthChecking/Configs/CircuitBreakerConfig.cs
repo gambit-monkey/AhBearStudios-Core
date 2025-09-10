@@ -1,5 +1,5 @@
-﻿using System.Collections.Generic;
-using System.Linq;
+using System.Collections.Generic;
+using ZLinq;
 using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.HealthChecking.Models;
 using Unity.Collections;
@@ -7,89 +7,91 @@ using Unity.Collections;
 namespace AhBearStudios.Core.HealthChecking.Configs
 {
     /// <summary>
-    /// Comprehensive configuration for circuit breaker behavior with advanced fault tolerance settings
+    /// Comprehensive configuration for circuit breaker behavior with advanced fault tolerance settings.
+    /// Enhanced with bulkhead isolation and failover capabilities.
+    /// Designed for Unity game development with performance-first approach.
     /// </summary>
     public sealed record CircuitBreakerConfig : ICircuitBreakerConfig
     {
         /// <summary>
         /// Unique identifier for this circuit breaker configuration
         /// </summary>
-        public FixedString64Bytes Id { get; init; } = GenerateId();
+        public FixedString64Bytes Id { get; init; }
 
         /// <summary>
         /// Display name for this circuit breaker configuration
         /// </summary>
-        public string Name { get; init; } = "Default Circuit Breaker";
+        public string Name { get; init; }
 
         /// <summary>
         /// Number of consecutive failures required to open the circuit
         /// </summary>
-        public int FailureThreshold { get; init; } = 5;
+        public int FailureThreshold { get; init; }
 
         /// <summary>
         /// Time to wait in open state before transitioning to half-open
         /// </summary>
-        public TimeSpan Timeout { get; init; } = TimeSpan.FromSeconds(60);
+        public TimeSpan Timeout { get; init; }
 
         /// <summary>
         /// Duration to collect failure statistics for threshold calculation
         /// </summary>
-        public TimeSpan SamplingDuration { get; init; } = TimeSpan.FromMinutes(2);
+        public TimeSpan SamplingDuration { get; init; }
 
         /// <summary>
         /// Minimum number of requests in sampling period before circuit can open
         /// </summary>
-        public int MinimumThroughput { get; init; } = 10;
+        public int MinimumThroughput { get; init; }
 
         /// <summary>
         /// Success threshold percentage (0-100) required to close circuit from half-open
         /// </summary>
-        public double SuccessThreshold { get; init; } = 50.0;
+        public double SuccessThreshold { get; init; }
 
         /// <summary>
         /// Number of test requests allowed in half-open state
         /// </summary>
-        public int HalfOpenMaxCalls { get; init; } = 3;
+        public int HalfOpenMaxCalls { get; init; }
 
         /// <summary>
         /// Whether to use sliding window for failure rate calculation
         /// </summary>
-        public bool UseSlidingWindow { get; init; } = true;
+        public bool UseSlidingWindow { get; init; }
 
         /// <summary>
         /// Type of sliding window to use
         /// </summary>
-        public SlidingWindowType SlidingWindowType { get; init; } = SlidingWindowType.CountBased;
+        public SlidingWindowType SlidingWindowType { get; init; }
 
         /// <summary>
         /// Size of the sliding window (requests for count-based, duration for time-based)
         /// </summary>
-        public int SlidingWindowSize { get; init; } = 100;
+        public int SlidingWindowSize { get; init; }
 
         /// <summary>
         /// Time-based sliding window duration (used when SlidingWindowType is TimeBased)
         /// </summary>
-        public TimeSpan SlidingWindowDuration { get; init; } = TimeSpan.FromMinutes(1);
+        public TimeSpan SlidingWindowDuration { get; init; }
 
         /// <summary>
         /// Whether to automatically attempt recovery when circuit is open
         /// </summary>
-        public bool EnableAutomaticRecovery { get; init; } = true;
+        public bool EnableAutomaticRecovery { get; init; }
 
         /// <summary>
         /// Maximum number of automatic recovery attempts
         /// </summary>
-        public int MaxRecoveryAttempts { get; init; } = 5;
+        public int MaxRecoveryAttempts { get; init; }
 
         /// <summary>
         /// Multiplier for extending timeout on repeated failures
         /// </summary>
-        public double TimeoutMultiplier { get; init; } = 1.5;
+        public double TimeoutMultiplier { get; init; }
 
         /// <summary>
         /// Maximum timeout value to prevent indefinite waiting
         /// </summary>
-        public TimeSpan MaxTimeout { get; init; } = TimeSpan.FromMinutes(10);
+        public TimeSpan MaxTimeout { get; init; }
 
         /// <summary>
         /// Types of exceptions that should be ignored by the circuit breaker
@@ -128,32 +130,88 @@ namespace AhBearStudios.Core.HealthChecking.Configs
         /// <summary>
         /// Custom tags for categorizing this circuit breaker
         /// </summary>
-        public HashSet<FixedString64Bytes> Tags { get; init; } = new();
+        public HashSet<FixedString64Bytes> Tags { get; init; }
 
         /// <summary>
         /// Custom metadata for this circuit breaker configuration
         /// </summary>
-        public Dictionary<string, object> Metadata { get; init; } = new();
+        public Dictionary<string, object> Metadata { get; init; }
 
+        #region Slow Call Detection (consolidated from ISlowCallConfig)
+        
         /// <summary>
-        /// Slow call detection configuration
+        /// Duration threshold for considering a call slow
         /// </summary>
-        public ISlowCallConfig SlowCallConfig { get; init; } = new SlowCallConfig();
+        public TimeSpan SlowCallDurationThreshold { get; init; } = TimeSpan.FromSeconds(5);
+        
+        /// <summary>
+        /// Rate threshold percentage for slow calls (0-100)
+        /// </summary>
+        public double SlowCallRateThreshold { get; init; } = 50.0;
+        
+        /// <summary>
+        /// Minimum number of slow calls before triggering circuit breaker
+        /// </summary>
+        public int MinimumSlowCalls { get; init; } = 5;
+        
+        #endregion
 
+        #region Bulkhead Isolation (consolidated from IBulkheadConfig)
+        
         /// <summary>
-        /// Bulkhead isolation configuration
+        /// Maximum number of concurrent calls allowed
         /// </summary>
-        public IBulkheadConfig BulkheadConfig { get; init; } = new BulkheadConfig();
+        public int MaxConcurrentCalls { get; init; } = 10;
+        
+        /// <summary>
+        /// Maximum wait duration before rejecting requests
+        /// </summary>
+        public TimeSpan MaxWaitDuration { get; init; } = TimeSpan.FromSeconds(30);
+        
+        /// <summary>
+        /// Whether to enable bulkhead isolation
+        /// </summary>
+        public bool EnableBulkhead { get; init; } = false;
+        
+        #endregion
 
+        #region Rate Limiting (consolidated from IRateLimitConfig)
+        
         /// <summary>
-        /// Rate limiting configuration when circuit is closed
+        /// Maximum requests per second when circuit is closed
         /// </summary>
-        public IRateLimitConfig RateLimitConfig { get; init; } = new RateLimitConfig();
+        public int RequestsPerSecond { get; init; } = 100;
+        
+        /// <summary>
+        /// Burst size allowed for temporary spikes
+        /// </summary>
+        public int BurstSize { get; init; } = 10;
+        
+        /// <summary>
+        /// Whether to enable rate limiting
+        /// </summary>
+        public bool EnableRateLimit { get; init; } = false;
+        
+        #endregion
 
+        #region Failover (consolidated from IFailoverConfig)
+        
         /// <summary>
-        /// Failover configuration for when circuit is open
+        /// Whether to enable failover when circuit is open
         /// </summary>
-        public IFailoverConfig FailoverConfig { get; init; } = new FailoverConfig();
+        public bool EnableFailover { get; init; } = false;
+        
+        /// <summary>
+        /// List of failover endpoints or alternatives
+        /// </summary>
+        public List<string> FailoverEndpoints { get; init; }
+        
+        /// <summary>
+        /// Timeout for failover attempts
+        /// </summary>
+        public TimeSpan FailoverTimeout { get; init; } = TimeSpan.FromSeconds(10);
+        
+        #endregion
 
         /// <summary>
         /// Validates the circuit breaker configuration
@@ -208,23 +266,47 @@ namespace AhBearStudios.Core.HealthChecking.Configs
             if (MaxTimeout < Timeout)
                 errors.Add("MaxTimeout must be greater than or equal to Timeout");
 
-            // Validate nested configurations
-            errors.AddRange(SlowCallConfig.Validate());
-            errors.AddRange(BulkheadConfig.Validate());
-            errors.AddRange(RateLimitConfig.Validate());
-            errors.AddRange(FailoverConfig.Validate());
+            // Validate consolidated configurations
+            if (SlowCallDurationThreshold <= TimeSpan.Zero)
+                errors.Add("SlowCallDurationThreshold must be greater than zero");
+                
+            if (SlowCallRateThreshold < 0.0 || SlowCallRateThreshold > 100.0)
+                errors.Add("SlowCallRateThreshold must be between 0.0 and 100.0");
+                
+            if (MinimumSlowCalls < 0)
+                errors.Add("MinimumSlowCalls must be non-negative");
+                
+            if (MaxConcurrentCalls <= 0)
+                errors.Add("MaxConcurrentCalls must be greater than zero");
+                
+            if (MaxWaitDuration < TimeSpan.Zero)
+                errors.Add("MaxWaitDuration must be non-negative");
+                
+            if (RequestsPerSecond <= 0)
+                errors.Add("RequestsPerSecond must be greater than zero");
+                
+            if (BurstSize < 0)
+                errors.Add("BurstSize must be non-negative");
+                
+            if (FailoverTimeout <= TimeSpan.Zero)
+                errors.Add("FailoverTimeout must be greater than zero");
 
-            // Validate exception types
-            if (IgnoredExceptions.Any(type => !typeof(Exception).IsAssignableFrom(type)))
+            // Validate exception types using ZLinq
+            if (IgnoredExceptions?.AsValueEnumerable().Any(type => !typeof(System.Exception).IsAssignableFrom(type)) == true)
                 errors.Add("All IgnoredExceptions must be derived from Exception");
 
-            if (ImmediateFailureExceptions.Any(type => !typeof(Exception).IsAssignableFrom(type)))
+            if (ImmediateFailureExceptions?.AsValueEnumerable().Any(type => !typeof(System.Exception).IsAssignableFrom(type)) == true)
                 errors.Add("All ImmediateFailureExceptions must be derived from Exception");
 
-            // Check for conflicting exception configurations
-            var conflictingExceptions = IgnoredExceptions.Intersect(ImmediateFailureExceptions);
-            if (conflictingExceptions.Any())
-                errors.Add($"Exceptions cannot be both ignored and immediate failures: {string.Join(", ", conflictingExceptions.Select(t => t.Name))}");
+            // Check for conflicting exception configurations using ZLinq
+            if (IgnoredExceptions != null && ImmediateFailureExceptions != null)
+            {
+                var conflictingExceptions = IgnoredExceptions.AsValueEnumerable()
+                    .Where(ignored => ImmediateFailureExceptions.Contains(ignored))
+                    .ToList();
+                if (conflictingExceptions.Count > 0)
+                    errors.Add($"Exceptions cannot be both ignored and immediate failures: {string.Join(", ", conflictingExceptions.AsValueEnumerable().Select(t => t.Name))}");
+            }
 
             return errors;
         }
@@ -332,20 +414,14 @@ namespace AhBearStudios.Core.HealthChecking.Configs
                 },
                 ImmediateFailureExceptions = new HashSet<Type>
                 {
-                    typeof(UnauthorizedAccessException),
-                    //TODO Add support for HTTP typeof(System.Net.HttpRequestException)
+                    typeof(UnauthorizedAccessException)
                 },
-                SlowCallConfig = new SlowCallConfig
-                {
-                    SlowCallDurationThreshold = TimeSpan.FromSeconds(15),
-                    SlowCallRateThreshold = 40.0,
-                    MinimumSlowCalls = 8
-                },
-                RateLimitConfig = new RateLimitConfig
-                {
-                    RequestsPerSecond = 100,
-                    BurstSize = 150
-                }
+                SlowCallDurationThreshold = TimeSpan.FromSeconds(15),
+                SlowCallRateThreshold = 40.0,
+                MinimumSlowCalls = 8,
+                RequestsPerSecond = 100,
+                BurstSize = 150,
+                EnableRateLimit = true
             };
         }
 
@@ -371,16 +447,12 @@ namespace AhBearStudios.Core.HealthChecking.Configs
                 MaxRecoveryAttempts = 3,
                 TimeoutMultiplier = 1.1,
                 MaxTimeout = TimeSpan.FromMinutes(2),
-                BulkheadConfig = new BulkheadConfig
-                {
-                    MaxConcurrentCalls = 100,
-                    MaxWaitDuration = TimeSpan.FromSeconds(10)
-                },
-                RateLimitConfig = new RateLimitConfig
-                {
-                    RequestsPerSecond = 1000,
-                    BurstSize = 1500
-                }
+                MaxConcurrentCalls = 100,
+                MaxWaitDuration = TimeSpan.FromSeconds(10),
+                EnableBulkhead = true,
+                RequestsPerSecond = 1000,
+                BurstSize = 1500,
+                EnableRateLimit = true
             };
         }
 
@@ -410,12 +482,59 @@ namespace AhBearStudios.Core.HealthChecking.Configs
         }
 
         /// <summary>
-        /// Generates a unique identifier for configurations
+        /// Creates a circuit breaker configuration with all required fields
         /// </summary>
-        /// <returns>Unique configuration ID</returns>
-        private static FixedString64Bytes GenerateId()
+        /// <param name="name">Name of the circuit breaker</param>
+        /// <returns>Circuit breaker configuration</returns>
+        public static CircuitBreakerConfig Create(string name)
         {
-            return new FixedString64Bytes(DeterministicIdGenerator.GenerateHealthCheckId("CircuitBreakerConfig", "System").ToString("N")[..16]);
+            return new CircuitBreakerConfig
+            {
+                Id = new FixedString64Bytes(DeterministicIdGenerator.GenerateHealthCheckId("CircuitBreakerConfig", name).ToString("N")[..16]),
+                Name = name ?? "Circuit Breaker",
+                FailureThreshold = 5,
+                Timeout = TimeSpan.FromSeconds(60),
+                SamplingDuration = TimeSpan.FromMinutes(2),
+                MinimumThroughput = 10,
+                SuccessThreshold = 50.0,
+                HalfOpenMaxCalls = 3,
+                UseSlidingWindow = true,
+                SlidingWindowType = SlidingWindowType.CountBased,
+                SlidingWindowSize = 100,
+                SlidingWindowDuration = TimeSpan.FromMinutes(1),
+                EnableAutomaticRecovery = true,
+                MaxRecoveryAttempts = 5,
+                TimeoutMultiplier = 1.5,
+                MaxTimeout = TimeSpan.FromMinutes(10),
+                IgnoredExceptions = new HashSet<System.Type>
+                {
+                    typeof(System.ArgumentException),
+                    typeof(System.ArgumentNullException),
+                    typeof(System.InvalidOperationException)
+                },
+                ImmediateFailureExceptions = new HashSet<System.Type>
+                {
+                    typeof(System.UnauthorizedAccessException),
+                    typeof(System.Security.SecurityException)
+                },
+                FailurePredicates = new List<System.Func<System.Exception, bool>>(),
+                EnableMetrics = true,
+                EnableEvents = true,
+                Tags = new HashSet<FixedString64Bytes>(),
+                Metadata = new Dictionary<string, object>(),
+                SlowCallDurationThreshold = TimeSpan.FromSeconds(5),
+                SlowCallRateThreshold = 50.0,
+                MinimumSlowCalls = 5,
+                MaxConcurrentCalls = 10,
+                MaxWaitDuration = TimeSpan.FromSeconds(30),
+                EnableBulkhead = false,
+                RequestsPerSecond = 100,
+                BurstSize = 10,
+                EnableRateLimit = false,
+                EnableFailover = false,
+                FailoverEndpoints = new List<string>(),
+                FailoverTimeout = TimeSpan.FromSeconds(10)
+            };
         }
     }
 }

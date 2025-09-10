@@ -17,7 +17,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         private readonly List<string> _validationErrors = new();
         
         // Core configuration properties
-        private FixedString64Bytes _id = GenerateId();
+        private FixedString64Bytes _id;
         private string _name = "Default Circuit Breaker";
         private int _failureThreshold = 5;
         private TimeSpan _timeout = TimeSpan.FromSeconds(60);
@@ -76,6 +76,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         public CircuitBreakerConfigBuilder(ILoggingService logger)
         {
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _id = GenerateId();
             _logger.LogDebug("CircuitBreakerConfigBuilder initialized");
         }
 

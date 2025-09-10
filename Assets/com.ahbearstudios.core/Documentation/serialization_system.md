@@ -35,8 +35,7 @@ AhBearStudios.Core.Serialization/
 ├── PerformanceMonitoringSerializer.cs    # Performance monitoring decorator
 ├── Configs/
 │   ├── SerializationConfig.cs            # Core configuration
-│   ├── FormatterConfig.cs                # Formatter-specific settings
-│   └── CompressionConfig.cs              # Compression settings
+│   └── FormatterConfig.cs                # Formatter-specific settings
 ├── Builders/
 │   ├── ISerializationConfigBuilder.cs    # Configuration builder interface
 │   └── SerializationConfigBuilder.cs     # Builder implementation

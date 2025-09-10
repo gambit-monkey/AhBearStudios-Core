@@ -8,6 +8,7 @@
     "com.gustavopsantos.reflex": "https://github.com/gustavopsantos/reflex.git?path=/Assets/Reflex",
     "com.unity.collab-proxy": "2.8.2",
     "com.unity.feature.development": "1.0.2",
+    "com.unity.ide.rider": "3.0.37",
     "com.unity.nuget.newtonsoft-json": "3.2.1",
     "com.unity.render-pipelines.high-definition": "17.2.0",
     "com.unity.timeline": "1.8.9",
