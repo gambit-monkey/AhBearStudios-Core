@@ -32,6 +32,7 @@ namespace AhBearStudios.Core.Messaging
         private readonly IMessageBusHealthService _healthService;
         private readonly IMessageRetryService _retryService;
         private readonly IDeadLetterQueueService _deadLetterQueueService;
+        private readonly IMessageCircuitBreakerService _circuitBreakerService;
 
         // State management
         private volatile bool _disposed;
@@ -50,6 +51,7 @@ namespace AhBearStudios.Core.Messaging
         /// <param name="healthService">The message bus health service</param>
         /// <param name="retryService">The message retry service</param>
         /// <param name="deadLetterQueueService">The dead letter queue service</param>
+        /// <param name="circuitBreakerService">The circuit breaker service</param>
         /// <param name="logger">The logging service</param>
         /// <param name="profilerService">The profiler service</param>
         /// <exception cref="ArgumentNullException">Thrown when required parameters are null</exception>
@@ -60,6 +62,7 @@ namespace AhBearStudios.Core.Messaging
             IMessageBusHealthService healthService,
             IMessageRetryService retryService,
             IDeadLetterQueueService deadLetterQueueService,
+            IMessageCircuitBreakerService circuitBreakerService,
             ILoggingService logger,
             IProfilerService profilerService)
         {
@@ -69,6 +72,7 @@ namespace AhBearStudios.Core.Messaging
             _healthService = healthService ?? throw new ArgumentNullException(nameof(healthService));
             _retryService = retryService ?? throw new ArgumentNullException(nameof(retryService));
             _deadLetterQueueService = deadLetterQueueService ?? throw new ArgumentNullException(nameof(deadLetterQueueService));
+            _circuitBreakerService = circuitBreakerService ?? throw new ArgumentNullException(nameof(circuitBreakerService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _profilerService = profilerService ?? NullProfilerService.Instance;
 
@@ -358,7 +362,8 @@ namespace AhBearStudios.Core.Messaging
             
             try
             {
-                _monitoringService.ClearStatistics();
+                _monitoringService.ClearPublishingStatistics();
+                _monitoringService.ClearSubscriptionStatistics();
                 _logger.LogInfo("Cleared message bus history and statistics");
             }
             catch (Exception ex)
@@ -415,7 +420,7 @@ namespace AhBearStudios.Core.Messaging
 
             try
             {
-                return _publishingService.GetCircuitBreakerState<TMessage>();
+                return _circuitBreakerService.GetCircuitBreakerState<TMessage>();
             }
             catch (Exception ex)
             {
@@ -433,7 +438,7 @@ namespace AhBearStudios.Core.Messaging
             
             try
             {
-                _publishingService.ResetCircuitBreaker<TMessage>();
+                _circuitBreakerService.ResetCircuitBreaker<TMessage>();
                 _logger.LogInfo($"Reset circuit breaker for message type {typeof(TMessage).Name}");
             }
             catch (Exception ex)
@@ -483,6 +488,7 @@ namespace AhBearStudios.Core.Messaging
                     _healthService?.Dispose();
                     _retryService?.Dispose();
                     _deadLetterQueueService?.Dispose();
+                    _circuitBreakerService?.Dispose();
 
                     _disposed = true;
                     _logger.LogInfo("MessageBusService orchestrator disposed successfully");

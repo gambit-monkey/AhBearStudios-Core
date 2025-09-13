@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using AhBearStudios.Core.Common.Utilities;
+using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Configs;
 using AhBearStudios.Core.Messaging.Models;

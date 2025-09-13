@@ -11,6 +11,8 @@ using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging;
+using AhBearStudios.Core.Messaging.Configs;
+using AhBearStudios.Core.Messaging.HealthChecks;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.HealthChecking.Messages;
 using AhBearStudios.Core.Messaging.Models;
@@ -255,10 +257,10 @@ public sealed class HealthCheckFactory : IHealthCheckFactory
             return new DatabaseHealthCheck(databaseService, healthCheckService, _logger);
         });
 
-        RegisterHealthCheckCreator<MessagingHealthCheck>(async (config) =>
+        RegisterHealthCheckCreator<MessageBusHealthCheck>(async (config) =>
         {
-            var healthCheckService = _container.Resolve<IHealthCheckService>();
-            return new MessagingHealthCheck(_messageBus, healthCheckService, _logger);
+            var messageBusConfig = _container.Resolve<MessageBusConfig>();
+            return new MessageBusHealthCheck(_messageBus, messageBusConfig, _logger);
         });
 
         // RegisterHealthCheckCreator<NetworkHealthCheck>(async (config) =>

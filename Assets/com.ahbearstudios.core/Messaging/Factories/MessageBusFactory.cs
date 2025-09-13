@@ -92,6 +92,7 @@ namespace AhBearStudios.Core.Messaging.Factories
                 IMessageBusHealthService healthService = null; // CreateHealthService(healthConfig);
                 IMessageRetryService retryService = null; // CreateRetryService();
                 IDeadLetterQueueService deadLetterQueueService = null; // CreateDeadLetterQueueService();
+                IMessageCircuitBreakerService circuitBreakerService = null; // CreateCircuitBreakerService();
 
                 // Create the orchestrator
                 var messageBusService = new MessageBusService(
@@ -101,6 +102,7 @@ namespace AhBearStudios.Core.Messaging.Factories
                     healthService,
                     retryService,
                     deadLetterQueueService,
+                    circuitBreakerService,
                     _logger,
                     _profilerService);
 

@@ -197,16 +197,16 @@ public sealed class MessageCircuitBreakerService : IMessageCircuitBreakerService
             var circuitBreakerConfig = _config.GetConfigForMessageType(messageType);
             var circuitBreakerName = $"MessageBus_{messageType.Name}";
 
-            var breaker = _circuitBreakerFactory.CreateCircuitBreaker(circuitBreakerName, circuitBreakerConfig);
+            // Use async factory method and wait for result
+            // This is acceptable in GetOrAdd since circuit breaker creation is typically a one-time operation
+            var breaker = _circuitBreakerFactory.CreateCircuitBreakerAsync(circuitBreakerName, circuitBreakerConfig)
+                .GetAwaiter()
+                .GetResult();
             
-            // Subscribe to state changes from the circuit breaker if state change publishing is enabled
-            if (_config.PublishStateChanges)
-            {
-                breaker.StateChanged += (sender, args) =>
-                {
-                    PublishStateChangeMessage<TMessage>(args.OldState, args.NewState, args.Reason);
-                };
-            }
+            // Note: The circuit breaker itself publishes state change messages via IMessageBusService
+            // when state changes occur. We don't need to subscribe to events here.
+            // If PublishStateChanges is enabled, we'll publish additional messages specific to the message type
+            // when we detect state changes in RecordSuccess and RecordFailure methods.
 
             _logger.LogInfo($"Created circuit breaker for message type {messageType.Name}");
             return breaker;

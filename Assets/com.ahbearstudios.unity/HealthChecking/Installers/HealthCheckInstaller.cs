@@ -11,6 +11,7 @@ using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.HealthChecking.Services;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging;
+using AhBearStudios.Core.Messaging.HealthChecks;
 using AhBearStudios.Unity.Logging.Installers;
 using AhBearStudios.Unity.Messaging.Installers;
 using Reflex.Core;
@@ -375,10 +376,10 @@ namespace AhBearStudios.Unity.HealthCheck.Installers
             // System resource health check
             builder.Bind<IHealthCheck>().To<SystemResourceHealthCheck>().AsSingle().WithId("SystemResource");
             
-            // Messaging health check (if messaging is available)
+            // Message bus health check (if messaging is available)
             if (Container.HasBinding<IMessageBusService>())
             {
-                builder.Bind<IHealthCheck>().To<MessagingHealthCheck>().AsSingle().WithId("Messaging");
+                builder.Bind<IHealthCheck>().To<MessageBusHealthCheck>().AsSingle().WithId("MessageBus");
             }
 
             // Self-monitoring health check
@@ -493,7 +494,7 @@ namespace AhBearStudios.Unity.HealthCheck.Installers
                 // Set intervals for different types of health checks
                 healthCheckService.SetCheckInterval("SystemResource", TimeSpan.FromSeconds(_criticalSystemInterval));
                 healthCheckService.SetCheckInterval("UnitySystem", TimeSpan.FromSeconds(_criticalSystemInterval));
-                healthCheckService.SetCheckInterval("Messaging", TimeSpan.FromSeconds(_defaultHealthCheckInterval));
+                healthCheckService.SetCheckInterval("MessageBus", TimeSpan.FromSeconds(_defaultHealthCheckInterval));
                 healthCheckService.SetCheckInterval("UnityPerformance", TimeSpan.FromSeconds(_defaultHealthCheckInterval));
                 healthCheckService.SetCheckInterval("UnityMemory", TimeSpan.FromSeconds(_defaultHealthCheckInterval));
 
