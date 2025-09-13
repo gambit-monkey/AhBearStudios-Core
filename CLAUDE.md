@@ -132,7 +132,7 @@ For detailed build, test, and Unity commands, see [COMMANDS.md](COMMANDS.md).
 - **Alerting**: `IAlertService` - runtime error handling with severity-based notifications
 - **Serialization**: `ISerializationService` - **ALWAYS use instead of direct MemoryPack calls**, unified data serialization with MemoryPack backend
 - **Health Checking**: `IHealthCheckService` - runtime system health monitoring, performance metrics, status reporting
-- **Profiling**: `IProfilerService` - performance profiling, frame time analysis, memory tracking, Unity Profiler integration
+- **Profiling**: `IProfilerService` - unified profiling abstraction that wraps Unity's ProfilerMarker internally while adding metrics, thresholds, production monitoring, and custom performance tracking capabilities
 
 ## Common Utilities
 
@@ -527,22 +527,27 @@ public class PlayerManager : MonoBehaviour, IPlayerManager
     // Injected services
     private ILoggingService _loggingService;
     private IMessageBusService _messageBus;
-    
-    // Performance monitoring
-    private readonly ProfilerMarker _updateMarker = new ProfilerMarker("PlayerManager.Update");
+    private IProfilerService _profilerService;
     
     [Inject]
-    public void Initialize(ILoggingService loggingService, IMessageBusService messageBus)
+    public void Initialize(
+        ILoggingService loggingService, 
+        IMessageBusService messageBus,
+        IProfilerService profilerService)
     {
         _loggingService = loggingService ?? throw new ArgumentNullException(nameof(loggingService));
         _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
+        _profilerService = profilerService ?? NullProfilerService.Instance;
     }
     
     private void Update()
     {
-        using (_updateMarker.Auto())
+        using (_profilerService.BeginScope("PlayerManager.Update"))
         {
             // Game logic here
+            
+            // Track custom metrics
+            _profilerService.RecordMetric("entities.processed", entityCount);
         }
     }
 }
@@ -606,6 +611,11 @@ namespace AhBearStudios.Core.Logging
 - ❌ **Ambiguous DeterministicIdGenerator calls**: Always use explicit named parameters
 - ❌ **Missing validation in Create methods**: Always validate input parameters
 - ❌ **Inconsistent factory method signatures**: Follow standard parameter patterns
+
+### Profiling Anti-Patterns
+- ❌ **Missing profiling in critical paths**: Always profile Update(), FixedUpdate(), and performance-sensitive operations
+- ❌ **Hardcoded profiler tags**: Use ProfilerTag.CreateMethodTag() or ProfilerTag.CreateSystemTag() for consistent naming
+- ❌ **Bypassing IProfilerService**: Use dependency injection instead of direct ProfilerMarker instantiation
 
 ## Testing Strategy
 
@@ -695,15 +705,31 @@ AhBearStudios.Unity.UI
 
 ## Performance Monitoring
 
-Always use ProfilerMarkers for critical paths:
+Always use IProfilerService for profiling operations:
 ```csharp
-private readonly ProfilerMarker _marker = new ProfilerMarker("SystemName.MethodName");
+// ✅ CORRECT: Use injected IProfilerService
+private readonly IProfilerService _profilerService;
 
-using (_marker.Auto())
+public void ProcessData()
 {
-    // Performance-critical code
+    using (_profilerService.BeginScope("SystemName.MethodName"))
+    {
+        // Performance-critical code
+        
+        // Track custom metrics
+        _profilerService.RecordMetric("items.processed", count);
+        
+        // Record performance samples
+        _profilerService.RecordSample(ProfilerTag.CreateMethodTag("SystemName", "ProcessData"), processingTime);
+    }
 }
 ```
+
+**Key Benefits:**
+- Wraps Unity's ProfilerMarker internally for Unity Profiler integration
+- Provides additional capabilities: custom metrics, thresholds, production monitoring
+- Supports runtime enable/disable and sampling rate control
+- Integrates with health checking and alerting systems
 
 ## Remember
 

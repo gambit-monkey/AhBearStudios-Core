@@ -21,9 +21,14 @@ namespace AhBearStudios.Core.Logging.Models
         LogLevel MinimumLevel { get; }
 
         /// <summary>
-        /// Gets whether this channel is enabled and should process log messages.
+        /// Gets or sets whether this channel is enabled and should process log messages.
         /// </summary>
-        bool IsEnabled { get; }
+        bool IsEnabled { get; set; }
+
+        /// <summary>
+        /// Gets whether this channel is currently healthy and operational.
+        /// </summary>
+        bool IsHealthy { get; }
 
         /// <summary>
         /// Gets the list of tags associated with this channel for categorization.

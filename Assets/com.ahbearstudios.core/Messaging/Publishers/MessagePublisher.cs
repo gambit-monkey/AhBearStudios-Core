@@ -21,7 +21,7 @@ namespace AhBearStudios.Core.Messaging.Publishers
     {
         #region Private Fields
 
-        private readonly MessageBusConfig _config;
+        private readonly MessagePublishingConfig _config;
         private readonly ILoggingService _logger;
         private readonly IProfilerService _profilerService;
         private readonly IPoolingService _poolingService;
@@ -50,13 +50,13 @@ namespace AhBearStudios.Core.Messaging.Publishers
         /// <summary>
         /// Initializes a new instance of the MessagePublisher class.
         /// </summary>
-        /// <param name="config">The message bus configuration</param>
+        /// <param name="config">The message publishing configuration</param>
         /// <param name="logger">The logging service</param>
         /// <param name="profilerService">The profiler service</param>
         /// <param name="poolingService">The pooling service</param>
         /// <exception cref="ArgumentNullException">Thrown when required parameters are null</exception>
         public MessagePublisher(
-            MessageBusConfig config,
+            MessagePublishingConfig config,
             ILoggingService logger,
             IProfilerService profilerService,
             IPoolingService poolingService)
@@ -66,7 +66,7 @@ namespace AhBearStudios.Core.Messaging.Publishers
             _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             _poolingService = poolingService ?? throw new ArgumentNullException(nameof(poolingService));
 
-            _publishSemaphore = new SemaphoreSlim(_config.MaxConcurrentHandlers, _config.MaxConcurrentHandlers);
+            _publishSemaphore = new SemaphoreSlim(_config.MaxConcurrentPublishers, _config.MaxConcurrentPublishers);
             _cancellationTokenSource = new CancellationTokenSource();
 
             _lastStatsReset = DateTime.UtcNow;
@@ -276,7 +276,7 @@ namespace AhBearStudios.Core.Messaging.Publishers
             try
             {
                 // Determine optimal batch size based on config
-                var batchSize = Math.Min(_config.MaxConcurrentHandlers, messageList.Count);
+                var batchSize = Math.Min(_config.MaxConcurrentPublishers, messageList.Count);
                 var semaphore = new SemaphoreSlim(batchSize, batchSize);
                 
                 // Create UniTask array for proper type compatibility

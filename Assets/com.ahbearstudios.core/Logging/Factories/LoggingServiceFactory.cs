@@ -438,7 +438,7 @@ namespace AhBearStudios.Core.Logging.Factories
                     catch (Exception ex)
                     {
                         failedTargets.Add($"{targetConfig.Name} ({targetConfig.TargetType}): {ex.Message}");
-                        System.Diagnostics.Debug.WriteLine($"Failed to create target '{targetConfig.Name}': {ex.Message}");
+                        Console.WriteLine($"Failed to create target '{targetConfig.Name}': {ex.Message}");
                     }
                 }
 
@@ -449,7 +449,7 @@ namespace AhBearStudios.Core.Logging.Factories
                     {
                         var fallbackTarget = targetFactory.CreateDefaultTarget();
                         targets.Add(fallbackTarget);
-                        System.Diagnostics.Debug.WriteLine("No targets created successfully, using fallback target");
+                        Console.WriteLine("No targets created successfully, using fallback target");
                     }
                     catch (Exception ex)
                     {
@@ -462,9 +462,11 @@ namespace AhBearStudios.Core.Logging.Factories
                 // Create the logging service with all dependencies
                 var loggingService = new LoggingService(
                     config,
-                    targets,
-                    _formattingService,
-                    _batchingService,
+                    logTargetService: null, // Will be injected during bootstrap
+                    logChannelService: null, // Will be injected during bootstrap
+                    targets: targets,
+                    formattingService: _formattingService,
+                    batchingService: _batchingService,
                     healthCheckService: null, // Will be injected during bootstrap
                     alertService: null, // Will be injected during bootstrap
                     profilerService: null); // Will be injected during bootstrap

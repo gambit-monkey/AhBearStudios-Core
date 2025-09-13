@@ -110,7 +110,6 @@ namespace AhBearStudios.Core.Logging.HealthChecks
                 ["CacheTimeout"] = _cacheTimeout.TotalSeconds,
                 ["Dependencies"] = Dependencies.AsValueEnumerable().Select(d => d.ToString()).ToArray(),
                 ["Version"] = "1.0.0",
-                ["ConfigurationVersion"] = _configuration?.Version ?? "Unknown",
                 ["LastExecutionTime"] = _lastCheckTime != DateTime.MinValue ? _lastCheckTime : null,
                 ["IsCacheValid"] = IsCacheValid(),
                 ["LoggingServiceEnabled"] = _loggingService.IsEnabled,
@@ -132,9 +131,8 @@ namespace AhBearStudios.Core.Logging.HealthChecks
         private HealthCheckConfiguration CreateDefaultConfiguration()
         {
             return HealthCheckConfiguration.ForCriticalSystem(
-                _healthCheckName,
-                "Logging Service Health Check",
-                "Monitors logging system performance, target health, and resource utilization");
+                _healthCheckName.ToString(),
+                "Logging Service Health Check");
         }
 
         /// <summary>
@@ -523,9 +521,8 @@ namespace AhBearStudios.Core.Logging.HealthChecks
             var healthCheck = new LoggingServiceHealthCheck(loggingService);
             
             var criticalConfig = HealthCheckConfiguration.ForCriticalSystem(
-                new FixedString64Bytes(healthCheckName ?? "CriticalLogging"),
-                "Critical Logging Service Health Check",
-                "Monitors critical logging system performance with strict thresholds");
+                healthCheckName ?? "CriticalLogging",
+                "Critical Logging Service Health Check");
             
             healthCheck.Configure(criticalConfig);
             return healthCheck;
@@ -543,18 +540,9 @@ namespace AhBearStudios.Core.Logging.HealthChecks
         {
             var healthCheck = new LoggingServiceHealthCheck(loggingService);
             
-            var performanceConfig = HealthCheckConfiguration.ForPerformanceMonitoring(
-                new FixedString64Bytes("PerformanceLogging"),
-                "Performance Logging Service Health Check",
-                "Monitors logging system performance metrics and resource utilization");
-            
-            if (performanceThresholds != null)
-            {
-                foreach (var threshold in performanceThresholds)
-                {
-                    performanceConfig = performanceConfig.WithMetadata(threshold.Key, threshold.Value);
-                }
-            }
+            var performanceConfig = HealthCheckConfiguration.Create(
+                "PerformanceLogging",
+                "Performance Logging Service Health Check");
             
             healthCheck.Configure(performanceConfig);
             return healthCheck;
@@ -588,9 +576,8 @@ namespace AhBearStudios.Core.Logging.HealthChecks
             var healthCheck = new LoggingServiceHealthCheck(loggingService);
             
             var developmentConfig = HealthCheckConfiguration.ForDevelopment(
-                new FixedString64Bytes("DevelopmentLogging"),
-                "Development Logging Service Health Check",
-                "Monitors logging system in development environment with relaxed thresholds");
+                "DevelopmentLogging",
+                "Development Logging Service Health Check");
             
             healthCheck.Configure(developmentConfig);
             return healthCheck;
@@ -606,9 +593,8 @@ namespace AhBearStudios.Core.Logging.HealthChecks
             var healthCheck = new LoggingServiceHealthCheck(loggingService);
             
             var testingConfig = HealthCheckConfiguration.ForDevelopment(
-                new FixedString64Bytes("TestingLogging"),
-                "Testing Logging Service Health Check",
-                "Monitors logging system during testing with appropriate thresholds");
+                "TestingLogging",
+                "Testing Logging Service Health Check");
             
             healthCheck.Configure(testingConfig);
             return healthCheck;

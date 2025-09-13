@@ -27,7 +27,13 @@ namespace AhBearStudios.Core.Logging.Models
         /// <summary>
         /// Gets whether this channel is enabled and should process log messages.
         /// </summary>
-        public bool IsEnabled { get; }
+        public bool IsEnabled { get; set; }
+
+        /// <summary>
+        /// Gets whether this channel is currently healthy and operational.
+        /// A channel is considered healthy if it's properly configured and functioning.
+        /// </summary>
+        public bool IsHealthy => !string.IsNullOrEmpty(Name);
 
         /// <summary>
         /// Gets the list of tags associated with this channel for categorization.

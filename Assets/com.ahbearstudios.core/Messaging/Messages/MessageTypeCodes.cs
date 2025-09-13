@@ -293,6 +293,36 @@
         /// </summary>
         public const ushort LoggingConfigurationChangedMessage = 1103;
         
+        /// <summary>
+        /// Type code for log target registered messages.
+        /// </summary>
+        public const ushort LoggingTargetRegisteredMessage = 1104;
+        
+        /// <summary>
+        /// Type code for log target unregistered messages.
+        /// </summary>
+        public const ushort LoggingTargetUnregisteredMessage = 1105;
+        
+        /// <summary>
+        /// Type code for log channel registered messages.
+        /// </summary>
+        public const ushort LoggingChannelRegisteredMessage = 1106;
+        
+        /// <summary>
+        /// Type code for log channel unregistered messages.
+        /// </summary>
+        public const ushort LoggingChannelUnregisteredMessage = 1107;
+        
+        /// <summary>
+        /// Type code for log channel error messages.
+        /// </summary>
+        public const ushort LoggingChannelErrorMessage = 1108;
+        
+        /// <summary>
+        /// Type code for log default channel changed messages.
+        /// </summary>
+        public const ushort LoggingDefaultChannelChangedMessage = 1109;
+        
         #endregion
         
         #region Health System Messages (1200-1299)
@@ -616,6 +646,76 @@
         
         #endregion
         
+        #region Profiling System Messages (1500-1599)
+        
+        /// <summary>
+        /// Type code for profiler threshold exceeded messages.
+        /// Sent when performance measurements exceed configured thresholds.
+        /// </summary>
+        public const ushort ProfilingThresholdExceededMessage = 1500;
+        
+        /// <summary>
+        /// Type code for profiler scope started messages.
+        /// Sent when a new profiling scope begins execution.
+        /// </summary>
+        public const ushort ProfilingScopeStartedMessage = 1501;
+        
+        /// <summary>
+        /// Type code for profiler scope completed messages.
+        /// Sent when a profiling scope completes execution.
+        /// </summary>
+        public const ushort ProfilingScopeCompletedMessage = 1502;
+        
+        /// <summary>
+        /// Type code for profiler data recorded messages.
+        /// Sent when performance data is recorded.
+        /// </summary>
+        public const ushort ProfilingDataRecordedMessage = 1503;
+        
+        /// <summary>
+        /// Type code for profiler service enabled messages.
+        /// Sent when profiling service is enabled.
+        /// </summary>
+        public const ushort ProfilingServiceEnabledMessage = 1504;
+        
+        /// <summary>
+        /// Type code for profiler service disabled messages.
+        /// Sent when profiling service is disabled.
+        /// </summary>
+        public const ushort ProfilingServiceDisabledMessage = 1505;
+        
+        /// <summary>
+        /// Type code for profiler configuration changed messages.
+        /// Sent when profiler configuration is updated.
+        /// </summary>
+        public const ushort ProfilingConfigurationChangedMessage = 1506;
+        
+        /// <summary>
+        /// Type code for profiler health status messages.
+        /// Sent when profiler health status changes.
+        /// </summary>
+        public const ushort ProfilingHealthStatusMessage = 1507;
+        
+        /// <summary>
+        /// Type code for profiler sampling rate changed messages.
+        /// Sent when sampling rate is adjusted.
+        /// </summary>
+        public const ushort ProfilingSamplingRateChangedMessage = 1508;
+        
+        /// <summary>
+        /// Type code for profiler metrics cleared messages.
+        /// Sent when profiler metrics are cleared.
+        /// </summary>
+        public const ushort ProfilingMetricsClearedMessage = 1509;
+        
+        /// <summary>
+        /// Type code for profiler error occurred messages.
+        /// Sent when profiling operations encounter errors.
+        /// </summary>
+        public const ushort ProfilingErrorOccurredMessage = 1510;
+        
+        #endregion
+        
         #region Range Validation Constants
         
         /// <summary>
@@ -679,6 +779,16 @@
         public const ushort AlertingSystemRangeEnd = 1499;
         
         /// <summary>
+        /// Minimum TypeCode value for profiling system messages.
+        /// </summary>
+        public const ushort ProfilingSystemRangeStart = 1500;
+        
+        /// <summary>
+        /// Maximum TypeCode value for profiling system messages.
+        /// </summary>
+        public const ushort ProfilingSystemRangeEnd = 1599;
+        
+        /// <summary>
         /// Special TypeCode reserved for testing and validation messages.
         /// </summary>
         public const ushort Reserved_Testing = 65535;
@@ -714,7 +824,7 @@
                 >= HealthSystemRangeStart and <= HealthSystemRangeEnd => "Health System",
                 >= PoolingSystemRangeStart and <= PoolingSystemRangeEnd => "Pooling System",
                 >= AlertingSystemRangeStart and <= AlertingSystemRangeEnd => "Alerting System",
-                >= 1500 and <= 1599 => "Profiling System",
+                >= ProfilingSystemRangeStart and <= ProfilingSystemRangeEnd => "Profiling System",
                 >= 1600 and <= 1699 => "Serialization System",
                 >= 2000 and <= 2999 => "Game System",
                 >= 3000 and <= 64999 => "Custom System",

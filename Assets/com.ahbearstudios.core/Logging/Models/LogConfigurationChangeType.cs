@@ -73,6 +73,11 @@ namespace AhBearStudios.Core.Logging.Models
         /// <summary>
         /// A complete configuration reload was performed.
         /// </summary>
-        ConfigurationReloaded = 13
+        ConfigurationReloaded = 13,
+
+        /// <summary>
+        /// The default channel was changed.
+        /// </summary>
+        DefaultChannelChanged = 14
     }
 }

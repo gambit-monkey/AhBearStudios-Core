@@ -235,7 +235,6 @@ namespace AhBearStudios.Core.Logging.Formatters
         {
             // This is a simplified MessagePack serialization
             // For production, use MessagePack-CSharp library: MessagePackSerializer.Serialize(data)
-            
             using var stream = new System.IO.MemoryStream();
             using var writer = new System.IO.BinaryWriter(stream);
 

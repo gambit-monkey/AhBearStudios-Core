@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using AhBearStudios.Core.Profiling.Models;
+using AhBearStudios.Core.Profiling.Internal;
 
 namespace AhBearStudios.Core.Profiling
 {
@@ -162,17 +162,5 @@ namespace AhBearStudios.Core.Profiling
             // No-op
         }
 
-        /// <summary>
-        /// Null implementation of IDisposable for profiling scopes.
-        /// </summary>
-        private sealed class NullScope : IDisposable
-        {
-            public static readonly NullScope Instance = new NullScope();
-
-            public void Dispose()
-            {
-                // No-op
-            }
-        }
     }
 }

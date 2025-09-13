@@ -2,6 +2,7 @@
 using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging.Messages;
+using AhBearStudios.Core.Messaging.Services;
 
 namespace AhBearStudios.Core.Messaging
 {
@@ -11,7 +12,7 @@ namespace AhBearStudios.Core.Messaging
     /// </summary>
     internal sealed class MessageScope : IMessageScope
     {
-        private readonly IMessageBusService _messageBusService;
+        private readonly IMessageSubscriptionService _subscriptionService;
         private readonly ILoggingService _logger;
         private readonly ConcurrentBag<IDisposable> _subscriptions;
         private volatile bool _disposed;
@@ -30,12 +31,12 @@ namespace AhBearStudios.Core.Messaging
         /// <summary>
         /// Initializes a new instance of the MessageScope class.
         /// </summary>
-        /// <param name="messageBusService">The message bus service</param>
+        /// <param name="subscriptionService">The message subscription service</param>
         /// <param name="logger">The logging service</param>
         /// <exception cref="ArgumentNullException">Thrown when required parameters are null</exception>
-        public MessageScope(IMessageBusService messageBusService, ILoggingService logger)
+        public MessageScope(IMessageSubscriptionService subscriptionService, ILoggingService logger)
         {
-            _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
+            _subscriptionService = subscriptionService ?? throw new ArgumentNullException(nameof(subscriptionService));
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
             _subscriptions = new ConcurrentBag<IDisposable>();
             Id = Guid.NewGuid();
@@ -53,7 +54,7 @@ namespace AhBearStudios.Core.Messaging
 
             try
             {
-                var subscription = _messageBusService.SubscribeToMessage(handler);
+                var subscription = _subscriptionService.SubscribeToMessage(handler);
                 var scopedSubscription = new ScopedSubscription(subscription, this, typeof(TMessage).Name);
                 
                 _subscriptions.Add(scopedSubscription);
@@ -79,7 +80,7 @@ namespace AhBearStudios.Core.Messaging
 
             try
             {
-                var subscription = _messageBusService.SubscribeToMessageAsync(handler);
+                var subscription = _subscriptionService.SubscribeToMessageAsync(handler);
                 var scopedSubscription = new ScopedSubscription(subscription, this, typeof(TMessage).Name);
                 
                 _subscriptions.Add(scopedSubscription);
@@ -139,10 +140,10 @@ namespace AhBearStudios.Core.Messaging
                     }
                 }
 
-                // Notify the message bus service
-                if (_messageBusService is MessageBusService messageBusService)
+                // Notify the subscription service
+                if (_subscriptionService is MessageSubscriptionService subscriptionService)
                 {
-                    messageBusService.OnScopeDisposed(Id);
+                    subscriptionService.OnScopeDisposed(Id);
                 }
 
                 _disposed = true;

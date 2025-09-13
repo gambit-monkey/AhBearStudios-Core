@@ -7,6 +7,7 @@ using Unity.Burst;
 using Unity.Jobs;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Logging.Targets;
+using AhBearStudios.Core.Profiling;
 using Cysharp.Threading.Tasks;
 
 namespace AhBearStudios.Core.Logging.Services
@@ -30,6 +31,7 @@ namespace AhBearStudios.Core.Logging.Services
         private readonly CancellationTokenSource _cancellationTokenSource;
         private readonly UniTask _processingTask;
         private readonly Stopwatch _performanceStopwatch;
+        private readonly IProfilerService _profilerService;
         
         private volatile bool _disposed = false;
         private volatile bool _isProcessing = false;
@@ -92,6 +94,7 @@ namespace AhBearStudios.Core.Logging.Services
         /// <param name="flushInterval">The interval at which to flush batches</param>
         /// <param name="highPerformanceMode">Whether to enable high-performance mode</param>
         /// <param name="burstCompatibility">Whether to enable Burst compatibility</param>
+        /// <param name="profilerService">Service for performance monitoring</param>
         /// <exception cref="ArgumentNullException">Thrown when targets is null</exception>
         /// <exception cref="ArgumentException">Thrown when maxQueueSize is less than or equal to zero</exception>
         public LogBatchingService(
@@ -99,7 +102,8 @@ namespace AhBearStudios.Core.Logging.Services
             int maxQueueSize = 1000,
             TimeSpan flushInterval = default,
             bool highPerformanceMode = true,
-            bool burstCompatibility = true)
+            bool burstCompatibility = true,
+            IProfilerService profilerService = null)
         {
             if (targets == null) throw new ArgumentNullException(nameof(targets));
             if (maxQueueSize <= 0) throw new ArgumentException("Max queue size must be greater than zero", nameof(maxQueueSize));
@@ -109,6 +113,7 @@ namespace AhBearStudios.Core.Logging.Services
             FlushInterval = flushInterval == default ? TimeSpan.FromMilliseconds(100) : flushInterval;
             HighPerformanceMode = highPerformanceMode;
             BurstCompatibility = burstCompatibility;
+            _profilerService = profilerService ?? NullProfilerService.Instance;
 
             // Initialize native collections using Unity.Collections v2
             _messageQueue = new NativeQueue<LogMessage>(Allocator.Persistent);
@@ -135,6 +140,7 @@ namespace AhBearStudios.Core.Logging.Services
         [BurstCompile]
         public bool EnqueueMessage(in LogMessage logMessage)
         {
+            // Note: Cannot use IProfilerService here due to BurstCompile requirement
             if (_disposed || !_messageQueue.IsCreated) return false;
 
             // Check queue capacity
@@ -245,6 +251,8 @@ namespace AhBearStudios.Core.Logging.Services
         /// </summary>
         public void ForceFlush()
         {
+            using var scope = _profilerService.BeginScope("LogBatchingService.ForceFlush");
+            
             if (_disposed) return;
 
             FlushCallback(null);
@@ -256,6 +264,8 @@ namespace AhBearStudios.Core.Logging.Services
         /// <returns>A UniTask representing the asynchronous flush operation</returns>
         public async UniTask FlushAsync()
         {
+            using var scope = _profilerService.BeginScope("LogBatchingService.FlushAsync");
+            
             if (_disposed) return;
 
             var tcs = new UniTaskCompletionSource<bool>();

@@ -22,7 +22,7 @@ namespace AhBearStudios.Core.HealthChecking
     /// Production-ready health check service providing comprehensive system health monitoring.
     /// Orchestrates specialized services for scheduling, degradation management, statistics, and circuit breakers.
     /// </summary>
-    public sealed class HealthCheckService : IHealthCheckService, IDisposable
+    public sealed class HealthCheckService_Legacy : IHealthCheckService, IDisposable
     {
         private readonly HealthCheckServiceConfig _config;
         private readonly ILoggingService _logger;

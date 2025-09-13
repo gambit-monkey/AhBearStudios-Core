@@ -27,13 +27,13 @@ namespace AhBearStudios.Core.Logging
     /// <summary>
     /// Enhanced high-performance logging service implementation with full system integration.
     /// Provides centralized logging with health monitoring, alerting, and performance tracking.
-    /// Follows AhBearStudios Core Architecture patterns with complete dependency integration.
+    /// Follows AhBearStudios Core Architecture patterns with decomposed service dependencies.
     /// </summary>
     public sealed class LoggingService : ILoggingService, IDisposable
     {
         private readonly LoggingConfig _config;
-        private readonly ConcurrentDictionary<string, ILogTarget> _targets;
-        private readonly ConcurrentDictionary<string, ILogChannel> _channels;
+        private readonly ILogTargetService _logTargetService;
+        private readonly ILogChannelService _logChannelService;
         private readonly LogFormattingService _formattingService;
         private readonly LogBatchingService _batchingService;
         private readonly IHealthCheckService _healthCheckService;
@@ -61,9 +61,11 @@ namespace AhBearStudios.Core.Logging
         private readonly TimeSpan _alertCooldown = TimeSpan.FromMinutes(5);
         
         /// <summary>
-        /// Initializes a new instance of the LoggingService with full system integration.
+        /// Initializes a new instance of the LoggingService with decomposed service dependencies.
         /// </summary>
         /// <param name="config">The logging configuration</param>
+        /// <param name="logTargetService">Service for managing log targets</param>
+        /// <param name="logChannelService">Service for managing log channels</param>
         /// <param name="targets">Initial log targets to register</param>
         /// <param name="formattingService">Service for formatting log messages</param>
         /// <param name="batchingService">Service for batching log operations</param>
@@ -73,6 +75,8 @@ namespace AhBearStudios.Core.Logging
         /// <param name="messageBusService">Message bus service for loose coupling through events</param>
         public LoggingService(
             LoggingConfig config,
+            ILogTargetService logTargetService = null,
+            ILogChannelService logChannelService = null,
             IEnumerable<ILogTarget> targets = null,
             LogFormattingService formattingService = null,
             LogBatchingService batchingService = null,
@@ -82,13 +86,13 @@ namespace AhBearStudios.Core.Logging
             IMessageBusService messageBusService = null)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
-            _targets = new ConcurrentDictionary<string, ILogTarget>();
-            _channels = new ConcurrentDictionary<string, ILogChannel>();
+            _logTargetService = logTargetService ?? new LogTargetService(profilerService, alertService, messageBusService);
+            _logChannelService = logChannelService ?? new LogChannelService(profilerService, alertService, messageBusService);
             _formattingService = formattingService;
             _batchingService = batchingService;
             _healthCheckService = healthCheckService;
             _alertService = alertService;
-            _profilerService = profilerService;
+            _profilerService = profilerService ?? NullProfilerService.Instance;
             _messageBusService = messageBusService;
             
             _isEnabled = config.IsLoggingEnabled;
@@ -264,237 +268,86 @@ namespace AhBearStudios.Core.Logging
         /// <inheritdoc />
         public void RegisterTarget(ILogTarget target, FixedString64Bytes correlationId = default)
         {
-            if (target == null)
-                throw new ArgumentNullException(nameof(target));
-            
             if (_disposed)
                 throw new ObjectDisposedException(nameof(LoggingService));
             
-            lock (_lock)
-            {
-                if (_targets.TryAdd(target.Name, target))
-                {
-                    UpdateBatchingServiceTargets();
-                    LogInfo($"Registered log target: {target.Name}", correlationId, "LoggingService");
-                    
-                    // Publish configuration change message for loose coupling
-                    if (_messageBusService != null)
-                    {
-                        var configMessage = LoggingConfigurationChangedMessage.Create(
-                            LogConfigurationChangeType.TargetAdded,
-                            "LoggingService",
-                            "RegisteredTargets",
-                            previousValue: $"{_targets.Count - 1} targets",
-                            newValue: $"{_targets.Count} targets (added: {target.Name})",
-                            changedBy: "LoggingService",
-                            changeReason: "Target registration");
-                        
-                        _messageBusService.PublishMessage(configMessage);
-                    }
-                }
-                else
-                {
-                    LogWarning($"Target with name '{target.Name}' is already registered", correlationId, "LoggingService");
-                }
-            }
+            _logTargetService.RegisterTarget(target, correlationId);
+            UpdateBatchingServiceTargets();
         }
         
         /// <inheritdoc />
         public bool UnregisterTarget(string targetName, FixedString64Bytes correlationId = default)
         {
-            if (string.IsNullOrEmpty(targetName)) return false;
             if (_disposed) return false;
             
-            lock (_lock)
+            var result = _logTargetService.UnregisterTarget(targetName, correlationId);
+            if (result)
             {
-                if (_targets.TryRemove(targetName, out var target))
-                {
-                    try
-                    {
-                        target.Dispose();
-                        UpdateBatchingServiceTargets();
-                        LogInfo($"Unregistered log target: {targetName}", correlationId, "LoggingService");
-                        
-                        // Publish configuration change message for loose coupling
-                        if (_messageBusService != null)
-                        {
-                            var configMessage = LoggingConfigurationChangedMessage.Create(
-                                LogConfigurationChangeType.TargetRemoved,
-                                "LoggingService",
-                                "RegisteredTargets",
-                                previousValue: $"{_targets.Count + 1} targets",
-                                newValue: $"{_targets.Count} targets (removed: {targetName})",
-                                changedBy: "LoggingService",
-                                changeReason: "Target unregistration");
-                            
-                            _messageBusService.PublishMessage(configMessage);
-                        }
-                        
-                        return true;
-                    }
-                    catch (Exception ex)
-                    {
-                        LogError($"Error disposing target '{targetName}': {ex.Message}", correlationId, "LoggingService");
-                        return false;
-                    }
-                }
-                
-                return false;
+                UpdateBatchingServiceTargets();
             }
+            return result;
         }
         
         /// <inheritdoc />
         public ILogTarget GetTarget(string targetName)
         {
-            if (string.IsNullOrEmpty(targetName)) return null;
-            
-            _targets.TryGetValue(targetName, out var target);
-            return target;
+            return _logTargetService.GetTarget(targetName);
         }
         
         /// <inheritdoc />
         public bool HasTarget(string targetName)
         {
-            if (string.IsNullOrEmpty(targetName)) return false;
-            return _targets.ContainsKey(targetName);
+            return _logTargetService.HasTarget(targetName);
         }
         
         /// <inheritdoc />
         public void SetMinimumLevel(LogLevel minimumLevel)
         {
-            foreach (var target in _targets.Values)
-            {
-                try
-                {
-                    target.MinimumLevel = minimumLevel;
-                }
-                catch (Exception ex)
-                {
-                    LogError($"Failed to set minimum level for target '{target.Name}': {ex.Message}", "Logging.Configuration", "LoggingService");
-                }
-            }
-            
-            LogInfo($"Set global minimum level to {minimumLevel}", "Logging.Configuration", "LoggingService");
+            _logTargetService.SetMinimumLevel(minimumLevel);
         }
         
         /// <inheritdoc />
         public bool SetMinimumLevel(string targetName, LogLevel minimumLevel)
         {
-            if (string.IsNullOrEmpty(targetName)) return false;
-            
-            if (_targets.TryGetValue(targetName, out var target))
-            {
-                try
-                {
-                    target.MinimumLevel = minimumLevel;
-                    LogInfo($"Set minimum level for target '{targetName}' to {minimumLevel}", "Logging.Configuration", "LoggingService");
-                    return true;
-                }
-                catch (Exception ex)
-                {
-                    LogError($"Failed to set minimum level for target '{targetName}': {ex.Message}", "Logging.Configuration", "LoggingService");
-                    return false;
-                }
-            }
-            
-            return false;
+            return _logTargetService.SetMinimumLevel(targetName, minimumLevel);
         }
         
         /// <inheritdoc />
         public void SetEnabled(bool enabled)
         {
             _isEnabled = enabled;
-            
-            foreach (var target in _targets.Values)
-            {
-                try
-                {
-                    target.IsEnabled = enabled;
-                }
-                catch (Exception ex)
-                {
-                    LogError($"Failed to set enabled state for target '{target.Name}': {ex.Message}", "Logging.Configuration", "LoggingService");
-                }
-            }
-            
-            LogInfo($"Set global enabled state to {enabled}", "Logging.Configuration", "LoggingService");
+            _logTargetService.SetEnabled(enabled);
         }
         
         /// <inheritdoc />
         public bool SetEnabled(string targetName, bool enabled)
         {
-            if (string.IsNullOrEmpty(targetName)) return false;
-            
-            if (_targets.TryGetValue(targetName, out var target))
-            {
-                try
-                {
-                    target.IsEnabled = enabled;
-                    LogInfo($"Set enabled state for target '{targetName}' to {enabled}", "Logging.Configuration", "LoggingService");
-                    return true;
-                }
-                catch (Exception ex)
-                {
-                    LogError($"Failed to set enabled state for target '{targetName}': {ex.Message}", "Logging.Configuration", "LoggingService");
-                    return false;
-                }
-            }
-            
-            return false;
+            return _logTargetService.SetEnabled(targetName, enabled);
         }
         
         /// <inheritdoc />
         public IReadOnlyList<ILogTarget> GetRegisteredTargets()
         {
-            return _targets.Values.AsValueEnumerable().ToList().AsReadOnly();
+            return _logTargetService.GetTargets().AsValueEnumerable().ToList().AsReadOnly();
         }
         
         /// <inheritdoc />
         public void Flush()
         {
-            using var scope = _profilerService?.BeginScope("LoggingService.Flush");
+            using var scope = _profilerService.BeginScope("LoggingService.Flush");
             
             if (_batchingService != null)
             {
                 _batchingService.ForceFlush();
             }
             
-            foreach (var target in _targets.Values)
-            {
-                try
-                {
-                    target.Flush();
-                }
-                catch (Exception ex)
-                {
-                    // Avoid circular logging - use system debugging instead
-                    System.Diagnostics.Debug.WriteLine($"LoggingService flush error for target '{target.Name}': {ex.Message}");
-                    TriggerTargetErrorAlert(target.Name, ex);
-                }
-            }
+            _logTargetService.FlushAll();
         }
         
         /// <inheritdoc />
         public bool Flush(string targetName)
         {
-            if (string.IsNullOrEmpty(targetName)) return false;
-            
-            if (_targets.TryGetValue(targetName, out var target))
-            {
-                try
-                {
-                    target.Flush();
-                    return true;
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"LoggingService flush error for target '{targetName}': {ex.Message}");
-                    TriggerTargetErrorAlert(targetName, ex);
-                    return false;
-                }
-            }
-            
-            return false;
+            return _logTargetService.Flush(targetName);
         }
         
         /// <inheritdoc />
@@ -503,53 +356,20 @@ namespace AhBearStudios.Core.Logging
             if (_disposed) return false;
             
             _lastHealthCheck = DateTime.UtcNow;
-            
-            foreach (var target in _targets.Values)
-            {
-                try
-                {
-                    if (!target.PerformHealthCheck())
-                    {
-                        return false;
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"LoggingService health check error for target '{target.Name}': {ex.Message}");
-                    TriggerTargetErrorAlert(target.Name, ex);
-                    return false;
-                }
-            }
-            
-            return true;
+            return _logTargetService.PerformHealthCheck();
         }
         
         /// <inheritdoc />
         public IReadOnlyDictionary<string, bool> GetHealthStatus()
         {
-            var healthStatus = new Dictionary<string, bool>();
-            
-            foreach (var target in _targets.Values)
-            {
-                try
-                {
-                    healthStatus[target.Name] = target.PerformHealthCheck();
-                }
-                catch (Exception ex)
-                {
-                    healthStatus[target.Name] = false;
-                    System.Diagnostics.Debug.WriteLine($"Health check failed for target '{target.Name}': {ex.Message}");
-                }
-            }
-            
-            return new ReadOnlyDictionary<string, bool>(healthStatus);
+            return _logTargetService.GetHealthStatus();
         }
         
         /// <inheritdoc />
         public LoggingStatistics GetStatistics()
         {
-            var totalTargets = _targets.Count;
-            var healthyTargets = GetHealthStatus().Values.AsValueEnumerable().Count(healthy => healthy);
+            var totalTargets = _logTargetService.GetTargets().Count;
+            var healthyTargets = _logTargetService.GetHealthStatus().Values.AsValueEnumerable().Count(healthy => healthy);
             
             return LoggingStatistics.Create(
                 messagesProcessed: _totalMessagesProcessed,
@@ -578,7 +398,7 @@ namespace AhBearStudios.Core.Logging
             
             try
             {
-                using var scope = _profilerService?.BeginScope("LoggingService.LogInternal");
+                using var scope = _profilerService.BeginScope("LoggingService.LogInternal");
                 
                 var logMessage = CreateLogMessage(level, channel, message, exception, correlationId, properties, sourceContext);
                 
@@ -621,9 +441,10 @@ namespace AhBearStudios.Core.Logging
         {
             if (string.IsNullOrEmpty(correlationId) && _config.AutoCorrelationId)
             {
+                var messageHash = message?.GetHashCode() ?? 0;
                 correlationId = DeterministicIdGenerator.GenerateLogCorrelationId(
                     sourceContext ?? "LoggingService",
-                    message?.GetHashCode().ToString()
+                    messageHash.ToString()
                 ).ToString("N");
             }
             
@@ -643,22 +464,7 @@ namespace AhBearStudios.Core.Logging
         /// </summary>
         private void WriteToTargets(LogMessage logMessage)
         {
-            foreach (var target in _targets.Values)
-            {
-                try
-                {
-                    if (target.IsEnabled && target.ShouldProcessMessage(logMessage))
-                    {
-                        target.Write(logMessage);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Interlocked.Increment(ref _totalErrorsEncountered);
-                    System.Diagnostics.Debug.WriteLine($"Error writing to target '{target.Name}': {ex.Message}");
-                    TriggerTargetErrorAlert(target.Name, ex);
-                }
-            }
+            _logTargetService.WriteToTargets(logMessage);
         }
         
         /// <summary>
@@ -714,9 +520,9 @@ namespace AhBearStudios.Core.Logging
                 {
                     var healthMessage = LoggingSystemHealthMessage.Create(
                         isHealthy: false,
-                        healthyTargets: _targets.Values.AsValueEnumerable().Count(t => t.IsHealthy),
-                        totalTargets: _targets.Count,
-                        activeChannels: _channels.Count,
+                        healthyTargets: _logTargetService.GetHealthStatus().Values.AsValueEnumerable().Count(t => t),
+                        totalTargets: _logTargetService.GetTargets().Count,
+                        activeChannels: _logChannelService.GetChannels().Count,
                         details: $"Critical logging error: {message}");
                     
                     _messageBusService.PublishMessage(healthMessage);
@@ -846,7 +652,7 @@ namespace AhBearStudios.Core.Logging
             {
                 try
                 {
-                    RegisterTarget(target);
+                    _logTargetService.RegisterTarget(target);
                 }
                 catch (Exception ex)
                 {
@@ -906,60 +712,35 @@ namespace AhBearStudios.Core.Logging
         /// <inheritdoc />
         public void RegisterChannel(ILogChannel channel, FixedString64Bytes correlationId = default)
         {
-            if (channel == null)
-                throw new ArgumentNullException(nameof(channel));
-
             if (_disposed)
                 throw new ObjectDisposedException(nameof(LoggingService));
 
-            if (_channels.TryAdd(channel.Name, channel))
-            {
-                LogInfo($"Registered log channel: {channel.Name}", correlationId, "LoggingService");
-            }
-            else
-            {
-                LogWarning($"Channel with name '{channel.Name}' is already registered", correlationId, "LoggingService");
-            }
+            _logChannelService.RegisterChannel(channel, correlationId);
         }
 
         /// <inheritdoc />
         public bool UnregisterChannel(string channelName, FixedString64Bytes correlationId = default)
         {
-            if (string.IsNullOrEmpty(channelName) || _disposed)
-                return false;
-
-            if (_channels.TryRemove(channelName, out var channel))
-            {
-                LogInfo($"Unregistered log channel: {channelName}", correlationId, "LoggingService");
-                return true;
-            }
-
-            return false;
+            if (_disposed) return false;
+            return _logChannelService.UnregisterChannel(channelName, correlationId);
         }
 
         /// <inheritdoc />
         public IReadOnlyCollection<ILogChannel> GetChannels()
         {
-            return _channels.Values.AsValueEnumerable().ToList().AsReadOnly();
+            return _logChannelService.GetChannels();
         }
 
         /// <inheritdoc />
         public ILogChannel GetChannel(string channelName)
         {
-            if (string.IsNullOrEmpty(channelName))
-                return null;
-
-            _channels.TryGetValue(channelName, out var channel);
-            return channel;
+            return _logChannelService.GetChannel(channelName);
         }
 
         /// <inheritdoc />
         public bool HasChannel(string channelName)
         {
-            if (string.IsNullOrEmpty(channelName))
-                return false;
-
-            return _channels.ContainsKey(channelName);
+            return _logChannelService.HasChannel(channelName);
         }
 
         /// <inheritdoc />
@@ -973,25 +754,13 @@ namespace AhBearStudios.Core.Logging
         /// <inheritdoc />
         public IReadOnlyCollection<ILogTarget> GetTargets()
         {
-            return _targets.Values.AsValueEnumerable().ToList().AsReadOnly();
+            return _logTargetService.GetTargets();
         }
 
         /// <inheritdoc />
         public void SetMinimumLevel(LogLevel level, FixedString64Bytes correlationId = default)
         {
-            foreach (var target in _targets.Values)
-            {
-                try
-                {
-                    target.MinimumLevel = level;
-                }
-                catch (Exception ex)
-                {
-                    LogError($"Failed to set minimum level for target '{target.Name}': {ex.Message}", correlationId, "LoggingService");
-                }
-            }
-            
-            LogInfo($"Set global minimum level to {level}", correlationId, "LoggingService");
+            _logTargetService.SetMinimumLevel(level, correlationId);
         }
 
         /// <inheritdoc />
@@ -1014,7 +783,7 @@ namespace AhBearStudios.Core.Logging
         /// <inheritdoc />
         public async UniTask FlushAsync(FixedString64Bytes correlationId = default)
         {
-            using var scope = _profilerService?.BeginScope("LoggingService.FlushAsync");
+            using var scope = _profilerService.BeginScope("LoggingService.FlushAsync");
             
             var flushTasks = new List<UniTask>();
             
@@ -1023,7 +792,7 @@ namespace AhBearStudios.Core.Logging
                 flushTasks.Add(UniTask.RunOnThreadPool(() => _batchingService.ForceFlush()));
             }
             
-            foreach (var target in _targets.Values)
+            foreach (var target in _logTargetService.GetTargets())
             {
                 var targetName = target.Name;
                 flushTasks.Add(UniTask.RunOnThreadPool(() =>
@@ -1060,26 +829,15 @@ namespace AhBearStudios.Core.Logging
                 errors.Add(new Common.Models.ValidationError("Logging configuration is null", "Configuration"));
             }
             
-            // Validate targets
-            if (_targets.Count == 0)
-            {
-                warnings.Add(new Common.Models.ValidationWarning("No log targets registered", "Targets"));
-            }
+            // Validate targets using target service
+            var targetValidationResult = _logTargetService.ValidateConfiguration(correlationId);
+            errors.AddRange(targetValidationResult.Errors);
+            warnings.AddRange(targetValidationResult.Warnings);
             
-            foreach (var target in _targets.Values)
-            {
-                try
-                {
-                    if (!target.PerformHealthCheck())
-                    {
-                        warnings.Add(new Common.Models.ValidationWarning($"Target '{target.Name}' failed health check", $"Target.{target.Name}"));
-                    }
-                }
-                catch (Exception ex)
-                {
-                    errors.Add(new Common.Models.ValidationError($"Target '{target.Name}' validation error: {ex.Message}", $"Target.{target.Name}"));
-                }
-            }
+            // Validate channels using channel service  
+            var channelValidationResult = _logChannelService.ValidateConfiguration(correlationId);
+            errors.AddRange(channelValidationResult.Errors);
+            warnings.AddRange(channelValidationResult.Warnings);
             
             // Use appropriate factory method based on whether errors exist
             if (errors.Count == 0)
@@ -1089,8 +847,8 @@ namespace AhBearStudios.Core.Logging
                     warnings: warnings,
                     context: new Dictionary<string, object>
                     {
-                        ["TargetCount"] = _targets.Count,
-                        ["ChannelCount"] = _channels.Count,
+                        ["TargetCount"] = _logTargetService.GetTargets().Count,
+                        ["ChannelCount"] = _logChannelService.GetChannels().Count,
                         ["IsEnabled"] = _isEnabled,
                         ["CorrelationId"] = correlationId.ToString()
                     });
@@ -1103,8 +861,8 @@ namespace AhBearStudios.Core.Logging
                     warnings: warnings,
                     context: new Dictionary<string, object>
                     {
-                        ["TargetCount"] = _targets.Count,
-                        ["ChannelCount"] = _channels.Count,
+                        ["TargetCount"] = _logTargetService.GetTargets().Count,
+                        ["ChannelCount"] = _logChannelService.GetChannels().Count,
                         ["IsEnabled"] = _isEnabled,
                         ["CorrelationId"] = correlationId.ToString()
                     });
@@ -1128,18 +886,9 @@ namespace AhBearStudios.Core.Logging
                     GC.Collect(0, GCCollectionMode.Optimized);
                 }
                 
-                // Perform target maintenance
-                foreach (var target in _targets.Values)
-                {
-                    try
-                    {
-                        target.PerformHealthCheck();
-                    }
-                    catch (Exception ex)
-                    {
-                        LogError($"Maintenance error for target '{target.Name}': {ex.Message}", correlationId, "LoggingService");
-                    }
-                }
+                // Perform target and channel maintenance
+                _logTargetService.PerformHealthCheck();
+                _logChannelService.PerformHealthCheck();
                 
                 LogInfo("Logging service maintenance completed", correlationId, "LoggingService");
             }
@@ -1263,20 +1012,9 @@ namespace AhBearStudios.Core.Logging
                 _channelLookup.Dispose();
             }
             
-            // Dispose all targets
-            foreach (var target in _targets.Values)
-            {
-                try
-                {
-                    target.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"LoggingService disposal error for target '{target.Name}': {ex.Message}");
-                }
-            }
-            
-            _targets.Clear();
+            // Dispose target and channel services
+            _logTargetService?.Dispose();
+            _logChannelService?.Dispose();
             _performanceStopwatch?.Stop();
         }
     }

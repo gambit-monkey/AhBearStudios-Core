@@ -9,7 +9,11 @@
       "Bash(then sed -i '2 a using AhBearStudios.Core.Common.Utilities;' \"$file\")",
       "Bash(find:*)",
       "WebFetch(domain:fish-networking.gitbook.io)",
-      "WebFetch(domain:docs.google.com)"
+      "WebFetch(domain:docs.google.com)",
+      "Bash(sed:*)",
+      "Bash(grep:*)",
+      "Read(//usr/bin/**)",
+      "Bash(apt list:*)"
     ],
     "deny": [],
     "ask": []
@@ -26,7 +30,8 @@
       "unitask",
       "zlinq",
       "memorypack"
-    ]
+    ],
+    "packageManager": "npm-global"
   },
   "codeGeneration": {
     "preferredPatterns": [

@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using ZLinq;
+using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.HealthChecking;
@@ -17,7 +18,8 @@ namespace AhBearStudios.Core.Messaging.Factories
 {
     /// <summary>
     /// Factory for creating message bus service instances.
-    /// Handles validation, configuration, and dependency injection.
+    /// Creates orchestrator and all specialized services with proper dependency resolution.
+    /// Handles validation, configuration, and dependency injection without circular dependencies.
     /// </summary>
     public sealed class MessageBusFactory : IMessageBusFactory
     {
@@ -61,47 +63,46 @@ namespace AhBearStudios.Core.Messaging.Factories
         /// </summary>
         /// <param name="config">The message bus configuration</param>
         /// <returns>A configured message bus service instance</returns>
-        /// <exception cref="ArgumentNullException">Thrown when configSo is null</exception>
-        /// <exception cref="ArgumentException">Thrown when configSo is invalid</exception>
+        /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
+        /// <exception cref="ArgumentException">Thrown when config is invalid</exception>
         /// <exception cref="InvalidOperationException">Thrown when factory dependencies are not available</exception>
         public IMessageBusService CreateMessageBus(MessageBusConfig config)
         {
             if (config == null)
                 throw new ArgumentNullException(nameof(config));
 
-            _logger.LogInfo($"Creating message bus with configuration: {config.InstanceName}");
+            _logger.LogInfo($"Creating message bus orchestrator with configuration: {config.InstanceName}");
 
             try
             {
                 // Validate configuration
                 ValidateConfiguration(config);
 
-                // Create circuit breaker configuration using builder pattern
-                var circuitBreakerConfig = new MessageCircuitBreakerConfigBuilder()
-                    .WithDefaultConfig()
-                    .WithStateChangeMessages(config.AlertsEnabled)
-                    .WithPerformanceMonitoring(config.PerformanceMonitoring)
-                    .Build();
+                // Create individual service configurations from the main config
+                var publishingConfig = CreatePublishingConfig(config);
+                var subscriptionConfig = CreateSubscriptionConfig(config);
+                var monitoringConfig = CreateMonitoringConfig(config);
+                var healthConfig = CreateHealthConfig(config);
 
-                // Create the message bus service first (without circuit breaker)
+                // Create specialized services (no circular dependencies)
+                var publishingService = CreatePublishingService(publishingConfig);
+                var subscriptionService = CreateSubscriptionService(subscriptionConfig);
+                var monitoringService = CreateMonitoringService(monitoringConfig);
+                // TODO: Implement these services when they become available
+                IMessageBusHealthService healthService = null; // CreateHealthService(healthConfig);
+                IMessageRetryService retryService = null; // CreateRetryService();
+                IDeadLetterQueueService deadLetterQueueService = null; // CreateDeadLetterQueueService();
+
+                // Create the orchestrator
                 var messageBusService = new MessageBusService(
-                    config,
+                    publishingService,
+                    subscriptionService,
+                    monitoringService,
+                    healthService,
+                    retryService,
+                    deadLetterQueueService,
                     _logger,
-                    null, // circuitBreakerService - will be set after creation
-                    null, // messagePipeAdapter - optional
-                    _alertService,
-                    _profilerService,
-                    _poolingService);
-
-                // Create circuit breaker service with access to the message bus for state changes
-                var circuitBreakerService = new MessageCircuitBreakerService(
-                    circuitBreakerConfig,
-                    _logger,
-                    _circuitBreakerFactory,
-                    messageBusService);
-
-                // Note: MessageBusService would need to be updated to accept circuit breaker service after construction
-                // For now, this creates a working setup but the circular dependency needs architectural consideration
+                    _profilerService);
 
                 // Register health check if enabled
                 if (config.HealthChecksEnabled)
@@ -109,7 +110,7 @@ namespace AhBearStudios.Core.Messaging.Factories
                     RegisterHealthCheck(messageBusService, config);
                 }
 
-                _logger.LogInfo($"Message bus '{config.InstanceName}' created successfully");
+                _logger.LogInfo($"Message bus orchestrator '{config.InstanceName}' created successfully");
                 return messageBusService;
             }
             catch (Exception ex)
@@ -158,6 +159,200 @@ namespace AhBearStudios.Core.Messaging.Factories
             _logger.LogInfo("Creating reliable message bus");
             return CreateMessageBus(MessageBusConfig.Reliable);
         }
+
+        #region Service Creation Methods
+
+        /// <summary>
+        /// Creates the message publishing service configuration from the main config.
+        /// </summary>
+        /// <param name="config">The main message bus configuration</param>
+        /// <returns>Publishing service configuration</returns>
+        private MessagePublishingConfig CreatePublishingConfig(MessageBusConfig config)
+        {
+            return new MessagePublishingConfigBuilder()
+                .WithMaxConcurrentPublishers(config.MaxConcurrentHandlers)
+                .WithBatchSize(Math.Min(config.MaxConcurrentHandlers, 100))
+                .WithPublishTimeout(config.HandlerTimeout)
+                .WithCircuitBreakerEnabled(true)
+                .WithRetryEnabled(config.RetryFailedMessages)
+                .WithPerformanceMonitoring(config.PerformanceMonitoring)
+                .Build();
+        }
+
+        /// <summary>
+        /// Creates the message subscription service configuration from the main config.
+        /// </summary>
+        /// <param name="config">The main message bus configuration</param>
+        /// <returns>Subscription service configuration</returns>
+        private MessageSubscriptionConfig CreateSubscriptionConfig(MessageBusConfig config)
+        {
+            return new MessageSubscriptionConfigBuilder()
+                .WithMaxSubscribers(config.MaxConcurrentHandlers)
+                .WithMaxConcurrentHandlers(config.MaxConcurrentHandlers)
+                .WithHandlerTimeout(config.HandlerTimeout)
+                .WithAsyncEnabled(true)
+                .WithFilteringEnabled(true)
+                .WithPriorityRouting(true)
+                .WithScopedSubscriptions(true)
+                .WithPerformanceMonitoring(config.PerformanceMonitoring)
+                .Build();
+        }
+
+        /// <summary>
+        /// Creates the message bus monitoring service configuration from the main config.
+        /// </summary>
+        /// <param name="config">The main message bus configuration</param>
+        /// <returns>Monitoring service configuration</returns>
+        private MessageBusMonitoringConfig CreateMonitoringConfig(MessageBusConfig config)
+        {
+            return new MessageBusMonitoringConfigBuilder()
+                .WithMonitoringEnabled(true)
+                .WithPerformanceTrendAnalysis(config.PerformanceMonitoring)
+                .WithStatisticsUpdateInterval(config.StatisticsUpdateInterval)
+                .WithHistoricalDataRetention(TimeSpan.FromMinutes(10))
+                .WithAnomalyDetection(true)
+                .WithPerTypeStatistics(config.PerformanceMonitoring)
+                .Build();
+        }
+
+        /// <summary>
+        /// Creates the message bus health service configuration from the main config.
+        /// </summary>
+        /// <param name="config">The main message bus configuration</param>
+        /// <returns>Health service configuration</returns>
+        private MessageBusHealthConfig CreateHealthConfig(MessageBusConfig config)
+        {
+            return new MessageBusHealthConfigBuilder()
+                .WithHealthMonitoringEnabled(config.HealthChecksEnabled)
+                .WithSystemHealthCheckInterval(config.HealthCheckInterval)
+                .WithHealthAlertingEnabled(config.AlertsEnabled)
+                .WithCriticalServicesOverride(true)
+                .WithPerformanceOptimization(config.PerformanceMonitoring)
+                .Build();
+        }
+
+        /// <summary>
+        /// Creates the message publishing service instance.
+        /// </summary>
+        /// <param name="config">The publishing service configuration</param>
+        /// <returns>Publishing service instance</returns>
+        private IMessagePublishingService CreatePublishingService(MessagePublishingConfig config)
+        {
+            // Create circuit breaker service first (no dependencies on message bus)
+            var circuitBreakerConfig = new MessageCircuitBreakerConfigBuilder()
+                .WithDefaultConfig()
+                .WithStateChangeMessages(config.PerformanceMonitoringEnabled)
+                .WithPerformanceMonitoring(config.PerformanceMonitoringEnabled)
+                .Build();
+
+            var circuitBreakerService = new MessageCircuitBreakerService(
+                circuitBreakerConfig,
+                _logger,
+                _circuitBreakerFactory,
+                null); // No message bus dependency
+
+            // Create publishing service
+            return new MessagePublishingService(
+                config,
+                _logger,
+                _alertService,
+                _profilerService,
+                _poolingService);
+        }
+
+        /// <summary>
+        /// Creates the message subscription service instance.
+        /// </summary>
+        /// <param name="config">The subscription service configuration</param>
+        /// <returns>Subscription service instance</returns>
+        private IMessageSubscriptionService CreateSubscriptionService(MessageSubscriptionConfig config)
+        {
+            return new MessageSubscriptionService(
+                config,
+                _logger,
+                null, // messageBusAdapter
+                _alertService,
+                _profilerService,
+                _poolingService);
+        }
+
+        /// <summary>
+        /// Creates the message bus monitoring service instance.
+        /// </summary>
+        /// <param name="config">The monitoring service configuration</param>
+        /// <returns>Monitoring service instance</returns>
+        private IMessageBusMonitoringService CreateMonitoringService(MessageBusMonitoringConfig config)
+        {
+            return new MessageBusMonitoringService(
+                config,
+                _logger,
+                _profilerService,
+                _poolingService);
+        }
+
+        /// <summary>
+        /// Creates the message bus health service instance.
+        /// </summary>
+        /// <param name="config">The health service configuration</param>
+        /// <returns>Health service instance</returns>
+        private IMessageBusHealthService CreateHealthService(MessageBusHealthConfig config)
+        {
+            // TODO: Implement MessageBusHealthService
+            throw new NotImplementedException("MessageBusHealthService is not yet implemented");
+            /*
+            return new MessageBusHealthService(
+                config,
+                _logger,
+                _alertService,
+                _profilerService);
+            */
+        }
+
+        /// <summary>
+        /// Creates the message retry service instance.
+        /// </summary>
+        /// <returns>Retry service instance</returns>
+        private IMessageRetryService CreateRetryService()
+        {
+            // TODO: Implement MessageRetryService
+            throw new NotImplementedException("MessageRetryService is not yet implemented");
+            /*
+            // Use default retry configuration for now
+            var retryConfig = new RetryPolicy
+            {
+                MaxAttempts = 3,
+                InitialDelay = TimeSpan.FromSeconds(1),
+                BackoffStrategy = RetryBackoffStrategy.Exponential,
+                Enabled = true
+            };
+
+            return new MessageRetryService(
+                retryConfig,
+                _logger,
+                _profilerService,
+                _poolingService);
+            */
+        }
+
+        /// <summary>
+        /// Creates the dead letter queue service instance.
+        /// </summary>
+        /// <returns>Dead letter queue service instance</returns>
+        private IDeadLetterQueueService CreateDeadLetterQueueService()
+        {
+            // TODO: Implement DeadLetterQueueService
+            throw new NotImplementedException("DeadLetterQueueService is not yet implemented");
+            /*
+            return new DeadLetterQueueService(
+                _logger,
+                _profilerService,
+                _poolingService);
+            */
+        }
+
+        #endregion
+
+        #region Validation Methods
 
         /// <summary>
         /// Validates the message bus configuration for correctness and completeness.
@@ -268,5 +463,7 @@ namespace AhBearStudios.Core.Messaging.Factories
                 throw new InvalidOperationException(errorMessage);
             }
         }
+
+        #endregion
     }
 }
