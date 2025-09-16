@@ -2,46 +2,83 @@
 
 ## 📋 Overview
 
-**Namespace:** `AhBearStudios.Core.Alerting`  
-**Role:** Critical system notifications and alerting  
+**Namespace:** `AhBearStudios.Core.Alerting`
+**Role:** Critical system notifications and alerting
 **Status:** ✅ Production Ready
 
-The Alert System provides enterprise-grade real-time notification capabilities for critical system events, performance issues, and error conditions. It enables proactive monitoring and rapid response to system problems across all AhBearStudios Core systems with comprehensive factory patterns, zero-allocation performance, and full Unity integration.
+The Alert System provides production-ready real-time notification capabilities for critical system events, performance issues, and error conditions. It enables proactive monitoring and rapid response to system problems across all AhBearStudios Core systems with comprehensive **Builder → Config → Factory → Service** patterns, integrated subsystem services, zero-allocation performance, and full Unity integration.
+
+**Key Production Features:**
+- **Integrated Subsystem Services**: AlertChannelService, AlertFilterService, AlertSuppressionService
+- **Builder Pattern Implementation**: Comprehensive AlertConfigBuilder with scenario-specific presets
+- **Factory Pattern**: Simple creation-focused AlertServiceFactory with environment configurations
+- **Emergency Operations**: Emergency mode, failover, and escalation capabilities
+- **Health Monitoring**: Comprehensive health checking and diagnostic reporting
+- **Bulk Operations**: High-performance batch processing for enterprise workloads
+- **Unity Pooling Integration**: Efficient memory management with IPoolingService
+- **Message Bus Integration**: Full IMessage pattern integration for decoupled communication
 
 ## 🚀 Key Features
 
-- **⚡ Real-Time Alerting**: Zero-allocation immediate notification of critical system events
-- **🏭 Factory Pattern**: Comprehensive factory system for dependency injection and testing
-- **🔧 Multiple Channels**: Support for various notification channels (log, console, file, memory, Unity debug, network)
-- **📊 Alert Suppression**: Intelligent filtering with deduplication and rate limiting
-- **🎯 Severity Levels**: Hierarchical alert classification with source-specific thresholds
-- **📈 Alert Management**: Full lifecycle management with acknowledgment and resolution
-- **🔄 System Integration**: Deep integration with ILoggingService, IMessageBusService, ISerializationService, and IProfilerService
-- **📦 Centralized Serialization**: Uses ISerializationService for consistent, fault-tolerant serialization across all alert data
-- **🛠️ Unity Optimized**: Built for Unity with Burst compatibility and zero-allocation patterns
-- **🧪 Testing Support**: Comprehensive factory system for unit testing and mocking
-- **📈 Performance Monitoring**: Built-in statistics and health monitoring capabilities
+- **⚡ Real-Time Alerting**: Zero-allocation immediate notification with Unity.Collections integration
+- **🏗️ Builder → Factory → Service**: Complete AhBearStudios Core architecture pattern implementation
+- **🔧 Multiple Channels**: Log, Console, File, Memory, Network, Email, Unity Debug channels
+- **📊 Intelligent Suppression**: Deduplication, rate limiting, and business hours filtering
+- **🎯 Severity Management**: Hierarchical classification with source-specific overrides
+- **📈 Alert Lifecycle**: Complete management with acknowledgment, resolution, and history
+- **🔄 System Integration**: ILoggingService, IMessageBusService, ISerializationService, IPoolingService
+- **🚨 Emergency Operations**: Emergency mode, failover, escalation, and circuit breaker integration
+- **💼 Bulk Operations**: High-performance batch processing for enterprise workloads
+- **🏥 Health Monitoring**: Comprehensive diagnostics and performance metrics
+- **🎮 Unity Optimized**: Burst compatibility, pooling integration, and zero-allocation patterns
+- **🧪 Testing Support**: Comprehensive factory system with environment-specific configurations
+- **📦 Production Ready**: Hot-reload configuration, service control, and operational excellence
 
 ## 🏗️ Architecture
 
-### Folder Structure
+### Production Architecture Structure
 
 ```
 AhBearStudios.Core.Alerting/
 ├── IAlertService.cs                      # Primary service interface
-├── AlertService.cs                       # Main service implementation
-├── AlertSystemInitializer.cs             # System initialization and ISerializationService type registration
+├── AlertService.cs                       # Production-ready service implementation
+├── Builders/                             # ⭐ Builder Pattern Implementation
+│   ├── IAlertConfigBuilder.cs            # Configuration builder interface
+│   ├── AlertConfigBuilder.cs             # Main configuration builder with presets
+│   ├── IChannelConfigBuilder.cs          # Channel configuration builder
+│   ├── ChannelConfigBuilder.cs           # Channel-specific builder
+│   ├── ISuppressionConfigBuilder.cs      # Suppression configuration builder
+│   ├── SuppressionConfigBuilder.cs       # Suppression rules builder
+│   ├── IFilterConfigBuilder.cs           # Filter configuration builder
+│   ├── FilterConfigBuilder.cs            # Advanced filter builder
+│   └── AlertPoolConfigBuilder.cs         # Pooling configuration builder
+├── Configs/                              # Configuration Objects
+│   ├── AlertConfig.cs                    # Core alert configuration
+│   ├── AlertServiceConfiguration.cs      # Service-level configuration
+│   ├── ChannelConfig.cs                  # Channel configuration
+│   ├── SuppressionConfig.cs              # Suppression rule configuration
+│   ├── FilterConfiguration.cs            # Filter configuration
+│   ├── BusinessHoursConfig.cs            # Business hours filtering
+│   ├── DuplicateDetectionConfig.cs       # Duplicate detection settings
+│   ├── EscalationConfig.cs               # Emergency escalation
+│   └── AlertPoolConfiguration.cs         # Pooling configuration
 ├── Factories/                            # ⭐ Factory Pattern Implementation
 │   ├── IAlertServiceFactory.cs           # Service factory interface
-│   ├── AlertServiceFactory.cs            # Service factory implementation
+│   ├── AlertServiceFactory.cs            # Simple service creation
 │   ├── IAlertChannelFactory.cs           # Channel factory interface
-│   ├── AlertChannelFactory.cs            # Channel factory implementation
+│   ├── AlertChannelFactory.cs            # Channel creation
+│   ├── IAlertChannelServiceFactory.cs    # Channel service factory
+│   ├── AlertChannelServiceFactory.cs     # Channel service creation
 │   ├── IAlertFilterFactory.cs            # Filter factory interface
-│   └── AlertFilterFactory.cs             # Filter factory implementation
-├── Services/                             # Supporting Services
+│   └── AlertFilterFactory.cs             # Filter creation
+├── Services/                             # ⭐ Integrated Subsystem Services
+│   ├── IAlertChannelService.cs           # Channel management interface
 │   ├── AlertChannelService.cs            # Channel lifecycle management
+│   ├── IAlertFilterService.cs            # Filter management interface
 │   ├── AlertFilterService.cs             # Filter lifecycle management
-│   └── AlertSuppressionService.cs        # Alert deduplication and rate limiting
+│   ├── IAlertSuppressionService.cs       # Suppression interface
+│   ├── AlertSuppressionService.cs        # Deduplication and rate limiting
+│   └── FilterConfigurationValidator.cs   # Configuration validation
 ├── Channels/                             # Alert Delivery Channels
 │   ├── IAlertChannel.cs                  # Channel interface
 │   ├── BaseAlertChannel.cs               # Base implementation with health monitoring
@@ -49,7 +86,8 @@ AhBearStudios.Core.Alerting/
 │   ├── ConsoleAlertChannel.cs            # Console output channel
 │   ├── FileAlertChannel.cs               # File-based alert logging
 │   ├── MemoryAlertChannel.cs             # In-memory storage for testing
-│   ├── UnityDebugAlertChannel.cs         # Unity Debug.Log integration
+│   ├── NetworkAlertChannel.cs            # Network/HTTP alert delivery
+│   ├── TestAlertChannel.cs               # Testing and verification channel
 │   └── NullAlertChannel.cs               # Null object pattern for testing
 ├── Filters/                              # Alert Filtering System
 │   ├── IAlertFilter.cs                   # Filter interface
@@ -64,29 +102,39 @@ AhBearStudios.Core.Alerting/
 │   ├── CorrelationAlertFilter.cs         # Correlation ID filtering
 │   ├── PassThroughAlertFilter.cs         # Allow-all filter for testing
 │   └── BlockAlertFilter.cs               # Block-all filter for testing
-├── Messages/                             # IMessage Implementations
+├── Messages/                             # ⭐ IMessage Implementations
 │   ├── AlertRaisedMessage.cs             # Alert raised event (TypeCode: 1401)
 │   ├── AlertAcknowledgedMessage.cs       # Alert acknowledged event (TypeCode: 1402)
 │   ├── AlertResolvedMessage.cs           # Alert resolved event (TypeCode: 1403)
-│   ├── AlertSystemHealthMessage.cs       # System health events (TypeCode: 1404)
-│   ├── AlertChannelFailedMessage.cs      # Channel failure events (TypeCode: 1405)
-│   ├── AlertSuppressionMessage.cs        # Suppression events (TypeCode: 1406)
-│   └── AlertRateLimitMessage.cs          # Rate limit events (TypeCode: 1407)
+│   ├── AlertDeliveryFailedMessage.cs     # Delivery failure events (TypeCode: 1404)
+│   ├── AlertChannelRegisteredMessage.cs  # Channel registration events (TypeCode: 1405)
+│   └── AlertChannelConfigurationChangedMessage.cs # Configuration change events (TypeCode: 1406)
 ├── Models/                               # Core Data Models
 │   ├── Alert.cs                          # Alert data structure [MemoryPackable]
 │   ├── AlertSeverity.cs                  # Severity enumeration
 │   ├── AlertContext.cs                   # Contextual information [MemoryPackable]
-│   ├── AlertRule.cs                      # Rule definitions for suppression
 │   ├── AlertStatistics.cs               # Performance and operational statistics
-│   ├── FilterContext.cs                 # Filter processing context
-│   ├── FilterResult.cs                  # Filter evaluation results
-│   ├── HealthCheckResult.cs              # Channel health check results
-│   └── ValidationResult.cs               # Configuration validation results
-└── Events/                               # Event Args and Handlers
-    ├── AlertEventArgs.cs                 # Alert lifecycle events
-    ├── FilterEventArgs.cs                # Filter operation events
-    ├── ChannelEventArgs.cs               # Channel operation events
-    └── AlertSystemHealthEventArgs.cs     # System health change events
+│   ├── AlertSystemDiagnostics.cs         # System diagnostics information
+│   ├── AlertSystemHealthReport.cs        # Health check reporting
+│   ├── AlertSystemPerformanceMetrics.cs  # Performance monitoring
+│   ├── AlertChannelType.cs               # Channel type enumeration
+│   ├── AlertEnvironmentType.cs           # Environment type classification
+│   ├── SuppressionType.cs                # Suppression rule types
+│   ├── SuppressionAction.cs              # Suppression actions
+│   ├── FilterType.cs                     # Filter type enumeration
+│   ├── PooledAlertContainer.cs           # Pooling container for alerts
+│   ├── RateLimitBucket.cs                # Rate limiting implementation
+│   ├── ChannelMetrics.cs                 # Channel performance metrics
+│   ├── ChannelHealthInfo.cs              # Channel health status
+│   ├── ChannelDeliveryResult.cs          # Delivery result tracking
+│   ├── AlertFilterMetrics.cs             # Filter performance metrics
+│   ├── AlertDeliveryResults.cs           # Delivery result aggregation
+│   ├── AlertPerformanceMetrics.cs        # Alert processing metrics
+│   └── ErrorHandlingMode.cs              # Error handling strategies
+└── HealthChecks/                         # Health Monitoring System
+    ├── AlertServiceHealthCheck.cs        # Service health monitoring
+    ├── ChannelHealthCheck.cs             # Individual channel health
+    └── FilterHealthCheck.cs              # Filter system health
 
 AhBearStudios.Unity.Alerting/            # Unity-Specific Components
 ├── Installers/
@@ -113,67 +161,216 @@ using Cysharp.Threading.Tasks;           // Instead of System.Threading.Tasks
 using ZLinq;                             // Instead of System.Linq
 using MemoryPack;                        // For serialization
 using AhBearStudios.Core.Alerting.Models;
-using AhBearStudios.Core.Messaging.Messages;
+using AhBearStudios.Core.Alerting.Services;
+using AhBearStudios.Core.Alerting.Configs;
+using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Logging;
-using AhBearStudios.Core.Profiling;
-using AhBearStudios.Core.HealthChecking;
 using AhBearStudios.Core.Serialization;
+using AhBearStudios.Core.Pooling;
+using AhBearStudios.Core.Common.Models;
+using AhBearStudios.Core.Common.Utilities;
 ```
 
 ### IAlertService
 
-The primary interface for all alerting operations with full system integration.
+The primary interface for all alerting operations with full system integration and production-ready features.
 
 ```csharp
 public interface IAlertService : IDisposable
 {
+    #region Core Properties and State
+
+    /// <summary>
+    /// Gets whether the alerting service is enabled and operational.
+    /// </summary>
+    bool IsEnabled { get; }
+
+    /// <summary>
+    /// Gets whether the service is healthy and functioning normally.
+    /// </summary>
+    bool IsHealthy { get; }
+
+    /// <summary>
+    /// Gets the current service configuration.
+    /// </summary>
+    AlertServiceConfiguration Configuration { get; }
+
+    /// <summary>
+    /// Gets the integrated channel service for advanced channel management.
+    /// </summary>
+    IAlertChannelService ChannelService { get; }
+
+    /// <summary>
+    /// Gets the integrated filter service for sophisticated filtering.
+    /// </summary>
+    IAlertFilterService FilterService { get; }
+
+    /// <summary>
+    /// Gets the integrated suppression service for deduplication and rate limiting.
+    /// </summary>
+    IAlertSuppressionService SuppressionService { get; }
+
+    /// <summary>
+    /// Gets whether emergency mode is currently active.
+    /// </summary>
+    bool IsEmergencyModeActive { get; }
+
+    #endregion
+
+    #region Core Alert Operations
+
     // Core alerting with correlation tracking
-    void RaiseAlert(string message, AlertSeverity severity, FixedString64Bytes source, 
+    void RaiseAlert(string message, AlertSeverity severity, FixedString64Bytes source,
         FixedString32Bytes tag = default, Guid correlationId = default);
-    void RaiseAlert(FixedString512Bytes message, AlertSeverity severity, FixedString64Bytes source, 
+    void RaiseAlert(FixedString512Bytes message, AlertSeverity severity, FixedString64Bytes source,
         FixedString32Bytes tag = default, Guid correlationId = default);
     void RaiseAlert(Alert alert);
+
+    // Async operations with multiple overloads
     UniTask RaiseAlertAsync(Alert alert, CancellationToken cancellationToken = default);
-    UniTask RaiseAlertAsync(string message, AlertSeverity severity, FixedString64Bytes source, 
-        FixedString32Bytes tag = default, Guid correlationId = default, 
+    UniTask RaiseAlertAsync(string message, AlertSeverity severity, FixedString64Bytes source,
+        FixedString32Bytes tag = default, Guid correlationId = default,
         CancellationToken cancellationToken = default);
-    
-    // Alert lifecycle management
-    IEnumerable<Alert> GetActiveAlerts();
-    IEnumerable<Alert> GetAlertHistory(TimeSpan period);
-    void AcknowledgeAlert(Guid alertId, FixedString64Bytes correlationId = default);
-    void ResolveAlert(Guid alertId, FixedString64Bytes correlationId = default);
-    
+    UniTask RaiseAlertAsync(FixedString512Bytes message, AlertSeverity severity, FixedString64Bytes source,
+        FixedString32Bytes tag = default, Guid correlationId = default,
+        CancellationToken cancellationToken = default);
+    UniTask RaiseAlertAsync(string message, AlertSeverity severity, string source,
+        string tag = null, Guid correlationId = default,
+        CancellationToken cancellationToken = default);
+
     // Severity management
     void SetMinimumSeverity(AlertSeverity minimumSeverity);
     void SetMinimumSeverity(FixedString64Bytes source, AlertSeverity minimumSeverity);
     AlertSeverity GetMinimumSeverity(FixedString64Bytes source = default);
-    
+
     // Channel management
     void RegisterChannel(IAlertChannel channel, FixedString64Bytes correlationId = default);
     bool UnregisterChannel(FixedString64Bytes channelName, FixedString64Bytes correlationId = default);
     IReadOnlyCollection<IAlertChannel> GetRegisteredChannels();
-    
+
     // Filtering and suppression
     void AddFilter(IAlertFilter filter, FixedString64Bytes correlationId = default);
     bool RemoveFilter(FixedString64Bytes filterName, FixedString64Bytes correlationId = default);
-    void AddSuppressionRule(AlertRule rule, FixedString64Bytes correlationId = default);
-    bool RemoveSuppressionRule(FixedString64Bytes ruleName, FixedString64Bytes correlationId = default);
-    
-    // System monitoring and maintenance
+
+    // Alert management
+    IEnumerable<Alert> GetActiveAlerts();
+    IEnumerable<Alert> GetAlertHistory(TimeSpan period);
+    void AcknowledgeAlert(Guid alertId, FixedString64Bytes correlationId = default);
+    void ResolveAlert(Guid alertId, FixedString64Bytes correlationId = default);
+
+    #endregion
+
+    #region Bulk Operations
+
+    /// <summary>
+    /// Raises multiple alerts in a single batch operation for performance.
+    /// </summary>
+    UniTask RaiseAlertsAsync(IEnumerable<Alert> alerts, Guid correlationId = default);
+
+    /// <summary>
+    /// Acknowledges multiple alerts by their IDs.
+    /// </summary>
+    UniTask AcknowledgeAlertsAsync(IEnumerable<Guid> alertIds, Guid correlationId = default);
+
+    /// <summary>
+    /// Resolves multiple alerts by their IDs.
+    /// </summary>
+    UniTask ResolveAlertsAsync(IEnumerable<Guid> alertIds, Guid correlationId = default);
+
+    #endregion
+
+    #region Configuration Management
+
+    /// <summary>
+    /// Updates the service configuration with hot-reload capability.
+    /// </summary>
+    UniTask<bool> UpdateConfigurationAsync(AlertServiceConfiguration configuration, Guid correlationId = default);
+
+    /// <summary>
+    /// Reloads configuration from the original source.
+    /// </summary>
+    UniTask ReloadConfigurationAsync(Guid correlationId = default);
+
+    /// <summary>
+    /// Gets the default configuration for the current environment.
+    /// </summary>
+    AlertServiceConfiguration GetDefaultConfiguration();
+
+    #endregion
+
+    #region Health Monitoring and Diagnostics
+
+    /// <summary>
+    /// Performs a comprehensive health check of the alerting system.
+    /// </summary>
+    UniTask<AlertSystemHealthReport> PerformHealthCheckAsync(Guid correlationId = default);
+
+    /// <summary>
+    /// Gets detailed diagnostic information about the alerting system.
+    /// </summary>
+    AlertSystemDiagnostics GetDiagnostics(Guid correlationId = default);
+
+    /// <summary>
+    /// Gets performance metrics for all subsystems.
+    /// </summary>
+    AlertSystemPerformanceMetrics GetPerformanceMetrics();
+
+    /// <summary>
+    /// Resets all performance metrics and statistics.
+    /// </summary>
+    void ResetMetrics(Guid correlationId = default);
+
+    #endregion
+
+    #region Emergency Operations
+
+    /// <summary>
+    /// Enables emergency mode, bypassing filters and suppression for critical alerts.
+    /// </summary>
+    void EnableEmergencyMode(string reason, Guid correlationId = default);
+
+    /// <summary>
+    /// Disables emergency mode and restores normal operations.
+    /// </summary>
+    void DisableEmergencyMode(Guid correlationId = default);
+
+    /// <summary>
+    /// Performs emergency escalation for failed alert delivery.
+    /// </summary>
+    UniTask PerformEmergencyEscalationAsync(Alert alert, Guid correlationId = default);
+
+    #endregion
+
+    #region Service Control
+
+    /// <summary>
+    /// Starts the alerting service and all subsystems.
+    /// </summary>
+    UniTask StartAsync(Guid correlationId = default);
+
+    /// <summary>
+    /// Stops the alerting service and all subsystems gracefully.
+    /// </summary>
+    UniTask StopAsync(Guid correlationId = default);
+
+    /// <summary>
+    /// Restarts the alerting service with current configuration.
+    /// </summary>
+    UniTask RestartAsync(Guid correlationId = default);
+
+    #endregion
+
+    #region Statistics and Monitoring
+
     AlertStatistics GetStatistics();
     ValidationResult ValidateConfiguration(FixedString64Bytes correlationId = default);
     void PerformMaintenance(FixedString64Bytes correlationId = default);
     UniTask FlushAsync(FixedString64Bytes correlationId = default);
-    
-    // System status
-    bool IsEnabled { get; }
-    
-    // Events with comprehensive event args
-    event EventHandler<AlertEventArgs> AlertRaised;
-    event EventHandler<AlertEventArgs> AlertAcknowledged;
-    event EventHandler<AlertEventArgs> AlertResolved;
-    event EventHandler<AlertSystemHealthEventArgs> HealthChanged;
+
+    #endregion
+
+    // Message bus integration - Events replaced with IMessage pattern
+    // AlertRaisedMessage, AlertAcknowledgedMessage, AlertResolvedMessage published via IMessageBusService
 }
 ```
 
@@ -404,27 +601,107 @@ public enum LogicalOperator
 
 ## ⚙️ Configuration
 
-### Factory-Based Configuration
+### Builder → Config → Factory → Service Pattern
 
-The Alert System uses comprehensive factory classes for creating and configuring services, channels, and filters.
+The Alert System follows the complete AhBearStudios Core architecture pattern for configuration management.
 
-#### Basic Service Creation
+#### 1. Builder Pattern - Configuration Complexity
+
+Use **AlertConfigBuilder** to handle complex configuration scenarios with fluent API and validation.
 
 ```csharp
-// Using AlertServiceFactory for dependency injection scenarios
-var serviceFactory = new AlertServiceFactory(loggingService);
+// Production-ready configuration with comprehensive setup
+var config = new AlertConfigBuilder()
+    .ForProduction()                                    // Preset with production defaults
+    .WithMinimumSeverity(AlertSeverity.Warning)         // Override severity
+    .WithLogChannel("ProductionLog", AlertSeverity.Info) // Add custom channels
+    .WithConsoleChannel("ProductionConsole", AlertSeverity.Critical)
+    .WithNetworkChannel("AlertsAPI", "https://alerts.company.com/api", AlertSeverity.Critical)
+    .WithDuplicateFilter("ProductionDuplicateFilter", TimeSpan.FromMinutes(10))
+    .WithRateLimit("ProductionRateLimit", 20, TimeSpan.FromMinutes(1))
+    .WithBusinessHoursFilter("ProductionBusinessHours")
+    .WithEmergencyEscalation(true, 0.8, "ProductionConsole")
+    .Build();
+
+// Development configuration with debugging features
+var devConfig = new AlertConfigBuilder()
+    .ForDevelopment()                                   // Preset optimized for development
+    .WithMinimumSeverity(AlertSeverity.Debug)           // Allow debug alerts
+    .WithUnityConsoleChannel("UnityDevelopment")        // Add Unity integration
+    .ForDebugging("MySpecificSystem")                   // Focus on specific system
+    .Build();
+
+// Custom scenario configurations
+var stagingConfig = new AlertConfigBuilder().ForStaging().Build();
+var testingConfig = new AlertConfigBuilder().ForTesting().Build();
+var mobileConfig = new AlertConfigBuilder().ForMobile().Build();
+var haConfig = new AlertConfigBuilder().ForHighAvailability().Build();
+```
+
+#### 2. Configuration Objects - Runtime Settings
+
+Configuration objects hold validated runtime and design-time settings.
+
+```csharp
+// AlertServiceConfiguration wraps AlertConfig with service-level settings
+var serviceConfig = new AlertConfigBuilder()
+    .ForProduction()
+    .BuildServiceConfiguration();  // Creates AlertServiceConfiguration
+
+// Access configuration hierarchy
+serviceConfig.AlertConfig.MinimumSeverity;     // AlertSeverity.Warning
+serviceConfig.Environment;                      // AlertEnvironmentType.Production
+serviceConfig.EnableMetrics;                    // true
+serviceConfig.MaxConcurrentOperations;          // 200
+```
+
+#### 3. Factory Pattern - Simple Creation
+
+Factories perform simple creation using pre-validated configurations.
+
+```csharp
+// AlertServiceFactory focuses on creation only
+var factory = new AlertServiceFactory(loggingService, serializationService, poolingService);
 
 // Create with default configuration
-var alertService = serviceFactory.CreateAlertService(messageBusService, loggingService);
+var alertService = factory.CreateAlertService(messageBusService, loggingService);
 
-// Create development-optimized service
-var devAlertService = await serviceFactory.CreateDevelopmentAlertServiceAsync(loggingService, messageBusService);
+// Create with pre-built configuration
+var configuredService = await factory.CreateAlertServiceAsync(serviceConfig);
 
-// Create production-optimized service  
-var prodAlertService = await serviceFactory.CreateProductionAlertServiceAsync(loggingService, messageBusService);
+// Environment-specific factory methods
+var devService = await factory.CreateDevelopmentAlertServiceAsync(loggingService, messageBusService);
+var prodService = await factory.CreateProductionAlertServiceAsync(loggingService, messageBusService);
+var testService = factory.CreateTestAlertService();
+```
 
-// Create test service for unit testing
-var testAlertService = serviceFactory.CreateTestAlertService();
+#### 4. Service Implementation - Functionality
+
+The **AlertService** provides the actual alerting functionality with integrated subsystems.
+
+```csharp
+// AlertService integrates all subsystem services
+public class AlertService : IAlertService
+{
+    // Integrated subsystem services
+    public IAlertChannelService ChannelService { get; }
+    public IAlertFilterService FilterService { get; }
+    public IAlertSuppressionService SuppressionService { get; }
+
+    // Production-ready operations
+    public async UniTask StartAsync(Guid correlationId = default);
+    public async UniTask StopAsync(Guid correlationId = default);
+    public async UniTask<bool> UpdateConfigurationAsync(AlertServiceConfiguration configuration);
+
+    // Emergency operations
+    public void EnableEmergencyMode(string reason, Guid correlationId = default);
+    public async UniTask PerformEmergencyEscalationAsync(Alert alert);
+
+    // Comprehensive monitoring
+    public async UniTask<AlertSystemHealthReport> PerformHealthCheckAsync();
+    public AlertSystemDiagnostics GetDiagnostics();
+    public AlertSystemPerformanceMetrics GetPerformanceMetrics();
+}
 ```
 
 #### Custom Configuration with Factories
@@ -797,32 +1074,35 @@ public class AlertServiceComponent : MonoBehaviour
 
 ## 🚀 Usage Examples
 
-### System Integration with Factory Pattern
+### Production-Ready System Integration
 
 ```csharp
 /// <summary>
-/// Complete example showing Alert System integration with factory pattern and all AhBearStudios Core systems.
-/// Demonstrates performance patterns, messaging integration, and fault tolerance.
+/// Complete example showing Alert System integration with Builder → Config → Factory → Service pattern.
+/// Demonstrates production-ready features, integrated subsystems, and comprehensive monitoring.
 /// </summary>
-public class DatabaseService
+public class ProductionDatabaseService
 {
     private readonly IAlertService _alerts;
     private readonly ILoggingService _logger;
     private readonly IMessageBusService _messageBus;
-    private readonly IProfilerService _profiler;
+    private readonly ISerializationService _serialization;
+    private readonly IPoolingService _pooling;
     private readonly Guid _correlationId;
-    
-    public DatabaseService(
-        IAlertService alerts, 
+
+    public ProductionDatabaseService(
+        IAlertService alerts,
         ILoggingService logger,
         IMessageBusService messageBus,
-        IProfilerService profiler)
+        ISerializationService serialization,
+        IPoolingService pooling)
     {
         _alerts = alerts ?? throw new ArgumentNullException(nameof(alerts));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
         _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
-        _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
-        _correlationId = Guid.NewGuid();
+        _serialization = serialization ?? throw new ArgumentNullException(nameof(serialization));
+        _pooling = pooling ?? throw new ArgumentNullException(nameof(pooling));
+        _correlationId = DeterministicIdGenerator.GenerateCorrelationId("DatabaseService", "Production");
     }
     
     /// <summary>
@@ -846,8 +1126,8 @@ public class DatabaseService
         }
         catch (DatabaseConnectionException ex)
         {
-            // Raise critical alert using new Alert System
-            _alerts.RaiseAlert(
+            // Raise critical alert with emergency escalation
+            await _alerts.RaiseAlertAsync(
                 $"Database connection failed: {ex.Message}",
                 AlertSeverity.Critical,
                 "DatabaseService",
@@ -1612,33 +1892,48 @@ public void InitializeAlertSystemDetailed()
 }
 ```
 
-### 4. Usage in Services with Modern C# Patterns
+### 4. Production Service Integration with Builder Pattern
 
 ```csharp
 /// <summary>
-/// Example service demonstrating proper Alert System integration with modern C# patterns.
-/// Follows AhBearStudios Core Development Guidelines with comprehensive error handling.
+/// Production service demonstrating comprehensive Alert System integration.
+/// Uses Builder → Config → Factory → Service pattern with all production features.
 /// </summary>
-public class ExampleService
+public class ProductionAlertIntegrationService
 {
     private readonly IAlertService _alerts;
     private readonly ILoggingService _logger;
-    private readonly IProfilerService _profiler;
+    private readonly ISerializationService _serialization;
+    private readonly IPoolingService _pooling;
     private readonly FixedString64Bytes _correlationId;
     
     /// <summary>
-    /// Initializes the example service with required dependencies.
+    /// Initializes the production service with required dependencies and creates a properly configured AlertService.
     /// </summary>
-    /// <param name="alerts">Alert service for system notifications</param>
-    /// <param name="logger">Logging service for operation tracking</param>
-    /// <param name="profiler">Profiler service for performance monitoring</param>
-    /// <exception cref="ArgumentNullException">Thrown when any required dependency is null</exception>
-    public ExampleService(IAlertService alerts, ILoggingService logger, IProfilerService profiler)
+    public ProductionAlertIntegrationService(ILoggingService logger, ISerializationService serialization, IPoolingService pooling)
     {
-        _alerts = alerts ?? throw new ArgumentNullException(nameof(alerts));
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
-        _correlationId = $"ExampleService_{Guid.NewGuid():N}"[..32];
+        _serialization = serialization ?? throw new ArgumentNullException(nameof(serialization));
+        _pooling = pooling ?? throw new ArgumentNullException(nameof(pooling));
+        _correlationId = DeterministicIdGenerator.GenerateCorrelationId("ProductionService", "AlertIntegration");
+
+        // Create production-ready AlertService using Builder → Config → Factory → Service pattern
+        var alertConfig = new AlertConfigBuilder()
+            .ForProduction()
+            .WithLogChannel("ProductionLog", AlertSeverity.Warning)
+            .WithConsoleChannel("ProductionConsole", AlertSeverity.Critical)
+            .WithNetworkChannel("ProductionAPI", "https://alerts.mycompany.com/api", AlertSeverity.Critical)
+            .WithDuplicateFilter("ProductionDuplicateFilter", TimeSpan.FromMinutes(10))
+            .WithRateLimit("ProductionRateLimit", 30, TimeSpan.FromMinutes(1))
+            .WithBusinessHoursFilter("ProductionBusinessHours")
+            .WithEmergencyEscalation(true, 0.8, "ProductionConsole")
+            .BuildServiceConfiguration();
+
+        var factory = new AlertServiceFactory(_logger, _serialization, _pooling);
+        _alerts = await factory.CreateAlertServiceAsync(alertConfig);
+
+        // Start the alert service
+        await _alerts.StartAsync(_correlationId);
     }
     
     /// <summary>

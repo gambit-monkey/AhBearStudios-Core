@@ -6,7 +6,7 @@
 **Role:** High-performance binary serialization using MemoryPack integration  
 **Status:** ✅ Production Ready
 
-The Serialization System provides ultra-fast, zero-allocation serialization capabilities with intelligent format selection, circuit breaker protection, and automatic fallback chains. Built using the proven Builder → Config → Factory → Service → Coordinator pattern from CLAUDE.md, it delivers production-grade reliability for Unity game development. The system prioritizes 60+ FPS performance targets through delegation to specialized services, comprehensive health monitoring, and seamless integration with AhBearStudios Core infrastructure systems.
+The Serialization System provides ultra-fast, zero-allocation serialization capabilities with intelligent format selection, circuit breaker protection, and automatic fallback chains. Built using the proven Builder → Config → Factory → Service → Coordinator pattern, it delivers production-grade reliability for Unity game development. The system prioritizes 60+ FPS performance targets through delegation to specialized services, comprehensive health monitoring, and seamless integration with AhBearStudios Core infrastructure systems.
 
 ## 🚀 Key Features
 
@@ -134,7 +134,7 @@ AhBearStudios.Unity.Serialization/
 
 ### Production-Ready Design Pattern
 
-The Serialization System follows the proven **Builder → Config → Factory → Service → Coordinator** pattern from CLAUDE.md, providing enterprise-grade reliability while maintaining Unity's 60+ FPS performance requirements.
+The Serialization System follows the proven **Builder → Config → Factory → Service → Coordinator** pattern, providing enterprise-grade reliability while maintaining Unity's 60+ FPS performance requirements.
 
 #### Architecture Layers
 
@@ -966,7 +966,7 @@ public class NetworkedPlayer : NetworkBehaviour
     public void UpdatePlayerData(PlayerNetworkData data)
     {
         // Serialize using FishNet format for optimal network performance
-        var correlationId = new FixedString64Bytes("network-update");
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("NetworkPlayerUpdate", clientId.ToString());
         var serialized = _serializationService.Serialize(data, correlationId, SerializationFormat.FishNet);
 
         // Process networked data...
@@ -1109,7 +1109,7 @@ The `ISerializationService` provides a comprehensive API for all serialization o
 
 ```csharp
 // Basic serialization with automatic format selection
-var correlationId = new FixedString64Bytes("user-action-123");
+var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("UserAction", "PlayerDataSave");
 var data = new PlayerData { Name = "Alice", Level = 42 };
 
 // Serialize with preferred format (falls back if circuit breaker open)
@@ -1611,9 +1611,31 @@ public class SerializationConfigAsset : ScriptableObject
 
 The refactored service layer provides enterprise-grade reliability through the delegation pattern, with built-in circuit breaker protection, automatic fallback chains, comprehensive health monitoring, and seamless integration with AhBearStudios Core infrastructure.
 
+#### Correlation ID Best Practices
+
+**Always use `DeterministicIdGenerator`** for generating correlation IDs instead of hardcoded strings. This ensures consistent, trackable IDs across operations and provides better debugging and monitoring capabilities.
+
+```csharp
+using AhBearStudios.Core.Common.Utilities;
+
+// ✅ CORRECT: Use DeterministicIdGenerator
+var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("Operation", "Context");
+
+// ❌ AVOID: Hardcoded correlation IDs
+var correlationId = new FixedString64Bytes("some-operation");
+```
+
+The `DeterministicIdGenerator` provides several benefits:
+- **Consistent IDs**: Same operation and context always generate the same correlation ID
+- **Hierarchical Tracking**: Support for parent-child correlation relationships
+- **System Integration**: Properly integrates with logging, monitoring, and debugging systems
+- **Performance**: Optimized with caching and zero-allocation patterns
+
 #### Quick Start Example
 
 ```csharp
+using AhBearStudios.Core.Common.Utilities;
+
 public class ProductionGameService
 {
     private readonly ISerializationService _serializationService;
@@ -1627,7 +1649,7 @@ public class ProductionGameService
 
     public async UniTask<bool> SaveGameStateAsync(GameState gameState)
     {
-        var correlationId = new FixedString64Bytes("save-gamestate");
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("GameState", "Save");
 
         // Production pattern: Use TrySerialize for non-critical operations
         if (_serializationService.TrySerialize(gameState, out var data, correlationId))
@@ -1644,7 +1666,7 @@ public class ProductionGameService
 
     public async UniTask<GameState> LoadGameStateAsync()
     {
-        var correlationId = new FixedString64Bytes("load-gamestate");
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("GameState", "Load");
 
         try
         {
@@ -1667,6 +1689,8 @@ public class ProductionGameService
 #### Circuit Breaker and Health Monitoring
 
 ```csharp
+using AhBearStudios.Core.Common.Utilities;
+
 public class SerializationHealthMonitor
 {
     private readonly ISerializationService _serializationService;
@@ -1675,7 +1699,7 @@ public class SerializationHealthMonitor
 
     public async UniTask MonitorSerializationHealthAsync()
     {
-        var correlationId = new FixedString64Bytes("health-monitor");
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("SerializationHealth", "Monitor");
 
         // Get comprehensive health status
         var isHealthy = _serializationService.PerformHealthCheck();
@@ -1727,7 +1751,7 @@ public class SerializationHealthMonitor
 
     public void ManualCircuitBreakerControl()
     {
-        var correlationId = new FixedString64Bytes("manual-control");
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("CircuitBreaker", "ManualControl");
 
         // Manually open circuit breaker for maintenance
         _serializationService.OpenCircuitBreaker(SerializationFormat.MemoryPack, "Maintenance mode", correlationId);
@@ -1757,8 +1781,8 @@ public class GameDataService
     
     public async UniTask SavePlayerDataAsync(PlayerData playerData, string playerId)
     {
-        var correlationId = new FixedString64Bytes($"save-player-{playerId}");
-        
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("PlayerData", $"Save-{playerId}");
+
         try
         {
             // Service automatically selects best format and handles fallbacks
@@ -1776,8 +1800,8 @@ public class GameDataService
     
     public async UniTask<PlayerData> LoadPlayerDataAsync(string playerId)
     {
-        var correlationId = new FixedString64Bytes($"load-player-{playerId}");
-        
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("PlayerData", $"Load-{playerId}");
+
         try
         {
             var serialized = await LoadFromFileAsync($"player_{playerId}.dat");
@@ -1798,8 +1822,8 @@ public class GameDataService
     // Safe operations that don't throw exceptions
     public bool TrySavePlayerData(PlayerData playerData, string playerId)
     {
-        var correlationId = new FixedString64Bytes($"try-save-{playerId}");
-        
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("PlayerData", $"TrySave-{playerId}");
+
         if (_serializationService.TrySerialize(playerData, out var serialized, correlationId))
         {
             return TrySaveToFile($"player_{playerId}.dat", serialized);
@@ -1825,8 +1849,8 @@ public class LeaderboardService
     
     public async UniTask SaveLeaderboardAsync(List<PlayerScore> scores)
     {
-        var correlationId = new FixedString64Bytes("save-leaderboard");
-        
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("Leaderboard", "Save");
+
         // Batch serialize for better performance
         var serializedScores = _serializationService.SerializeBatch(scores, correlationId);
         
@@ -1843,8 +1867,8 @@ public class LeaderboardService
     
     public async UniTask<List<PlayerScore>> LoadLeaderboardAsync()
     {
-        var correlationId = new FixedString64Bytes("load-leaderboard");
-        
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("Leaderboard", "Load");
+
         var files = Directory.GetFiles("leaderboard/", "score_*.dat");
         var serializedData = await LoadMultipleFilesAsync(files);
         
@@ -1870,8 +1894,8 @@ public class NetworkSynchronizationService
     
     public byte[] PrepareNetworkPacket(GameStateData gameState, string clientId)
     {
-        var correlationId = new FixedString64Bytes($"net-{clientId}");
-        
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("NetworkPacket", $"Prepare-{clientId}");
+
         // Try MemoryPack first for performance, fallback to JSON for compatibility
         var preferredFormat = SerializationFormat.MemoryPack;
         
@@ -1890,8 +1914,8 @@ public class NetworkSynchronizationService
     
     public GameStateData ProcessNetworkPacket(byte[] packetData, string clientId)
     {
-        var correlationId = new FixedString64Bytes($"proc-{clientId}");
-        
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("NetworkPacket", $"Process-{clientId}");
+
         // Service automatically detects format
         var detectedFormat = _serializationService.DetectFormat(packetData);
         Logger.LogDebug($"Detected packet format: {detectedFormat}", correlationId);
@@ -3201,7 +3225,7 @@ public class ProductionReadinessValidator
 {
     public static ValidationResult ValidateProductionConfiguration(ISerializationService serializationService)
     {
-        var correlationId = new FixedString64Bytes("prod-validation");
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("ProductionValidation", "ConfigCheck");
         var issues = new List<ValidationError>();
         var warnings = new List<ValidationWarning>();
         
@@ -3262,7 +3286,7 @@ public class ProductionMonitoringSetup
         // Configure health check intervals
         var healthCheckConfig = new HealthCheckConfiguration
         {
-            Name = new FixedString64Bytes("SerializationService"),
+            Name = DeterministicIdGenerator.GenerateCorrelationFixedString("HealthCheck", "SerializationService"),
             Category = HealthCheckCategory.Critical,
             Timeout = TimeSpan.FromSeconds(30),
             Interval = TimeSpan.FromMinutes(1)  // Check every minute in production
@@ -3348,10 +3372,10 @@ public class ProductionBatchProcessor
     }
     
     public async UniTask<List<byte[]>> ProcessLargeBatchAsync<T>(
-        IEnumerable<T> items, 
+        IEnumerable<T> items,
         int batchSize = 1000)
     {
-        var correlationId = new FixedString64Bytes("batch-process");
+        var correlationId = DeterministicIdGenerator.GenerateCorrelationFixedString("BatchProcessor", "ProcessLarge");
         var results = new ConcurrentBag<byte[]>();
         
         var batches = items.Chunk(batchSize);
