@@ -198,9 +198,8 @@ namespace AhBearStudios.Core.Pooling.HealthChecks
         private HealthCheckConfiguration CreateDefaultConfiguration()
         {
             return HealthCheckConfiguration.ForCriticalSystem(
-                Name,
-                "Pooling Service Health Check",
-                "Monitors overall pooling system health and performance");
+                Name.ToString(),
+                "Pooling Service Health Check");
         }
         
         /// <summary>

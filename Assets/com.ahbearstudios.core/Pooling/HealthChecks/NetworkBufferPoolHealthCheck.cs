@@ -209,40 +209,64 @@ namespace AhBearStudios.Core.Pooling.HealthChecks
         /// <returns>Default health check configuration</returns>
         private HealthCheckConfiguration CreateDefaultConfiguration()
         {
-            return HealthCheckConfiguration.ForPerformanceMonitoring(
-                Name,
+            return HealthCheckConfiguration.Create(
+                Name.ToString(),
                 "Network Buffer Pool Health Check",
-                "Monitors network buffer pool health, memory usage, and performance metrics");
+                HealthCheckCategory.Performance);
         }
 
         /// <summary>
-        /// Estimates total number of buffers created across all pools.
+        /// Gets total number of buffers created across all pools.
         /// </summary>
-        /// <returns>Estimated total buffer count</returns>
+        /// <returns>Total buffer count from pool statistics</returns>
         private int EstimateTotalBuffers()
         {
-            // This would need actual implementation with pool statistics
-            return 1000; // Placeholder
+            try
+            {
+                var stats = _bufferPool.GetStatistics();
+                return (int)(stats.SmallBufferPoolStats?.TotalCreated ?? 0) +
+                       (int)(stats.MediumBufferPoolStats?.TotalCreated ?? 0) +
+                       (int)(stats.LargeBufferPoolStats?.TotalCreated ?? 0) +
+                       (int)(stats.CompressionBufferPoolStats?.TotalCreated ?? 0);
+            }
+            catch
+            {
+                return 0;
+            }
         }
 
         /// <summary>
-        /// Estimates number of currently active buffers.
+        /// Gets number of currently active buffers across all pools.
         /// </summary>
-        /// <returns>Estimated active buffer count</returns>
+        /// <returns>Active buffer count from pool statistics</returns>
         private int EstimateActiveBuffers()
         {
-            // This would need actual implementation with pool statistics
-            return 200; // Placeholder
+            try
+            {
+                var stats = _bufferPool.GetStatistics();
+                return stats.TotalActiveObjects;
+            }
+            catch
+            {
+                return 0;
+            }
         }
 
         /// <summary>
-        /// Estimates total memory usage of all buffer pools.
+        /// Gets total memory usage of all buffer pools based on active buffers.
         /// </summary>
-        /// <returns>Estimated memory usage in bytes</returns>
+        /// <returns>Memory usage in bytes from pool statistics</returns>
         private long EstimateMemoryUsage()
         {
-            // This would need actual implementation with pool statistics
-            return 32 * 1024 * 1024; // 32MB placeholder
+            try
+            {
+                var stats = _bufferPool.GetStatistics();
+                return stats.TotalMemoryUsage;
+            }
+            catch
+            {
+                return 0;
+            }
         }
     }
 

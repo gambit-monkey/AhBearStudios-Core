@@ -6,6 +6,7 @@ using AhBearStudios.Core.Pooling.Factories;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Pools;
 using AhBearStudios.Core.Pooling.Services;
+using Unity.Collections;
 
 namespace AhBearStudios.Core.Pooling.Services
 {
@@ -53,7 +54,7 @@ namespace AhBearStudios.Core.Pooling.Services
             // Create all buffer pools using the factory
             _bufferPools = _poolFactory.CreateAllBufferPools(_configuration);
 
-            _logger.LogInfo($"NetworkSerializationBufferPool initialized with {_bufferPools.SmallBufferPool?.GetType().Name}, {_bufferPools.MediumBufferPool?.GetType().Name}, {_bufferPools.LargeBufferPool?.GetType().Name}, {_bufferPools.CompressionBufferPool?.GetType().Name}", default, nameof(NetworkSerializationBufferPool));
+            _logger.LogInfo($"NetworkSerializationBufferPool initialized with {_bufferPools.SmallBufferPool?.GetType().Name}, {_bufferPools.MediumBufferPool?.GetType().Name}, {_bufferPools.LargeBufferPool?.GetType().Name}, {_bufferPools.CompressionBufferPool?.GetType().Name}", (FixedString64Bytes)default, nameof(NetworkSerializationBufferPool));
         }
 
         /// <summary>

@@ -102,9 +102,9 @@ namespace AhBearStudios.Core.Pooling.Services
                 // Handle state-specific actions
                 await (message.NewState switch
                 {
-                    CircuitBreakerState.Open => HandleCircuitBreakerOpenedAsync(circuitBreakerName, message.Reason, effectiveCorrelationId),
-                    CircuitBreakerState.Closed => HandleCircuitBreakerClosedAsync(circuitBreakerName, message.Reason, effectiveCorrelationId),
-                    CircuitBreakerState.HalfOpen => HandleCircuitBreakerHalfOpenAsync(circuitBreakerName, message.Reason, effectiveCorrelationId),
+                    CircuitBreakerState.Open => HandleCircuitBreakerOpenedAsync(circuitBreakerName, message.Reason.ToString(), effectiveCorrelationId),
+                    CircuitBreakerState.Closed => HandleCircuitBreakerClosedAsync(circuitBreakerName, message.Reason.ToString(), effectiveCorrelationId),
+                    CircuitBreakerState.HalfOpen => HandleCircuitBreakerHalfOpenAsync(circuitBreakerName, message.Reason.ToString(), effectiveCorrelationId),
                     _ => UniTask.CompletedTask
                 });
 
