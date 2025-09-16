@@ -713,7 +713,71 @@
         /// Sent when profiling operations encounter errors.
         /// </summary>
         public const ushort ProfilingErrorOccurredMessage = 1510;
-        
+
+        #endregion
+
+        #region Serialization System Messages (1600-1699)
+
+        /// <summary>
+        /// Type code for serialization operation started messages.
+        /// Sent when a serialization or deserialization operation begins.
+        /// </summary>
+        public const ushort SerializationOperationStartedMessage = 1600;
+
+        /// <summary>
+        /// Type code for serialization operation completed messages.
+        /// Sent when a serialization or deserialization operation completes successfully.
+        /// </summary>
+        public const ushort SerializationOperationCompletedMessage = 1601;
+
+        /// <summary>
+        /// Type code for serialization operation failed messages.
+        /// Sent when a serialization or deserialization operation fails.
+        /// </summary>
+        public const ushort SerializationOperationFailedMessage = 1602;
+
+        /// <summary>
+        /// Type code for serialization format registered messages.
+        /// Sent when a new serialization format is registered with the service.
+        /// </summary>
+        public const ushort SerializationFormatRegisteredMessage = 1603;
+
+        /// <summary>
+        /// Type code for serialization format unregistered messages.
+        /// Sent when a serialization format is unregistered from the service.
+        /// </summary>
+        public const ushort SerializationFormatUnregisteredMessage = 1604;
+
+        /// <summary>
+        /// Type code for serialization type registered messages.
+        /// Sent when a type is registered for serialization optimization.
+        /// </summary>
+        public const ushort SerializationTypeRegisteredMessage = 1605;
+
+        /// <summary>
+        /// Type code for serialization circuit breaker state changed messages.
+        /// Sent when a serialization circuit breaker changes state.
+        /// </summary>
+        public const ushort SerializationCircuitBreakerStateChangedMessage = 1606;
+
+        /// <summary>
+        /// Type code for serialization service health status messages.
+        /// Sent when serialization service health status changes.
+        /// </summary>
+        public const ushort SerializationServiceHealthStatusMessage = 1607;
+
+        /// <summary>
+        /// Type code for serialization configuration changed messages.
+        /// Sent when serialization service configuration is updated.
+        /// </summary>
+        public const ushort SerializationConfigurationChangedMessage = 1608;
+
+        /// <summary>
+        /// Type code for serialization statistics reset messages.
+        /// Sent when serialization statistics are reset.
+        /// </summary>
+        public const ushort SerializationStatisticsResetMessage = 1609;
+
         #endregion
         
         #region Range Validation Constants
@@ -787,7 +851,17 @@
         /// Maximum TypeCode value for profiling system messages.
         /// </summary>
         public const ushort ProfilingSystemRangeEnd = 1599;
-        
+
+        /// <summary>
+        /// Minimum TypeCode value for serialization system messages.
+        /// </summary>
+        public const ushort SerializationSystemRangeStart = 1600;
+
+        /// <summary>
+        /// Maximum TypeCode value for serialization system messages.
+        /// </summary>
+        public const ushort SerializationSystemRangeEnd = 1699;
+
         /// <summary>
         /// Special TypeCode reserved for testing and validation messages.
         /// </summary>
@@ -825,7 +899,7 @@
                 >= PoolingSystemRangeStart and <= PoolingSystemRangeEnd => "Pooling System",
                 >= AlertingSystemRangeStart and <= AlertingSystemRangeEnd => "Alerting System",
                 >= ProfilingSystemRangeStart and <= ProfilingSystemRangeEnd => "Profiling System",
-                >= 1600 and <= 1699 => "Serialization System",
+                >= SerializationSystemRangeStart and <= SerializationSystemRangeEnd => "Serialization System",
                 >= 2000 and <= 2999 => "Game System",
                 >= 3000 and <= 64999 => "Custom System",
                 Reserved_Testing => "Testing",

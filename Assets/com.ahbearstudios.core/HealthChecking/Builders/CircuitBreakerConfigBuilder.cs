@@ -49,11 +49,25 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         private HashSet<FixedString64Bytes> _tags;
         private Dictionary<string, object> _metadata;
         
-        // Advanced features
-        private SlowCallConfig _slowCallConfig;
-        private BulkheadConfig _bulkheadConfig;
-        private RateLimitConfig _rateLimitConfig;
-        private FailoverConfig _failoverConfig;
+        // Slow call detection properties
+        private TimeSpan _slowCallDurationThreshold;
+        private double _slowCallRateThreshold;
+        private int _minimumSlowCalls;
+
+        // Bulkhead isolation properties
+        private int _maxConcurrentCalls;
+        private TimeSpan _maxWaitDuration;
+        private bool _enableBulkhead;
+
+        // Rate limiting properties
+        private int _requestsPerSecond;
+        private int _burstSize;
+        private bool _enableRateLimit;
+
+        // Failover properties
+        private bool _enableFailover;
+        private List<string> _failoverEndpoints;
+        private TimeSpan _failoverTimeout;
         
         // Build state tracking
         private bool _isBuilt;
@@ -102,10 +116,27 @@ namespace AhBearStudios.Core.HealthChecking.Builders
             _enableEvents = true;
             _tags = new HashSet<FixedString64Bytes>();
             _metadata = new Dictionary<string, object>();
-            _slowCallConfig = new SlowCallConfig();
-            _bulkheadConfig = new BulkheadConfig();
-            _rateLimitConfig = new RateLimitConfig();
-            _failoverConfig = new FailoverConfig();
+
+            // Initialize slow call detection
+            _slowCallDurationThreshold = TimeSpan.FromSeconds(5);
+            _slowCallRateThreshold = 50.0;
+            _minimumSlowCalls = 5;
+
+            // Initialize bulkhead isolation
+            _maxConcurrentCalls = 10;
+            _maxWaitDuration = TimeSpan.FromSeconds(30);
+            _enableBulkhead = false;
+
+            // Initialize rate limiting
+            _requestsPerSecond = 100;
+            _burstSize = 10;
+            _enableRateLimit = false;
+
+            // Initialize failover
+            _enableFailover = false;
+            _failoverEndpoints = new List<string>();
+            _failoverTimeout = TimeSpan.FromSeconds(10);
+
             _isBuilt = false;
             _isValidated = false;
             
@@ -465,34 +496,28 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="threshold">Duration threshold for slow calls</param>
         /// <param name="rateThreshold">Percentage of slow calls that triggers action</param>
         /// <param name="minimumCalls">Minimum slow calls before evaluation</param>
-        /// <param name="treatAsFailures">Whether to treat slow calls as failures</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are out of valid range</exception>
         public ICircuitBreakerConfigBuilder WithSlowCallDetection(
             TimeSpan threshold,
             double rateThreshold = 50.0,
-            int minimumCalls = 5,
-            bool treatAsFailures = true)
+            int minimumCalls = 5)
         {
             ThrowIfAlreadyBuilt();
-            
+
             if (threshold <= TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(threshold), "Slow call threshold must be positive");
-            
+
             if (rateThreshold < 0.0 || rateThreshold > 100.0)
                 throw new ArgumentOutOfRangeException(nameof(rateThreshold), "Rate threshold must be between 0 and 100");
-            
+
             if (minimumCalls < 0)
                 throw new ArgumentOutOfRangeException(nameof(minimumCalls), "Minimum calls must be non-negative");
-            
-            _slowCallConfig = new SlowCallConfig
-            {
-                SlowCallDurationThreshold = threshold,
-                SlowCallRateThreshold = rateThreshold,
-                MinimumSlowCalls = minimumCalls,
-                TreatSlowCallsAsFailures = treatAsFailures
-            };
-            
+
+            _slowCallDurationThreshold = threshold;
+            _slowCallRateThreshold = rateThreshold;
+            _minimumSlowCalls = minimumCalls;
+
             _logger.LogDebug($"Slow call detection: threshold={threshold}, rate={rateThreshold}%, min={minimumCalls}");
             return this;
         }
@@ -503,36 +528,27 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="enabled">Whether to enable bulkhead</param>
         /// <param name="maxConcurrentCalls">Maximum concurrent calls</param>
         /// <param name="maxWaitDuration">Maximum wait time for a call slot</param>
-        /// <param name="maxQueueSize">Maximum queue size for waiting calls</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are out of valid range</exception>
         public ICircuitBreakerConfigBuilder WithBulkhead(
             bool enabled = false,
             int maxConcurrentCalls = 10,
-            TimeSpan? maxWaitDuration = null,
-            int maxQueueSize = 100)
+            TimeSpan? maxWaitDuration = null)
         {
             ThrowIfAlreadyBuilt();
-            
+
             if (maxConcurrentCalls <= 0)
                 throw new ArgumentOutOfRangeException(nameof(maxConcurrentCalls), "Max concurrent calls must be positive");
-            
-            var waitDuration = maxWaitDuration ?? TimeSpan.FromSeconds(5);
-            
+
+            var waitDuration = maxWaitDuration ?? TimeSpan.FromSeconds(30);
+
             if (waitDuration < TimeSpan.Zero)
                 throw new ArgumentOutOfRangeException(nameof(maxWaitDuration), "Max wait duration must be non-negative");
-            
-            if (maxQueueSize < 0)
-                throw new ArgumentOutOfRangeException(nameof(maxQueueSize), "Max queue size must be non-negative");
-            
-            _bulkheadConfig = new BulkheadConfig
-            {
-                Enabled = enabled,
-                MaxConcurrentCalls = maxConcurrentCalls,
-                MaxWaitDuration = waitDuration,
-                MaxQueueSize = maxQueueSize
-            };
-            
+
+            _enableBulkhead = enabled;
+            _maxConcurrentCalls = maxConcurrentCalls;
+            _maxWaitDuration = waitDuration;
+
             _logger.LogDebug($"Bulkhead: enabled={enabled}, maxCalls={maxConcurrentCalls}, wait={waitDuration}");
             return this;
         }
@@ -547,24 +563,21 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are out of valid range</exception>
         public ICircuitBreakerConfigBuilder WithRateLimit(
             bool enabled = false,
-            double requestsPerSecond = 100.0,
+            int requestsPerSecond = 100,
             int burstSize = 150)
         {
             ThrowIfAlreadyBuilt();
-            
+
             if (requestsPerSecond <= 0)
                 throw new ArgumentOutOfRangeException(nameof(requestsPerSecond), "Requests per second must be positive");
-            
+
             if (burstSize < requestsPerSecond)
                 throw new ArgumentOutOfRangeException(nameof(burstSize), "Burst size should be greater than or equal to requests per second");
-            
-            _rateLimitConfig = new RateLimitConfig
-            {
-                Enabled = enabled,
-                RequestsPerSecond = requestsPerSecond,
-                BurstSize = burstSize
-            };
-            
+
+            _enableRateLimit = enabled;
+            _requestsPerSecond = requestsPerSecond;
+            _burstSize = burstSize;
+
             _logger.LogDebug($"Rate limit: enabled={enabled}, rps={requestsPerSecond}, burst={burstSize}");
             return this;
         }
@@ -573,28 +586,27 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Configures failover behavior
         /// </summary>
         /// <param name="enabled">Whether to enable failover</param>
-        /// <param name="strategy">Failover strategy</param>
-        /// <param name="defaultValue">Default value for ReturnDefault strategy</param>
+        /// <param name="endpoints">List of failover endpoints</param>
+        /// <param name="timeout">Timeout for failover attempts</param>
         /// <returns>Builder instance for method chaining</returns>
-        /// <exception cref="ArgumentException">Thrown when strategy is invalid</exception>
+        /// <exception cref="ArgumentOutOfRangeException">Thrown when timeout is invalid</exception>
         public ICircuitBreakerConfigBuilder WithFailover(
             bool enabled = false,
-            FailoverStrategy strategy = FailoverStrategy.ReturnDefault,
-            object defaultValue = null)
+            List<string> endpoints = null,
+            TimeSpan? timeout = null)
         {
             ThrowIfAlreadyBuilt();
-            
-            if (!Enum.IsDefined(typeof(FailoverStrategy), strategy))
-                throw new ArgumentException($"Invalid failover strategy: {strategy}", nameof(strategy));
-            
-            _failoverConfig = new FailoverConfig
-            {
-                Enabled = enabled,
-                Strategy = strategy,
-                DefaultValue = defaultValue
-            };
-            
-            _logger.LogDebug($"Failover: enabled={enabled}, strategy={strategy}");
+
+            var failoverTimeout = timeout ?? TimeSpan.FromSeconds(10);
+
+            if (failoverTimeout <= TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(timeout), "Failover timeout must be positive");
+
+            _enableFailover = enabled;
+            _failoverEndpoints = endpoints ?? new List<string>();
+            _failoverTimeout = failoverTimeout;
+
+            _logger.LogDebug($"Failover: enabled={enabled}, endpoints={_failoverEndpoints.Count}, timeout={failoverTimeout}");
             return this;
         }
 
@@ -703,11 +715,33 @@ namespace AhBearStudios.Core.HealthChecking.Builders
                 }
             }
             
-            // Validate nested configurations
-            _validationErrors.AddRange(_slowCallConfig.Validate());
-            _validationErrors.AddRange(_bulkheadConfig.Validate());
-            _validationErrors.AddRange(_rateLimitConfig.Validate());
-            _validationErrors.AddRange(_failoverConfig.Validate());
+            // Validate slow call detection
+            if (_slowCallDurationThreshold <= TimeSpan.Zero)
+                _validationErrors.Add("Slow call duration threshold must be positive");
+
+            if (_slowCallRateThreshold < 0.0 || _slowCallRateThreshold > 100.0)
+                _validationErrors.Add("Slow call rate threshold must be between 0.0 and 100.0");
+
+            if (_minimumSlowCalls < 0)
+                _validationErrors.Add("Minimum slow calls must be non-negative");
+
+            // Validate bulkhead isolation
+            if (_maxConcurrentCalls <= 0)
+                _validationErrors.Add("Max concurrent calls must be positive");
+
+            if (_maxWaitDuration < TimeSpan.Zero)
+                _validationErrors.Add("Max wait duration must be non-negative");
+
+            // Validate rate limiting
+            if (_requestsPerSecond <= 0)
+                _validationErrors.Add("Requests per second must be positive");
+
+            if (_burstSize < 0)
+                _validationErrors.Add("Burst size must be non-negative");
+
+            // Validate failover
+            if (_failoverTimeout <= TimeSpan.Zero)
+                _validationErrors.Add("Failover timeout must be positive");
             
             _isValidated = true;
             
@@ -766,10 +800,18 @@ namespace AhBearStudios.Core.HealthChecking.Builders
                 EnableEvents = _enableEvents,
                 Tags = new HashSet<FixedString64Bytes>(_tags),
                 Metadata = new Dictionary<string, object>(_metadata),
-                SlowCallConfig = _slowCallConfig,
-                BulkheadConfig = _bulkheadConfig,
-                RateLimitConfig = _rateLimitConfig,
-                FailoverConfig = _failoverConfig
+                SlowCallDurationThreshold = _slowCallDurationThreshold,
+                SlowCallRateThreshold = _slowCallRateThreshold,
+                MinimumSlowCalls = _minimumSlowCalls,
+                MaxConcurrentCalls = _maxConcurrentCalls,
+                MaxWaitDuration = _maxWaitDuration,
+                EnableBulkhead = _enableBulkhead,
+                RequestsPerSecond = _requestsPerSecond,
+                BurstSize = _burstSize,
+                EnableRateLimit = _enableRateLimit,
+                EnableFailover = _enableFailover,
+                FailoverEndpoints = new List<string>(_failoverEndpoints),
+                FailoverTimeout = _failoverTimeout
             };
             
             _isBuilt = true;
@@ -816,12 +858,9 @@ namespace AhBearStudios.Core.HealthChecking.Builders
             _maxTimeout = TimeSpan.FromMinutes(5);
             _enableMetrics = true;
             _enableEvents = true;
-            _slowCallConfig = new SlowCallConfig
-            {
-                SlowCallDurationThreshold = TimeSpan.FromSeconds(5),
-                SlowCallRateThreshold = 50.0,
-                MinimumSlowCalls = 3
-            };
+            _slowCallDurationThreshold = TimeSpan.FromSeconds(5);
+            _slowCallRateThreshold = 50.0;
+            _minimumSlowCalls = 3;
             
             _logger.LogInfo("Applied critical service preset");
             return this;
@@ -848,17 +887,12 @@ namespace AhBearStudios.Core.HealthChecking.Builders
             _timeoutMultiplier = 1.5;
             _maxTimeout = TimeSpan.FromMinutes(15);
             _immediateFailureExceptions.Add(typeof(UnauthorizedAccessException));
-            _slowCallConfig = new SlowCallConfig
-            {
-                SlowCallDurationThreshold = TimeSpan.FromSeconds(10),
-                SlowCallRateThreshold = 30.0,
-                MinimumSlowCalls = 5
-            };
-            _bulkheadConfig = new BulkheadConfig
-            {
-                MaxConcurrentCalls = 20,
-                MaxWaitDuration = TimeSpan.FromSeconds(30)
-            };
+            _slowCallDurationThreshold = TimeSpan.FromSeconds(10);
+            _slowCallRateThreshold = 30.0;
+            _minimumSlowCalls = 5;
+            _maxConcurrentCalls = 20;
+            _maxWaitDuration = TimeSpan.FromSeconds(30);
+            _enableBulkhead = true;
             
             _logger.LogInfo("Applied database preset");
             return this;
@@ -887,17 +921,12 @@ namespace AhBearStudios.Core.HealthChecking.Builders
             _ignoredExceptions.Add(typeof(ArgumentException));
             _ignoredExceptions.Add(typeof(ArgumentNullException));
             _immediateFailureExceptions.Add(typeof(UnauthorizedAccessException));
-            _slowCallConfig = new SlowCallConfig
-            {
-                SlowCallDurationThreshold = TimeSpan.FromSeconds(15),
-                SlowCallRateThreshold = 40.0,
-                MinimumSlowCalls = 8
-            };
-            _rateLimitConfig = new RateLimitConfig
-            {
-                RequestsPerSecond = 100,
-                BurstSize = 150
-            };
+            _slowCallDurationThreshold = TimeSpan.FromSeconds(15);
+            _slowCallRateThreshold = 40.0;
+            _minimumSlowCalls = 8;
+            _requestsPerSecond = 100;
+            _burstSize = 150;
+            _enableRateLimit = true;
             
             _logger.LogInfo("Applied network service preset");
             return this;
@@ -923,16 +952,12 @@ namespace AhBearStudios.Core.HealthChecking.Builders
             _maxRecoveryAttempts = 3;
             _timeoutMultiplier = 1.1;
             _maxTimeout = TimeSpan.FromMinutes(2);
-            _bulkheadConfig = new BulkheadConfig
-            {
-                MaxConcurrentCalls = 100,
-                MaxWaitDuration = TimeSpan.FromSeconds(10)
-            };
-            _rateLimitConfig = new RateLimitConfig
-            {
-                RequestsPerSecond = 1000,
-                BurstSize = 1500
-            };
+            _maxConcurrentCalls = 100;
+            _maxWaitDuration = TimeSpan.FromSeconds(10);
+            _enableBulkhead = true;
+            _requestsPerSecond = 1000;
+            _burstSize = 1500;
+            _enableRateLimit = true;
             
             _logger.LogInfo("Applied high throughput preset");
             return this;

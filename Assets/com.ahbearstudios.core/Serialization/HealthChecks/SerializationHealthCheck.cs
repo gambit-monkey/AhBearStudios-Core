@@ -72,7 +72,6 @@ namespace AhBearStudios.Core.Serialization.HealthChecks
             {
                 Name = Name,
                 DisplayName = "Serialization System Health Check",
-                Description = Description,
                 Category = Category,
                 Timeout = Timeout
             };

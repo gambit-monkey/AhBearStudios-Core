@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using ZLinq;
 using Unity.Collections;
 using AhBearStudios.Core.Alerting.Configs;

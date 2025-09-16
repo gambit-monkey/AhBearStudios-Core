@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.HealthChecking.Configs;
 
 namespace AhBearStudios.Core.Alerting.Configs
 {
@@ -142,7 +143,14 @@ namespace AhBearStudios.Core.Alerting.Configs
                 throw new InvalidOperationException("Emergency channel priority must be between 1 and 1000.");
 
             DefaultRetryPolicy?.Validate();
-            CircuitBreaker?.Validate();
+
+            // Validate circuit breaker configuration
+            if (CircuitBreaker != null)
+            {
+                var validationErrors = CircuitBreaker.Validate();
+                if (validationErrors.Count > 0)
+                    throw new InvalidOperationException($"Circuit breaker validation failed: {string.Join(", ", validationErrors)}");
+            }
 
             foreach (var channel in InitialChannels)
             {
@@ -230,85 +238,4 @@ namespace AhBearStudios.Core.Alerting.Configs
         };
     }
 
-    /// <summary>
-    /// Configuration for circuit breaker pattern implementation.
-    /// Prevents cascading failures by temporarily disabling failing channels.
-    /// </summary>
-    public sealed record CircuitBreakerConfig
-    {
-        /// <summary>
-        /// Gets the number of failures before opening the circuit.
-        /// </summary>
-        public int FailureThreshold { get; init; } = 5;
-
-        /// <summary>
-        /// Gets the time window for counting failures.
-        /// </summary>
-        public TimeSpan FailureWindow { get; init; } = TimeSpan.FromMinutes(1);
-
-        /// <summary>
-        /// Gets the duration to keep the circuit open before attempting recovery.
-        /// </summary>
-        public TimeSpan OpenDuration { get; init; } = TimeSpan.FromMinutes(5);
-
-        /// <summary>
-        /// Gets the number of successful operations required to close the circuit.
-        /// </summary>
-        public int SuccessThreshold { get; init; } = 3;
-
-        /// <summary>
-        /// Gets whether the circuit breaker is enabled.
-        /// </summary>
-        public bool IsEnabled { get; init; } = true;
-
-        /// <summary>
-        /// Validates the circuit breaker configuration.
-        /// </summary>
-        public void Validate()
-        {
-            if (FailureThreshold <= 0)
-                throw new InvalidOperationException("Failure threshold must be greater than zero.");
-
-            if (FailureWindow <= TimeSpan.Zero)
-                throw new InvalidOperationException("Failure window must be greater than zero.");
-
-            if (OpenDuration <= TimeSpan.Zero)
-                throw new InvalidOperationException("Open duration must be greater than zero.");
-
-            if (SuccessThreshold <= 0)
-                throw new InvalidOperationException("Success threshold must be greater than zero.");
-        }
-
-        /// <summary>
-        /// Gets the default circuit breaker configuration.
-        /// </summary>
-        public static CircuitBreakerConfig Default => new()
-        {
-            FailureThreshold = 5,
-            FailureWindow = TimeSpan.FromMinutes(1),
-            OpenDuration = TimeSpan.FromMinutes(5),
-            SuccessThreshold = 3,
-            IsEnabled = true
-        };
-
-        /// <summary>
-        /// Gets an aggressive circuit breaker configuration for critical systems.
-        /// </summary>
-        public static CircuitBreakerConfig Aggressive => new()
-        {
-            FailureThreshold = 3,
-            FailureWindow = TimeSpan.FromSeconds(30),
-            OpenDuration = TimeSpan.FromMinutes(10),
-            SuccessThreshold = 5,
-            IsEnabled = true
-        };
-
-        /// <summary>
-        /// Gets a disabled circuit breaker configuration.
-        /// </summary>
-        public static CircuitBreakerConfig Disabled => new()
-        {
-            IsEnabled = false
-        };
-    }
 }

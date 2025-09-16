@@ -4,7 +4,9 @@ using AhBearStudios.Core.Serialization.Models;
 namespace AhBearStudios.Core.Serialization.Factories
 {
     /// <summary>
-    /// Interface for creating serializer instances.
+    /// Interface for creating serializer instances following CLAUDE.md guidelines.
+    /// Simple creation only - no lifecycle management, no caching.
+    /// Follows the Builder → Config → Factory → Service pattern.
     /// </summary>
     public interface ISerializerFactory
     {
@@ -23,13 +25,6 @@ namespace AhBearStudios.Core.Serialization.Factories
         ISerializer CreateSerializer(SerializationFormat format);
 
         /// <summary>
-        /// Gets or creates a cached serializer instance.
-        /// </summary>
-        /// <param name="config">Serialization configuration</param>
-        /// <returns>Cached or new serializer instance</returns>
-        ISerializer GetOrCreateSerializer(SerializationConfig config);
-
-        /// <summary>
         /// Validates that a serializer can be created for the given configuration.
         /// </summary>
         /// <param name="config">Configuration to validate</param>
@@ -41,10 +36,5 @@ namespace AhBearStudios.Core.Serialization.Factories
         /// </summary>
         /// <returns>Array of supported formats</returns>
         SerializationFormat[] GetSupportedFormats();
-
-        /// <summary>
-        /// Clears the serializer cache.
-        /// </summary>
-        void ClearCache();
     }
 }

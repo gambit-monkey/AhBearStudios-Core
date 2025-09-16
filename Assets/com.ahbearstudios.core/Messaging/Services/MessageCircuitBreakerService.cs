@@ -227,15 +227,15 @@ public sealed class MessageCircuitBreakerService : IMessageCircuitBreakerService
 
         try
         {
-            var stateChangeMessage = new MessageBusCircuitBreakerStateChangedMessage
-            {
-                MessageType = typeof(TMessage),
-                OldState = oldState,
-                NewState = newState,
-                Reason = reason,
-                Timestamp = DateTime.UtcNow,
-                CircuitBreakerName = $"MessageBus_{typeof(TMessage).Name}"
-            };
+            var stateChangeMessage = MessageBusCircuitBreakerStateChangedMessage.Create(
+                messageType: typeof(TMessage),
+                oldState: oldState,
+                newState: newState,
+                reason: reason,
+                stateChangeTimestamp: DateTime.UtcNow,
+                circuitBreakerName: $"MessageBus_{typeof(TMessage).Name}",
+                source: "MessageCircuitBreakerService"
+            );
 
             _messageBus.PublishMessage(stateChangeMessage);
 

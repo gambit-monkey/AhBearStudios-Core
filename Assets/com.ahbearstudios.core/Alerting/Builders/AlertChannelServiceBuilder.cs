@@ -1,8 +1,7 @@
-using System;
 using System.Collections.Generic;
-using Unity.Collections;
 using AhBearStudios.Core.Alerting.Configs;
 using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.HealthChecking.Configs;
 
 namespace AhBearStudios.Core.Alerting.Builders
 {
@@ -207,11 +206,16 @@ namespace AhBearStudios.Core.Alerting.Builders
         /// <param name="enable">Enable circuit breaker</param>
         /// <param name="config">Circuit breaker configuration</param>
         /// <returns>Builder instance for chaining</returns>
+        /// <exception cref="InvalidOperationException">Thrown when circuit breaker configuration is invalid</exception>
         public AlertChannelServiceBuilder WithCircuitBreaker(bool enable, CircuitBreakerConfig config = null)
         {
             _enableCircuitBreaker = enable;
             _circuitBreaker = config ?? CircuitBreakerConfig.Default;
-            _circuitBreaker.Validate();
+
+            var validationErrors = _circuitBreaker.Validate();
+            if (validationErrors.Count > 0)
+                throw new InvalidOperationException($"Circuit breaker configuration is invalid: {string.Join(", ", validationErrors)}");
+
             return this;
         }
 
@@ -399,43 +403,19 @@ namespace AhBearStudios.Core.Alerting.Builders
                 JitterMaxPercentage = 0.1
             };
             _enableCircuitBreaker = true;
-            _circuitBreaker = new CircuitBreakerConfig
+            _circuitBreaker = CircuitBreakerConfig.Create("Production Alert Channel Circuit Breaker") with
             {
                 FailureThreshold = 5,
-                FailureWindow = TimeSpan.FromMinutes(2),
-                OpenDuration = TimeSpan.FromMinutes(5),
-                SuccessThreshold = 3,
-                IsEnabled = true
+                Timeout = TimeSpan.FromMinutes(5),
+                SamplingDuration = TimeSpan.FromMinutes(2),
+                SuccessThreshold = 60.0,
+                HalfOpenMaxCalls = 3,
+                EnableMetrics = true,
+                EnableEvents = true
             };
             _enableDetailedMetrics = false;
             _maxMetricsHistorySize = 500;
             _emergencyChannelPriority = 1;
         }
-    }
-
-    /// <summary>
-    /// Preset configurations for the channel service.
-    /// </summary>
-    public enum ChannelServicePreset
-    {
-        /// <summary>
-        /// Default configuration suitable for most scenarios.
-        /// </summary>
-        Default,
-
-        /// <summary>
-        /// Optimized for high-performance, low-latency scenarios.
-        /// </summary>
-        HighPerformance,
-
-        /// <summary>
-        /// Debug configuration with verbose monitoring.
-        /// </summary>
-        Debug,
-
-        /// <summary>
-        /// Production-ready configuration with balanced settings.
-        /// </summary>
-        Production
     }
 }

@@ -335,12 +335,9 @@ namespace AhBearStudios.Core.HealthChecking.Configs
                 MaxTimeout = TimeSpan.FromMinutes(5),
                 EnableMetrics = true,
                 EnableEvents = true,
-                SlowCallConfig = new SlowCallConfig
-                {
-                    SlowCallDurationThreshold = TimeSpan.FromSeconds(5),
-                    SlowCallRateThreshold = 50.0,
-                    MinimumSlowCalls = 3
-                }
+                SlowCallDurationThreshold = TimeSpan.FromSeconds(5),
+                SlowCallRateThreshold = 50.0,
+                MinimumSlowCalls = 3
             };
         }
 
@@ -371,17 +368,12 @@ namespace AhBearStudios.Core.HealthChecking.Configs
                     typeof(UnauthorizedAccessException),
                     //TODO Add support for DBs typeof(System.Data.SqlClient.SqlException)
                 },
-                SlowCallConfig = new SlowCallConfig
-                {
-                    SlowCallDurationThreshold = TimeSpan.FromSeconds(10),
-                    SlowCallRateThreshold = 30.0,
-                    MinimumSlowCalls = 5
-                },
-                BulkheadConfig = new BulkheadConfig
-                {
-                    MaxConcurrentCalls = 20,
-                    MaxWaitDuration = TimeSpan.FromSeconds(30)
-                }
+                SlowCallDurationThreshold = TimeSpan.FromSeconds(10),
+                SlowCallRateThreshold = 30.0,
+                MinimumSlowCalls = 5,
+                MaxConcurrentCalls = 20,
+                MaxWaitDuration = TimeSpan.FromSeconds(30),
+                EnableBulkhead = true
             };
         }
 
@@ -480,6 +472,103 @@ namespace AhBearStudios.Core.HealthChecking.Configs
                 EnableEvents = true
             };
         }
+
+        /// <summary>
+        /// Gets the default circuit breaker configuration.
+        /// </summary>
+        public static CircuitBreakerConfig Default => new()
+        {
+            Id = new FixedString64Bytes(DeterministicIdGenerator.GenerateHealthCheckId("CircuitBreakerConfig", "Default").ToString("N")[..16]),
+            Name = "Default Circuit Breaker",
+            FailureThreshold = 5,
+            Timeout = TimeSpan.FromSeconds(60),
+            SamplingDuration = TimeSpan.FromMinutes(2),
+            MinimumThroughput = 10,
+            SuccessThreshold = 50.0,
+            HalfOpenMaxCalls = 3,
+            UseSlidingWindow = true,
+            SlidingWindowType = SlidingWindowType.CountBased,
+            SlidingWindowSize = 100,
+            SlidingWindowDuration = TimeSpan.FromMinutes(1),
+            EnableAutomaticRecovery = true,
+            MaxRecoveryAttempts = 5,
+            TimeoutMultiplier = 1.5,
+            MaxTimeout = TimeSpan.FromMinutes(10),
+            IgnoredExceptions = new HashSet<Type>
+            {
+                typeof(ArgumentException),
+                typeof(ArgumentNullException),
+                typeof(InvalidOperationException)
+            },
+            ImmediateFailureExceptions = new HashSet<Type>
+            {
+                typeof(UnauthorizedAccessException),
+                typeof(System.Security.SecurityException)
+            },
+            FailurePredicates = new List<Func<Exception, bool>>(),
+            EnableMetrics = true,
+            EnableEvents = true,
+            Tags = new HashSet<FixedString64Bytes>(),
+            Metadata = new Dictionary<string, object>(),
+            SlowCallDurationThreshold = TimeSpan.FromSeconds(5),
+            SlowCallRateThreshold = 50.0,
+            MinimumSlowCalls = 5,
+            MaxConcurrentCalls = 10,
+            MaxWaitDuration = TimeSpan.FromSeconds(30),
+            EnableBulkhead = false,
+            RequestsPerSecond = 100,
+            BurstSize = 10,
+            EnableRateLimit = false,
+            EnableFailover = false,
+            FailoverEndpoints = new List<string>(),
+            FailoverTimeout = TimeSpan.FromSeconds(10)
+        };
+
+        /// <summary>
+        /// Gets an aggressive circuit breaker configuration for critical systems.
+        /// </summary>
+        public static CircuitBreakerConfig Aggressive => new()
+        {
+            Id = new FixedString64Bytes(DeterministicIdGenerator.GenerateHealthCheckId("CircuitBreakerConfig", "Aggressive").ToString("N")[..16]),
+            Name = "Aggressive Circuit Breaker",
+            FailureThreshold = 3,
+            Timeout = TimeSpan.FromSeconds(30),
+            SamplingDuration = TimeSpan.FromMinutes(1),
+            MinimumThroughput = 5,
+            SuccessThreshold = 80.0,
+            HalfOpenMaxCalls = 2,
+            UseSlidingWindow = true,
+            SlidingWindowType = SlidingWindowType.CountBased,
+            SlidingWindowSize = 50,
+            EnableAutomaticRecovery = true,
+            MaxRecoveryAttempts = 3,
+            TimeoutMultiplier = 2.0,
+            MaxTimeout = TimeSpan.FromMinutes(5),
+            EnableMetrics = true,
+            EnableEvents = true
+        };
+
+        /// <summary>
+        /// Gets a disabled circuit breaker configuration.
+        /// </summary>
+        public static CircuitBreakerConfig Disabled => new()
+        {
+            Id = new FixedString64Bytes(DeterministicIdGenerator.GenerateHealthCheckId("CircuitBreakerConfig", "Disabled").ToString("N")[..16]),
+            Name = "Disabled Circuit Breaker",
+            FailureThreshold = int.MaxValue,
+            Timeout = TimeSpan.MaxValue,
+            SamplingDuration = TimeSpan.FromDays(1),
+            MinimumThroughput = int.MaxValue,
+            SuccessThreshold = 0.0,
+            HalfOpenMaxCalls = 1,
+            UseSlidingWindow = false,
+            EnableAutomaticRecovery = false,
+            MaxRecoveryAttempts = 0,
+            TimeoutMultiplier = 1.0,
+            MaxTimeout = TimeSpan.MaxValue,
+            EnableMetrics = false,
+            EnableEvents = false
+        };
 
         /// <summary>
         /// Creates a circuit breaker configuration with all required fields

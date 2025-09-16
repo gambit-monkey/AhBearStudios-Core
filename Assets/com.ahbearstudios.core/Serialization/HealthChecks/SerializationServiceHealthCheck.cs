@@ -73,7 +73,6 @@ namespace AhBearStudios.Core.Serialization.HealthChecks
             {
                 Name = Name,
                 DisplayName = "Serialization Service Health Check",
-                Description = Description,
                 Category = Category,
                 Timeout = Timeout
             };
@@ -281,17 +280,17 @@ namespace AhBearStudios.Core.Serialization.HealthChecks
                     circuitBreakerData[format.ToString()] = new
                     {
                         State = stats.State.ToString(),
-                        stats.FailureCount,
-                        SuccessCount = stats.SuccessfulRequests,
-                        LastStateChange = stats.LastStateChangeTime,
-                        FailureRate = stats.TotalRequests > 0 ? (double)stats.FailureCount / stats.TotalRequests : 0.0
+                        FailureCount = stats.TotalFailures,
+                        SuccessCount = stats.TotalSuccesses,
+                        LastStateChange = stats.LastStateChange,
+                        FailureRate = stats.TotalExecutions > 0 ? (double)stats.TotalFailures / stats.TotalExecutions : 0.0
                     };
 
                     switch (stats.State)
                     {
                         case CircuitBreakerState.Open:
                             openBreakers++;
-                            issues.Add($"Circuit breaker for {format} is OPEN (failures: {stats.FailureCount})");
+                            issues.Add($"Circuit breaker for {format} is OPEN (failures: {stats.TotalFailures})");
                             break;
                         case CircuitBreakerState.HalfOpen:
                             halfOpenBreakers++;
