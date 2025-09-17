@@ -60,14 +60,22 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         private bool _enableBulkhead;
 
         // Rate limiting properties
-        private int _requestsPerSecond;
+        private double _requestsPerSecond;
         private int _burstSize;
         private bool _enableRateLimit;
 
         // Failover properties
         private bool _enableFailover;
+        private FailoverStrategy _failoverStrategy;
+        private object _failoverDefaultValue;
         private List<string> _failoverEndpoints;
         private TimeSpan _failoverTimeout;
+
+        // Bulkhead queue size
+        private int _maxQueueSize;
+
+        // Slow call detection
+        private bool _treatSlowCallsAsFailures;
         
         // Build state tracking
         private bool _isBuilt;
@@ -128,14 +136,22 @@ namespace AhBearStudios.Core.HealthChecking.Builders
             _enableBulkhead = false;
 
             // Initialize rate limiting
-            _requestsPerSecond = 100;
-            _burstSize = 10;
+            _requestsPerSecond = 100.0;
+            _burstSize = 150;
             _enableRateLimit = false;
 
             // Initialize failover
             _enableFailover = false;
+            _failoverStrategy = FailoverStrategy.ReturnDefault;
+            _failoverDefaultValue = null;
             _failoverEndpoints = new List<string>();
             _failoverTimeout = TimeSpan.FromSeconds(10);
+
+            // Initialize bulkhead queue size
+            _maxQueueSize = 100;
+
+            // Initialize slow call detection flag
+            _treatSlowCallsAsFailures = true;
 
             _isBuilt = false;
             _isValidated = false;
@@ -496,12 +512,14 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="threshold">Duration threshold for slow calls</param>
         /// <param name="rateThreshold">Percentage of slow calls that triggers action</param>
         /// <param name="minimumCalls">Minimum slow calls before evaluation</param>
+        /// <param name="treatAsFailures">Whether to treat slow calls as failures</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are out of valid range</exception>
         public ICircuitBreakerConfigBuilder WithSlowCallDetection(
             TimeSpan threshold,
             double rateThreshold = 50.0,
-            int minimumCalls = 5)
+            int minimumCalls = 5,
+            bool treatAsFailures = true)
         {
             ThrowIfAlreadyBuilt();
 
@@ -517,8 +535,9 @@ namespace AhBearStudios.Core.HealthChecking.Builders
             _slowCallDurationThreshold = threshold;
             _slowCallRateThreshold = rateThreshold;
             _minimumSlowCalls = minimumCalls;
+            _treatSlowCallsAsFailures = treatAsFailures;
 
-            _logger.LogDebug($"Slow call detection: threshold={threshold}, rate={rateThreshold}%, min={minimumCalls}");
+            _logger.LogDebug($"Slow call detection: threshold={threshold}, rate={rateThreshold}%, min={minimumCalls}, treatAsFailures={treatAsFailures}");
             return this;
         }
 
@@ -528,17 +547,22 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <param name="enabled">Whether to enable bulkhead</param>
         /// <param name="maxConcurrentCalls">Maximum concurrent calls</param>
         /// <param name="maxWaitDuration">Maximum wait time for a call slot</param>
+        /// <param name="maxQueueSize">Maximum queue size for waiting calls</param>
         /// <returns>Builder instance for method chaining</returns>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are out of valid range</exception>
         public ICircuitBreakerConfigBuilder WithBulkhead(
             bool enabled = false,
             int maxConcurrentCalls = 10,
-            TimeSpan? maxWaitDuration = null)
+            TimeSpan? maxWaitDuration = null,
+            int maxQueueSize = 100)
         {
             ThrowIfAlreadyBuilt();
 
             if (maxConcurrentCalls <= 0)
                 throw new ArgumentOutOfRangeException(nameof(maxConcurrentCalls), "Max concurrent calls must be positive");
+
+            if (maxQueueSize < 0)
+                throw new ArgumentOutOfRangeException(nameof(maxQueueSize), "Max queue size must be non-negative");
 
             var waitDuration = maxWaitDuration ?? TimeSpan.FromSeconds(30);
 
@@ -548,8 +572,9 @@ namespace AhBearStudios.Core.HealthChecking.Builders
             _enableBulkhead = enabled;
             _maxConcurrentCalls = maxConcurrentCalls;
             _maxWaitDuration = waitDuration;
+            _maxQueueSize = maxQueueSize;
 
-            _logger.LogDebug($"Bulkhead: enabled={enabled}, maxCalls={maxConcurrentCalls}, wait={waitDuration}");
+            _logger.LogDebug($"Bulkhead: enabled={enabled}, maxCalls={maxConcurrentCalls}, wait={waitDuration}, queueSize={maxQueueSize}");
             return this;
         }
 
@@ -563,16 +588,16 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are out of valid range</exception>
         public ICircuitBreakerConfigBuilder WithRateLimit(
             bool enabled = false,
-            int requestsPerSecond = 100,
+            double requestsPerSecond = 100.0,
             int burstSize = 150)
         {
             ThrowIfAlreadyBuilt();
 
-            if (requestsPerSecond <= 0)
+            if (requestsPerSecond <= 0.0)
                 throw new ArgumentOutOfRangeException(nameof(requestsPerSecond), "Requests per second must be positive");
 
-            if (burstSize < requestsPerSecond)
-                throw new ArgumentOutOfRangeException(nameof(burstSize), "Burst size should be greater than or equal to requests per second");
+            if (burstSize < 0)
+                throw new ArgumentOutOfRangeException(nameof(burstSize), "Burst size must be non-negative");
 
             _enableRateLimit = enabled;
             _requestsPerSecond = requestsPerSecond;
@@ -586,27 +611,25 @@ namespace AhBearStudios.Core.HealthChecking.Builders
         /// Configures failover behavior
         /// </summary>
         /// <param name="enabled">Whether to enable failover</param>
-        /// <param name="endpoints">List of failover endpoints</param>
-        /// <param name="timeout">Timeout for failover attempts</param>
+        /// <param name="strategy">Failover strategy</param>
+        /// <param name="defaultValue">Default value for ReturnDefault strategy</param>
         /// <returns>Builder instance for method chaining</returns>
-        /// <exception cref="ArgumentOutOfRangeException">Thrown when timeout is invalid</exception>
+        /// <exception cref="ArgumentException">Thrown when strategy is invalid</exception>
         public ICircuitBreakerConfigBuilder WithFailover(
             bool enabled = false,
-            List<string> endpoints = null,
-            TimeSpan? timeout = null)
+            FailoverStrategy strategy = FailoverStrategy.ReturnDefault,
+            object defaultValue = null)
         {
             ThrowIfAlreadyBuilt();
 
-            var failoverTimeout = timeout ?? TimeSpan.FromSeconds(10);
-
-            if (failoverTimeout <= TimeSpan.Zero)
-                throw new ArgumentOutOfRangeException(nameof(timeout), "Failover timeout must be positive");
+            if (!Enum.IsDefined(typeof(FailoverStrategy), strategy))
+                throw new ArgumentException($"Invalid failover strategy: {strategy}", nameof(strategy));
 
             _enableFailover = enabled;
-            _failoverEndpoints = endpoints ?? new List<string>();
-            _failoverTimeout = failoverTimeout;
+            _failoverStrategy = strategy;
+            _failoverDefaultValue = defaultValue;
 
-            _logger.LogDebug($"Failover: enabled={enabled}, endpoints={_failoverEndpoints.Count}, timeout={failoverTimeout}");
+            _logger.LogDebug($"Failover: enabled={enabled}, strategy={strategy}, hasDefaultValue={defaultValue != null}");
             return this;
         }
 
@@ -733,11 +756,15 @@ namespace AhBearStudios.Core.HealthChecking.Builders
                 _validationErrors.Add("Max wait duration must be non-negative");
 
             // Validate rate limiting
-            if (_requestsPerSecond <= 0)
+            if (_requestsPerSecond <= 0.0)
                 _validationErrors.Add("Requests per second must be positive");
 
             if (_burstSize < 0)
                 _validationErrors.Add("Burst size must be non-negative");
+
+            // Validate bulkhead queue size
+            if (_maxQueueSize < 0)
+                _validationErrors.Add("Max queue size must be non-negative");
 
             // Validate failover
             if (_failoverTimeout <= TimeSpan.Zero)
@@ -803,13 +830,17 @@ namespace AhBearStudios.Core.HealthChecking.Builders
                 SlowCallDurationThreshold = _slowCallDurationThreshold,
                 SlowCallRateThreshold = _slowCallRateThreshold,
                 MinimumSlowCalls = _minimumSlowCalls,
+                TreatSlowCallsAsFailures = _treatSlowCallsAsFailures,
                 MaxConcurrentCalls = _maxConcurrentCalls,
                 MaxWaitDuration = _maxWaitDuration,
                 EnableBulkhead = _enableBulkhead,
+                MaxQueueSize = _maxQueueSize,
                 RequestsPerSecond = _requestsPerSecond,
                 BurstSize = _burstSize,
                 EnableRateLimit = _enableRateLimit,
                 EnableFailover = _enableFailover,
+                FailoverStrategy = _failoverStrategy,
+                FailoverDefaultValue = _failoverDefaultValue,
                 FailoverEndpoints = new List<string>(_failoverEndpoints),
                 FailoverTimeout = _failoverTimeout
             };
@@ -924,7 +955,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
             _slowCallDurationThreshold = TimeSpan.FromSeconds(15);
             _slowCallRateThreshold = 40.0;
             _minimumSlowCalls = 8;
-            _requestsPerSecond = 100;
+            _requestsPerSecond = 100.0;
             _burstSize = 150;
             _enableRateLimit = true;
             
@@ -955,7 +986,7 @@ namespace AhBearStudios.Core.HealthChecking.Builders
             _maxConcurrentCalls = 100;
             _maxWaitDuration = TimeSpan.FromSeconds(10);
             _enableBulkhead = true;
-            _requestsPerSecond = 1000;
+            _requestsPerSecond = 1000.0;
             _burstSize = 1500;
             _enableRateLimit = true;
             

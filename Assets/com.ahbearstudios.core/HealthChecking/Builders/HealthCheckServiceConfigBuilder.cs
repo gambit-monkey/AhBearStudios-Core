@@ -73,9 +73,30 @@ public sealed class HealthCheckServiceConfigBuilder : IHealthCheckServiceConfigB
     #endregion
 
     #region Profiling Settings
-    
+
     private bool _enableProfiling;
     private int _slowHealthCheckThreshold;
+
+    #endregion
+
+    #region Additional Settings (for interface compliance)
+
+    private Dictionary<string, object> _defaultMetadata;
+    private System.Threading.ThreadPriority _threadPriority;
+    private HealthThresholds _healthThresholds;
+    private double _unhealthyThreshold;
+    private double _warningThreshold;
+    private bool _enableDependencyValidation;
+    private bool _enableResultCaching;
+    private TimeSpan _cacheDuration;
+    private bool _enableExecutionTimeouts;
+    private bool _enableCorrelationIds;
+    private int _maxMemoryUsageMB;
+    private TimeSpan _historyCleanupInterval;
+    private TimeSpan _maxHistoryAge;
+    private int _defaultFailureThreshold;
+    private TimeSpan _defaultCircuitBreakerTimeout;
+    private bool _enableAutomaticDegradation;
 
     #endregion
 
@@ -135,6 +156,24 @@ public sealed class HealthCheckServiceConfigBuilder : IHealthCheckServiceConfigB
         builder._enableDetailedLogging = existingConfig.EnableDetailedLogging;
         builder._enableProfiling = existingConfig.EnableProfiling;
         builder._slowHealthCheckThreshold = existingConfig.SlowHealthCheckThreshold;
+
+        // Copy additional settings (initialize with defaults if not available in existing config)
+        builder._defaultMetadata = new Dictionary<string, object>();
+        builder._threadPriority = System.Threading.ThreadPriority.Normal;
+        builder._healthThresholds = HealthThresholds.CreateDefault();
+        builder._unhealthyThreshold = 0.8;
+        builder._warningThreshold = 0.6;
+        builder._enableDependencyValidation = true;
+        builder._enableResultCaching = true;
+        builder._cacheDuration = TimeSpan.FromMinutes(5);
+        builder._enableExecutionTimeouts = true;
+        builder._enableCorrelationIds = true;
+        builder._maxMemoryUsageMB = 100;
+        builder._historyCleanupInterval = TimeSpan.FromHours(1);
+        builder._maxHistoryAge = TimeSpan.FromDays(7);
+        builder._defaultFailureThreshold = 5;
+        builder._defaultCircuitBreakerTimeout = TimeSpan.FromSeconds(30);
+        builder._enableAutomaticDegradation = true;
 
         logger.LogDebug("HealthCheckServiceConfigBuilder created from existing configuration");
         return builder;
@@ -270,6 +309,17 @@ public sealed class HealthCheckServiceConfigBuilder : IHealthCheckServiceConfigB
     #region Circuit Breaker Configuration Methods
 
     /// <summary>
+    /// Configures circuit breaker functionality (simple overload)
+    /// </summary>
+    /// <param name="enabled">Whether to enable circuit breakers</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithCircuitBreaker(bool enabled)
+    {
+        return WithCircuitBreaker(enabled, null, true);
+    }
+
+    /// <summary>
     /// Sets circuit breaker configuration
     /// </summary>
     /// <param name="enabled">Whether circuit breaker is enabled</param>
@@ -277,14 +327,14 @@ public sealed class HealthCheckServiceConfigBuilder : IHealthCheckServiceConfigB
     /// <param name="enableAlerts">Whether to enable circuit breaker alerts</param>
     /// <returns>Builder instance for fluent API</returns>
     /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
-    public IHealthCheckServiceConfigBuilder WithCircuitBreaker(bool enabled = true, CircuitBreakerConfig config = null, bool enableAlerts = true)
+    public IHealthCheckServiceConfigBuilder WithCircuitBreaker(bool enabled, CircuitBreakerConfig config, bool enableAlerts)
     {
         ThrowIfBuilt();
-        
+
         _enableCircuitBreaker = enabled;
         _defaultCircuitBreakerConfig = config ?? CircuitBreakerConfig.Create("DefaultHealthCheckCircuitBreaker");
         _enableCircuitBreakerAlerts = enableAlerts;
-        
+
         return this;
     }
 
@@ -366,6 +416,23 @@ public sealed class HealthCheckServiceConfigBuilder : IHealthCheckServiceConfigB
     #region Logging Configuration Methods
 
     /// <summary>
+    /// Configures health check logging
+    /// </summary>
+    /// <param name="enabled">Whether to enable health check logging</param>
+    /// <param name="logLevel">Log level for health check operations</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithHealthCheckLogging(bool enabled = true, LogLevel logLevel = LogLevel.Info)
+    {
+        ThrowIfBuilt();
+
+        _enableHealthCheckLogging = enabled;
+        _healthCheckLogLevel = logLevel;
+
+        return this;
+    }
+
+    /// <summary>
     /// Sets logging configuration
     /// </summary>
     /// <param name="enabled">Whether logging is enabled</param>
@@ -406,6 +473,554 @@ public sealed class HealthCheckServiceConfigBuilder : IHealthCheckServiceConfigB
         _enableProfiling = enabled;
         _slowHealthCheckThreshold = slowThreshold;
         
+        return this;
+    }
+
+    #endregion
+
+    #region Missing Interface Methods
+
+    /// <summary>
+    /// Adds alert tags to existing tags
+    /// </summary>
+    /// <param name="tags">Alert tags to add</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder AddAlertTags(params FixedString64Bytes[] tags)
+    {
+        ThrowIfBuilt();
+
+        if (tags != null)
+        {
+            foreach (var tag in tags)
+            {
+                _alertTags.Add(tag);
+            }
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a single metadata entry
+    /// </summary>
+    /// <param name="key">Metadata key</param>
+    /// <param name="value">Metadata value</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="ArgumentException">Thrown when key is null or empty</exception>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder AddMetadata(string key, object value)
+    {
+        ThrowIfBuilt();
+
+        if (string.IsNullOrEmpty(key))
+            throw new ArgumentException("Metadata key cannot be null or empty", nameof(key));
+
+        _defaultMetadata[key] = value;
+        return this;
+    }
+
+    /// <summary>
+    /// Applies development environment preset
+    /// </summary>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder ApplyDevelopmentPreset()
+    {
+        // Delegate to existing ForDevelopment method
+        return ForDevelopment();
+    }
+
+    /// <summary>
+    /// Applies production environment preset
+    /// </summary>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder ApplyProductionPreset()
+    {
+        // Delegate to existing ForProduction method
+        return ForProduction();
+    }
+
+    /// <summary>
+    /// Applies staging environment preset
+    /// </summary>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder ApplyStagingPreset()
+    {
+        ThrowIfBuilt();
+
+        // Staging preset: balanced between development and production
+        _automaticCheckInterval = TimeSpan.FromSeconds(45);
+        _maxConcurrentHealthChecks = 15;
+        _defaultTimeout = TimeSpan.FromSeconds(45);
+        _enableAutomaticChecks = true;
+        _maxHistorySize = 150;
+        _maxRetries = 2;
+        _retryDelay = TimeSpan.FromSeconds(1.5);
+
+        _enableCircuitBreaker = true;
+        _defaultCircuitBreakerConfig = CircuitBreakerConfig.Create("StagingHealthCheckCircuitBreaker");
+        _enableCircuitBreakerAlerts = true;
+
+        _enableGracefulDegradation = true;
+        _degradationConfig = new DegradationConfig();
+        _enableDegradationAlerts = true;
+
+        _performanceConfig = PerformanceConfig.ForProduction();
+        _enablePerformanceMonitoring = true;
+
+        _enableHealthAlerts = true;
+        _alertSeverities = GetDefaultAlertSeverities();
+        _alertTags = GetDefaultAlertTags();
+        _alertFailureThreshold = 2;
+
+        _enableHealthCheckLogging = true;
+        _healthCheckLogLevel = LogLevel.Info;
+        _enableDetailedLogging = true;
+
+        _enableProfiling = true;
+        _slowHealthCheckThreshold = 500;
+
+        _logger.LogDebug("Applied staging preset");
+        return this;
+    }
+
+    /// <summary>
+    /// Applies testing environment preset
+    /// </summary>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder ApplyTestingPreset()
+    {
+        ThrowIfBuilt();
+
+        // Testing preset: strict validation, detailed logging
+        _automaticCheckInterval = TimeSpan.FromSeconds(30);
+        _maxConcurrentHealthChecks = 5;
+        _defaultTimeout = TimeSpan.FromMinutes(2);
+        _enableAutomaticChecks = true;
+        _maxHistorySize = 1000;
+        _maxRetries = 0; // No retries in testing
+        _retryDelay = TimeSpan.Zero;
+
+        _enableCircuitBreaker = false; // Disabled for testing
+        _defaultCircuitBreakerConfig = CircuitBreakerConfig.ForDevelopment();
+        _enableCircuitBreakerAlerts = false;
+
+        _enableGracefulDegradation = false; // Disabled for testing
+        _degradationConfig = DegradationConfig.ForDevelopment();
+        _enableDegradationAlerts = false;
+
+        _performanceConfig = PerformanceConfig.ForDevelopment();
+        _enablePerformanceMonitoring = true;
+
+        _enableHealthAlerts = false; // Disabled for testing
+        _alertSeverities = GetDefaultAlertSeverities();
+        _alertTags = GetDefaultAlertTags();
+        _alertFailureThreshold = 1;
+
+        _enableHealthCheckLogging = true;
+        _healthCheckLogLevel = LogLevel.Debug;
+        _enableDetailedLogging = true;
+
+        _enableProfiling = true;
+        _slowHealthCheckThreshold = 100;
+
+        _healthThresholds = HealthThresholds.CreateRelaxed();
+
+        _logger.LogDebug("Applied testing preset");
+        return this;
+    }
+
+    /// <summary>
+    /// Configures the builder for a specific environment
+    /// </summary>
+    /// <param name="environment">Target environment</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder ForEnvironment(HealthCheckEnvironment environment)
+    {
+        ThrowIfBuilt();
+
+        return environment switch
+        {
+            HealthCheckEnvironment.Development => ApplyDevelopmentPreset(),
+            HealthCheckEnvironment.Testing => ApplyTestingPreset(),
+            HealthCheckEnvironment.Staging => ApplyStagingPreset(),
+            HealthCheckEnvironment.Production => ApplyProductionPreset(),
+            _ => throw new ArgumentException($"Unknown environment: {environment}", nameof(environment))
+        };
+    }
+
+    /// <summary>
+    /// Resets the builder to its initial state
+    /// </summary>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder Reset()
+    {
+        ThrowIfBuilt();
+
+        InitializeDefaults();
+        _logger.LogDebug("Builder reset to initial state");
+
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the alert failure threshold
+    /// </summary>
+    /// <param name="threshold">Number of consecutive failures before triggering alert</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is invalid</exception>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithAlertFailureThreshold(int threshold)
+    {
+        ThrowIfBuilt();
+
+        if (threshold < 1)
+            throw new ArgumentOutOfRangeException(nameof(threshold), "Alert failure threshold must be at least 1");
+
+        _alertFailureThreshold = threshold;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets alert tags for health check alerts
+    /// </summary>
+    /// <param name="tags">Alert tags to set</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithAlertTags(params FixedString64Bytes[] tags)
+    {
+        ThrowIfBuilt();
+
+        _alertTags.Clear();
+        if (tags != null)
+        {
+            foreach (var tag in tags)
+            {
+                _alertTags.Add(tag);
+            }
+        }
+
+        return this;
+    }
+
+    /// <summary>
+    /// Configures automatic degradation
+    /// </summary>
+    /// <param name="enabled">Whether to enable automatic degradation</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithAutomaticDegradation(bool enabled = true)
+    {
+        ThrowIfBuilt();
+
+        _enableAutomaticDegradation = enabled;
+        return this;
+    }
+
+
+
+    /// <summary>
+    /// Configures correlation IDs
+    /// </summary>
+    /// <param name="enabled">Whether to enable correlation IDs</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithCorrelationIds(bool enabled = true)
+    {
+        ThrowIfBuilt();
+
+        _enableCorrelationIds = enabled;
+        return this;
+    }
+
+    /// <summary>
+    /// Configures circuit breaker alerts
+    /// </summary>
+    /// <param name="enabled">Whether to enable circuit breaker alerts</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithCircuitBreakerAlerts(bool enabled = true)
+    {
+        ThrowIfBuilt();
+
+        _enableCircuitBreakerAlerts = enabled;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the default circuit breaker configuration
+    /// </summary>
+    /// <param name="config">Circuit breaker configuration</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="ArgumentNullException">Thrown when config is null</exception>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithDefaultCircuitBreakerConfig(CircuitBreakerConfig config)
+    {
+        ThrowIfBuilt();
+
+        _defaultCircuitBreakerConfig = config ?? throw new ArgumentNullException(nameof(config));
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the default circuit breaker timeout
+    /// </summary>
+    /// <param name="timeout">Circuit breaker timeout</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when timeout is invalid</exception>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithDefaultCircuitBreakerTimeout(TimeSpan timeout)
+    {
+        ThrowIfBuilt();
+
+        if (timeout <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(timeout), "Circuit breaker timeout must be greater than zero");
+
+        _defaultCircuitBreakerTimeout = timeout;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the default failure threshold for circuit breakers
+    /// </summary>
+    /// <param name="threshold">Failure threshold</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is invalid</exception>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithDefaultFailureThreshold(int threshold)
+    {
+        ThrowIfBuilt();
+
+        if (threshold < 1)
+            throw new ArgumentOutOfRangeException(nameof(threshold), "Default failure threshold must be at least 1");
+
+        _defaultFailureThreshold = threshold;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets default metadata for all health check results
+    /// </summary>
+    /// <param name="metadata">Default metadata dictionary</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithDefaultMetadata(Dictionary<string, object> metadata)
+    {
+        ThrowIfBuilt();
+
+        _defaultMetadata = metadata ?? new Dictionary<string, object>();
+        return this;
+    }
+
+    /// <summary>
+    /// Configures degradation alerts
+    /// </summary>
+    /// <param name="enabled">Whether to enable degradation alerts</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithDegradationAlerts(bool enabled = true)
+    {
+        ThrowIfBuilt();
+
+        _enableDegradationAlerts = enabled;
+        return this;
+    }
+
+    /// <summary>
+    /// Configures dependency validation
+    /// </summary>
+    /// <param name="enabled">Whether to enable dependency validation</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithDependencyValidation(bool enabled = true)
+    {
+        ThrowIfBuilt();
+
+        _enableDependencyValidation = enabled;
+        return this;
+    }
+
+    /// <summary>
+    /// Configures detailed logging
+    /// </summary>
+    /// <param name="enabled">Whether to enable detailed logging</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithDetailedLogging(bool enabled = true)
+    {
+        ThrowIfBuilt();
+
+        _enableDetailedLogging = enabled;
+        return this;
+    }
+
+    /// <summary>
+    /// Configures execution timeouts
+    /// </summary>
+    /// <param name="enabled">Whether to enable execution timeouts</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithExecutionTimeouts(bool enabled = true)
+    {
+        ThrowIfBuilt();
+
+        _enableExecutionTimeouts = enabled;
+        return this;
+    }
+
+    /// <summary>
+    /// Configures graceful degradation functionality
+    /// </summary>
+    /// <param name="enabled">Whether to enable graceful degradation</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithGracefulDegradation(bool enabled = true)
+    {
+        ThrowIfBuilt();
+
+        _enableGracefulDegradation = enabled;
+        return this;
+    }
+
+    /// <summary>
+    /// Configures health alerts (alternative signature)
+    /// </summary>
+    /// <param name="enabled">Whether to enable health alerts</param>
+    /// <param name="severities">Custom alert severities for different health statuses</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithHealthAlerts(bool enabled = true, Dictionary<HealthStatus, AlertSeverity> severities = null)
+    {
+        ThrowIfBuilt();
+
+        _enableHealthAlerts = enabled;
+        if (severities != null)
+        {
+            _alertSeverities = severities;
+        }
+
+        return this;
+    }
+
+
+    /// <summary>
+    /// Sets health thresholds
+    /// </summary>
+    /// <param name="thresholds">Health thresholds configuration</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="ArgumentNullException">Thrown when thresholds is null</exception>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithHealthThresholds(HealthThresholds thresholds)
+    {
+        ThrowIfBuilt();
+
+        _healthThresholds = thresholds ?? throw new ArgumentNullException(nameof(thresholds));
+        return this;
+    }
+
+    /// <summary>
+    /// Configures memory and cleanup settings
+    /// </summary>
+    /// <param name="maxMemoryUsageMB">Maximum memory usage in MB</param>
+    /// <param name="historyCleanupInterval">How often to clean up history</param>
+    /// <param name="maxHistoryAge">Maximum age of history to keep</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when parameters are invalid</exception>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithMemorySettings(int maxMemoryUsageMB, TimeSpan historyCleanupInterval, TimeSpan maxHistoryAge)
+    {
+        ThrowIfBuilt();
+
+        if (maxMemoryUsageMB < 1)
+            throw new ArgumentOutOfRangeException(nameof(maxMemoryUsageMB), "Max memory usage must be at least 1 MB");
+
+        if (historyCleanupInterval <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(historyCleanupInterval), "History cleanup interval must be greater than zero");
+
+        if (maxHistoryAge <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(maxHistoryAge), "Max history age must be greater than zero");
+
+        _maxMemoryUsageMB = maxMemoryUsageMB;
+        _historyCleanupInterval = historyCleanupInterval;
+        _maxHistoryAge = maxHistoryAge;
+
+        return this;
+    }
+
+    /// <summary>
+    /// Configures result caching
+    /// </summary>
+    /// <param name="enabled">Whether to enable result caching</param>
+    /// <param name="cacheDuration">How long to cache results</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when cacheDuration is invalid</exception>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithResultCaching(bool enabled, TimeSpan cacheDuration)
+    {
+        ThrowIfBuilt();
+
+        if (enabled && cacheDuration <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(cacheDuration), "Cache duration must be greater than zero when caching is enabled");
+
+        _enableResultCaching = enabled;
+        _cacheDuration = cacheDuration;
+
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the thread priority for health check execution
+    /// </summary>
+    /// <param name="priority">Thread priority</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithThreadPriority(System.Threading.ThreadPriority priority)
+    {
+        ThrowIfBuilt();
+
+        _threadPriority = priority;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the unhealthy threshold
+    /// </summary>
+    /// <param name="threshold">Percentage of unhealthy checks that triggers overall unhealthy status</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is invalid</exception>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithUnhealthyThreshold(double threshold)
+    {
+        ThrowIfBuilt();
+
+        if (threshold < 0.0 || threshold > 1.0)
+            throw new ArgumentOutOfRangeException(nameof(threshold), "Unhealthy threshold must be between 0.0 and 1.0");
+
+        _unhealthyThreshold = threshold;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets the warning threshold
+    /// </summary>
+    /// <param name="threshold">Percentage of warning checks that triggers overall warning status</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is invalid</exception>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckServiceConfigBuilder WithWarningThreshold(double threshold)
+    {
+        ThrowIfBuilt();
+
+        if (threshold < 0.0 || threshold > 1.0)
+            throw new ArgumentOutOfRangeException(nameof(threshold), "Warning threshold must be between 0.0 and 1.0");
+
+        _warningThreshold = threshold;
         return this;
     }
 
@@ -678,29 +1293,47 @@ public sealed class HealthCheckServiceConfigBuilder : IHealthCheckServiceConfigB
         _maxHistorySize = 100;
         _maxRetries = 3;
         _retryDelay = TimeSpan.FromSeconds(1);
-        
+
         _enableCircuitBreaker = true;
         _defaultCircuitBreakerConfig = CircuitBreakerConfig.Create("DefaultHealthCheckCircuitBreaker");
         _enableCircuitBreakerAlerts = true;
-        
+
         _enableGracefulDegradation = true;
         _degradationConfig = new DegradationConfig();
         _enableDegradationAlerts = true;
-        
+
         _performanceConfig = PerformanceConfig.ForProduction();
         _enablePerformanceMonitoring = true;
-        
+
         _enableHealthAlerts = true;
         _alertSeverities = GetDefaultAlertSeverities();
         _alertTags = GetDefaultAlertTags();
         _alertFailureThreshold = 3;
-        
+
         _enableHealthCheckLogging = true;
         _healthCheckLogLevel = LogLevel.Info;
         _enableDetailedLogging = false;
-        
+
         _enableProfiling = true;
         _slowHealthCheckThreshold = 1000;
+
+        // Additional settings defaults
+        _defaultMetadata = new Dictionary<string, object>();
+        _threadPriority = System.Threading.ThreadPriority.Normal;
+        _healthThresholds = HealthThresholds.CreateDefault();
+        _unhealthyThreshold = 0.8;
+        _warningThreshold = 0.6;
+        _enableDependencyValidation = true;
+        _enableResultCaching = true;
+        _cacheDuration = TimeSpan.FromMinutes(5);
+        _enableExecutionTimeouts = true;
+        _enableCorrelationIds = true;
+        _maxMemoryUsageMB = 100;
+        _historyCleanupInterval = TimeSpan.FromHours(1);
+        _maxHistoryAge = TimeSpan.FromDays(7);
+        _defaultFailureThreshold = 5;
+        _defaultCircuitBreakerTimeout = TimeSpan.FromSeconds(30);
+        _enableAutomaticDegradation = true;
     }
 
     private static Dictionary<HealthStatus, AlertSeverity> GetDefaultAlertSeverities()

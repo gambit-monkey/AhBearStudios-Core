@@ -153,7 +153,12 @@ namespace AhBearStudios.Core.HealthChecking.Configs
         /// Minimum number of slow calls before triggering circuit breaker
         /// </summary>
         public int MinimumSlowCalls { get; init; } = 5;
-        
+
+        /// <summary>
+        /// Whether to treat slow calls as failures for circuit breaker evaluation
+        /// </summary>
+        public bool TreatSlowCallsAsFailures { get; init; } = true;
+
         #endregion
 
         #region Bulkhead Isolation (consolidated from IBulkheadConfig)
@@ -172,7 +177,12 @@ namespace AhBearStudios.Core.HealthChecking.Configs
         /// Whether to enable bulkhead isolation
         /// </summary>
         public bool EnableBulkhead { get; init; } = false;
-        
+
+        /// <summary>
+        /// Maximum queue size for waiting calls when bulkhead is enabled
+        /// </summary>
+        public int MaxQueueSize { get; init; } = 100;
+
         #endregion
 
         #region Rate Limiting (consolidated from IRateLimitConfig)
@@ -180,7 +190,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs
         /// <summary>
         /// Maximum requests per second when circuit is closed
         /// </summary>
-        public int RequestsPerSecond { get; init; } = 100;
+        public double RequestsPerSecond { get; init; } = 100.0;
         
         /// <summary>
         /// Burst size allowed for temporary spikes
@@ -210,7 +220,17 @@ namespace AhBearStudios.Core.HealthChecking.Configs
         /// Timeout for failover attempts
         /// </summary>
         public TimeSpan FailoverTimeout { get; init; } = TimeSpan.FromSeconds(10);
-        
+
+        /// <summary>
+        /// Strategy to use when failover is enabled
+        /// </summary>
+        public FailoverStrategy FailoverStrategy { get; init; } = FailoverStrategy.ReturnDefault;
+
+        /// <summary>
+        /// Default value to return when using ReturnDefault failover strategy
+        /// </summary>
+        public object FailoverDefaultValue { get; init; } = null;
+
         #endregion
 
         /// <summary>
@@ -282,7 +302,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs
             if (MaxWaitDuration < TimeSpan.Zero)
                 errors.Add("MaxWaitDuration must be non-negative");
                 
-            if (RequestsPerSecond <= 0)
+            if (RequestsPerSecond <= 0.0)
                 errors.Add("RequestsPerSecond must be greater than zero");
                 
             if (BurstSize < 0)
@@ -290,6 +310,9 @@ namespace AhBearStudios.Core.HealthChecking.Configs
                 
             if (FailoverTimeout <= TimeSpan.Zero)
                 errors.Add("FailoverTimeout must be greater than zero");
+
+            if (MaxQueueSize < 0)
+                errors.Add("MaxQueueSize must be non-negative");
 
             // Validate exception types using ZLinq
             if (IgnoredExceptions?.AsValueEnumerable().Any(type => !typeof(System.Exception).IsAssignableFrom(type)) == true)
@@ -411,7 +434,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs
                 SlowCallDurationThreshold = TimeSpan.FromSeconds(15),
                 SlowCallRateThreshold = 40.0,
                 MinimumSlowCalls = 8,
-                RequestsPerSecond = 100,
+                RequestsPerSecond = 100.0,
                 BurstSize = 150,
                 EnableRateLimit = true
             };
@@ -442,7 +465,7 @@ namespace AhBearStudios.Core.HealthChecking.Configs
                 MaxConcurrentCalls = 100,
                 MaxWaitDuration = TimeSpan.FromSeconds(10),
                 EnableBulkhead = true,
-                RequestsPerSecond = 1000,
+                RequestsPerSecond = 1000.0,
                 BurstSize = 1500,
                 EnableRateLimit = true
             };
@@ -516,12 +539,16 @@ namespace AhBearStudios.Core.HealthChecking.Configs
             MaxConcurrentCalls = 10,
             MaxWaitDuration = TimeSpan.FromSeconds(30),
             EnableBulkhead = false,
-            RequestsPerSecond = 100,
-            BurstSize = 10,
+            RequestsPerSecond = 100.0,
+            BurstSize = 150,
             EnableRateLimit = false,
             EnableFailover = false,
             FailoverEndpoints = new List<string>(),
-            FailoverTimeout = TimeSpan.FromSeconds(10)
+            FailoverTimeout = TimeSpan.FromSeconds(10),
+            FailoverStrategy = FailoverStrategy.ReturnDefault,
+            FailoverDefaultValue = null,
+            MaxQueueSize = 100,
+            TreatSlowCallsAsFailures = true
         };
 
         /// <summary>
@@ -617,12 +644,16 @@ namespace AhBearStudios.Core.HealthChecking.Configs
                 MaxConcurrentCalls = 10,
                 MaxWaitDuration = TimeSpan.FromSeconds(30),
                 EnableBulkhead = false,
-                RequestsPerSecond = 100,
-                BurstSize = 10,
+                RequestsPerSecond = 100.0,
+                BurstSize = 150,
                 EnableRateLimit = false,
                 EnableFailover = false,
                 FailoverEndpoints = new List<string>(),
-                FailoverTimeout = TimeSpan.FromSeconds(10)
+                FailoverTimeout = TimeSpan.FromSeconds(10),
+                FailoverStrategy = FailoverStrategy.ReturnDefault,
+                FailoverDefaultValue = null,
+                MaxQueueSize = 100,
+                TreatSlowCallsAsFailures = true
             };
         }
     }

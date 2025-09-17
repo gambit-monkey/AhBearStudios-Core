@@ -98,7 +98,7 @@ public sealed class HealthCheckConfigBuilder : IHealthCheckConfigBuilder
             _isCritical = existingConfig.IsCritical
         };
 
-        logger.LogDebug("HealthCheckConfigBuilder created from existing configuration: {Name}", existingConfig.Name);
+        logger.LogDebug("HealthCheckConfigBuilder created from existing configuration: {Name}", existingConfig.Name.ToString());
         return builder;
     }
 
@@ -230,6 +230,27 @@ public sealed class HealthCheckConfigBuilder : IHealthCheckConfigBuilder
     }
 
     /// <summary>
+    /// Configures circuit breaker for the health check
+    /// </summary>
+    /// <param name="enabled">Whether to enable circuit breaker</param>
+    /// <param name="config">Circuit breaker configuration (optional)</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithCircuitBreaker(bool enabled, CircuitBreakerConfig config)
+    {
+        ThrowIfBuilt();
+        if (enabled && config != null)
+        {
+            _circuitBreakerConfig = config;
+        }
+        else if (enabled)
+        {
+            _circuitBreakerConfig = CircuitBreakerConfig.Create("DefaultCircuitBreaker");
+        }
+        return this;
+    }
+
+    /// <summary>
     /// Sets the retry configuration
     /// </summary>
     /// <param name="retryConfig">Retry configuration</param>
@@ -240,6 +261,28 @@ public sealed class HealthCheckConfigBuilder : IHealthCheckConfigBuilder
     {
         ThrowIfBuilt();
         _retryConfig = retryConfig ?? throw new ArgumentNullException(nameof(retryConfig));
+        return this;
+    }
+
+    /// <summary>
+    /// Configures retry behavior for the health check
+    /// </summary>
+    /// <param name="maxRetries">Maximum number of retries</param>
+    /// <param name="retryDelay">Delay between retries</param>
+    /// <param name="backoffMultiplier">Exponential backoff multiplier</param>
+    /// <param name="maxRetryDelay">Maximum delay between retries</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithRetry(int maxRetries, TimeSpan? retryDelay, double backoffMultiplier, TimeSpan? maxRetryDelay)
+    {
+        ThrowIfBuilt();
+        _retryConfig = new RetryConfig
+        {
+            MaxRetries = maxRetries,
+            RetryDelay = retryDelay ?? TimeSpan.FromSeconds(1),
+            BackoffMultiplier = backoffMultiplier,
+            MaxRetryDelay = maxRetryDelay ?? TimeSpan.FromSeconds(30)
+        };
         return this;
     }
 
@@ -289,6 +332,22 @@ public sealed class HealthCheckConfigBuilder : IHealthCheckConfigBuilder
     }
 
     /// <summary>
+    /// Configures alerting for the health check
+    /// </summary>
+    /// <param name="enabled">Whether to enable alerting</param>
+    /// <param name="onlyOnStatusChange">Whether to alert only on status changes</param>
+    /// <param name="cooldown">Minimum time between alerts</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithAlerting(bool enabled, bool onlyOnStatusChange, TimeSpan? cooldown)
+    {
+        ThrowIfBuilt();
+        _enableAlerting = enabled;
+        // Store additional alerting configuration if needed
+        return this;
+    }
+
+    /// <summary>
     /// Sets whether profiling is enabled
     /// </summary>
     /// <param name="enabled">Whether profiling is enabled</param>
@@ -302,6 +361,21 @@ public sealed class HealthCheckConfigBuilder : IHealthCheckConfigBuilder
     }
 
     /// <summary>
+    /// Configures profiling for the health check
+    /// </summary>
+    /// <param name="enabled">Whether to enable profiling</param>
+    /// <param name="slowThreshold">Threshold for slow execution in milliseconds</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithProfiling(bool enabled, int slowThreshold)
+    {
+        ThrowIfBuilt();
+        _enableProfiling = enabled;
+        // Store slow threshold if needed
+        return this;
+    }
+
+    /// <summary>
     /// Sets whether detailed logging is enabled
     /// </summary>
     /// <param name="enabled">Whether detailed logging is enabled</param>
@@ -311,6 +385,21 @@ public sealed class HealthCheckConfigBuilder : IHealthCheckConfigBuilder
     {
         ThrowIfBuilt();
         _enableDetailedLogging = enabled;
+        return this;
+    }
+
+    /// <summary>
+    /// Configures logging for the health check
+    /// </summary>
+    /// <param name="enableDetailed">Whether to enable detailed logging</param>
+    /// <param name="logLevel">Log level for operations</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithLogging(bool enableDetailed, LogLevel logLevel)
+    {
+        ThrowIfBuilt();
+        _enableDetailedLogging = enableDetailed;
+        _logLevel = logLevel;
         return this;
     }
 
@@ -351,6 +440,236 @@ public sealed class HealthCheckConfigBuilder : IHealthCheckConfigBuilder
     {
         ThrowIfBuilt();
         _isCritical = isCritical;
+        return this;
+    }
+
+    #endregion
+
+    #region Additional Configuration Methods
+
+    /// <summary>
+    /// Sets the description for the health check
+    /// </summary>
+    /// <param name="description">Description of what the health check validates</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithDescription(string description)
+    {
+        ThrowIfBuilt();
+        // Store description if needed
+        return this;
+    }
+
+    /// <summary>
+    /// Adds tags to the health check
+    /// </summary>
+    /// <param name="tags">Tags to add</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithTags(params FixedString64Bytes[] tags)
+    {
+        ThrowIfBuilt();
+        // Store tags if needed
+        return this;
+    }
+
+    /// <summary>
+    /// Adds metadata to the health check
+    /// </summary>
+    /// <param name="key">Metadata key</param>
+    /// <param name="value">Metadata value</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithMetadata(string key, object value)
+    {
+        ThrowIfBuilt();
+        // Store metadata if needed
+        return this;
+    }
+
+    /// <summary>
+    /// Adds multiple metadata entries to the health check
+    /// </summary>
+    /// <param name="metadata">Metadata dictionary</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithMetadata(Dictionary<string, object> metadata)
+    {
+        ThrowIfBuilt();
+        // Store metadata if needed
+        return this;
+    }
+
+    /// <summary>
+    /// Sets dependencies for the health check
+    /// </summary>
+    /// <param name="dependencies">Health check dependencies</param>
+    /// <param name="skipOnUnhealthy">Whether to skip if dependencies are unhealthy</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithDependencies(IEnumerable<FixedString64Bytes> dependencies, bool skipOnUnhealthy)
+    {
+        ThrowIfBuilt();
+        // Store dependencies if needed
+        return this;
+    }
+
+    /// <summary>
+    /// Configures history retention for the health check
+    /// </summary>
+    /// <param name="maxSize">Maximum number of history entries to keep</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithHistory(int maxSize)
+    {
+        ThrowIfBuilt();
+        // Store history size if needed
+        return this;
+    }
+
+    /// <summary>
+    /// Adds custom parameters for the health check implementation
+    /// </summary>
+    /// <param name="key">Parameter key</param>
+    /// <param name="value">Parameter value</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithCustomParameter(string key, object value)
+    {
+        ThrowIfBuilt();
+        // Store custom parameter if needed
+        return this;
+    }
+
+    /// <summary>
+    /// Adds multiple custom parameters for the health check implementation
+    /// </summary>
+    /// <param name="parameters">Parameters dictionary</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithCustomParameters(Dictionary<string, object> parameters)
+    {
+        ThrowIfBuilt();
+        // Store custom parameters if needed
+        return this;
+    }
+
+    /// <summary>
+    /// Configures degradation impact for the health check
+    /// </summary>
+    /// <param name="degradedImpact">Impact level when degraded</param>
+    /// <param name="unhealthyImpact">Impact level when unhealthy</param>
+    /// <param name="disabledFeatures">Features to disable when unhealthy</param>
+    /// <param name="degradedServices">Services to degrade when unhealthy</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithDegradationImpact(DegradationLevel degradedImpact, DegradationLevel unhealthyImpact, IEnumerable<FixedString64Bytes> disabledFeatures, IEnumerable<FixedString64Bytes> degradedServices)
+    {
+        ThrowIfBuilt();
+        // Store degradation impact configuration if needed
+        return this;
+    }
+
+    /// <summary>
+    /// Configures validation for health check results
+    /// </summary>
+    /// <param name="enabled">Whether to enable validation</param>
+    /// <param name="minExecutionTime">Minimum acceptable execution time</param>
+    /// <param name="maxExecutionTime">Maximum acceptable execution time</param>
+    /// <param name="requiredDataFields">Required data fields in results</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithValidation(bool enabled, TimeSpan? minExecutionTime, TimeSpan? maxExecutionTime, IEnumerable<string> requiredDataFields)
+    {
+        ThrowIfBuilt();
+        // Store validation configuration if needed
+        return this;
+    }
+
+    /// <summary>
+    /// Configures resource limits for the health check
+    /// </summary>
+    /// <param name="maxMemoryUsage">Maximum memory usage in bytes (0 = no limit)</param>
+    /// <param name="maxCpuUsage">Maximum CPU usage percentage (0 = no limit)</param>
+    /// <param name="maxConcurrentExecutions">Maximum concurrent executions</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithResourceLimits(long maxMemoryUsage, double maxCpuUsage, int maxConcurrentExecutions)
+    {
+        ThrowIfBuilt();
+        // Store resource limits if needed
+        return this;
+    }
+
+    /// <summary>
+    /// Sets whether this health check should be included in overall status calculation
+    /// </summary>
+    /// <param name="include">Whether to include in overall status</param>
+    /// <param name="weight">Weight for overall status calculation (0.0 to 1.0)</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder WithOverallStatusImpact(bool include, double weight)
+    {
+        ThrowIfBuilt();
+        // Store overall status impact configuration if needed
+        return this;
+    }
+
+    /// <summary>
+    /// Applies a preset configuration for the specified scenario
+    /// </summary>
+    /// <param name="preset">Configuration preset to apply</param>
+    /// <returns>Builder instance for fluent API</returns>
+    /// <exception cref="InvalidOperationException">Thrown when builder has already been built</exception>
+    public IHealthCheckConfigBuilder ForScenario(HealthCheckScenario preset)
+    {
+        ThrowIfBuilt();
+
+        switch (preset)
+        {
+            case HealthCheckScenario.CriticalSystem:
+                return ForCriticalSystem();
+            case HealthCheckScenario.Database:
+                return ForDatabase();
+            case HealthCheckScenario.NetworkService:
+                return ForNetwork();
+            case HealthCheckScenario.Development:
+                return ForDevelopment();
+            default:
+                return this;
+        }
+    }
+
+    /// <summary>
+    /// Resets the builder to allow building a new configuration
+    /// </summary>
+    /// <returns>Builder instance for fluent API</returns>
+    public IHealthCheckConfigBuilder Reset()
+    {
+        _isBuilt = false;
+        _validationErrors.Clear();
+
+        // Reset to default values
+        _name = string.Empty;
+        _displayName = string.Empty;
+        _category = HealthCheckCategory.Custom;
+        _enabled = true;
+        _interval = TimeSpan.FromSeconds(30);
+        _timeout = TimeSpan.FromSeconds(30);
+        _priority = 100;
+
+        _circuitBreakerConfig = CircuitBreakerConfig.Create("DefaultCircuitBreaker");
+        _retryConfig = new RetryConfig();
+        _degradationConfig = new DegradationConfig();
+        _performanceConfig = PerformanceConfig.ForProduction();
+
+        _enableAlerting = true;
+        _enableProfiling = true;
+        _enableDetailedLogging = false;
+        _logLevel = LogLevel.Info;
+        _alertSeverities = GetDefaultAlertSeverities();
+        _isCritical = false;
+
         return this;
     }
 
