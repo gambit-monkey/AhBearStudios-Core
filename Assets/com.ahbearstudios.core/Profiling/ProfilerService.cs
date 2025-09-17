@@ -5,7 +5,9 @@ using ZLinq;
 using AhBearStudios.Core.Profiling.Configs;
 using AhBearStudios.Core.Profiling.Models;
 using AhBearStudios.Core.Profiling.Internal;
+using AhBearStudios.Core.Profiling.Messages;
 using AhBearStudios.Core.Pooling;
+using AhBearStudios.Core.Messaging;
 using Random = System.Random;
 
 namespace AhBearStudios.Core.Profiling
@@ -35,6 +37,7 @@ namespace AhBearStudios.Core.Profiling
 
         private readonly ProfilerConfig _configuration;
         private readonly IPoolingService _poolingService;
+        private readonly IMessageBusService _messageBus;
         private volatile bool _isEnabled;
         private volatile bool _isRecording;
         private volatile float _samplingRate;
@@ -57,18 +60,6 @@ namespace AhBearStudios.Core.Profiling
 
         #endregion
 
-        #region Events
-
-        /// <inheritdoc />
-        public event Action<ProfilerTag, double, string> ThresholdExceeded;
-
-        /// <inheritdoc />
-        public event Action<ProfilerTag, double> DataRecorded;
-
-        /// <inheritdoc />
-        public event Action<Exception> ErrorOccurred;
-
-        #endregion
 
         #region Properties
 
@@ -95,11 +86,13 @@ namespace AhBearStudios.Core.Profiling
         /// Initializes a new instance of the ProfilerService with the specified configuration.
         /// </summary>
         /// <param name="configuration">Profiler service configuration</param>
+        /// <param name="messageBus">Message bus service for publishing profiler messages</param>
         /// <param name="poolingService">Pooling service for scope object management (optional)</param>
-        /// <exception cref="ArgumentNullException">Thrown when configuration is null</exception>
-        public ProfilerService(ProfilerConfig configuration, IPoolingService poolingService = null)
+        /// <exception cref="ArgumentNullException">Thrown when configuration or messageBus is null</exception>
+        public ProfilerService(ProfilerConfig configuration, IMessageBusService messageBus, IPoolingService poolingService = null)
         {
             _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
             _poolingService = poolingService; // Optional - can be null
 
             // Initialize state from configuration
@@ -156,7 +149,7 @@ namespace AhBearStudios.Core.Profiling
                 // Check active scope limits
                 if (_activeScopeCount >= _configuration.MaxActiveScopeCount)
                 {
-                    RaiseErrorEvent(new InvalidOperationException("Maximum active scope count exceeded"));
+                    PublishErrorMessage(new InvalidOperationException("Maximum active scope count exceeded"), "BeginScope");
                     return NullScope.Instance;
                 }
 
@@ -182,7 +175,7 @@ namespace AhBearStudios.Core.Profiling
             }
             catch (Exception ex)
             {
-                RaiseErrorEvent(ex);
+                PublishErrorMessage(ex, "BeginScope");
                 return NullScope.Instance;
             }
         }
@@ -205,7 +198,7 @@ namespace AhBearStudios.Core.Profiling
                     source: _configuration.Source);
 
                 StoreMetricSnapshot(snapshot);
-                RaiseDataRecordedEvent(tag, value);
+                PublishDataRecordedMessage(tag, value, unit, ProfilingDataType.Sample);
 
                 // Check threshold violation
                 if (_configuration.EnableThresholdMonitoring && unit == "ms")
@@ -213,13 +206,13 @@ namespace AhBearStudios.Core.Profiling
                     var threshold = _configuration.GetThresholdForTag(tag.Name.ToString());
                     if (value > threshold)
                     {
-                        RaiseThresholdExceededEvent(tag, value, unit);
+                        PublishThresholdExceededMessage(tag, value, threshold, Guid.Empty, unit);
                     }
                 }
             }
             catch (Exception ex)
             {
-                RaiseErrorEvent(ex);
+                PublishErrorMessage(ex, "BeginScope");
             }
         }
 
@@ -246,11 +239,11 @@ namespace AhBearStudios.Core.Profiling
                     tags: tags);
 
                 StoreMetricSnapshot(snapshot);
-                RaiseDataRecordedEvent(snapshot.Tag, value);
+                PublishDataRecordedMessage(snapshot.Tag, value, unit, ProfilingDataType.Metric);
             }
             catch (Exception ex)
             {
-                RaiseErrorEvent(ex);
+                PublishErrorMessage(ex, "BeginScope");
             }
         }
 
@@ -271,11 +264,11 @@ namespace AhBearStudios.Core.Profiling
                     tags: tags);
 
                 StoreMetricSnapshot(snapshot);
-                RaiseDataRecordedEvent(snapshot.Tag, newValue);
+                PublishDataRecordedMessage(snapshot.Tag, newValue, "count", ProfilingDataType.Counter);
             }
             catch (Exception ex)
             {
-                RaiseErrorEvent(ex);
+                PublishErrorMessage(ex, "BeginScope");
             }
         }
 
@@ -296,11 +289,11 @@ namespace AhBearStudios.Core.Profiling
                     tags: tags);
 
                 StoreMetricSnapshot(snapshot);
-                RaiseDataRecordedEvent(snapshot.Tag, newValue);
+                PublishDataRecordedMessage(snapshot.Tag, newValue, "count", ProfilingDataType.Counter);
             }
             catch (Exception ex)
             {
-                RaiseErrorEvent(ex);
+                PublishErrorMessage(ex, "BeginScope");
             }
         }
 
@@ -424,7 +417,7 @@ namespace AhBearStudios.Core.Profiling
                 }
                 catch (Exception ex)
                 {
-                    RaiseErrorEvent(ex);
+                    PublishErrorMessage(ex, "BeginScope");
                 }
             }
             _activeScopes.Clear();
@@ -506,7 +499,7 @@ namespace AhBearStudios.Core.Profiling
             }
             catch (Exception ex)
             {
-                RaiseErrorEvent(ex);
+                PublishErrorMessage(ex, "BeginScope");
                 return false;
             }
         }
@@ -592,6 +585,7 @@ namespace AhBearStudios.Core.Profiling
                 var scope = new TrackedProfilerScope(
                     tag: tag,
                     profilerService: this,
+                    messageBus: _messageBus,
                     source: _configuration.Source,
                     metadata: metadata,
                     thresholdMs: threshold,
@@ -602,7 +596,7 @@ namespace AhBearStudios.Core.Profiling
             }
             catch (Exception ex)
             {
-                RaiseErrorEvent(ex);
+                PublishErrorMessage(ex, "BeginScope");
                 return NullScope.Instance;
             }
         }
@@ -672,45 +666,76 @@ namespace AhBearStudios.Core.Profiling
         }
 
         /// <summary>
-        /// Raises the ThresholdExceeded event safely.
+        /// Publishes a ProfilerThresholdExceededMessage through the message bus.
         /// </summary>
         /// <param name="tag">Profiler tag</param>
-        /// <param name="value">Measured value</param>
+        /// <param name="elapsedMs">Measured value in milliseconds</param>
+        /// <param name="thresholdMs">Threshold value in milliseconds</param>
+        /// <param name="scopeId">Scope ID if available</param>
         /// <param name="unit">Unit of measurement</param>
-        private void RaiseThresholdExceededEvent(ProfilerTag tag, double value, string unit)
+        private void PublishThresholdExceededMessage(ProfilerTag tag, double elapsedMs, double thresholdMs, Guid scopeId, string unit)
         {
             try
             {
-                ThresholdExceeded?.Invoke(tag, value, unit);
+                var message = ProfilerThresholdExceededMessage.Create(
+                    tag: tag,
+                    elapsedMs: elapsedMs,
+                    thresholdMs: thresholdMs,
+                    scopeId: scopeId,
+                    source: _configuration.Source);
+
+                _messageBus.PublishMessage(message);
             }
             catch (Exception ex)
             {
-                RaiseErrorEvent(ex);
+                // Store error but don't publish to avoid infinite loops
+                lock (_errorLock)
+                {
+                    _lastError = ex;
+                }
             }
         }
 
         /// <summary>
-        /// Raises the DataRecorded event safely.
+        /// Publishes a ProfilerDataRecordedMessage through the message bus.
         /// </summary>
         /// <param name="tag">Profiler tag</param>
         /// <param name="value">Recorded value</param>
-        private void RaiseDataRecordedEvent(ProfilerTag tag, double value)
+        /// <param name="unit">Unit of measurement</param>
+        /// <param name="dataType">Type of profiling data</param>
+        /// <param name="scopeId">Optional scope ID</param>
+        private void PublishDataRecordedMessage(ProfilerTag tag, double value, string unit, ProfilingDataType dataType, Guid scopeId = default)
         {
             try
             {
-                DataRecorded?.Invoke(tag, value);
+                var message = ProfilerDataRecordedMessage.Create(
+                    tag: tag,
+                    value: value,
+                    unit: unit,
+                    dataType: dataType,
+                    scopeId: scopeId,
+                    source: _configuration.Source);
+
+                _messageBus.PublishMessage(message);
             }
             catch (Exception ex)
             {
-                RaiseErrorEvent(ex);
+                // Store error but don't publish to avoid infinite loops
+                lock (_errorLock)
+                {
+                    _lastError = ex;
+                }
             }
         }
 
         /// <summary>
-        /// Raises the ErrorOccurred event and stores the last error.
+        /// Publishes a ProfilerErrorOccurredMessage through the message bus and stores the last error.
         /// </summary>
         /// <param name="exception">Exception that occurred</param>
-        private void RaiseErrorEvent(Exception exception)
+        /// <param name="operation">Operation that was being performed</param>
+        /// <param name="tag">Optional profiler tag</param>
+        /// <param name="scopeId">Optional scope ID</param>
+        private void PublishErrorMessage(Exception exception, string operation, ProfilerTag tag = default, Guid scopeId = default)
         {
             if (exception == null)
                 return;
@@ -722,7 +747,15 @@ namespace AhBearStudios.Core.Profiling
 
             try
             {
-                ErrorOccurred?.Invoke(exception);
+                var message = ProfilerErrorOccurredMessage.CreateFromException(
+                    exception: exception,
+                    operation: operation,
+                    tag: tag,
+                    scopeId: scopeId,
+                    source: _configuration.Source,
+                    severity: ProfilerErrorSeverity.Error);
+
+                _messageBus.PublishMessage(message);
             }
             catch
             {

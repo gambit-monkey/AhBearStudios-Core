@@ -9,6 +9,13 @@ namespace AhBearStudios.Core.Profiling
     /// Null implementation of IProfilerService for use when profiling is disabled or unavailable.
     /// Provides no-op implementations of all profiling operations with minimal performance overhead.
     /// </summary>
+    /// <remarks>
+    /// NullProfilerService is used when profiling is disabled or when no message bus is available.
+    /// Since this is a null implementation, it doesn't publish any messages through IMessageBusService.
+    /// The IProfilerService interface no longer includes events per CLAUDE.md guidelines -
+    /// all messaging is done through IMessageBusService with ProfilerThresholdExceededMessage,
+    /// ProfilerDataRecordedMessage, and ProfilerErrorOccurredMessage.
+    /// </remarks>
     public sealed class NullProfilerService : IProfilerService
     {
         /// <summary>
@@ -30,15 +37,6 @@ namespace AhBearStudios.Core.Profiling
 
         /// <inheritdoc />
         public long TotalScopeCount => 0;
-
-        /// <inheritdoc />
-        public event Action<ProfilerTag, double, string> ThresholdExceeded;
-
-        /// <inheritdoc />
-        public event Action<ProfilerTag, double> DataRecorded;
-
-        /// <inheritdoc />
-        public event Action<Exception> ErrorOccurred;
 
         /// <inheritdoc />
         public IDisposable BeginScope(ProfilerTag tag)

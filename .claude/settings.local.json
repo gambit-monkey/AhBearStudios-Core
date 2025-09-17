@@ -14,7 +14,8 @@
       "Bash(grep:*)",
       "Read(//usr/bin/**)",
       "Bash(apt list:*)",
-      "Bash(dotnet build:*)"
+      "Bash(dotnet build:*)",
+      "Bash(csc:*)"
     ],
     "deny": [],
     "ask": []

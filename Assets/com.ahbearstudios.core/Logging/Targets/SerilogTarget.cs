@@ -1,22 +1,19 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Threading;
 using System.IO;
 using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Profiling.Messages;
+using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Logging.Configs;
 using AhBearStudios.Core.Profiling.Models;
 using Serilog;
-using Serilog.Core;
 using Serilog.Events;
 using Serilog.Formatting.Json;
 using Unity.Profiling;
-using Unity.Collections;
-using UnityEngine;
 using ILogger = Serilog.ILogger;
-using Logger = Serilog.Core.Logger;
 using Cysharp.Threading.Tasks;
 
 namespace AhBearStudios.Core.Logging.Targets
@@ -31,9 +28,11 @@ namespace AhBearStudios.Core.Logging.Targets
         private readonly ILogTargetConfig _config;
         private readonly IProfilerService _profiler;
         private readonly IAlertService _alertService;
+        private readonly IMessageBusService _messageBus;
         private readonly object _loggerLock = new object();
         private readonly Timer _healthCheckTimer;
         private readonly SemaphoreSlim _asyncWriteSemaphore;
+        private IDisposable _thresholdExceededSubscription;
         
         // Unity Profiler markers for frame budget monitoring
         private readonly ProfilerMarker _writeMarker = new ProfilerMarker("SerilogTarget.Write");
@@ -126,12 +125,14 @@ namespace AhBearStudios.Core.Logging.Targets
         /// <param name="config">The configuration for this target</param>
         /// <param name="profiler">The profiler service for performance monitoring</param>
         /// <param name="alertService">The alert service for critical notifications</param>
+        /// <param name="messageBus">The message bus service for event communication</param>
         /// <exception cref="ArgumentNullException">Thrown when required parameters are null</exception>
-        public SerilogTarget(ILogTargetConfig config, IProfilerService profiler, IAlertService alertService)
+        public SerilogTarget(ILogTargetConfig config, IProfilerService profiler, IAlertService alertService, IMessageBusService messageBus)
         {
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _profiler = profiler ?? throw new ArgumentNullException(nameof(profiler));
             _alertService = alertService ?? throw new ArgumentNullException(nameof(alertService));
+            _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
             
             Name = _config.Name;
             MinimumLevel = _config.MinimumLevel;
@@ -165,9 +166,10 @@ namespace AhBearStudios.Core.Logging.Targets
         /// <param name="config">The target configuration</param>
         /// <param name="profiler">The profiler service for performance monitoring</param>
         /// <param name="alertService">The alert service for critical notifications</param>
+        /// <param name="messageBus">The message bus service for event communication</param>
         /// <param name="serilogLogger">The pre-configured Serilog logger</param>
-        public SerilogTarget(ILogTargetConfig config, IProfilerService profiler, IAlertService alertService, ILogger serilogLogger) 
-            : this(config, profiler, alertService)
+        public SerilogTarget(ILogTargetConfig config, IProfilerService profiler, IAlertService alertService, IMessageBusService messageBus, ILogger serilogLogger)
+            : this(config, profiler, alertService, messageBus)
         {
             _serilogLogger = serilogLogger ?? throw new ArgumentNullException(nameof(serilogLogger));
         }
@@ -882,16 +884,15 @@ namespace AhBearStudios.Core.Logging.Targets
         }
 
         /// <summary>
-        /// Registers performance metric alerts with the profiler service.
+        /// Registers performance metric alerts with the message bus service.
         /// </summary>
         private void RegisterPerformanceAlerts()
         {
             if (_config?.EnablePerformanceMetrics == true)
             {
-                // Register performance threshold alerts with the profiler service
-                var frameBudgetThreshold = _config.FrameBudgetThresholdMs;
-                _profiler.ThresholdExceeded += OnPerformanceThresholdExceeded;
-                
+                // Subscribe to profiler threshold exceeded messages
+                _thresholdExceededSubscription = _messageBus.SubscribeToMessage<ProfilerThresholdExceededMessage>(OnPerformanceThresholdExceeded);
+
                 // Record initial metrics
                 _profiler.RecordMetric("SerilogTarget.MessagesWritten", _messagesWritten, "count");
                 _profiler.RecordMetric("SerilogTarget.MessagesDropped", _messagesDropped, "count");
@@ -933,17 +934,15 @@ namespace AhBearStudios.Core.Logging.Targets
         }
 
         /// <summary>
-        /// Handles performance threshold exceeded events from the profiler service.
+        /// Handles performance threshold exceeded messages from the profiler service.
         /// </summary>
-        /// <param name="tag">The profiler tag that exceeded the threshold</param>
-        /// <param name="value">The measured value</param>
-        /// <param name="unit">The unit of measurement</param>
-        private void OnPerformanceThresholdExceeded(ProfilerTag tag, double value, string unit)
+        /// <param name="message">The profiler threshold exceeded message</param>
+        private void OnPerformanceThresholdExceeded(ProfilerThresholdExceededMessage message)
         {
             try
             {
-                var message = $"SerilogTarget performance threshold exceeded: {tag.Name} = {value:F2} {unit}";
-                TriggerPerformanceAlert(message);
+                var alertMessage = $"SerilogTarget performance threshold exceeded: {message.Tag.Name} = {message.ElapsedMs:F2} {message.Unit}";
+                TriggerPerformanceAlert(alertMessage);
             }
             catch
             {
@@ -1092,11 +1091,8 @@ namespace AhBearStudios.Core.Logging.Targets
 
             try
             {
-                // Unregister from profiler events first
-                if (_profiler != null && _config?.EnablePerformanceMetrics == true)
-                {
-                    _profiler.ThresholdExceeded -= OnPerformanceThresholdExceeded;
-                }
+                // Dispose message subscriptions first
+                _thresholdExceededSubscription?.Dispose();
 
                 // Stop health check timer
                 _healthCheckTimer?.Dispose();

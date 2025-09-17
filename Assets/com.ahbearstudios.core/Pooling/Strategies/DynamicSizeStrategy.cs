@@ -7,6 +7,7 @@ using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Pooling.Messages;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Profiling.Messages;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Profiling.Models;
 using Unity.Collections;
@@ -48,6 +49,7 @@ namespace AhBearStudios.Core.Pooling.Strategies
         private int _errorCount;
         private int _circuitBreakerTriggerCount;
         private DateTime _lastHealthCheck = DateTime.UtcNow;
+        private IDisposable _thresholdExceededSubscription;
 
         /// <summary>
         /// Initializes a new instance of the DynamicSizeStrategy.
@@ -91,9 +93,9 @@ namespace AhBearStudios.Core.Pooling.Strategies
 
             if (_contractThreshold >= _expandThreshold)
                 throw new ArgumentException("Contract threshold must be less than expand threshold");
-            
-            // Subscribe to profiler threshold events for performance monitoring
-            _profilerService.ThresholdExceeded += OnPerformanceThresholdExceeded;
+
+            // Subscribe to profiler threshold exceeded messages for performance monitoring
+            _thresholdExceededSubscription = _messageBusService.SubscribeToMessage<ProfilerThresholdExceededMessage>(OnPerformanceThresholdExceeded);
             
             _loggingService.LogInfo($"DynamicSizeStrategy initialized - Config: {_configuration.Name}, " +
                 $"Expand: {_expandThreshold}, Contract: {_contractThreshold}, Max: {_maxUtilization}");
@@ -638,25 +640,31 @@ namespace AhBearStudios.Core.Pooling.Strategies
         }
 
         /// <summary>
-        /// Handles performance threshold exceeded events from the profiler service.
+        /// Handles performance threshold exceeded messages from the profiler service.
         /// </summary>
-        /// <param name="tag">The profiler tag that exceeded threshold</param>
-        /// <param name="value">The measured value</param>
-        /// <param name="unit">The unit of measurement</param>
-        private void OnPerformanceThresholdExceeded(ProfilerTag tag, double value, string unit)
+        /// <param name="message">The profiler threshold exceeded message</param>
+        private void OnPerformanceThresholdExceeded(ProfilerThresholdExceededMessage message)
         {
-            _loggingService.LogWarning($"DynamicSize performance threshold exceeded for {tag.Name}: {value}{unit}");
-            
+            _loggingService.LogWarning($"DynamicSize performance threshold exceeded for {message.Tag.Name}: {message.ElapsedMs}{message.Unit}");
+
             // Record performance degradation
-            if (value > 10.0) // > 10ms is significant for dynamic sizing operations
+            if (message.ElapsedMs > 10.0) // > 10ms is significant for dynamic sizing operations
             {
                 _alertService.RaiseAlert(
-                    message: $"Severe performance degradation in {Name}: {tag.Name} took {value}{unit}",
+                    message: $"Severe performance degradation in {Name}: {message.Tag.Name} took {message.ElapsedMs}{message.Unit}",
                     severity: AlertSeverity.Warning,
                     source: AlertSource,
                     tag: "DynamicSizePerformanceDegradation"
                 );
             }
+        }
+
+        /// <summary>
+        /// Disposes the strategy and cleans up subscriptions.
+        /// </summary>
+        public void Dispose()
+        {
+            _thresholdExceededSubscription?.Dispose();
         }
 
         #endregion

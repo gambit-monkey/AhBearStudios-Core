@@ -10,7 +10,7 @@ using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.Logging;
 
-namespace AhBearStudios.Core.Infrastructure.HealthChecks;
+namespace AhBearStudios.Core.System.HealthChecks;
 
 /// <summary>
 /// System domain health check registrar implementing the domain self-registration pattern.

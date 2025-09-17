@@ -81,22 +81,22 @@ namespace AhBearStudios.Core.HealthChecking.Models
         /// <summary>
         /// Gets the number of healthy checks.
         /// </summary>
-        public int HealthyCount => HealthyChecks.Count();
+        public int HealthyCount => HealthyChecks.AsValueEnumerable().Count();
 
         /// <summary>
         /// Gets the number of checks with warnings.
         /// </summary>
-        public int WarningCount => WarningChecks.Count();
+        public int WarningCount => WarningChecks.AsValueEnumerable().Count();
 
         /// <summary>
         /// Gets the number of degraded checks.
         /// </summary>
-        public int DegradedCount => DegradedChecks.Count();
+        public int DegradedCount => DegradedChecks.AsValueEnumerable().Count();
 
         /// <summary>
         /// Gets the number of unhealthy checks.
         /// </summary>
-        public int UnhealthyCount => UnhealthyChecks.Count();
+        public int UnhealthyCount => UnhealthyChecks.AsValueEnumerable().Count();
 
         /// <summary>
         /// Gets health check results filtered by category.
@@ -147,7 +147,7 @@ namespace AhBearStudios.Core.HealthChecking.Models
         /// <returns>Average execution time</returns>
         public TimeSpan GetAverageExecutionTime()
         {
-            if (!Results.Any())
+            if (!Results.AsValueEnumerable().Any())
                 return TimeSpan.Zero;
 
             var totalTicks = Results.AsValueEnumerable()
@@ -186,7 +186,7 @@ namespace AhBearStudios.Core.HealthChecking.Models
             Dictionary<string, object> data = null,
             DegradationLevel degradationLevel = DegradationLevel.None)
         {
-            var resultsList = results?.ToList() ?? new List<HealthCheckResult>();
+            var resultsList = results?.AsValueEnumerable().ToList() ?? new List<HealthCheckResult>();
             var finalCorrelationId = correlationId == default 
                 ? DeterministicIdGenerator.GenerateCorrelationId("HealthReport", "HealthCheckService")
                 : correlationId;

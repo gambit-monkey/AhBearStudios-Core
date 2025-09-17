@@ -6,6 +6,7 @@ using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Pooling.Messages;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Profiling.Messages;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Profiling.Models;
 using Unity.Collections;
@@ -56,6 +57,7 @@ namespace AhBearStudios.Core.Pooling.Strategies
         private long _preemptiveAllocations;
         private int _bufferExhaustionEvents;
         private DateTime _lastNetworkMetricsUpdate = DateTime.UtcNow;
+        private IDisposable _thresholdExceededSubscription;
 
         /// <summary>
         /// Initializes a new instance of the AdaptiveNetworkStrategy.
@@ -89,14 +91,14 @@ namespace AhBearStudios.Core.Pooling.Strategies
             _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             
             _performanceBudget = _configuration.PerformanceBudget ?? PerformanceBudget.For60FPS();
-            
+
             _spikeDetectionThreshold = Math.Clamp(spikeDetectionThreshold, 0.1, 1.0);
             _preemptiveAllocationRatio = Math.Clamp(preemptiveAllocationRatio, 0.0, 0.5);
             _burstWindow = burstWindow ?? TimeSpan.FromSeconds(5);
             _maxBurstAllocations = Math.Max(1, maxBurstAllocations);
-            
-            // Subscribe to profiler threshold events for performance monitoring
-            _profilerService.ThresholdExceeded += OnPerformanceThresholdExceeded;
+
+            // Subscribe to profiler threshold exceeded messages for performance monitoring
+            _thresholdExceededSubscription = _messageBusService.SubscribeToMessage<ProfilerThresholdExceededMessage>(OnPerformanceThresholdExceeded);
             
             _loggingService.LogInfo($"AdaptiveNetworkStrategy initialized - Config: {_configuration.Name}, " +
                 $"Spike Threshold: {_spikeDetectionThreshold}, Preemptive Ratio: {_preemptiveAllocationRatio}");
@@ -680,25 +682,31 @@ namespace AhBearStudios.Core.Pooling.Strategies
         }
 
         /// <summary>
-        /// Handles performance threshold exceeded events from the profiler service.
+        /// Handles performance threshold exceeded messages from the profiler service.
         /// </summary>
-        /// <param name="tag">The profiler tag that exceeded threshold</param>
-        /// <param name="value">The measured value</param>
-        /// <param name="unit">The unit of measurement</param>
-        private void OnPerformanceThresholdExceeded(ProfilerTag tag, double value, string unit)
+        /// <param name="message">The profiler threshold exceeded message</param>
+        private void OnPerformanceThresholdExceeded(ProfilerThresholdExceededMessage message)
         {
-            _loggingService.LogWarning($"Performance threshold exceeded for {tag.Name}: {value}{unit}");
-            
+            _loggingService.LogWarning($"Performance threshold exceeded for {message.Tag.Name}: {message.ElapsedMs}{message.Unit}");
+
             // Raise alert for significant performance degradation
-            if (value > 10.0) // > 10ms is significant for pooling operations
+            if (message.ElapsedMs > 10.0) // > 10ms is significant for pooling operations
             {
                 _alertService.RaiseAlert(
-                    message: $"Severe performance degradation in {Name}: {tag.Name} took {value}{unit}",
+                    message: $"Severe performance degradation in {Name}: {message.Tag.Name} took {message.ElapsedMs}{message.Unit}",
                     severity: AlertSeverity.Warning,
                     source: AlertSource,
                     tag: "PerformanceDegradation"
                 );
             }
+        }
+
+        /// <summary>
+        /// Disposes the strategy and cleans up subscriptions.
+        /// </summary>
+        public void Dispose()
+        {
+            _thresholdExceededSubscription?.Dispose();
         }
 
         #endregion

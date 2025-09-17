@@ -1,6 +1,7 @@
 using System;
 using AhBearStudios.Core.Profiling.Configs;
 using AhBearStudios.Core.Pooling;
+using AhBearStudios.Core.Messaging;
 
 namespace AhBearStudios.Core.Profiling.Factories
 {
@@ -30,14 +31,21 @@ namespace AhBearStudios.Core.Profiling.Factories
         /// This is the primary factory method for ProfilerService creation.
         /// </summary>
         /// <param name="configuration">Validated profiler configuration</param>
+        /// <param name="messageBus">Message bus service for publishing profiler messages</param>
         /// <param name="poolingService">Optional pooling service for scope object management</param>
         /// <returns>New ProfilerService instance</returns>
-        /// <exception cref="ArgumentNullException">Thrown when configuration is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configuration or messageBus is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when configuration validation fails</exception>
-        public static ProfilerService CreateProfilerService(ProfilerConfig configuration, IPoolingService poolingService = null)
+        public static ProfilerService CreateProfilerService(
+            ProfilerConfig configuration,
+            IMessageBusService messageBus,
+            IPoolingService poolingService = null)
         {
             if (configuration == null)
                 throw new ArgumentNullException(nameof(configuration));
+
+            if (messageBus == null)
+                throw new ArgumentNullException(nameof(messageBus));
 
             // Validate configuration before creating service
             if (!configuration.ValidateForProduction() && configuration.IsEnabled)
@@ -47,71 +55,83 @@ namespace AhBearStudios.Core.Profiling.Factories
             }
 
             // Simple instantiation - no lifecycle management or tracking
-            return new ProfilerService(configuration, poolingService);
+            return new ProfilerService(configuration, messageBus, poolingService);
         }
 
         /// <summary>
         /// Creates a new ProfilerService instance optimized for Unity development scenarios.
         /// Uses development-friendly settings with comprehensive monitoring enabled.
         /// </summary>
+        /// <param name="messageBus">Message bus service for publishing profiler messages</param>
         /// <param name="poolingService">Optional pooling service for scope object management</param>
         /// <returns>New ProfilerService instance configured for development</returns>
-        public static ProfilerService CreateDevelopmentService(IPoolingService poolingService = null)
+        public static ProfilerService CreateDevelopmentService(
+            IMessageBusService messageBus,
+            IPoolingService poolingService = null)
         {
             var config = new Builders.ProfilerConfigBuilder()
                 .UseUnityDevelopmentPreset()
                 .SetSource("DevelopmentFactory")
                 .Build();
 
-            return CreateProfilerService(config, poolingService);
+            return CreateProfilerService(config, messageBus, poolingService);
         }
 
         /// <summary>
         /// Creates a new ProfilerService instance optimized for production environments.
         /// Uses performance-friendly settings with reduced overhead while maintaining visibility.
         /// </summary>
+        /// <param name="messageBus">Message bus service for publishing profiler messages</param>
         /// <param name="poolingService">Optional pooling service for scope object management</param>
         /// <returns>New ProfilerService instance configured for production</returns>
-        public static ProfilerService CreateProductionService(IPoolingService poolingService = null)
+        public static ProfilerService CreateProductionService(
+            IMessageBusService messageBus,
+            IPoolingService poolingService = null)
         {
             var config = new Builders.ProfilerConfigBuilder()
                 .UseProductionPreset()
                 .SetSource("ProductionFactory")
                 .Build();
 
-            return CreateProfilerService(config, poolingService);
+            return CreateProfilerService(config, messageBus, poolingService);
         }
 
         /// <summary>
         /// Creates a new ProfilerService instance optimized for performance testing scenarios.
         /// Uses comprehensive monitoring with strict thresholds for detailed performance analysis.
         /// </summary>
+        /// <param name="messageBus">Message bus service for publishing profiler messages</param>
         /// <param name="poolingService">Optional pooling service for scope object management</param>
         /// <returns>New ProfilerService instance configured for performance testing</returns>
-        public static ProfilerService CreatePerformanceTestingService(IPoolingService poolingService = null)
+        public static ProfilerService CreatePerformanceTestingService(
+            IMessageBusService messageBus,
+            IPoolingService poolingService = null)
         {
             var config = new Builders.ProfilerConfigBuilder()
                 .UsePerformanceTestingPreset()
                 .SetSource("PerformanceTestingFactory")
                 .Build();
 
-            return CreateProfilerService(config, poolingService);
+            return CreateProfilerService(config, messageBus, poolingService);
         }
 
         /// <summary>
         /// Creates a new ProfilerService instance with minimal overhead for performance-critical scenarios.
         /// Uses minimal monitoring to reduce impact on frame rate while maintaining basic Unity integration.
         /// </summary>
+        /// <param name="messageBus">Message bus service for publishing profiler messages</param>
         /// <param name="poolingService">Optional pooling service for scope object management</param>
         /// <returns>New ProfilerService instance configured for minimal overhead</returns>
-        public static ProfilerService CreateMinimalOverheadService(IPoolingService poolingService = null)
+        public static ProfilerService CreateMinimalOverheadService(
+            IMessageBusService messageBus,
+            IPoolingService poolingService = null)
         {
             var config = new Builders.ProfilerConfigBuilder()
                 .UseMinimalOverheadPreset()
                 .SetSource("MinimalOverheadFactory")
                 .Build();
 
-            return CreateProfilerService(config, poolingService);
+            return CreateProfilerService(config, messageBus, poolingService);
         }
 
         #endregion
@@ -122,6 +142,7 @@ namespace AhBearStudios.Core.Profiling.Factories
         /// Creates a new ProfilerService instance with custom sampling rate and threshold settings.
         /// Useful for fine-tuned profiling scenarios with specific performance requirements.
         /// </summary>
+        /// <param name="messageBus">Message bus service for publishing profiler messages</param>
         /// <param name="samplingRate">Sampling rate between 0.0 and 1.0</param>
         /// <param name="thresholdMs">Performance threshold in milliseconds</param>
         /// <param name="enableUnityIntegration">Whether to enable Unity ProfilerMarker integration</param>
@@ -130,6 +151,7 @@ namespace AhBearStudios.Core.Profiling.Factories
         /// <exception cref="ArgumentException">Thrown when sampling rate is out of valid range</exception>
         /// <exception cref="ArgumentOutOfRangeException">Thrown when threshold is negative</exception>
         public static ProfilerService CreateCustomService(
+            IMessageBusService messageBus,
             float samplingRate,
             double thresholdMs,
             bool enableUnityIntegration = true,
@@ -148,13 +170,14 @@ namespace AhBearStudios.Core.Profiling.Factories
                 .SetSource("CustomFactory")
                 .Build();
 
-            return CreateProfilerService(config, poolingService);
+            return CreateProfilerService(config, messageBus, poolingService);
         }
 
         /// <summary>
         /// Creates a new ProfilerService instance configured for specific Unity target frame rates.
         /// Automatically sets appropriate thresholds based on the target FPS.
         /// </summary>
+        /// <param name="messageBus">Message bus service for publishing profiler messages</param>
         /// <param name="targetFps">Target frame rate (30, 60, 120, or other)</param>
         /// <param name="samplingRate">Sampling rate between 0.0 and 1.0 (default: 1.0)</param>
         /// <param name="poolingService">Optional pooling service for scope object management</param>
@@ -162,6 +185,7 @@ namespace AhBearStudios.Core.Profiling.Factories
         /// <exception cref="ArgumentOutOfRangeException">Thrown when target FPS is not positive</exception>
         /// <exception cref="ArgumentException">Thrown when sampling rate is out of valid range</exception>
         public static ProfilerService CreateForTargetFrameRate(
+            IMessageBusService messageBus,
             int targetFps,
             float samplingRate = 1.0f,
             IPoolingService poolingService = null)
@@ -181,22 +205,23 @@ namespace AhBearStudios.Core.Profiling.Factories
                 .SetSource("FrameRateFactory")
                 .Build();
 
-            return CreateProfilerService(config, poolingService);
+            return CreateProfilerService(config, messageBus, poolingService);
         }
 
         /// <summary>
         /// Creates a new ProfilerService instance with disabled profiling for scenarios where
         /// you want the interface but no actual profiling overhead.
         /// </summary>
+        /// <param name="messageBus">Message bus service for publishing profiler messages</param>
         /// <returns>New ProfilerService instance with profiling disabled</returns>
-        public static ProfilerService CreateDisabledService()
+        public static ProfilerService CreateDisabledService(IMessageBusService messageBus)
         {
             var config = new Builders.ProfilerConfigBuilder()
                 .SetEnabled(false)
                 .SetSource("DisabledFactory")
                 .Build();
 
-            return CreateProfilerService(config, null);
+            return CreateProfilerService(config, messageBus, null);
         }
 
         #endregion
@@ -208,18 +233,23 @@ namespace AhBearStudios.Core.Profiling.Factories
         /// This method provides additional validation and error handling beyond the basic factory method.
         /// </summary>
         /// <param name="configuration">Pre-built profiler configuration</param>
+        /// <param name="messageBus">Message bus service for publishing profiler messages</param>
         /// <param name="poolingService">Optional pooling service for scope object management</param>
         /// <param name="validateForProduction">Whether to validate configuration for production readiness</param>
         /// <returns>New ProfilerService instance</returns>
-        /// <exception cref="ArgumentNullException">Thrown when configuration is null</exception>
+        /// <exception cref="ArgumentNullException">Thrown when configuration or messageBus is null</exception>
         /// <exception cref="InvalidOperationException">Thrown when validation fails</exception>
         public static ProfilerService CreateFromConfigurationWithValidation(
             ProfilerConfig configuration,
+            IMessageBusService messageBus,
             IPoolingService poolingService = null,
             bool validateForProduction = true)
         {
             if (configuration == null)
                 throw new ArgumentNullException(nameof(configuration));
+
+            if (messageBus == null)
+                throw new ArgumentNullException(nameof(messageBus));
 
             // Perform comprehensive validation if requested
             if (validateForProduction && !configuration.ValidateForProduction())
@@ -228,7 +258,7 @@ namespace AhBearStudios.Core.Profiling.Factories
                     $"Configuration validation failed for production use. Configuration: {configuration}");
             }
 
-            return CreateProfilerService(configuration, poolingService);
+            return CreateProfilerService(configuration, messageBus, poolingService);
         }
 
         #endregion

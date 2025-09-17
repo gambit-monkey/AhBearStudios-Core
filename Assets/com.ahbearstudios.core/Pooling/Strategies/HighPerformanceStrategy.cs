@@ -6,6 +6,7 @@ using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Profiling.Messages;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Pooling.Messages;
 using AhBearStudios.Core.Profiling.Models;
@@ -47,6 +48,7 @@ namespace AhBearStudios.Core.Pooling.Strategies
         private int _gcPressureEvents;
         private TimeSpan _maxRecordedOperationTime;
         private readonly object _metricsLock = new object();
+        private IDisposable _thresholdExceededSubscription;
 
         /// <summary>
         /// Initializes a new instance of the HighPerformanceStrategy.
@@ -83,9 +85,9 @@ namespace AhBearStudios.Core.Pooling.Strategies
             _aggressiveExpansionThreshold = Math.Clamp(aggressiveExpansionThreshold, 0.5, 1.0);
             _conservativeContractionThreshold = Math.Clamp(conservativeContractionThreshold, 0.0, 0.3);
             _maxFrameTime = TimeSpan.FromMilliseconds(1000.0 / 60.0); // 60 FPS frame time
-            
-            // Subscribe to profiler threshold events for performance monitoring
-            _profilerService.ThresholdExceeded += OnPerformanceThresholdExceeded;
+
+            // Subscribe to profiler threshold exceeded messages for performance monitoring
+            _thresholdExceededSubscription = _messageBusService.SubscribeToMessage<ProfilerThresholdExceededMessage>(OnPerformanceThresholdExceeded);
             
             _loggingService.LogInfo($"HighPerformanceStrategy initialized - Config: {_configuration.Name}, " +
                 $"Pre-allocation: {_preAllocationSize}, Expansion: {_aggressiveExpansionThreshold}");
@@ -576,25 +578,31 @@ namespace AhBearStudios.Core.Pooling.Strategies
         #endregion
 
         /// <summary>
-        /// Handles performance threshold exceeded events from the profiler service.
+        /// Handles performance threshold exceeded messages from the profiler service.
         /// </summary>
-        /// <param name="tag">The profiler tag that exceeded threshold</param>
-        /// <param name="value">The measured value</param>
-        /// <param name="unit">The unit of measurement</param>
-        private void OnPerformanceThresholdExceeded(ProfilerTag tag, double value, string unit)
+        /// <param name="message">The profiler threshold exceeded message</param>
+        private void OnPerformanceThresholdExceeded(ProfilerThresholdExceededMessage message)
         {
-            _loggingService.LogWarning($"HighPerformance threshold exceeded for {tag.Name}: {value}{unit} - This is critical for high-performance scenarios");
-            
+            _loggingService.LogWarning($"HighPerformance threshold exceeded for {message.Tag.Name}: {message.ElapsedMs}{message.Unit} - This is critical for high-performance scenarios");
+
             // High-performance operations should be extremely fast
-            if (value > 2.0) // > 2ms is critical for high-performance operations
+            if (message.ElapsedMs > 2.0) // > 2ms is critical for high-performance operations
             {
                 _alertService.RaiseAlert(
-                    message: $"Critical performance degradation in {Name}: {tag.Name} took {value}{unit}",
+                    message: $"Critical performance degradation in {Name}: {message.Tag.Name} took {message.ElapsedMs}{message.Unit}",
                     severity: AlertSeverity.Critical,
                     source: AlertSource,
                     tag: "HighPerformanceCriticalDegradation"
                 );
             }
+        }
+
+        /// <summary>
+        /// Disposes the strategy and cleans up subscriptions.
+        /// </summary>
+        public void Dispose()
+        {
+            _thresholdExceededSubscription?.Dispose();
         }
     }
 }

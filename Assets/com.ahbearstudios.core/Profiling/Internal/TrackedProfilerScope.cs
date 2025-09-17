@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using AhBearStudios.Core.Profiling.Models;
+using AhBearStudios.Core.Messaging;
 
 namespace AhBearStudios.Core.Profiling.Internal
 {
@@ -34,6 +35,7 @@ namespace AhBearStudios.Core.Profiling.Internal
         /// </summary>
         /// <param name="tag">Profiler tag for categorization</param>
         /// <param name="profilerService">Parent profiler service</param>
+        /// <param name="messageBus">Message bus service for publishing messages</param>
         /// <param name="source">Source system or component</param>
         /// <param name="metadata">Additional metadata for context</param>
         /// <param name="thresholdMs">Performance threshold in milliseconds</param>
@@ -42,13 +44,14 @@ namespace AhBearStudios.Core.Profiling.Internal
         public TrackedProfilerScope(
             ProfilerTag tag,
             IProfilerService profilerService,
+            IMessageBusService messageBus,
             FixedString64Bytes source,
             IReadOnlyDictionary<string, object> metadata,
             double thresholdMs,
             bool enableThresholdMonitoring,
             Action<Guid> onDispose)
         {
-            _innerScope = new ProfilerScope(tag, profilerService, null, source, default, metadata, thresholdMs, enableThresholdMonitoring);
+            _innerScope = new ProfilerScope(tag, profilerService, messageBus, source, default, metadata, thresholdMs, enableThresholdMonitoring);
             _onDispose = onDispose;
         }
 

@@ -233,6 +233,113 @@ namespace AhBearStudios.Core.HealthChecking.Configs
 
         #endregion
 
+        #region Config Interface Implementations
+
+        /// <summary>
+        /// Slow call detection configuration
+        /// </summary>
+        public ISlowCallConfig SlowCallConfig => new SlowCallConfigImpl(this);
+
+        /// <summary>
+        /// Bulkhead isolation configuration
+        /// </summary>
+        public IBulkheadConfig BulkheadConfig => new BulkheadConfigImpl(this);
+
+        /// <summary>
+        /// Rate limiting configuration when circuit is closed
+        /// </summary>
+        public IRateLimitConfig RateLimitConfig => new RateLimitConfigImpl(this);
+
+        /// <summary>
+        /// Failover configuration for when circuit is open
+        /// </summary>
+        public IFailoverConfig FailoverConfig => new FailoverConfigImpl(this);
+
+        #endregion
+
+        #region Inner Config Implementations
+
+        private sealed class SlowCallConfigImpl : ISlowCallConfig
+        {
+            private readonly CircuitBreakerConfig _parent;
+
+            public SlowCallConfigImpl(CircuitBreakerConfig parent)
+            {
+                _parent = parent;
+            }
+
+            public TimeSpan SlowCallDurationThreshold => _parent.SlowCallDurationThreshold;
+            public double SlowCallRateThreshold => _parent.SlowCallRateThreshold;
+            public int MinimumSlowCalls => _parent.MinimumSlowCalls;
+            public bool TreatSlowCallsAsFailures => _parent.TreatSlowCallsAsFailures;
+        }
+
+        private sealed class BulkheadConfigImpl : IBulkheadConfig
+        {
+            private readonly CircuitBreakerConfig _parent;
+
+            public BulkheadConfigImpl(CircuitBreakerConfig parent)
+            {
+                _parent = parent;
+            }
+
+            public int MaxConcurrentCalls => _parent.MaxConcurrentCalls;
+            public TimeSpan MaxWaitDuration => _parent.MaxWaitDuration;
+            public bool EnableBulkhead => _parent.EnableBulkhead;
+            public int MaxQueueSize => _parent.MaxQueueSize;
+        }
+
+        private sealed class RateLimitConfigImpl : IRateLimitConfig
+        {
+            private readonly CircuitBreakerConfig _parent;
+
+            public RateLimitConfigImpl(CircuitBreakerConfig parent)
+            {
+                _parent = parent;
+            }
+
+            public bool Enabled => _parent.EnableRateLimit;
+            public double RequestsPerSecond => _parent.RequestsPerSecond;
+            public int BurstSize => _parent.BurstSize;
+            public TimeSpan RateWindow => TimeSpan.FromSeconds(1); // Default to 1 second window
+            public bool QueueExcessRequests => false; // Not configurable in CircuitBreakerConfig
+            public int MaxQueueSize => _parent.MaxQueueSize;
+
+            public List<string> Validate()
+            {
+                var errors = new List<string>();
+
+                if (RequestsPerSecond <= 0.0)
+                    errors.Add("RequestsPerSecond must be greater than zero");
+
+                if (BurstSize < 0)
+                    errors.Add("BurstSize must be non-negative");
+
+                if (MaxQueueSize < 0)
+                    errors.Add("MaxQueueSize must be non-negative");
+
+                return errors;
+            }
+        }
+
+        private sealed class FailoverConfigImpl : IFailoverConfig
+        {
+            private readonly CircuitBreakerConfig _parent;
+
+            public FailoverConfigImpl(CircuitBreakerConfig parent)
+            {
+                _parent = parent;
+            }
+
+            public bool EnableFailover => _parent.EnableFailover;
+            public List<string> FailoverEndpoints => _parent.FailoverEndpoints;
+            public TimeSpan FailoverTimeout => _parent.FailoverTimeout;
+            public FailoverStrategy FailoverStrategy => _parent.FailoverStrategy;
+            public object FailoverDefaultValue => _parent.FailoverDefaultValue;
+        }
+
+        #endregion
+
         /// <summary>
         /// Validates the circuit breaker configuration
         /// </summary>

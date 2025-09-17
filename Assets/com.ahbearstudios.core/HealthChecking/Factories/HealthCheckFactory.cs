@@ -250,24 +250,11 @@ public sealed class HealthCheckFactory : IHealthCheckFactory
             return new SystemResourceHealthCheck(_logger, _poolingService);
         });
 
-        RegisterHealthCheckCreator<DatabaseHealthCheck>(async (config) =>
-        {
-            var healthCheckService = _container.Resolve<IHealthCheckService>();
-            var databaseService = _container.Resolve<IDatabaseService>();
-            return new DatabaseHealthCheck(databaseService, healthCheckService, _logger);
-        });
-
         RegisterHealthCheckCreator<MessageBusHealthCheck>(async (config) =>
         {
             var messageBusConfig = _container.Resolve<MessageBusConfig>();
             return new MessageBusHealthCheck(_messageBus, messageBusConfig, _logger);
         });
-
-        // RegisterHealthCheckCreator<NetworkHealthCheck>(async (config) =>
-        // {
-        //     var healthCheckService = _container.Resolve<IHealthCheckService>();
-        //     return new NetworkHealthCheck(healthCheckService, _logger, null);
-        // });
 
         var correlationId = DeterministicIdGenerator.GenerateCorrelationId("InitializeCreators", _factoryId.ToString());
         _logger.LogDebug($"Registered {_healthCheckCreators.Count} health check creators", correlationId, sourceContext: nameof(HealthCheckFactory));

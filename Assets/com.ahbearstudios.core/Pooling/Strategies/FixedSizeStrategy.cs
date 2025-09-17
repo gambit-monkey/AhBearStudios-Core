@@ -6,6 +6,7 @@ using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Configs;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Profiling.Messages;
 using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Pooling.Messages;
 using AhBearStudios.Core.Profiling.Models;
@@ -43,6 +44,7 @@ namespace AhBearStudios.Core.Pooling.Strategies
         private int _rejectedRequests; // Requests rejected due to size limit
         private int _circuitBreakerTriggerCount;
         private DateTime _lastHealthCheck = DateTime.UtcNow;
+        private IDisposable _thresholdExceededSubscription;
 
         /// <summary>
         /// Initializes a new instance of the FixedSizeStrategy.
@@ -74,9 +76,9 @@ namespace AhBearStudios.Core.Pooling.Strategies
             _messageBusService = messageBusService ?? throw new ArgumentNullException(nameof(messageBusService));
             
             _performanceBudget = _configuration.PerformanceBudget ?? PerformanceBudget.For30FPS();
-            
-            // Subscribe to profiler threshold events for performance monitoring
-            _profilerService.ThresholdExceeded += OnPerformanceThresholdExceeded;
+
+            // Subscribe to profiler threshold exceeded messages for performance monitoring
+            _thresholdExceededSubscription = _messageBusService.SubscribeToMessage<ProfilerThresholdExceededMessage>(OnPerformanceThresholdExceeded);
             
             _loggingService.LogInfo($"FixedSizeStrategy initialized - Size: {_fixedSize}, Config: {_configuration.Name}");
         }
@@ -580,25 +582,31 @@ namespace AhBearStudios.Core.Pooling.Strategies
         }
 
         /// <summary>
-        /// Handles performance threshold exceeded events from the profiler service.
+        /// Handles performance threshold exceeded messages from the profiler service.
         /// </summary>
-        /// <param name="tag">The profiler tag that exceeded threshold</param>
-        /// <param name="value">The measured value</param>
-        /// <param name="unit">The unit of measurement</param>
-        private void OnPerformanceThresholdExceeded(ProfilerTag tag, double value, string unit)
+        /// <param name="message">The profiler threshold exceeded message</param>
+        private void OnPerformanceThresholdExceeded(ProfilerThresholdExceededMessage message)
         {
-            _loggingService.LogWarning($"FixedSize performance threshold exceeded for {tag.Name}: {value}{unit}");
-            
+            _loggingService.LogWarning($"FixedSize performance threshold exceeded for {message.Tag.Name}: {message.ElapsedMs}{message.Unit}");
+
             // Fixed size operations should be very fast
-            if (value > 5.0) // > 5ms is significant for fixed-size operations
+            if (message.ElapsedMs > 5.0) // > 5ms is significant for fixed-size operations
             {
                 _alertService.RaiseAlert(
-                    message: $"Performance degradation in {Name}: {tag.Name} took {value}{unit}",
+                    message: $"Performance degradation in {Name}: {message.Tag.Name} took {message.ElapsedMs}{message.Unit}",
                     severity: AlertSeverity.Warning,
                     source: AlertSource,
                     tag: "FixedSizePerformanceDegradation"
                 );
             }
+        }
+
+        /// <summary>
+        /// Disposes the strategy and cleans up subscriptions.
+        /// </summary>
+        public void Dispose()
+        {
+            _thresholdExceededSubscription?.Dispose();
         }
     }
 }

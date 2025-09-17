@@ -93,25 +93,15 @@ public sealed class HealthCheckServiceFactory : IHealthCheckServiceFactory
 
             try
             {
-                // Create specialized services first
-                var scheduler = CreateSchedulerService(config, correlationId);
-                var degradationManager = CreateDegradationManager(config, correlationId);
-                var statisticsCollector = CreateStatisticsCollector(config, correlationId);
-                var circuitBreakerManager = CreateCircuitBreakerManager(config, correlationId);
-
-                // Create main health check service with specialized services
+                // Create main health check service
                 var service = new HealthCheckService(
                     config,
                     _logger,
                     _alertService,
-                    _messageBus,
-                    scheduler,
-                    degradationManager,
-                    statisticsCollector,
-                    circuitBreakerManager,
-                    _profilerService);
+                    _profilerService,
+                    _messageBus);
 
-                _logger.LogInfo($"HealthCheckService created successfully with specialized services", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
+                _logger.LogInfo($"HealthCheckService created successfully", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
 
                 // Publish service creation message
                 await _messageBus.PublishMessageAsync(new HealthCheckServiceCreatedMessage
@@ -226,60 +216,4 @@ public sealed class HealthCheckServiceFactory : IHealthCheckServiceFactory
         }
     }
 
-    private IHealthCheckScheduler CreateSchedulerService(HealthCheckServiceConfig config, Guid correlationId)
-    {
-        // Create a function that the scheduler will use to execute health checks
-        // This will be wired up to the main health check service's execution method
-        Func<CancellationToken, UniTask> executeHealthChecks = async (cancellationToken) =>
-        {
-            // This will be called by the scheduler - for now it's a placeholder
-            // The actual implementation would need access to the service instance
-            await UniTask.Yield();
-        };
-
-        var scheduler = new HealthCheckScheduler(
-            config,
-            _logger,
-            _messageBus,
-            _profilerService,
-            executeHealthChecks);
-
-        _logger.LogDebug("HealthCheckScheduler created", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
-        return scheduler;
-    }
-
-    private IHealthDegradationManager CreateDegradationManager(HealthCheckServiceConfig config, Guid correlationId)
-    {
-        var degradationManager = new HealthDegradationManager(
-            config,
-            _logger,
-            _alertService,
-            _messageBus,
-            _profilerService);
-
-        _logger.LogDebug("HealthDegradationManager created", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
-        return degradationManager;
-    }
-
-    private IHealthStatisticsCollector CreateStatisticsCollector(HealthCheckServiceConfig config, Guid correlationId)
-    {
-        var statisticsCollector = new HealthStatisticsCollector(
-            config,
-            _logger,
-            _messageBus,
-            _profilerService);
-
-        _logger.LogDebug("HealthStatisticsCollector created", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
-        return statisticsCollector;
-    }
-
-    private IHealthCircuitBreakerManager CreateCircuitBreakerManager(HealthCheckServiceConfig config, Guid correlationId)
-    {
-        var circuitBreakerManager = new HealthCircuitBreakerManager(
-            _logger,
-            _messageBus);
-
-        _logger.LogDebug("HealthCircuitBreakerManager created", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
-        return circuitBreakerManager;
-    }
 }

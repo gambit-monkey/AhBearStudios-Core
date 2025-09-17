@@ -93,7 +93,7 @@ public sealed record DegradationConfig
     {
         return new DegradationConfig
         {
-            DegradedImpact = DegradationLevel.Major,
+            DegradedImpact = DegradationLevel.Moderate,
             UnhealthyImpact = DegradationLevel.Severe,
             MinorDegradationThreshold = 0.05,
             ModerateDegradationThreshold = 0.1,

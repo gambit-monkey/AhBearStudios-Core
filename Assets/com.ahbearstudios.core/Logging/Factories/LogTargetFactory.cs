@@ -6,6 +6,7 @@ using AhBearStudios.Core.Logging.Models;
 using AhBearStudios.Core.Logging.Targets;
 using AhBearStudios.Core.Profiling;
 using AhBearStudios.Core.Alerting;
+using AhBearStudios.Core.Messaging;
 
 namespace AhBearStudios.Core.Logging.Factories
 {
@@ -19,6 +20,7 @@ namespace AhBearStudios.Core.Logging.Factories
         private readonly ILoggingService _loggingService;
         private readonly IProfilerService _profilerService;
         private readonly IAlertService _alertService;
+        private readonly IMessageBusService _messageBusService;
 
         /// <summary>
         /// Initializes a new instance of the LogTargetFactory.
@@ -26,11 +28,13 @@ namespace AhBearStudios.Core.Logging.Factories
         /// <param name="loggingService">The logging service for internal logging</param>
         /// <param name="profilerService">The profiler service for performance monitoring</param>
         /// <param name="alertService">The alert service for critical notifications</param>
-        public LogTargetFactory(ILoggingService loggingService = null, IProfilerService profilerService = null, IAlertService alertService = null)
+        /// <param name="messageBusService">The message bus service for event communication</param>
+        public LogTargetFactory(ILoggingService loggingService = null, IProfilerService profilerService = null, IAlertService alertService = null, IMessageBusService messageBusService = null)
         {
             _loggingService = loggingService;
             _profilerService = profilerService;
             _alertService = alertService;
+            _messageBusService = messageBusService;
             _targetFactories = new Dictionary<string, Func<LogTargetConfig, ILogTarget>>(StringComparer.OrdinalIgnoreCase);
             
             RegisterDefaultTargetTypes();
@@ -242,8 +246,9 @@ namespace AhBearStudios.Core.Logging.Factories
             // If dependencies are not available, use null service implementations
             var profilerService = _profilerService ?? NullProfilerService.Instance;
             var alertService = _alertService ?? NullAlertService.Instance;
-            
-            return new SerilogTarget(config, profilerService, alertService);
+            var messageBusService = _messageBusService ?? new NullMessageBusService();
+
+            return new SerilogTarget(config, profilerService, alertService, messageBusService);
         }
     }
 }

@@ -66,9 +66,24 @@ public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
     public CircuitBreakerConfig DefaultCircuitBreakerConfig { get; init; }
 
     /// <summary>
+    /// Gets the default circuit breaker configuration as interface for compatibility
+    /// </summary>
+    ICircuitBreakerConfig IHealthCheckServiceConfig.DefaultCircuitBreakerConfig => DefaultCircuitBreakerConfig;
+
+    /// <summary>
     /// Whether to enable alerts when circuit breakers trigger
     /// </summary>
     public bool EnableCircuitBreakerAlerts { get; init; }
+
+    /// <summary>
+    /// Default failure threshold for circuit breakers
+    /// </summary>
+    public int DefaultFailureThreshold { get; init; }
+
+    /// <summary>
+    /// Default circuit breaker timeout duration
+    /// </summary>
+    public TimeSpan DefaultCircuitBreakerTimeout { get; init; }
 
     #endregion
 
@@ -88,6 +103,16 @@ public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
     /// Whether to raise alerts for degradation level changes
     /// </summary>
     public bool EnableDegradationAlerts { get; init; }
+
+    /// <summary>
+    /// Degradation thresholds for automatic system degradation
+    /// </summary>
+    public DegradationThresholds DegradationThresholds { get; init; }
+
+    /// <summary>
+    /// Whether to automatically adjust degradation levels based on health status
+    /// </summary>
+    public bool EnableAutomaticDegradation { get; init; }
 
     #endregion
 
@@ -182,9 +207,13 @@ public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
             EnableCircuitBreaker = true,
             DefaultCircuitBreakerConfig = CircuitBreakerConfig.Create("DefaultHealthCheckCircuitBreaker"),
             EnableCircuitBreakerAlerts = true,
+            DefaultFailureThreshold = 5,
+            DefaultCircuitBreakerTimeout = TimeSpan.FromSeconds(60),
             EnableGracefulDegradation = true,
             DegradationConfig = new DegradationConfig(),
             EnableDegradationAlerts = true,
+            DegradationThresholds = new DegradationThresholds(),
+            EnableAutomaticDegradation = true,
             PerformanceConfig = PerformanceConfig.ForProduction(),
             EnablePerformanceMonitoring = true,
             EnableHealthAlerts = true,
@@ -217,9 +246,13 @@ public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
             EnableCircuitBreaker = true,
             DefaultCircuitBreakerConfig = CircuitBreakerConfig.ForCriticalService(),
             EnableCircuitBreakerAlerts = true,
+            DefaultFailureThreshold = 3,
+            DefaultCircuitBreakerTimeout = TimeSpan.FromSeconds(30),
             EnableGracefulDegradation = true,
             DegradationConfig = DegradationConfig.ForCriticalSystem(),
             EnableDegradationAlerts = true,
+            DegradationThresholds = DegradationThresholds.ForHighAvailability(),
+            EnableAutomaticDegradation = true,
             PerformanceConfig = PerformanceConfig.ForHighPerformanceGames(),
             EnablePerformanceMonitoring = true,
             EnableHealthAlerts = true,
@@ -261,9 +294,13 @@ public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
             EnableCircuitBreaker = false,
             DefaultCircuitBreakerConfig = CircuitBreakerConfig.ForDevelopment(),
             EnableCircuitBreakerAlerts = false,
+            DefaultFailureThreshold = 2,
+            DefaultCircuitBreakerTimeout = TimeSpan.FromSeconds(10),
             EnableGracefulDegradation = false,
             DegradationConfig = DegradationConfig.ForDevelopment(),
             EnableDegradationAlerts = false,
+            DegradationThresholds = DegradationThresholds.ForDevelopment(),
+            EnableAutomaticDegradation = false,
             PerformanceConfig = PerformanceConfig.ForDevelopment(),
             EnablePerformanceMonitoring = false,
             EnableHealthAlerts = false,
@@ -315,6 +352,12 @@ public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
         if (SlowHealthCheckThreshold < 1)
             errors.Add("SlowHealthCheckThreshold must be at least 1ms");
 
+        if (DefaultFailureThreshold < 1)
+            errors.Add("DefaultFailureThreshold must be at least 1");
+
+        if (DefaultCircuitBreakerTimeout <= TimeSpan.Zero)
+            errors.Add("DefaultCircuitBreakerTimeout must be greater than zero");
+
         // Unity game development specific validations
         if (DefaultTimeout > TimeSpan.FromSeconds(30))
             errors.Add("DefaultTimeout should not exceed 30 seconds for game performance");
@@ -331,6 +374,9 @@ public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
 
         if (PerformanceConfig != null)
             errors.AddRange(PerformanceConfig.Validate());
+
+        if (DegradationThresholds != null)
+            errors.AddRange(DegradationThresholds.Validate());
 
         return errors;
     }

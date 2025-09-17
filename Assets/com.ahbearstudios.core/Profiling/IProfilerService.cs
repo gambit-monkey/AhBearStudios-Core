@@ -161,22 +161,5 @@ namespace AhBearStudios.Core.Profiling
         /// </summary>
         /// <returns>The last exception or null if no errors</returns>
         Exception GetLastError();
-
-        // Events
-
-        /// <summary>
-        /// Event raised when a performance threshold is exceeded.
-        /// </summary>
-        event Action<ProfilerTag, double, string> ThresholdExceeded;
-
-        /// <summary>
-        /// Event raised when profiling data is recorded.
-        /// </summary>
-        event Action<ProfilerTag, double> DataRecorded;
-
-        /// <summary>
-        /// Event raised when the profiler service encounters an error.
-        /// </summary>
-        event Action<Exception> ErrorOccurred;
     }
 }
