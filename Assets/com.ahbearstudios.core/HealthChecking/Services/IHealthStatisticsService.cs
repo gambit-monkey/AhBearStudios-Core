@@ -8,18 +8,12 @@ namespace AhBearStudios.Core.HealthChecking.Services
     /// <summary>
     /// Interface for health statistics collection and aggregation.
     /// Manages metrics, analytics, and performance tracking for the health check system.
+    /// Statistics events are published via IMessageBusService following CLAUDE.md patterns:
+    /// - HealthCheckStatisticsResetMessage for statistics reset events
+    /// - HealthCheckPerformanceThresholdExceededMessage for threshold violations
     /// </summary>
-    public interface IHealthStatisticsCollector : IDisposable
+    public interface IHealthStatisticsService : IDisposable
     {
-        /// <summary>
-        /// Event triggered when statistics are reset.
-        /// </summary>
-        event EventHandler<StatisticsResetEventArgs> StatisticsReset;
-
-        /// <summary>
-        /// Event triggered when performance thresholds are exceeded.
-        /// </summary>
-        event EventHandler<PerformanceThresholdEventArgs> PerformanceThresholdExceeded;
 
         /// <summary>
         /// Gets the timestamp when statistics collection started.

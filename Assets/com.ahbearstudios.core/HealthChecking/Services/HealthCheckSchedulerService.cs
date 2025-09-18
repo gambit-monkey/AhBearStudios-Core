@@ -14,7 +14,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
     /// Production implementation of health check scheduling service.
     /// Manages automatic execution timing and coordination with configurable intervals.
     /// </summary>
-    public sealed class HealthCheckScheduler : IHealthCheckScheduler
+    public sealed class HealthCheckSchedulerService : IHealthCheckSchedulerService
     {
         private readonly ILoggingService _logger;
         private readonly IMessageBusService _messageBus;
@@ -97,7 +97,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
         }
 
         /// <summary>
-        /// Initializes a new health check scheduler.
+        /// Initializes a new health check scheduler service.
         /// </summary>
         /// <param name="config">Health check service configuration</param>
         /// <param name="logger">Logging service</param>
@@ -123,7 +123,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _startTime = DateTime.UtcNow;
             
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("SchedulerInit", _schedulerId.ToString());
-            _logger.LogInfo($"HealthCheckScheduler initialized with interval {_currentInterval}", correlationId);
+            _logger.LogInfo($"HealthCheckScheduler initialized with interval {_currentInterval}", correlationId: correlationId);
         }
 
         /// <summary>
@@ -154,7 +154,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             }
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("SchedulerStart", _schedulerId.ToString());
-            _logger.LogInfo($"Starting health check scheduler with interval {interval}", correlationId);
+            _logger.LogInfo($"Starting health check scheduler with interval {interval}", correlationId: correlationId);
 
             _schedulingTask = RunSchedulingLoopAsync(_scheduleCts.Token);
             await UniTask.Yield(); // Let the scheduling loop start
@@ -181,7 +181,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             }
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("SchedulerStop", _schedulerId.ToString());
-            _logger.LogInfo("Stopping health check scheduler", correlationId);
+            _logger.LogInfo("Stopping health check scheduler", correlationId: correlationId);
 
             if (_schedulingTask.Status == UniTaskStatus.Pending)
             {
@@ -224,7 +224,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             }
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("SchedulerIntervalUpdate", _schedulerId.ToString());
-            _logger.LogInfo($"Updated scheduling interval to {newInterval}", correlationId);
+            _logger.LogInfo($"Updated scheduling interval to {newInterval}", correlationId: correlationId);
 
             await UniTask.Yield();
         }
@@ -260,7 +260,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 }
 
                 ScheduledExecutionCompleted?.Invoke(this, eventArgs);
-                _logger.LogInfo($"Manual health check execution completed: {reason}", correlationId);
+                _logger.LogInfo($"Manual health check execution completed: {reason}", correlationId: correlationId);
             }
             catch (Exception ex)
             {
@@ -285,7 +285,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             }
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("SchedulerPause", _schedulerId.ToString());
-            _logger.LogInfo("Health check scheduler paused", correlationId);
+            _logger.LogInfo("Health check scheduler paused", correlationId: correlationId);
         }
 
         /// <summary>
@@ -305,7 +305,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             }
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("SchedulerResume", _schedulerId.ToString());
-            _logger.LogInfo("Health check scheduler resumed", correlationId);
+            _logger.LogInfo("Health check scheduler resumed", correlationId: correlationId);
         }
 
         /// <summary>
@@ -478,7 +478,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             }
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("SchedulerDispose", _schedulerId.ToString());
-            _logger.LogInfo("HealthCheckScheduler disposed", correlationId);
+            _logger.LogInfo("HealthCheckScheduler disposed", correlationId: correlationId);
         }
     }
 }

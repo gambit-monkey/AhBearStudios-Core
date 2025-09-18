@@ -8,23 +8,13 @@ namespace AhBearStudios.Core.HealthChecking.Services
     /// <summary>
     /// Interface for managing circuit breakers in the health check system.
     /// Provides automatic failure protection, state management, and recovery coordination.
+    /// Circuit breaker events are published via IMessageBusService following CLAUDE.md patterns:
+    /// - HealthCheckCircuitBreakerStateChangedMessage for state changes
+    /// - HealthCheckCircuitBreakerTripMessage for circuit breaker trips
+    /// - HealthCheckCircuitBreakerRecoveryMessage for recovery attempts
     /// </summary>
     public interface IHealthCircuitBreakerManager : IDisposable
     {
-        /// <summary>
-        /// Event triggered when a circuit breaker state changes.
-        /// </summary>
-        event EventHandler<CircuitBreakerStateChangedEventArgs> StateChanged;
-
-        /// <summary>
-        /// Event triggered when a circuit breaker trip occurs.
-        /// </summary>
-        event EventHandler<CircuitBreakerTripEventArgs> CircuitBreakerTripped;
-
-        /// <summary>
-        /// Event triggered when a circuit breaker recovery attempt is made.
-        /// </summary>
-        event EventHandler<CircuitBreakerRecoveryEventArgs> RecoveryAttempted;
 
         /// <summary>
         /// Gets whether the circuit breaker manager is active.

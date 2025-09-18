@@ -449,7 +449,49 @@
         /// </summary>
         public const ushort HealthCheckCompletedWithResultsMessage = 1220;
 
-        
+        /// <summary>
+        /// Type code for health check feature toggled messages.
+        /// Sent when features are enabled/disabled based on degradation levels.
+        /// </summary>
+        public const ushort HealthCheckFeatureToggledMessage = 1221;
+
+        /// <summary>
+        /// Type code for health check statistics reset messages.
+        /// Sent when health check statistics are reset.
+        /// </summary>
+        public const ushort HealthCheckStatisticsResetMessage = 1222;
+
+        /// <summary>
+        /// Type code for health check performance threshold exceeded messages.
+        /// Sent when health checks exceed performance thresholds.
+        /// </summary>
+        public const ushort HealthCheckPerformanceThresholdExceededMessage = 1223;
+
+        /// <summary>
+        /// Type code for health check circuit breaker trip messages.
+        /// Sent when circuit breakers trip due to failures.
+        /// </summary>
+        public const ushort HealthCheckCircuitBreakerTripMessage = 1224;
+
+        /// <summary>
+        /// Type code for health check circuit breaker recovery messages.
+        /// Sent when circuit breakers attempt or complete recovery.
+        /// </summary>
+        public const ushort HealthCheckCircuitBreakerRecoveryMessage = 1225;
+
+        /// <summary>
+        /// Type code for health check scheduled execution started messages.
+        /// Sent when scheduled health check executions begin.
+        /// </summary>
+        public const ushort HealthCheckScheduledExecutionStartedMessage = 1226;
+
+        /// <summary>
+        /// Type code for health check scheduled execution completed messages.
+        /// Sent when scheduled health check executions complete.
+        /// </summary>
+        public const ushort HealthCheckScheduledExecutionCompletedMessage = 1227;
+
+
         #endregion
         
         #region Pooling System Messages (1300-1399)

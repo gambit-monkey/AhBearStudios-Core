@@ -47,7 +47,8 @@ public sealed class HealthCheckService : IHealthCheckService, IDisposable
     // State management
     private readonly Guid _serviceId;
     private readonly CancellationTokenSource _serviceCancellationSource;
-    private readonly Timer _automaticCheckTimer;
+    private CancellationTokenSource _automaticCheckCancellationSource;
+    private UniTask _automaticCheckTask;
     private OverallHealthStatus _overallStatus;
     private bool _isRunning;
     private bool _isDisposed;
@@ -83,30 +84,14 @@ public sealed class HealthCheckService : IHealthCheckService, IDisposable
         _lastResults = new ConcurrentDictionary<FixedString64Bytes, HealthCheckResult>();
         
         _overallStatus = OverallHealthStatus.Unknown;
-        
-        // Initialize automatic check timer if enabled
-        if (_config.EnableAutomaticChecks)
-        {
-            _automaticCheckTimer = new Timer(
-                ExecuteAutomaticHealthChecksCallback,
-                null,
-                _config.AutomaticCheckInterval,
-                _config.AutomaticCheckInterval);
-        }
+
+        // Initialize automatic check cancellation source
+        _automaticCheckCancellationSource = new CancellationTokenSource();
 
         _logger.LogInfo("HealthCheckService initialized in orchestration mode with ID: {ServiceId}", _serviceId);
     }
 
     #region IHealthCheckService Implementation
-
-    /// <inheritdoc />
-    public event EventHandler<HealthStatusChangedEventArgs> HealthStatusChanged;
-    
-    /// <inheritdoc />
-    public event EventHandler<CircuitBreakerStateChangedEventArgs> CircuitBreakerStateChanged;
-    
-    /// <inheritdoc />
-    public event EventHandler<DegradationStatusChangedEventArgs> DegradationStatusChanged;
 
     /// <inheritdoc />
     public void RegisterHealthCheck(IHealthCheck healthCheck, HealthCheckConfiguration config = null)
@@ -146,20 +131,18 @@ public sealed class HealthCheckService : IHealthCheckService, IDisposable
     }
 
     /// <inheritdoc />
-    public bool UnregisterHealthCheck(string name)
+    public bool UnregisterHealthCheck(FixedString64Bytes name)
     {
         ThrowIfDisposed();
         
-        if (string.IsNullOrEmpty(name))
+        if (name.IsEmpty)
             return false;
-
-        var fixedName = new FixedString64Bytes(name);
         
-        var removed = _registeredHealthChecks.TryRemove(fixedName, out var healthCheck);
+        var removed = _registeredHealthChecks.TryRemove(name, out var healthCheck);
         if (removed)
         {
-            _healthCheckConfigs.TryRemove(fixedName, out _);
-            _lastResults.TryRemove(fixedName, out _);
+            _healthCheckConfigs.TryRemove(name, out _);
+            _lastResults.TryRemove(name, out _);
             
             _logger.LogDebug("Unregistered health check: {HealthCheckName}", name);
         }
@@ -168,16 +151,14 @@ public sealed class HealthCheckService : IHealthCheckService, IDisposable
     }
 
     /// <inheritdoc />
-    public async UniTask<HealthCheckResult> ExecuteHealthCheckAsync(string name, CancellationToken cancellationToken = default)
+    public async UniTask<HealthCheckResult> ExecuteHealthCheckAsync(FixedString64Bytes name, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         
-        if (string.IsNullOrEmpty(name))
+        if (name.IsEmpty)
             throw new ArgumentException("Health check name cannot be null or empty", nameof(name));
 
-        var fixedName = new FixedString64Bytes(name);
-        
-        if (!_registeredHealthChecks.TryGetValue(fixedName, out var healthCheck))
+        if (!_registeredHealthChecks.TryGetValue(name, out var healthCheck))
         {
             throw new InvalidOperationException($"Health check '{name}' is not registered");
         }
@@ -189,7 +170,7 @@ public sealed class HealthCheckService : IHealthCheckService, IDisposable
     }
 
     /// <inheritdoc />
-    public async UniTask<Dictionary<string, HealthCheckResult>> ExecuteAllHealthChecksAsync(CancellationToken cancellationToken = default)
+    public async UniTask<HealthReport> ExecuteAllHealthChecksAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
         
@@ -223,9 +204,20 @@ public sealed class HealthCheckService : IHealthCheckService, IDisposable
             
             // Update overall status based on results
             await UpdateOverallHealthStatusAsync(results);
-            
+
             _logger.LogDebug("Executed {Count} health checks", results.Count);
-            return results;
+
+            // Return HealthReport instead of raw dictionary
+            return new HealthReport
+            {
+                OverallStatus = _overallStatus,
+                CheckResults = results,
+                GeneratedAt = DateTime.UtcNow,
+                TotalChecks = _registeredHealthChecks.Count,
+                HealthyChecks = results.Values.AsValueEnumerable().Count(r => r.Status == HealthStatus.Healthy),
+                UnhealthyChecks = results.Values.AsValueEnumerable().Count(r => r.Status == HealthStatus.Unhealthy),
+                DegradedChecks = results.Values.AsValueEnumerable().Count(r => r.Status == HealthStatus.Degraded)
+            };
         }
     }
 
@@ -260,21 +252,195 @@ public sealed class HealthCheckService : IHealthCheckService, IDisposable
         return _registeredHealthChecks.ContainsKey(new FixedString64Bytes(name));
     }
 
-    /// <inheritdoc />
-    public string[] GetRegisteredHealthCheckNames()
-    {
-        ThrowIfDisposed();
-        
-        return _registeredHealthChecks.Keys.AsValueEnumerable()
-            .Select(name => name.ToString())
-            .ToArray();
-    }
 
     /// <inheritdoc />
     public OverallHealthStatus GetOverallHealthStatus()
     {
         ThrowIfDisposed();
         return _overallStatus;
+    }
+
+    /// <inheritdoc />
+    public async UniTask<HealthStatus> GetOverallHealthStatusAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        // Convert OverallHealthStatus to HealthStatus
+        return _overallStatus switch
+        {
+            OverallHealthStatus.Healthy => HealthStatus.Healthy,
+            OverallHealthStatus.Warning => HealthStatus.Warning,
+            OverallHealthStatus.Degraded => HealthStatus.Degraded,
+            OverallHealthStatus.Unhealthy => HealthStatus.Unhealthy,
+            _ => HealthStatus.Unknown
+        };
+    }
+
+    /// <inheritdoc />
+    public DegradationLevel GetCurrentDegradationLevel()
+    {
+        ThrowIfDisposed();
+
+        // For now return based on overall health status
+        // In a full implementation this would come from the degradation manager
+        return _overallStatus switch
+        {
+            OverallHealthStatus.Healthy => DegradationLevel.None,
+            OverallHealthStatus.Warning => DegradationLevel.Minor,
+            OverallHealthStatus.Degraded => DegradationLevel.Moderate,
+            OverallHealthStatus.Unhealthy => DegradationLevel.Severe,
+            _ => DegradationLevel.None
+        };
+    }
+
+    /// <inheritdoc />
+    public CircuitBreakerState GetCircuitBreakerState(FixedString64Bytes operationName)
+    {
+        ThrowIfDisposed();
+
+        // For now return Closed - in full implementation this would query the circuit breaker manager
+        return CircuitBreakerState.Closed;
+    }
+
+    /// <inheritdoc />
+    public Dictionary<FixedString64Bytes, CircuitBreakerState> GetAllCircuitBreakerStates()
+    {
+        ThrowIfDisposed();
+
+        // For now return empty dictionary - in full implementation this would query the circuit breaker manager
+        return new Dictionary<FixedString64Bytes, CircuitBreakerState>();
+    }
+
+    /// <inheritdoc />
+    public List<HealthCheckResult> GetHealthCheckHistory(FixedString64Bytes name, int maxResults = 100)
+    {
+        ThrowIfDisposed();
+
+        // For now return just the last result if available
+        if (_lastResults.TryGetValue(name, out var lastResult))
+        {
+            return new List<HealthCheckResult> { lastResult };
+        }
+
+        return new List<HealthCheckResult>();
+    }
+
+    /// <inheritdoc />
+    public List<FixedString64Bytes> GetRegisteredHealthCheckNames()
+    {
+        ThrowIfDisposed();
+
+        return _registeredHealthChecks.Keys.AsValueEnumerable().ToList();
+    }
+
+    /// <inheritdoc />
+    public Dictionary<string, object> GetHealthCheckMetadata(FixedString64Bytes name)
+    {
+        ThrowIfDisposed();
+
+        if (!_registeredHealthChecks.TryGetValue(name, out var healthCheck))
+        {
+            return new Dictionary<string, object>();
+        }
+
+        return new Dictionary<string, object>
+        {
+            ["Name"] = healthCheck.Name.ToString(),
+            ["Category"] = healthCheck.Category.ToString(),
+            ["Registered"] = DateTime.UtcNow // In full implementation this would be the actual registration time
+        };
+    }
+
+    /// <inheritdoc />
+    public void StartAutomaticChecks()
+    {
+        ThrowIfDisposed();
+
+        // For now use the existing Start method
+        Start();
+    }
+
+    /// <inheritdoc />
+    public void StopAutomaticChecks()
+    {
+        ThrowIfDisposed();
+
+        // For now use the existing Stop method
+        Stop();
+    }
+
+    /// <inheritdoc />
+    public bool IsAutomaticChecksRunning()
+    {
+        ThrowIfDisposed();
+
+        return _isRunning;
+    }
+
+    /// <inheritdoc />
+    public void ForceCircuitBreakerOpen(FixedString64Bytes operationName, string reason)
+    {
+        ThrowIfDisposed();
+
+        _logger.LogWarning("Circuit breaker force open requested for {Operation}: {Reason}", operationName, reason);
+        // In full implementation this would interact with the circuit breaker manager
+    }
+
+    /// <inheritdoc />
+    public void ForceCircuitBreakerClosed(FixedString64Bytes operationName, string reason)
+    {
+        ThrowIfDisposed();
+
+        _logger.LogInfo("Circuit breaker force closed requested for {Operation}: {Reason}", operationName, reason);
+        // In full implementation this would interact with the circuit breaker manager
+    }
+
+    /// <inheritdoc />
+    public void SetDegradationLevel(DegradationLevel level, string reason)
+    {
+        ThrowIfDisposed();
+
+        _logger.LogInfo("Degradation level change requested to {Level}: {Reason}", level, reason);
+        // In full implementation this would interact with the degradation manager
+    }
+
+    /// <inheritdoc />
+    public HealthStatistics GetHealthStatistics()
+    {
+        ThrowIfDisposed();
+
+        // Create basic statistics based on current state
+        var healthyCount = _lastResults.Values.AsValueEnumerable().Count(r => r.Status == HealthStatus.Healthy);
+        var unhealthyCount = _lastResults.Values.AsValueEnumerable().Count(r => r.Status == HealthStatus.Unhealthy);
+        var degradedCount = _lastResults.Values.AsValueEnumerable().Count(r => r.Status == HealthStatus.Degraded);
+
+        return new HealthStatistics
+        {
+            TotalHealthChecks = _registeredHealthChecks.Count,
+            HealthyChecks = healthyCount,
+            UnhealthyChecks = unhealthyCount,
+            DegradedChecks = degradedCount,
+            OverallStatus = _overallStatus,
+            LastUpdated = DateTime.UtcNow
+        };
+    }
+
+    /// <inheritdoc />
+    public bool IsHealthCheckEnabled(FixedString64Bytes name)
+    {
+        ThrowIfDisposed();
+
+        // For now assume all registered health checks are enabled
+        return _registeredHealthChecks.ContainsKey(name);
+    }
+
+    /// <inheritdoc />
+    public void SetHealthCheckEnabled(FixedString64Bytes name, bool enabled)
+    {
+        ThrowIfDisposed();
+
+        _logger.LogInfo("Health check {Name} enable state change requested to {Enabled}", name, enabled);
+        // In full implementation this would track enabled/disabled state
     }
 
     #endregion
@@ -322,7 +488,7 @@ public sealed class HealthCheckService : IHealthCheckService, IDisposable
     public void Start()
     {
         ThrowIfDisposed();
-        
+
         if (_isRunning)
         {
             _logger.LogWarning("HealthCheckService is already running");
@@ -330,6 +496,21 @@ public sealed class HealthCheckService : IHealthCheckService, IDisposable
         }
 
         _isRunning = true;
+
+        // Start automatic health checks if enabled
+        if (_config.EnableAutomaticChecks)
+        {
+            _automaticCheckCancellationSource?.Cancel();
+            _automaticCheckCancellationSource?.Dispose();
+            _automaticCheckCancellationSource = new CancellationTokenSource();
+
+            var combinedToken = CancellationTokenSource.CreateLinkedTokenSource(
+                _serviceCancellationSource.Token,
+                _automaticCheckCancellationSource.Token).Token;
+
+            _automaticCheckTask = ExecuteAutomaticHealthChecksLoopAsync(combinedToken);
+        }
+
         _logger.LogInfo("HealthCheckService started in orchestration mode");
     }
 
@@ -339,7 +520,7 @@ public sealed class HealthCheckService : IHealthCheckService, IDisposable
     public void Stop()
     {
         ThrowIfDisposed();
-        
+
         if (!_isRunning)
         {
             _logger.LogWarning("HealthCheckService is not running");
@@ -347,6 +528,10 @@ public sealed class HealthCheckService : IHealthCheckService, IDisposable
         }
 
         _isRunning = false;
+
+        // Stop automatic health checks
+        _automaticCheckCancellationSource?.Cancel();
+
         _logger.LogInfo("HealthCheckService stopped");
     }
 
@@ -467,8 +652,7 @@ public sealed class HealthCheckService : IHealthCheckService, IDisposable
             _logger.LogInfo("Overall health status changed from {PreviousStatus} to {NewStatus}", 
                 previousStatus, _overallStatus);
 
-            var eventArgs = new HealthStatusChangedEventArgs(_overallStatus, previousStatus, DateTime.UtcNow);
-            HealthStatusChanged?.Invoke(this, eventArgs);
+            // Health status changes are published via message bus below
 
             // Publish health status change message to message bus
             try
@@ -523,18 +707,33 @@ public sealed class HealthCheckService : IHealthCheckService, IDisposable
         }
     }
 
-    private async void ExecuteAutomaticHealthChecksCallback(object state)
+    private async UniTask ExecuteAutomaticHealthChecksLoopAsync(CancellationToken cancellationToken)
     {
-        if (!_isRunning || _isDisposed)
-            return;
+        while (!cancellationToken.IsCancellationRequested && _isRunning && !_isDisposed)
+        {
+            try
+            {
+                await ExecuteAllHealthChecksAsync(cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Expected when cancellation is requested
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during automatic health check execution");
+            }
 
-        try
-        {
-            await ExecuteAllHealthChecksAsync(_serviceCancellationSource.Token);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Error during automatic health check execution");
+            try
+            {
+                await UniTask.Delay(_config.AutomaticCheckInterval, cancellationToken: cancellationToken);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                // Expected when cancellation is requested
+                break;
+            }
         }
     }
 
@@ -593,7 +792,8 @@ public sealed class HealthCheckService : IHealthCheckService, IDisposable
             
             _isRunning = false;
             _serviceCancellationSource?.Cancel();
-            _automaticCheckTimer?.Dispose();
+            _automaticCheckCancellationSource?.Cancel();
+            _automaticCheckCancellationSource?.Dispose();
             _registrationManager?.Dispose();
             _serviceCancellationSource?.Dispose();
 

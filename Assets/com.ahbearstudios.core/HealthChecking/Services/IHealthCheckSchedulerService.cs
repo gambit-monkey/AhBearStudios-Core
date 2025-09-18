@@ -7,18 +7,12 @@ namespace AhBearStudios.Core.HealthChecking.Services
     /// <summary>
     /// Interface for health check scheduling services.
     /// Manages automatic execution of health checks at configured intervals.
+    /// Scheduling events are published via IMessageBusService following CLAUDE.md patterns:
+    /// - HealthCheckScheduledExecutionStartedMessage for execution start events
+    /// - HealthCheckScheduledExecutionCompletedMessage for execution completion events
     /// </summary>
-    public interface IHealthCheckScheduler : IDisposable
+    public interface IHealthCheckSchedulerService : IDisposable
     {
-        /// <summary>
-        /// Event triggered when a scheduled health check execution begins.
-        /// </summary>
-        event EventHandler<ScheduledHealthCheckEventArgs> ScheduledExecutionStarted;
-
-        /// <summary>
-        /// Event triggered when a scheduled health check execution completes.
-        /// </summary>
-        event EventHandler<ScheduledHealthCheckEventArgs> ScheduledExecutionCompleted;
 
         /// <summary>
         /// Gets whether automatic scheduling is currently active.

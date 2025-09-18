@@ -167,7 +167,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             }
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("DegradationManagerInit", _managerId.ToString());
-            _logger.LogInfo($"HealthDegradationManager initialized with automatic degradation: {_automaticDegradationEnabled}", correlationId);
+            _logger.LogInfo($"HealthDegradationManager initialized with automatic degradation: {_automaticDegradationEnabled}", correlationId: correlationId);
         }
 
         /// <summary>
@@ -202,7 +202,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                         var changed = InternalSetDegradationLevel(newLevel, evaluationReason, true, triggerMetrics, correlationId);
                         if (changed)
                         {
-                            _logger.LogInfo($"Degradation level automatically changed from {_currentLevel} to {newLevel}: {evaluationReason}", correlationId);
+                            _logger.LogInfo($"Degradation level automatically changed from {_currentLevel} to {newLevel}: {evaluationReason}", correlationId: correlationId);
                         }
                         return changed;
                     }
@@ -211,7 +211,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogException("Error evaluating degradation level", ex,correlationId.ToString());
+                    _logger.LogException("Error evaluating degradation level", ex, correlationId: correlationId);
                     return false;
                 }
             }
@@ -233,7 +233,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             var changed = InternalSetDegradationLevel(level, manualReason, false, null, correlationId);
             if (changed)
             {
-                _logger.LogInfo($"Degradation level manually changed to {level}: {reason}", correlationId);
+                _logger.LogInfo($"Degradation level manually changed to {level}: {reason}", correlationId: correlationId);
             }
 
             return changed;
@@ -260,7 +260,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _featureStates.AddOrUpdate(featureName, isEnabled, (_, _) => isEnabled);
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("FeatureRegistration", _managerId.ToString());
-            _logger.LogInfo($"Registered managed feature '{featureName}' (minimum level: {minimumLevel}, essential: {isEssential}, enabled: {isEnabled})", correlationId);
+            _logger.LogInfo($"Registered managed feature '{featureName}' (minimum level: {minimumLevel}, essential: {isEssential}, enabled: {isEnabled})", correlationId: correlationId);
         }
 
         /// <summary>
@@ -281,7 +281,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             if (removed)
             {
                 var correlationId = DeterministicIdGenerator.GenerateCorrelationId("FeatureUnregistration", _managerId.ToString());
-                _logger.LogInfo($"Unregistered managed feature '{featureName}'", correlationId);
+                _logger.LogInfo($"Unregistered managed feature '{featureName}'", correlationId: correlationId);
             }
 
             return removed;
@@ -354,7 +354,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 }
             }
 
-            _logger.LogInfo($"Refreshed feature states for {_managedFeatures.Count} features: {refreshReason}", correlationId);
+            _logger.LogInfo($"Refreshed feature states for {_managedFeatures.Count} features: {refreshReason}", correlationId: correlationId);
         }
 
         /// <summary>
@@ -396,8 +396,8 @@ namespace AhBearStudios.Core.HealthChecking.Services
                     AutomaticChanges = _automaticChanges,
                     ManualChanges = _manualChanges,
                     ManagedFeatures = _managedFeatures.Count,
-                    EnabledFeatures = _featureStates.Values.Count(enabled => enabled),
-                    DisabledFeatures = _featureStates.Values.Count(enabled => !enabled),
+                    EnabledFeatures = _featureStates.Values.AsValueEnumerable().Count(enabled => enabled),
+                    DisabledFeatures = _featureStates.Values.AsValueEnumerable().Count(enabled => !enabled),
                     TimeDistribution = new ReadOnlyDictionary<DegradationLevel, TimeSpan>(updatedDurations),
                     AutomaticDegradationEnabled = _automaticDegradationEnabled,
                     LastEvaluation = _lastEvaluationTime,
@@ -424,7 +424,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             }
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AutoDegradationToggle", _managerId.ToString());
-            _logger.LogInfo($"Automatic degradation {(enabled ? "enabled" : "disabled")}: {reason ?? "No reason provided"}", correlationId);
+            _logger.LogInfo($"Automatic degradation {(enabled ? "enabled" : "disabled")}: {reason ?? "No reason provided"}", correlationId: correlationId);
         }
 
         private bool InternalSetDegradationLevel(
@@ -551,7 +551,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
             FeatureToggled?.Invoke(this, eventArgs);
 
-            _logger.LogInfo($"Feature '{featureName}' {(isEnabled ? "enabled" : "disabled")} due to degradation level {triggeringLevel}", correlationId);
+            _logger.LogInfo($"Feature '{featureName}' {(isEnabled ? "enabled" : "disabled")} due to degradation level {triggeringLevel}", correlationId: correlationId);
         }
 
         private static bool ShouldFeatureBeEnabled(ManagedFeature feature, DegradationLevel currentLevel)
@@ -644,7 +644,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _disposed = true;
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("DegradationManagerDispose", _managerId.ToString());
-            _logger.LogInfo("HealthDegradationManager disposed", correlationId);
+            _logger.LogInfo("HealthDegradationManager disposed", correlationId: correlationId);
         }
 
         /// <summary>

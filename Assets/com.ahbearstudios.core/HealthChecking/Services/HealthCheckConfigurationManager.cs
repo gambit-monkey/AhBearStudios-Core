@@ -1,6 +1,7 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-
+using System.Linq;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Common.Utilities;
@@ -52,7 +53,8 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _serviceConfig = initialServiceConfig ?? HealthCheckServiceConfig.ForProduction();
 
             _loggingService.LogInfo("HealthCheckConfigurationManager initialized",
-                DeterministicIdGenerator.GenerateCorrelationId("ConfigManagerInit", "System"));
+                DeterministicIdGenerator.GenerateCorrelationId("ConfigManagerInit", "System"),
+                sourceContext: nameof(HealthCheckConfigurationManager));
         }
 
         public IHealthCheckServiceConfig ServiceConfig => _serviceConfig;
@@ -68,24 +70,26 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
                 try
                 {
-                    _loggingService.LogInfo($"Updating service configuration requested by {changedBy}", correlationId);
+                    _loggingService.LogInfo($"Updating service configuration requested by {changedBy}", correlationId,
+                        sourceContext: nameof(HealthCheckConfigurationManager));
 
                     // Validate new configuration
                     var validationErrors = ValidateConfiguration(newConfig);
                     if (validationErrors.Count > 0)
                     {
                         var errorMessage = $"Service configuration validation failed: {string.Join(", ", validationErrors)}";
-                        _loggingService.LogError(errorMessage, correlationId);
-                        await _alertService.RaiseAlertAsync(new Alert
-                        {
-                            Id = DeterministicIdGenerator.GenerateAlertId("ServiceConfigValidation", changedBy),
-                            Severity = AlertSeverity.Warning,
-                            Title = "Health Check Service Configuration Validation Failed",
-                            Message = errorMessage,
-                            Source = "HealthCheckConfigurationManager",
-                            CorrelationId = correlationId,
-                            Tags = new HashSet<FixedString64Bytes> { "HealthCheck", "Configuration", "Validation" }
-                        });
+                        _loggingService.LogError(errorMessage, correlationId,
+                            sourceContext: nameof(HealthCheckConfigurationManager));
+                        var validationAlert = Alert.Create(
+                            message: "Health Check Service Configuration Validation Failed",
+                            severity: AlertSeverity.Warning,
+                            source: "HealthCheckConfigurationManager",
+                            tag: "Configuration",
+                            correlationId: correlationId
+                        ) with {
+                            Id = DeterministicIdGenerator.GenerateAlertId("Warning", "HealthCheckConfigurationManager", $"ServiceConfigValidation_{changedBy}")
+                        };
+                        await _alertService.RaiseAlertAsync(validationAlert);
                         throw new InvalidOperationException(errorMessage);
                     }
 
@@ -97,50 +101,53 @@ namespace AhBearStudios.Core.HealthChecking.Services
                     }
 
                     // Publish configuration change message
-                    var configChangeMessage = new HealthCheckServiceConfigurationChangedMessage
-                    {
-                        ChangeType = "ServiceConfigurationUpdate",
-                        ChangeDescription = $"Service configuration updated by {changedBy}",
-                        AutomaticChecksEnabled = newConfig.EnableAutomaticChecks,
-                        NewAutomaticCheckInterval = newConfig.AutomaticCheckInterval,
-                        MaxConcurrentHealthChecks = newConfig.MaxConcurrentHealthChecks,
-                        CircuitBreakerEnabled = newConfig.EnableCircuitBreaker,
-                        GracefulDegradationEnabled = newConfig.EnableGracefulDegradation,
-                        ChangedBy = changedBy,
-                        PreviousVersion = "Previous",
-                        NewVersion = "Current"
-                    };
+                    var configChangeMessage = HealthCheckServiceConfigurationChangedMessage.Create(
+                        changeType: "ServiceConfigurationUpdate",
+                        changeDescription: $"Service configuration updated by {changedBy}",
+                        automaticChecksEnabled: newConfig.EnableAutomaticChecks,
+                        maxConcurrentHealthChecks: newConfig.MaxConcurrentHealthChecks,
+                        circuitBreakerEnabled: newConfig.EnableCircuitBreaker,
+                        gracefulDegradationEnabled: newConfig.EnableGracefulDegradation,
+                        newAutomaticCheckInterval: newConfig.AutomaticCheckInterval,
+                        changedBy: changedBy,
+                        previousVersion: "Previous",
+                        newVersion: "Current",
+                        source: "HealthCheckConfigurationManager",
+                        correlationId: correlationId
+                    );
 
-                    await _messageBus.PublishAsync(configChangeMessage);
+                    await _messageBus.PublishMessageAsync(configChangeMessage);
 
-                    _loggingService.LogInfo($"Service configuration updated successfully by {changedBy}", correlationId);
+                    _loggingService.LogInfo($"Service configuration updated successfully by {changedBy}", correlationId,
+                        sourceContext: nameof(HealthCheckConfigurationManager));
 
                     // Raise informational alert
-                    await _alertService.RaiseAlertAsync(new Alert
-                    {
-                        Id = DeterministicIdGenerator.GenerateAlertId("ServiceConfigUpdated", changedBy),
-                        Severity = AlertSeverity.Info,
-                        Title = "Health Check Service Configuration Updated",
-                        Message = $"Service configuration has been updated by {changedBy}",
-                        Source = "HealthCheckConfigurationManager",
-                        CorrelationId = correlationId,
-                        Tags = new HashSet<FixedString64Bytes> { "HealthCheck", "Configuration", "Update" }
-                    });
+                    var updateAlert = Alert.Create(
+                        message: $"Service configuration has been updated by {changedBy}",
+                        severity: AlertSeverity.Info,
+                        source: "HealthCheckConfigurationManager",
+                        tag: "Configuration",
+                        correlationId: correlationId
+                    ) with {
+                        Id = DeterministicIdGenerator.GenerateAlertId("Info", "HealthCheckConfigurationManager", $"ServiceConfigUpdated_{changedBy}")
+                    };
+                    await _alertService.RaiseAlertAsync(updateAlert);
                 }
                 catch (Exception ex)
                 {
-                    _loggingService.LogError($"Failed to update service configuration: {ex.Message}", correlationId, ex);
-                    await _alertService.RaiseAlertAsync(new Alert
-                    {
-                        Id = DeterministicIdGenerator.GenerateAlertId("ServiceConfigUpdateError", changedBy),
-                        Severity = AlertSeverity.Critical,
-                        Title = "Health Check Service Configuration Update Failed",
-                        Message = $"Failed to update service configuration: {ex.Message}",
-                        Source = "HealthCheckConfigurationManager",
-                        CorrelationId = correlationId,
-                        Exception = ex,
-                        Tags = new HashSet<FixedString64Bytes> { "HealthCheck", "Configuration", "Error" }
-                    });
+                    _loggingService.LogException($"Failed to update service configuration: {ex.Message}", ex, correlationId,
+                        sourceContext: nameof(HealthCheckConfigurationManager));
+                    var errorAlert = Alert.Create(
+                        message: $"Failed to update service configuration: {ex.Message}",
+                        severity: AlertSeverity.Critical,
+                        source: "HealthCheckConfigurationManager",
+                        tag: "Error",
+                        correlationId: correlationId,
+                        context: AlertContext.WithException(ex)
+                    ) with {
+                        Id = DeterministicIdGenerator.GenerateAlertId("Critical", "HealthCheckConfigurationManager", $"ServiceConfigUpdateError_{changedBy}")
+                    };
+                    await _alertService.RaiseAlertAsync(errorAlert);
                     throw;
                 }
             }
@@ -164,82 +171,81 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
                 try
                 {
-                    _loggingService.LogInfo($"Updating health check configuration '{configuration.Name}' requested by {changedBy}", correlationId);
+                    _loggingService.LogInfo($"Updating health check configuration '{configuration.Name}' requested by {changedBy}", correlationId,
+                        sourceContext: nameof(HealthCheckConfigurationManager));
 
                     // Validate configuration
                     var validationErrors = ValidateHealthCheckConfiguration(configuration);
                     if (validationErrors.Count > 0)
                     {
                         var errorMessage = $"Health check configuration validation failed for '{configuration.Name}': {string.Join(", ", validationErrors)}";
-                        _loggingService.LogError(errorMessage, correlationId);
-                        await _alertService.RaiseAlertAsync(new Alert
-                        {
-                            Id = DeterministicIdGenerator.GenerateAlertId("HealthCheckConfigValidation", changedBy),
-                            Severity = AlertSeverity.Warning,
-                            Title = "Health Check Configuration Validation Failed",
-                            Message = errorMessage,
-                            Source = "HealthCheckConfigurationManager",
-                            CorrelationId = correlationId,
-                            Tags = new HashSet<FixedString64Bytes> { "HealthCheck", "Configuration", "Validation" }
-                        });
+                        _loggingService.LogError(errorMessage, correlationId,
+                            sourceContext: nameof(HealthCheckConfigurationManager));
+                        var healthCheckValidationAlert = Alert.Create(
+                            message: "Health Check Configuration Validation Failed",
+                            severity: AlertSeverity.Warning,
+                            source: "HealthCheckConfigurationManager",
+                            tag: "Validation",
+                            correlationId: correlationId
+                        ) with {
+                            Id = DeterministicIdGenerator.GenerateAlertId("Warning", "HealthCheckConfigurationManager", $"HealthCheckConfigValidation_{changedBy}")
+                        };
+                        await _alertService.RaiseAlertAsync(healthCheckValidationAlert);
                         throw new InvalidOperationException(errorMessage);
                     }
 
-                    // Update configuration with modification metadata
-                    var updatedConfig = configuration with 
-                    { 
-                        ModifiedAt = DateTime.UtcNow,
-                        ModifiedBy = changedBy
-                    };
-
-                    _healthCheckConfigurations.AddOrUpdate(configuration.Name, updatedConfig, (key, oldValue) => updatedConfig);
+                    // Update configuration in the store
+                    _healthCheckConfigurations.AddOrUpdate(configuration.Name, configuration, (key, oldValue) => configuration);
 
                     // Publish configuration change message
-                    var configChangeMessage = new HealthCheckConfigurationChangedMessage
-                    {
-                        ConfigurationName = configuration.Name,
-                        ChangeType = "ConfigurationUpdate",
-                        ChangeDescription = $"Health check configuration '{configuration.Name}' updated by {changedBy}",
-                        IsEnabled = configuration.Enabled,
-                        NewInterval = configuration.Interval,
-                        NewTimeout = configuration.Timeout,
-                        ChangedBy = changedBy,
-                        Metadata = $"Priority: {configuration.Priority}, Critical: {configuration.IsCritical}"
-                    };
+                    var configChangeMessage = HealthCheckConfigurationChangedMessage.Create(
+                        configurationName: configuration.Name,
+                        changeType: "ConfigurationUpdate",
+                        changeDescription: $"Health check configuration '{configuration.Name}' updated by {changedBy}",
+                        isEnabled: configuration.Enabled,
+                        newInterval: configuration.Interval,
+                        newTimeout: configuration.Timeout,
+                        changedBy: changedBy,
+                        metadata: $"Priority: {configuration.Priority}, Critical: {configuration.IsCritical}",
+                        source: "HealthCheckConfigurationManager",
+                        correlationId: correlationId
+                    );
 
-                    await _messageBus.PublishAsync(configChangeMessage);
+                    await _messageBus.PublishMessageAsync(configChangeMessage);
 
-                    _loggingService.LogInfo($"Health check configuration '{configuration.Name}' updated successfully by {changedBy}", correlationId);
+                    _loggingService.LogInfo($"Health check configuration '{configuration.Name}' updated successfully by {changedBy}", correlationId,
+                        sourceContext: nameof(HealthCheckConfigurationManager));
 
                     // Raise informational alert for critical health checks
                     if (configuration.IsCritical)
                     {
-                        await _alertService.RaiseAlertAsync(new Alert
-                        {
-                            Id = DeterministicIdGenerator.GenerateAlertId("CriticalHealthCheckConfigUpdated", changedBy),
-                            Severity = AlertSeverity.Warning,
-                            Title = "Critical Health Check Configuration Updated",
-                            Message = $"Critical health check '{configuration.DisplayName}' configuration has been updated by {changedBy}",
-                            Source = "HealthCheckConfigurationManager",
-                            CorrelationId = correlationId,
-                            Tags = new HashSet<FixedString64Bytes> { "HealthCheck", "Configuration", "Critical" }
-                        });
+                        var criticalUpdateAlert = Alert.Create(
+                            message: $"Critical health check '{configuration.DisplayName}' configuration has been updated by {changedBy}",
+                            severity: AlertSeverity.Warning,
+                            source: "HealthCheckConfigurationManager",
+                            tag: "Critical",
+                            correlationId: correlationId
+                        ) with {
+                            Id = DeterministicIdGenerator.GenerateAlertId("Warning", "HealthCheckConfigurationManager", $"CriticalHealthCheckConfigUpdated_{changedBy}")
+                        };
+                        await _alertService.RaiseAlertAsync(criticalUpdateAlert);
                     }
                 }
                 catch (Exception ex)
                 {
-                    _loggingService.LogError($"Failed to update health check configuration '{configuration.Name}': {ex.Message}", correlationId, ex);
-                    await _alertService.RaiseAlertAsync(new Alert
-                    {
-                        Id = DeterministicIdGenerator.GenerateAlertId("HealthCheckConfigUpdateError", changedBy),
-                        Severity = AlertSeverity.Critical,
-                        Title = "Health Check Configuration Update Failed",
-                        Message = $"Failed to update health check configuration '{configuration.Name}': {ex.Message}",
-                        Source = "HealthCheckConfigurationManager",
-                        CorrelationId = correlationId,
-                        Exception = ex,
-                        Tags = new HashSet<FixedString64Bytes> { "HealthCheck", "Configuration", "Error" }
-                    });
+                    _loggingService.LogException($"Failed to update health check configuration '{configuration.Name}': {ex.Message}", ex, correlationId,
+                        sourceContext: nameof(HealthCheckConfigurationManager));
+                    var configUpdateErrorAlert = Alert.Create(
+                        message: $"Failed to update health check configuration '{configuration.Name}': {ex.Message}",
+                        severity: AlertSeverity.Critical,
+                        source: "HealthCheckConfigurationManager",
+                        tag: "Error",
+                        correlationId: correlationId,
+                        context: AlertContext.WithException(ex)
+                    ) with {
+                        Id = DeterministicIdGenerator.GenerateAlertId("Critical", "HealthCheckConfigurationManager", $"HealthCheckConfigUpdateError_{changedBy}")
+                    };
+                    await _alertService.RaiseAlertAsync(configUpdateErrorAlert);
                     throw;
                 }
             }
@@ -255,7 +261,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 throw new ArgumentException($"Health check configuration '{name}' not found", nameof(name));
             }
 
-            var updatedConfig = existingConfig.WithEnabled(enabled);
+            var updatedConfig = existingConfig with { Enabled = enabled };
             await UpdateHealthCheckConfigurationAsync(updatedConfig, changedBy);
         }
 
@@ -269,7 +275,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 throw new ArgumentException($"Health check configuration '{name}' not found", nameof(name));
             }
 
-            var updatedConfig = existingConfig.WithInterval(newInterval);
+            var updatedConfig = existingConfig with { Interval = newInterval };
             await UpdateHealthCheckConfigurationAsync(updatedConfig, changedBy);
         }
 
@@ -277,7 +283,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
         {
             if (_disposed) throw new ObjectDisposedException(nameof(HealthCheckConfigurationManager));
             
-            return _healthCheckConfigurations.Values.ToList().AsReadOnly();
+            return _healthCheckConfigurations.Values.AsEnumerable().ToList().AsReadOnly();
         }
 
         public List<string> ValidateConfiguration(IHealthCheckServiceConfig config)
@@ -310,27 +316,30 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
             try
             {
-                _loggingService.LogInfo($"Configuration reload requested by {source}", correlationId);
+                _loggingService.LogInfo($"Configuration reload requested by {source}", correlationId,
+                    sourceContext: nameof(HealthCheckConfigurationManager));
 
                 // In a real implementation, this would reload from persistent storage
                 // For now, we'll just log the reload request
 
-                _loggingService.LogInfo($"Configuration reload completed by {source}", correlationId);
+                _loggingService.LogInfo($"Configuration reload completed by {source}", correlationId,
+                    sourceContext: nameof(HealthCheckConfigurationManager));
             }
             catch (Exception ex)
             {
-                _loggingService.LogError($"Failed to reload configurations: {ex.Message}", correlationId, ex);
-                await _alertService.RaiseAlertAsync(new Alert
-                {
-                    Id = DeterministicIdGenerator.GenerateAlertId("ConfigReloadError", source),
-                    Severity = AlertSeverity.Critical,
-                    Title = "Health Check Configuration Reload Failed",
-                    Message = $"Failed to reload configurations: {ex.Message}",
-                    Source = "HealthCheckConfigurationManager",
-                    CorrelationId = correlationId,
-                    Exception = ex,
-                    Tags = new HashSet<FixedString64Bytes> { "HealthCheck", "Configuration", "Reload", "Error" }
-                });
+                _loggingService.LogException($"Failed to reload configurations: {ex.Message}", ex, correlationId,
+                    sourceContext: nameof(HealthCheckConfigurationManager));
+                var reloadErrorAlert = Alert.Create(
+                    message: $"Failed to reload configurations: {ex.Message}",
+                    severity: AlertSeverity.Critical,
+                    source: "HealthCheckConfigurationManager",
+                    tag: "Error",
+                    correlationId: correlationId,
+                    context: AlertContext.WithException(ex)
+                ) with {
+                    Id = DeterministicIdGenerator.GenerateAlertId("Critical", "HealthCheckConfigurationManager", $"ConfigReloadError_{source}")
+                };
+                await _alertService.RaiseAlertAsync(reloadErrorAlert);
                 throw;
             }
         }
@@ -342,18 +351,22 @@ namespace AhBearStudios.Core.HealthChecking.Services
             try
             {
                 var correlationId = DeterministicIdGenerator.GenerateCorrelationId("ConfigManagerDispose", "System");
-                _loggingService.LogInfo("HealthCheckConfigurationManager disposing", correlationId);
+                _loggingService.LogInfo("HealthCheckConfigurationManager disposing", correlationId,
+                    sourceContext: nameof(HealthCheckConfigurationManager));
                 
                 _healthCheckConfigurations.Clear();
                 
-                _loggingService.LogInfo("HealthCheckConfigurationManager disposed successfully", correlationId);
+                _loggingService.LogInfo("HealthCheckConfigurationManager disposed successfully", correlationId,
+                    sourceContext: nameof(HealthCheckConfigurationManager));
             }
             catch (Exception ex)
             {
                 // Best effort logging during disposal
                 try
                 {
-                    _loggingService?.LogError($"Error during HealthCheckConfigurationManager disposal: {ex.Message}", Guid.Empty, ex);
+                    var disposalCorrelationId = DeterministicIdGenerator.GenerateCorrelationId("ConfigManagerDispose", "System");
+                    _loggingService?.LogException($"Error during HealthCheckConfigurationManager disposal: {ex.Message}", ex, disposalCorrelationId,
+                        sourceContext: nameof(HealthCheckConfigurationManager));
                 }
                 catch
                 {

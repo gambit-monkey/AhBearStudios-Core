@@ -40,6 +40,11 @@ namespace AhBearStudios.Core.HealthChecking.Configs
         int MaxHistorySize { get; }
 
         /// <summary>
+        /// Maximum age of historical data to retain for statistics and trend analysis
+        /// </summary>
+        TimeSpan MaxHistoryAge { get; }
+
+        /// <summary>
         /// Maximum number of retries for failed health checks
         /// </summary>
         int MaxRetries { get; }

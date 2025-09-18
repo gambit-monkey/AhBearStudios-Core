@@ -7,18 +7,12 @@ namespace AhBearStudios.Core.HealthChecking.Services
     /// <summary>
     /// Interface for managing system degradation levels and graceful degradation patterns.
     /// Monitors health check results and automatically adjusts system capabilities.
+    /// Degradation events are published via IMessageBusService following CLAUDE.md patterns:
+    /// - HealthCheckDegradationChangeMessage for degradation level changes
+    /// - HealthCheckFeatureToggledMessage for feature enable/disable events
     /// </summary>
     public interface IHealthDegradationManager : IDisposable
     {
-        /// <summary>
-        /// Event triggered when the degradation level changes.
-        /// </summary>
-        event EventHandler<DegradationLevelChangedEventArgs> DegradationLevelChanged;
-
-        /// <summary>
-        /// Event triggered when a feature is automatically enabled or disabled.
-        /// </summary>
-        event EventHandler<FeatureToggleEventArgs> FeatureToggled;
 
         /// <summary>
         /// Gets the current system degradation level.

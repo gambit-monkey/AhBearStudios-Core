@@ -42,6 +42,11 @@ public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
     public int MaxHistorySize { get; init; }
 
     /// <summary>
+    /// Maximum age of historical data to retain for statistics and trend analysis
+    /// </summary>
+    public TimeSpan MaxHistoryAge { get; init; }
+
+    /// <summary>
     /// Maximum number of retries for failed health checks
     /// </summary>
     public int MaxRetries { get; init; }
@@ -202,6 +207,7 @@ public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
             DefaultTimeout = TimeSpan.FromSeconds(30),
             EnableAutomaticChecks = true,
             MaxHistorySize = 100,
+            MaxHistoryAge = TimeSpan.FromHours(24),
             MaxRetries = 3,
             RetryDelay = TimeSpan.FromSeconds(1),
             EnableCircuitBreaker = true,
@@ -241,6 +247,7 @@ public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
             DefaultTimeout = TimeSpan.FromSeconds(5),
             EnableAutomaticChecks = true,
             MaxHistorySize = 50,
+            MaxHistoryAge = TimeSpan.FromHours(6),
             MaxRetries = 1,
             RetryDelay = TimeSpan.FromMilliseconds(100),
             EnableCircuitBreaker = true,
@@ -289,6 +296,7 @@ public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
             DefaultTimeout = TimeSpan.FromMinutes(1),
             EnableAutomaticChecks = true,
             MaxHistorySize = 200,
+            MaxHistoryAge = TimeSpan.FromDays(7),
             MaxRetries = 1,
             RetryDelay = TimeSpan.FromSeconds(2),
             EnableCircuitBreaker = false,
@@ -339,6 +347,9 @@ public sealed record HealthCheckServiceConfig : IHealthCheckServiceConfig
 
         if (MaxHistorySize < 10)
             errors.Add("MaxHistorySize must be at least 10");
+
+        if (MaxHistoryAge <= TimeSpan.Zero)
+            errors.Add("MaxHistoryAge must be greater than zero");
 
         if (MaxRetries < 0)
             errors.Add("MaxRetries must be non-negative");

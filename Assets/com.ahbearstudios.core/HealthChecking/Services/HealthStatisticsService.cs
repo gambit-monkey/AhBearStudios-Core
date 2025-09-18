@@ -18,14 +18,14 @@ namespace AhBearStudios.Core.HealthChecking.Services
     /// Production implementation of health statistics collection and analysis.
     /// Provides comprehensive metrics tracking, trend analysis, and performance monitoring.
     /// </summary>
-    public sealed class HealthStatisticsCollector : IHealthStatisticsCollector
+    public sealed class HealthStatisticsService : IHealthStatisticsService
     {
         private readonly ILoggingService _logger;
         private readonly IMessageBusService _messageBus;
         private readonly IProfilerService _profilerService;
         private readonly HealthCheckServiceConfig _config;
 
-        private readonly ProfilerMarker _recordingMarker = new ProfilerMarker("HealthStatisticsCollector.Record");
+        private readonly ProfilerMarker _recordingMarker = new ProfilerMarker("HealthStatisticsService.Record");
         private readonly Guid _collectorId;
         private readonly object _stateLock = new();
 
@@ -116,7 +116,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _systemHealthHistory = new ConcurrentQueue<SystemHealthSnapshot>();
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("StatisticsCollectorInit", _collectorId.ToString());
-            _logger.LogInfo("HealthStatisticsCollector initialized", correlationId);
+            _logger.LogInfo("HealthStatisticsCollector initialized", correlationId, sourceContext: null);
         }
 
         /// <summary>
@@ -217,7 +217,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 (_, existing) => existing.RecordStateChange(newState, reason));
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("CircuitBreakerStateChange", _collectorId.ToString());
-            _logger.LogDebug($"Recorded circuit breaker state change: {name} {oldState} -> {newState}", correlationId);
+            _logger.LogDebug($"Recorded circuit breaker state change: {name} {oldState} -> {newState}", correlationId, sourceContext: null);
         }
 
         /// <summary>
@@ -231,7 +231,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             ThrowIfDisposed();
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("DegradationLevelChange", _collectorId.ToString());
-            _logger.LogInfo($"Recorded degradation level change: {oldLevel} -> {newLevel} ({reason})", correlationId);
+            _logger.LogInfo($"Recorded degradation level change: {oldLevel} -> {newLevel} ({reason})", correlationId, sourceContext: null);
         }
 
         /// <summary>
@@ -254,9 +254,9 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 registeredHealthCheckCount: _healthCheckStats.Count,
                 currentDegradationLevel: GetCurrentDegradationLevel(),
                 lastOverallStatus: GetLastOverallStatus(),
-                circuitBreakerStatistics: circuitBreakerStatistics.ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
+                circuitBreakerStatistics: circuitBreakerStatistics.AsValueEnumerable().ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
                 averageExecutionTime: averageExecutionTime,
-                openCircuitBreakers: circuitBreakerStatistics.Values.Count(cb => cb.State == CircuitBreakerState.Open),
+                openCircuitBreakers: circuitBreakerStatistics.Values.AsValueEnumerable().Count(cb => cb.State == CircuitBreakerState.Open),
                 activeCircuitBreakers: circuitBreakerStatistics.Count
             );
         }
@@ -316,7 +316,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 .Where(r => r.Timestamp >= startTime && r.Timestamp <= endTime)
                 .ToList();
 
-            if (!relevantRecords.Any())
+            if (!relevantRecords.AsValueEnumerable().Any())
             {
                 return new PerformanceMetrics
                 {
@@ -327,7 +327,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             }
 
             var totalExecutions = relevantRecords.Count;
-            var successfulExecutions = relevantRecords.Count(r => r.Status == HealthStatus.Healthy);
+            var successfulExecutions = relevantRecords.AsValueEnumerable().Count(r => r.Status == HealthStatus.Healthy);
             var executionsPerMinute = totalExecutions / period.TotalMinutes;
             var overallSuccessRate = (double)successfulExecutions / totalExecutions;
 
@@ -347,7 +347,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 AverageExecutionTime = averageExecutionTime,
                 P95ExecutionTime = executionTimes.Count > p95Index ? executionTimes[p95Index] : TimeSpan.Zero,
                 P99ExecutionTime = executionTimes.Count > p99Index ? executionTimes[p99Index] : TimeSpan.Zero,
-                PeakExecutionTime = executionTimes.LastOrDefault()
+                PeakExecutionTime = executionTimes.AsValueEnumerable().LastOrDefault()
             };
         }
 
@@ -461,7 +461,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             }
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("StatisticsReset", _collectorId.ToString());
-            _logger.LogInfo($"All statistics reset: {reason ?? "No reason provided"}", correlationId);
+            _logger.LogInfo($"All statistics reset: {reason ?? "No reason provided"}", correlationId, sourceContext: null);
 
             var eventArgs = new StatisticsResetEventArgs
             {
@@ -488,7 +488,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             if (removed)
             {
                 var correlationId = DeterministicIdGenerator.GenerateCorrelationId("HealthCheckStatsReset", _collectorId.ToString());
-                _logger.LogInfo($"Statistics reset for health check '{healthCheckName}': {reason ?? "No reason provided"}", correlationId);
+                _logger.LogInfo($"Statistics reset for health check '{healthCheckName}': {reason ?? "No reason provided"}", correlationId, sourceContext: null);
 
                 var eventArgs = new StatisticsResetEventArgs
                 {
@@ -517,7 +517,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _highFailureRateThreshold = highFailureRateThreshold;
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("ThresholdUpdate", _collectorId.ToString());
-            _logger.LogInfo($"Performance thresholds updated: execution={slowExecutionThreshold.TotalMilliseconds}ms, failure={highFailureRateThreshold:P1}", correlationId);
+            _logger.LogInfo($"Performance thresholds updated: execution={slowExecutionThreshold.TotalMilliseconds}ms, failure={highFailureRateThreshold:P1}", correlationId, sourceContext: null);
         }
 
         /// <summary>
@@ -533,7 +533,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _retentionPeriod = retentionPeriod;
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("CleanupConfigUpdate", _collectorId.ToString());
-            _logger.LogInfo($"Automatic cleanup {(enabled ? "enabled" : "disabled")}, retention: {retentionPeriod}", correlationId);
+            _logger.LogInfo($"Automatic cleanup {(enabled ? "enabled" : "disabled")}, retention: {retentionPeriod}", correlationId, sourceContext: null);
         }
 
         /// <summary>
@@ -588,7 +588,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             }
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("StatisticsCleanup", _collectorId.ToString());
-            _logger.LogDebug($"Cleaned up {cleanedUpCount} old statistics records", correlationId);
+            _logger.LogDebug($"Cleaned up {cleanedUpCount} old statistics records", correlationId, sourceContext: null);
 
             return cleanedUpCount;
         }
@@ -667,7 +667,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 .Where(r => r.Timestamp > DateTime.UtcNow.AddMinutes(-10))
                 .ToList();
 
-            if (!recentRecords.Any())
+            if (!recentRecords.AsValueEnumerable().Any())
                 return TimeSpan.Zero;
 
             var totalTicks = recentRecords.AsValueEnumerable().Select(r => r.Duration.Ticks).Sum();
@@ -692,8 +692,8 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 return TrendDirection.InsufficientData;
 
             var midPoint = records.Count / 2;
-            var firstHalf = records.Take(midPoint).AsValueEnumerable().Select(r => r.Duration.TotalMilliseconds).Average();
-            var secondHalf = records.Skip(midPoint).AsValueEnumerable().Select(r => r.Duration.TotalMilliseconds).Average();
+            var firstHalf = records.AsValueEnumerable().Take(midPoint).Select(r => r.Duration.TotalMilliseconds).Average();
+            var secondHalf = records.AsValueEnumerable().Skip(midPoint).Select(r => r.Duration.TotalMilliseconds).Average();
 
             var changePercent = (secondHalf - firstHalf) / firstHalf;
 
@@ -713,8 +713,8 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 return TrendDirection.InsufficientData;
 
             var midPoint = records.Count / 2;
-            var firstHalfSuccessRate = records.Take(midPoint).AsValueEnumerable().Count(r => r.Status == HealthStatus.Healthy) / (double)midPoint;
-            var secondHalfSuccessRate = records.Skip(midPoint).AsValueEnumerable().Count(r => r.Status == HealthStatus.Healthy) / (double)(records.Count - midPoint);
+            var firstHalfSuccessRate = records.AsValueEnumerable().Take(midPoint).Count(r => r.Status == HealthStatus.Healthy) / (double)midPoint;
+            var secondHalfSuccessRate = records.AsValueEnumerable().Skip(midPoint).Count(r => r.Status == HealthStatus.Healthy) / (double)(records.Count - midPoint);
 
             var changePercent = (secondHalfSuccessRate - firstHalfSuccessRate) / firstHalfSuccessRate;
 
@@ -730,12 +730,12 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
         private static TrendDirection DetermineOverallTrend(IEnumerable<TrendDirection> individualTrends)
         {
-            var trends = individualTrends.ToList();
-            if (!trends.Any())
+            var trends = individualTrends.AsValueEnumerable().ToList();
+            if (!trends.AsValueEnumerable().Any())
                 return TrendDirection.InsufficientData;
 
-            var improving = trends.Count(t => t == TrendDirection.Improving || t == TrendDirection.StronglyImproving);
-            var degrading = trends.Count(t => t == TrendDirection.Degrading || t == TrendDirection.StronglyDegrading);
+            var improving = trends.AsValueEnumerable().Count(t => t == TrendDirection.Improving || t == TrendDirection.StronglyImproving);
+            var degrading = trends.AsValueEnumerable().Count(t => t == TrendDirection.Degrading || t == TrendDirection.StronglyDegrading);
 
             if (improving > degrading * 2)
                 return TrendDirection.Improving;
@@ -762,7 +762,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _disposed = true;
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("StatisticsCollectorDispose", _collectorId.ToString());
-            _logger.LogInfo("HealthStatisticsCollector disposed", correlationId);
+            _logger.LogInfo("HealthStatisticsCollector disposed", correlationId, sourceContext: null);
         }
 
         #region Internal Data Structures

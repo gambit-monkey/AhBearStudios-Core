@@ -1,8 +1,8 @@
 using System;
 using AhBearStudios.Core.HealthChecking.Configs;
 using AhBearStudios.Core.Database.HealthChecks;
+using AhBearStudios.Core.HealthChecking.Checks;
 using AhBearStudios.Core.Network.HealthChecks;
-using AhBearStudios.Core.System.HealthChecks;
 using AhBearStudios.Core.Logging;
 
 namespace AhBearStudios.Core.HealthChecking.Extensions;

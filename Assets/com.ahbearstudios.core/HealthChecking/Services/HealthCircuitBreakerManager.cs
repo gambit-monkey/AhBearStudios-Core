@@ -7,6 +7,7 @@ using Unity.Profiling;
 using ZLinq;
 using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.HealthChecking.Models;
+using AhBearStudios.Core.HealthChecking.Messages;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Messaging;
 
@@ -42,20 +43,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
         private long _totalRecoveries;
         private long _failedRecoveries;
 
-        /// <summary>
-        /// Event triggered when a circuit breaker state changes.
-        /// </summary>
-        public event EventHandler<CircuitBreakerStateChangedEventArgs> StateChanged;
-
-        /// <summary>
-        /// Event triggered when a circuit breaker trip occurs.
-        /// </summary>
-        public event EventHandler<CircuitBreakerTripEventArgs> CircuitBreakerTripped;
-
-        /// <summary>
-        /// Event triggered when a circuit breaker recovery attempt is made.
-        /// </summary>
-        public event EventHandler<CircuitBreakerRecoveryEventArgs> RecoveryAttempted;
+        // Circuit breaker events are published via IMessageBusService following CLAUDE.md patterns
 
         /// <summary>
         /// Gets whether the circuit breaker manager is active.
@@ -93,7 +81,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _statistics = new ConcurrentDictionary<FixedString64Bytes, CircuitBreakerStatistics>();
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("CircuitBreakerManagerInit", _managerId.ToString());
-            _logger.LogInfo("HealthCircuitBreakerManager initialized", correlationId);
+            _logger.LogInfo("HealthCircuitBreakerManager initialized", correlationId, sourceContext: "HealthCircuitBreakerManager");
         }
 
         /// <summary>
@@ -129,22 +117,12 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
             var statistics = new CircuitBreakerStatistics
             {
-                HealthCheckName = healthCheckName,
+                Name = healthCheckName,
                 State = CircuitBreakerState.Closed,
-                FailureThreshold = failureThreshold,
-                RecoveryTimeout = recoveryTimeout,
-                HalfOpenTestCount = halfOpenTestCount,
                 TotalExecutions = 0,
-                SuccessfulExecutions = 0,
-                FailedExecutions = 0,
-                TotalTrips = 0,
-                TotalRecoveries = 0,
-                FailedRecoveries = 0,
-                AverageRecoveryTime = TimeSpan.Zero,
-                LastTrip = DateTime.MinValue,
-                LastRecovery = DateTime.MinValue,
-                TimeInCurrentState = TimeSpan.Zero,
-                CreatedAt = DateTime.UtcNow
+                TotalFailures = 0,
+                TotalSuccesses = 0,
+                LastStateChange = DateTime.UtcNow
             };
 
             var added = _circuitBreakers.TryAdd(healthCheckName, circuitBreakerData);
@@ -153,7 +131,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 _statistics.TryAdd(healthCheckName, statistics);
                 
                 var correlationId = DeterministicIdGenerator.GenerateCorrelationId("CircuitBreakerRegistered", healthCheckName.ToString());
-                _logger.LogInfo($"Circuit breaker registered for {healthCheckName} with threshold {failureThreshold}", correlationId);
+                _logger.LogInfo($"Circuit breaker registered for {healthCheckName} with threshold {failureThreshold}", correlationId, sourceContext: "HealthCircuitBreakerManager");
             }
 
             return added;
@@ -172,7 +150,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 _statistics.TryRemove(healthCheckName, out _);
                 
                 var correlationId = DeterministicIdGenerator.GenerateCorrelationId("CircuitBreakerUnregistered", healthCheckName.ToString());
-                _logger.LogInfo($"Circuit breaker unregistered for {healthCheckName}", correlationId);
+                _logger.LogInfo($"Circuit breaker unregistered for {healthCheckName}", correlationId, sourceContext: "HealthCircuitBreakerManager");
             }
 
             return removed;
@@ -254,7 +232,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 TransitionToState(circuitBreakerData, newState, reason ?? "Manual state change", false);
                 
                 var correlationId = DeterministicIdGenerator.GenerateCorrelationId("ManualStateChange", healthCheckName.ToString());
-                _logger.LogInfo($"Circuit breaker {healthCheckName} manually changed from {oldState} to {newState}: {reason}", correlationId);
+                _logger.LogInfo($"Circuit breaker {healthCheckName} manually changed from {oldState} to {newState}: {reason}", correlationId, sourceContext: "HealthCircuitBreakerManager");
                 
                 return true;
             }
@@ -286,7 +264,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 }
             }
 
-            _logger.LogInfo($"Reset {resetCount} circuit breakers: {resetReason}", correlationId);
+            _logger.LogInfo($"Reset {resetCount} circuit breakers: {resetReason}", correlationId, sourceContext: "HealthCircuitBreakerManager");
         }
 
         /// <summary>
@@ -307,9 +285,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 return stats with
                 {
                     State = circuitBreakerData.State,
-                    TimeInCurrentState = DateTime.UtcNow - circuitBreakerData.StateChangedAt,
-                    ConsecutiveFailures = circuitBreakerData.ConsecutiveFailures,
-                    LastFailureMessage = circuitBreakerData.LastFailureMessage
+                    LastStateChange = circuitBreakerData.StateChangedAt
                 };
             }
         }
@@ -332,7 +308,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 }
             }
 
-            return result.AsReadOnly();
+            return result;
         }
 
         /// <summary>
@@ -374,19 +350,11 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 circuitBreakerData.HalfOpenTestCount = halfOpenTestCount;
             }
 
-            // Update statistics
-            if (_statistics.TryGetValue(healthCheckName, out var stats))
-            {
-                _statistics.TryUpdate(healthCheckName, stats with
-                {
-                    FailureThreshold = failureThreshold,
-                    RecoveryTimeout = recoveryTimeout,
-                    HalfOpenTestCount = halfOpenTestCount
-                }, stats);
-            }
+            // Note: Configuration parameters are not stored in CircuitBreakerStatistics
+            // These are maintained only in the CircuitBreakerData
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("CircuitBreakerConfigUpdate", healthCheckName.ToString());
-            _logger.LogInfo($"Updated circuit breaker configuration for {healthCheckName}", correlationId);
+            _logger.LogInfo($"Updated circuit breaker configuration for {healthCheckName}", correlationId, sourceContext: "HealthCircuitBreakerManager");
 
             return true;
         }
@@ -410,7 +378,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             var status = enabled ? "enabled" : "disabled";
             var changeReason = reason ?? $"Circuit breaker manager {status}";
             
-            _logger.LogInfo($"Circuit breaker manager {status}: {changeReason}", correlationId);
+            _logger.LogInfo($"Circuit breaker manager {status}: {changeReason}", correlationId, sourceContext: "HealthCircuitBreakerManager");
         }
 
         /// <summary>
@@ -448,17 +416,9 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
                 if (_statistics.TryGetValue(kvp.Key, out var stats))
                 {
-                    if (stats.TotalTrips > maxTrips)
-                    {
-                        maxTrips = stats.TotalTrips;
-                        mostTrippedName = kvp.Key;
-                    }
-
-                    if (stats.AverageRecoveryTime > maxRecoveryTime)
-                    {
-                        maxRecoveryTime = stats.AverageRecoveryTime;
-                        longestRecoveryName = kvp.Key;
-                    }
+                    // Note: Individual circuit breaker trip counts and recovery times
+                    // are not tracked in the current CircuitBreakerStatistics model.
+                    // These would need to be added to the model if per-breaker tracking is required.
                 }
             }
 
@@ -588,8 +548,21 @@ namespace AhBearStudios.Core.HealthChecking.Services
                     RecoveryTimeout = circuitBreakerData.RecoveryTimeout
                 };
 
-                CircuitBreakerTripped?.Invoke(this, tripEventArgs);
-                _logger.LogWarning($"Circuit breaker tripped for {circuitBreakerData.HealthCheckName} after {circuitBreakerData.ConsecutiveFailures} failures", correlationId);
+                // Publish circuit breaker trip message
+                var tripMessage = HealthCheckCircuitBreakerTripMessage.Create(
+                    circuitBreakerName: circuitBreakerData.Name.ToString(),
+                    healthCheckName: circuitBreakerData.HealthCheckName.ToString(),
+                    failureThreshold: circuitBreakerData.FailureThreshold,
+                    consecutiveFailures: circuitBreakerData.ConsecutiveFailures,
+                    timeWindowSeconds: circuitBreakerData.TimeWindow.TotalSeconds,
+                    lastErrorMessage: result.Description,
+                    openDurationSeconds: circuitBreakerData.RecoveryTimeout.TotalSeconds,
+                    totalTripCount: _totalTrips,
+                    source: "HealthCircuitBreakerManager",
+                    correlationId: correlationId);
+
+                _messageBus.PublishMessage(tripMessage);
+                _logger.LogWarning($"Circuit breaker tripped for {circuitBreakerData.HealthCheckName} after {circuitBreakerData.ConsecutiveFailures} failures", correlationId, sourceContext: "HealthCircuitBreakerManager");
             }
         }
 
@@ -600,7 +573,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             circuitBreakerData.HalfOpenSuccesses = 0;
             
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("RecoveryAttempt", circuitBreakerData.HealthCheckName.ToString());
-            _logger.LogInfo($"Circuit breaker {circuitBreakerData.HealthCheckName} attempting recovery: {reason}", correlationId);
+            _logger.LogInfo($"Circuit breaker {circuitBreakerData.HealthCheckName} attempting recovery: {reason}", correlationId, sourceContext: "HealthCircuitBreakerManager");
         }
 
         private void CompleteRecovery(CircuitBreakerData circuitBreakerData, string reason)
@@ -612,19 +585,21 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
             UpdateRecoveryStatistics(circuitBreakerData.HealthCheckName, true);
 
-            var recoveryEventArgs = new CircuitBreakerRecoveryEventArgs
-            {
-                HealthCheckName = circuitBreakerData.HealthCheckName,
-                IsSuccessful = true,
-                NewState = CircuitBreakerState.Closed,
-                TestsPerformed = circuitBreakerData.HalfOpenTests,
-                SuccessfulTests = circuitBreakerData.HalfOpenSuccesses,
-                CorrelationId = correlationId,
-                Context = reason
-            };
+            // Publish circuit breaker recovery message
+            var recoveryMessage = HealthCheckCircuitBreakerRecoveryMessage.Create(
+                circuitBreakerName: circuitBreakerData.Name.ToString(),
+                healthCheckName: circuitBreakerData.HealthCheckName.ToString(),
+                isSuccessful: true,
+                currentState: CircuitBreakerState.Closed,
+                recoveryAttemptNumber: circuitBreakerData.HalfOpenTests,
+                openDurationSeconds: (DateTime.UtcNow - circuitBreakerData.LastTransitionTime).TotalSeconds,
+                recoveryReason: reason,
+                recentSuccessRate: circuitBreakerData.HalfOpenTests > 0 ? (double)circuitBreakerData.HalfOpenSuccesses / circuitBreakerData.HalfOpenTests : 0,
+                source: "HealthCircuitBreakerManager",
+                correlationId: correlationId);
 
-            RecoveryAttempted?.Invoke(this, recoveryEventArgs);
-            _logger.LogInfo($"Circuit breaker {circuitBreakerData.HealthCheckName} successfully recovered: {reason}", correlationId);
+            _messageBus.PublishMessage(recoveryMessage);
+            _logger.LogInfo($"Circuit breaker {circuitBreakerData.HealthCheckName} successfully recovered: {reason}", correlationId, sourceContext: "HealthCircuitBreakerManager");
         }
 
         private void FailRecovery(CircuitBreakerData circuitBreakerData, string reason)
@@ -636,19 +611,21 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
             UpdateRecoveryStatistics(circuitBreakerData.HealthCheckName, false);
 
-            var recoveryEventArgs = new CircuitBreakerRecoveryEventArgs
-            {
-                HealthCheckName = circuitBreakerData.HealthCheckName,
-                IsSuccessful = false,
-                NewState = CircuitBreakerState.Open,
-                TestsPerformed = circuitBreakerData.HalfOpenTests,
-                SuccessfulTests = circuitBreakerData.HalfOpenSuccesses,
-                CorrelationId = correlationId,
-                Context = reason
-            };
+            // Publish circuit breaker recovery failure message
+            var recoveryMessage = HealthCheckCircuitBreakerRecoveryMessage.Create(
+                circuitBreakerName: circuitBreakerData.Name.ToString(),
+                healthCheckName: circuitBreakerData.HealthCheckName.ToString(),
+                isSuccessful: false,
+                currentState: CircuitBreakerState.Open,
+                recoveryAttemptNumber: circuitBreakerData.HalfOpenTests,
+                openDurationSeconds: (DateTime.UtcNow - circuitBreakerData.LastTransitionTime).TotalSeconds,
+                recoveryReason: reason,
+                recentSuccessRate: circuitBreakerData.HalfOpenTests > 0 ? (double)circuitBreakerData.HalfOpenSuccesses / circuitBreakerData.HalfOpenTests : 0,
+                source: "HealthCircuitBreakerManager",
+                correlationId: correlationId);
 
-            RecoveryAttempted?.Invoke(this, recoveryEventArgs);
-            _logger.LogWarning($"Circuit breaker {circuitBreakerData.HealthCheckName} recovery failed: {reason}", correlationId);
+            _messageBus.PublishMessage(recoveryMessage);
+            _logger.LogWarning($"Circuit breaker {circuitBreakerData.HealthCheckName} recovery failed: {reason}", correlationId, sourceContext: "HealthCircuitBreakerManager");
         }
 
         private void TransitionToState(CircuitBreakerData circuitBreakerData, CircuitBreakerState newState, string reason, bool isAutomatic)
@@ -662,18 +639,18 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("StateTransition", circuitBreakerData.HealthCheckName.ToString());
 
-            var stateChangeEventArgs = new CircuitBreakerStateChangedEventArgs
-            {
-                HealthCheckName = circuitBreakerData.HealthCheckName,
-                OldState = oldState,
-                NewState = newState,
-                Reason = reason,
-                CorrelationId = correlationId,
-                FailureCount = circuitBreakerData.ConsecutiveFailures,
-                IsAutomatic = isAutomatic
-            };
+            // Publish circuit breaker state change message
+            var stateChangeMessage = HealthCheckCircuitBreakerStateChangedMessage.Create(
+                circuitBreakerName: circuitBreakerData.Name,
+                oldState: oldState,
+                newState: newState,
+                reason: reason,
+                consecutiveFailures: circuitBreakerData.ConsecutiveFailures,
+                totalActivations: circuitBreakerData.TotalFailures,
+                source: "HealthCircuitBreakerManager",
+                correlationId: correlationId);
 
-            StateChanged?.Invoke(this, stateChangeEventArgs);
+            _messageBus.PublishMessage(stateChangeMessage);
         }
 
         private bool GetExecutionAllowed(CircuitBreakerData circuitBreakerData)
@@ -695,14 +672,13 @@ namespace AhBearStudios.Core.HealthChecking.Services
             var updatedStats = currentStats with
             {
                 TotalExecutions = currentStats.TotalExecutions + 1,
-                SuccessfulExecutions = result.Status == HealthStatus.Healthy 
-                    ? currentStats.SuccessfulExecutions + 1 
-                    : currentStats.SuccessfulExecutions,
-                FailedExecutions = result.Status != HealthStatus.Healthy
-                    ? currentStats.FailedExecutions + 1
-                    : currentStats.FailedExecutions,
-                LastExecution = DateTime.UtcNow,
-                LastFailureMessage = result.Status != HealthStatus.Healthy ? result.Description : currentStats.LastFailureMessage
+                TotalSuccesses = result.Status == HealthStatus.Healthy
+                    ? currentStats.TotalSuccesses + 1
+                    : currentStats.TotalSuccesses,
+                TotalFailures = result.Status != HealthStatus.Healthy
+                    ? currentStats.TotalFailures + 1
+                    : currentStats.TotalFailures,
+                LastStateChange = DateTime.UtcNow
             };
 
             _statistics.TryUpdate(healthCheckName, updatedStats, currentStats);
@@ -710,37 +686,14 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
         private void UpdateTripStatistics(FixedString64Bytes healthCheckName)
         {
-            if (!_statistics.TryGetValue(healthCheckName, out var currentStats))
-                return;
-
-            var updatedStats = currentStats with
-            {
-                TotalTrips = currentStats.TotalTrips + 1,
-                LastTrip = DateTime.UtcNow
-            };
-
-            _statistics.TryUpdate(healthCheckName, updatedStats, currentStats);
+            // Trip statistics are tracked at the system level via _totalTrips
+            // Individual circuit breaker trip count is not tracked in CircuitBreakerStatistics model
         }
 
         private void UpdateRecoveryStatistics(FixedString64Bytes healthCheckName, bool successful)
         {
-            if (!_statistics.TryGetValue(healthCheckName, out var currentStats))
-                return;
-
-            var recoveryTime = DateTime.UtcNow - currentStats.LastTrip;
-            var newAverageRecovery = currentStats.TotalRecoveries > 0
-                ? TimeSpan.FromTicks((currentStats.AverageRecoveryTime.Ticks * currentStats.TotalRecoveries + recoveryTime.Ticks) / (currentStats.TotalRecoveries + 1))
-                : recoveryTime;
-
-            var updatedStats = currentStats with
-            {
-                TotalRecoveries = successful ? currentStats.TotalRecoveries + 1 : currentStats.TotalRecoveries,
-                FailedRecoveries = !successful ? currentStats.FailedRecoveries + 1 : currentStats.FailedRecoveries,
-                AverageRecoveryTime = successful ? newAverageRecovery : currentStats.AverageRecoveryTime,
-                LastRecovery = successful ? DateTime.UtcNow : currentStats.LastRecovery
-            };
-
-            _statistics.TryUpdate(healthCheckName, updatedStats, currentStats);
+            // Recovery statistics are tracked at the system level via _totalRecoveries and _failedRecoveries
+            // Individual circuit breaker recovery metrics are not tracked in CircuitBreakerStatistics model
         }
 
         private void ThrowIfDisposed()
@@ -760,7 +713,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _disposed = true;
 
             var correlationId = DeterministicIdGenerator.GenerateCorrelationId("CircuitBreakerManagerDispose", _managerId.ToString());
-            _logger.LogInfo($"HealthCircuitBreakerManager disposed with {_circuitBreakers.Count} registered circuit breakers", correlationId);
+            _logger.LogInfo($"HealthCircuitBreakerManager disposed with {_circuitBreakers.Count} registered circuit breakers", correlationId, sourceContext: "HealthCircuitBreakerManager");
 
             _circuitBreakers.Clear();
             _statistics.Clear();

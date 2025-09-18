@@ -11,23 +11,13 @@ namespace AhBearStudios.Core.HealthChecking
     /// <summary>
     /// Enhanced health check service providing comprehensive system health monitoring,
     /// circuit breaker protection, and graceful degradation capabilities.
+    /// Health status changes are published via IMessageBusService following CLAUDE.md patterns:
+    /// - HealthCheckStatusChangedMessage for overall health changes
+    /// - HealthCheckCircuitBreakerStateChangedMessage for circuit breaker state changes
+    /// - HealthCheckDegradationChangeMessage for degradation level changes
     /// </summary>
     public interface IHealthCheckService
     {
-        /// <summary>
-        /// Event triggered when overall health status changes
-        /// </summary>
-        event EventHandler<HealthStatusChangedEventArgs> HealthStatusChanged;
-        
-        /// <summary>
-        /// Event triggered when circuit breaker state changes
-        /// </summary>
-        event EventHandler<CircuitBreakerStateChangedEventArgs> CircuitBreakerStateChanged;
-        
-        /// <summary>
-        /// Event triggered when system degradation level changes
-        /// </summary>
-        event EventHandler<DegradationStatusChangedEventArgs> DegradationStatusChanged;
 
         /// <summary>
         /// Registers a health check with the service
