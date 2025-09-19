@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AhBearStudios.Core.HealthChecking.Models;
 using Unity.Collections;
 
 namespace AhBearStudios.Core.HealthChecking.Services

@@ -1,7 +1,8 @@
 using System;
+using AhBearStudios.Core.HealthChecking.Services;
 using Unity.Collections;
 
-namespace AhBearStudios.Core.HealthChecking.Services
+namespace AhBearStudios.Core.HealthChecking.Models
 {
     /// <summary>
     /// Trend analysis for an individual health check.

@@ -1,7 +1,0 @@
-﻿namespace AhBearStudios.Core.Messaging.Interfaces
-{
-    public class IPriorityMessageBus
-    {
-        
-    }
-}

@@ -1,11 +1,9 @@
-using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Unity.Collections;
-using ZLinq;
 using AhBearStudios.Core.Alerting;
 using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Common.Utilities;
@@ -355,46 +353,43 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
             if (openCircuitBreakers.Any())
             {
-                recommendations.Add(new RecoveryRecommendation
-                {
-                    Priority = 1,
-                    Action = "Reset Circuit Breakers",
-                    Reason = $"{openCircuitBreakers.Count} circuit breakers are open",
-                    ExpectedImpact = "Restore failed operations",
-                    EstimatedRecoveryTime = TimeSpan.FromMinutes(2),
-                    Risk = RiskLevel.Medium,
-                    AffectedComponents = openCircuitBreakers.Select(cb => cb.Key.ToString()).ToList()
-                });
+                var recommendation = RecoveryRecommendation.Create(
+                    priority: 1,
+                    action: "Reset Circuit Breakers",
+                    reason: $"{openCircuitBreakers.Count} circuit breakers are open",
+                    expectedImpact: "Restore failed operations",
+                    estimatedRecoveryTime: TimeSpan.FromMinutes(2),
+                    risk: RiskLevel.Medium,
+                    affectedComponents: openCircuitBreakers.Select(cb => cb.Key.ToString()).ToList());
+                recommendations.Add(recommendation);
             }
 
             // Analyze degradation level
             if (_currentDegradationLevel >= DegradationLevel.Moderate)
             {
-                recommendations.Add(new RecoveryRecommendation
-                {
-                    Priority = 2,
-                    Action = "Reduce Degradation Level",
-                    Reason = $"Current degradation level is {_currentDegradationLevel}",
-                    ExpectedImpact = "Restore disabled features and services",
-                    EstimatedRecoveryTime = TimeSpan.FromMinutes(5),
-                    Risk = RiskLevel.Low,
-                    AffectedComponents = _disabledFeatures.Concat(_degradedServices).Select(f => f.ToString()).ToList()
-                });
+                var degradationRecommendation = RecoveryRecommendation.Create(
+                    priority: 2,
+                    action: "Reduce Degradation Level",
+                    reason: $"Current degradation level is {_currentDegradationLevel}",
+                    expectedImpact: "Restore disabled features and services",
+                    estimatedRecoveryTime: TimeSpan.FromMinutes(5),
+                    risk: RiskLevel.Low,
+                    affectedComponents: _disabledFeatures.Concat(_degradedServices).Select(f => f.ToString()).ToList());
+                recommendations.Add(degradationRecommendation);
             }
 
             // Add general recommendations
             if (_currentDegradationLevel >= DegradationLevel.Severe)
             {
-                recommendations.Add(new RecoveryRecommendation
-                {
-                    Priority = 3,
-                    Action = "Emergency Recovery Procedures",
-                    Reason = "System is severely degraded",
-                    ExpectedImpact = "Full system recovery",
-                    EstimatedRecoveryTime = TimeSpan.FromMinutes(10),
-                    Risk = RiskLevel.High,
-                    AffectedComponents = new List<string> { "Entire System" }
-                });
+                var emergencyRecommendation = RecoveryRecommendation.Create(
+                    priority: 3,
+                    action: "Emergency Recovery Procedures",
+                    reason: "System is severely degraded",
+                    expectedImpact: "Full system recovery",
+                    estimatedRecoveryTime: TimeSpan.FromMinutes(10),
+                    risk: RiskLevel.High,
+                    affectedComponents: new List<string> { "Entire System" });
+                recommendations.Add(emergencyRecommendation);
             }
 
             return recommendations.OrderBy(r => r.Priority).ToList();
