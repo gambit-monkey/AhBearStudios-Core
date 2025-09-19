@@ -45,7 +45,7 @@ public sealed class HealthCheckRegistrationManager : IDisposable
         _registeredHealthChecks = new Dictionary<string, Dictionary<IHealthCheck, HealthCheckConfiguration>>();
         _managerId = DeterministicIdGenerator.GenerateCoreId("HealthCheckRegistrationManager");
 
-        _logger.LogDebug("HealthCheckRegistrationManager initialized with ID: {ManagerId}", _managerId);
+        _logger.LogDebug($"HealthCheckRegistrationManager initialized with ID: {_managerId}");
     }
 
     /// <summary>
@@ -67,8 +67,7 @@ public sealed class HealthCheckRegistrationManager : IDisposable
         }
 
         _domainRegistrars.Add(domainRegistrar);
-        _logger.LogDebug("Added domain registrar: {DomainName} (Priority: {Priority})", 
-            domainRegistrar.DomainName, domainRegistrar.RegistrationPriority);
+        _logger.LogDebug($"Added domain registrar: {domainRegistrar.DomainName} (Priority: {domainRegistrar.RegistrationPriority})");
     }
 
     /// <summary>
@@ -100,12 +99,12 @@ public sealed class HealthCheckRegistrationManager : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to unregister health checks for domain: {DomainName}", domainName);
+                    _logger.LogException($"Failed to unregister health checks for domain: {domainName}", ex);
                 }
             }
 
             _domainRegistrars.Remove(registrar);
-            _logger.LogDebug("Removed domain registrar: {DomainName}", domainName);
+            _logger.LogDebug($"Removed domain registrar: {domainName}");
             return true;
         }
 
@@ -136,29 +135,27 @@ public sealed class HealthCheckRegistrationManager : IDisposable
                 {
                     try
                     {
-                        _logger.LogDebug("Registering health checks for domain: {DomainName}", registrar.DomainName);
+                        _logger.LogDebug($"Registering health checks for domain: {registrar.DomainName}");
 
                         var domainHealthChecks = registrar.RegisterHealthChecks(_healthCheckService, serviceConfig);
                         _registeredHealthChecks[registrar.DomainName] = domainHealthChecks;
 
                         totalRegistered += domainHealthChecks.Count;
                         
-                        _logger.LogInfo("Successfully registered {Count} health checks for domain: {DomainName}", 
-                            domainHealthChecks.Count, registrar.DomainName);
+                        _logger.LogInfo($"Successfully registered {domainHealthChecks.Count} health checks for domain: {registrar.DomainName}");
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Failed to register health checks for domain: {DomainName}", registrar.DomainName);
+                        _logger.LogException($"Failed to register health checks for domain: {registrar.DomainName}", ex);
                         // Continue with other domains rather than failing completely
                     }
                 }
 
-                _logger.LogInfo("Health check registration complete. Total registered: {TotalCount} across {DomainCount} domains", 
-                    totalRegistered, sortedRegistrars.Length);
+                _logger.LogInfo($"Health check registration complete. Total registered: {totalRegistered} across {sortedRegistrars.Length} domains");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to register domain health checks");
+                _logger.LogException("Failed to register domain health checks", ex);
                 throw;
             }
         }
@@ -186,30 +183,28 @@ public sealed class HealthCheckRegistrationManager : IDisposable
                         {
                             var healthCheckCount = _registeredHealthChecks[registrar.DomainName].Count;
                             
-                            _logger.LogDebug("Unregistering health checks for domain: {DomainName}", registrar.DomainName);
+                            _logger.LogDebug($"Unregistering health checks for domain: {registrar.DomainName}");
                             
                             registrar.UnregisterHealthChecks(_healthCheckService);
                             _registeredHealthChecks.Remove(registrar.DomainName);
 
                             totalUnregistered += healthCheckCount;
                             
-                            _logger.LogInfo("Successfully unregistered {Count} health checks for domain: {DomainName}", 
-                                healthCheckCount, registrar.DomainName);
+                            _logger.LogInfo($"Successfully unregistered {healthCheckCount} health checks for domain: {registrar.DomainName}");
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError(ex, "Failed to unregister health checks for domain: {DomainName}", registrar.DomainName);
+                        _logger.LogException($"Failed to unregister health checks for domain: {registrar.DomainName}", ex);
                         // Continue with other domains rather than failing completely
                     }
                 }
 
-                _logger.LogInfo("Health check unregistration complete. Total unregistered: {TotalCount} across {DomainCount} domains", 
-                    totalUnregistered, _domainRegistrars.Count);
+                _logger.LogInfo($"Health check unregistration complete. Total unregistered: {totalUnregistered} across {_domainRegistrars.Count} domains");
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to unregister domain health checks");
+                _logger.LogException("Failed to unregister domain health checks", ex);
                 throw;
             }
         }
@@ -269,22 +264,20 @@ public sealed class HealthCheckRegistrationManager : IDisposable
 
         try
         {
-            _logger.LogDebug("Disposing HealthCheckRegistrationManager: {ManagerId}", _managerId);
+            _logger.LogDebug($"Disposing HealthCheckRegistrationManager: {_managerId}");
             UnregisterAllDomainHealthChecks();
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Error during HealthCheckRegistrationManager disposal");
+            _logger.LogException("Error during HealthCheckRegistrationManager disposal", ex);
         }
         finally
         {
             _domainRegistrars.Clear();
             _registeredHealthChecks.Clear();
-            _registerMarker.Dispose();
-            _unregisterMarker.Dispose();
             _isDisposed = true;
             
-            _logger.LogDebug("HealthCheckRegistrationManager disposed: {ManagerId}", _managerId);
+            _logger.LogDebug($"HealthCheckRegistrationManager disposed: {_managerId}");
         }
     }
 

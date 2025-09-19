@@ -23,12 +23,11 @@ using Reflex.Core;
 namespace AhBearStudios.Core.HealthChecking.Factories;
 
 /// <summary>
-/// Production factory for creating HealthCheckService instances with specialized service dependencies.
+/// Production factory for creating HealthCheckService instances with consolidated service dependencies.
 /// </summary>
 /// <remarks>
-/// Creates and orchestrates specialized services (scheduler, degradation manager, statistics collector,
-/// circuit breaker manager) and wires them together with the main HealthCheckService.
-/// Follows Builder → Config → Factory → Service pattern from CLAUDE.md.
+/// Creates 4 consolidated services (operation, event, resilience, registry) that integrate directly
+/// with core systems rather than wrapping them. Follows Builder → Config → Factory → Service pattern.
 /// </remarks>
 public sealed class HealthCheckServiceFactory : IHealthCheckServiceFactory
 {
@@ -75,7 +74,7 @@ public sealed class HealthCheckServiceFactory : IHealthCheckServiceFactory
         _defaultConfig = CreateDefaultConfiguration();
         
         var correlationId = DeterministicIdGenerator.GenerateCorrelationId("ServiceFactoryInit", _factoryId.ToString());
-        _logger.LogInfo("HealthCheckServiceFactory initialized with specialized service creation capabilities", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
+        _logger.LogInfo("HealthCheckServiceFactory initialized with consolidated service creation capabilities", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
     }
 
     /// <inheritdoc />
@@ -93,15 +92,40 @@ public sealed class HealthCheckServiceFactory : IHealthCheckServiceFactory
 
             try
             {
-                // Create main health check service
+                // Create consolidated services following simplified architecture
+                var registryService = new HealthCheckRegistryService(
+                    _logger,
+                    config);
+
+                var operationService = new HealthCheckOperationService(
+                    _logger,
+                    _profilerService,
+                    config);
+
+                var eventService = new HealthCheckEventService(
+                    _messageBus,
+                    _profilerService,
+                    _alertService,
+                    _logger);
+
+                var resilienceService = new HealthCheckResilienceService(
+                    _logger,
+                    _messageBus,
+                    _alertService);
+
+                // Create main health check service with consolidated services
                 var service = new HealthCheckService(
                     config,
+                    operationService,
+                    registryService,
+                    eventService,
+                    resilienceService,
                     _logger,
                     _alertService,
                     _profilerService,
                     _messageBus);
 
-                _logger.LogInfo($"HealthCheckService created successfully", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
+                _logger.LogInfo($"HealthCheckService created successfully with consolidated services", (Guid)correlationId, sourceContext: nameof(HealthCheckServiceFactory));
 
                 // Publish service creation message
                 await _messageBus.PublishMessageAsync(new HealthCheckServiceCreatedMessage

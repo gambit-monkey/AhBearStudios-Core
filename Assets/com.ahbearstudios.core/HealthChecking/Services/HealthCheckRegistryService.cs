@@ -47,7 +47,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _registrationTimes = new ConcurrentDictionary<FixedString64Bytes, DateTime>();
             _enabledStates = new ConcurrentDictionary<FixedString64Bytes, bool>();
 
-            _logger.LogDebug("HealthCheckRegistryService initialized with ID: {ServiceId}", _serviceId);
+            _logger.LogDebug($"HealthCheckRegistryService initialized with ID: {_serviceId}", sourceContext: nameof(HealthCheckRegistryService));
         }
 
         /// <inheritdoc />
@@ -67,8 +67,8 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _registrationTimes.TryAdd(healthCheck.Name, DateTime.UtcNow);
             _enabledStates.TryAdd(healthCheck.Name, effectiveConfig.Enabled);
 
-            _logger.LogDebug("Registered health check: {Name} (Category: {Category}, Enabled: {Enabled})",
-                healthCheck.Name, healthCheck.Category, effectiveConfig.Enabled);
+            _logger.LogDebug($"Registered health check: {healthCheck.Name} (Category: {healthCheck.Category}, Enabled: {effectiveConfig.Enabled})",
+                sourceContext: nameof(HealthCheckRegistryService));
         }
 
         /// <inheritdoc />
@@ -90,19 +90,19 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 catch (InvalidOperationException ex)
                 {
                     failures.Add($"{healthCheck.Name}: {ex.Message}");
-                    _logger.LogWarning("Failed to register health check {Name}: {Message}",
-                        healthCheck.Name, ex.Message);
+                    _logger.LogWarning($"Failed to register health check {healthCheck.Name}: {ex.Message}",
+                        sourceContext: nameof(HealthCheckRegistryService));
                 }
             }
 
             if (failures.Count > 0)
             {
-                _logger.LogWarning("Bulk registration completed with {Success} successes and {Failures} failures",
-                    registeredCount, failures.Count);
+                _logger.LogWarning($"Bulk registration completed with {registeredCount} successes and {failures.Count} failures",
+                    sourceContext: nameof(HealthCheckRegistryService));
             }
             else
             {
-                _logger.LogInfo("Bulk registered {Count} health checks successfully", registeredCount);
+                _logger.LogInfo($"Bulk registered {registeredCount} health checks successfully", sourceContext: nameof(HealthCheckRegistryService));
             }
         }
 
@@ -120,7 +120,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 _registrationTimes.TryRemove(name, out _);
                 _enabledStates.TryRemove(name, out _);
 
-                _logger.LogDebug("Unregistered health check: {Name}", name);
+                _logger.LogDebug($"Unregistered health check: {name}", sourceContext: nameof(HealthCheckRegistryService));
             }
 
             return removed;
@@ -136,7 +136,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _registrationTimes.Clear();
             _enabledStates.Clear();
 
-            _logger.LogInfo("Unregistered all {Count} health checks", count);
+            _logger.LogInfo($"Unregistered all {count} health checks", sourceContext: nameof(HealthCheckRegistryService));
             return count;
         }
 
@@ -218,7 +218,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 _configurations.TryUpdate(name, updatedConfig, config);
             }
 
-            _logger.LogDebug("Health check '{Name}' enabled state changed to {Enabled}", name, enabled);
+            _logger.LogDebug($"Health check '{name}' enabled state changed to {enabled}", sourceContext: nameof(HealthCheckRegistryService));
             return true;
         }
 
@@ -234,7 +234,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _configurations.TryUpdate(name, configuration, _configurations[name]);
             _enabledStates.TryUpdate(name, configuration.Enabled, _enabledStates[name]);
 
-            _logger.LogDebug("Updated configuration for health check '{Name}'", name);
+            _logger.LogDebug($"Updated configuration for health check '{name}'", sourceContext: nameof(HealthCheckRegistryService));
             return true;
         }
 
@@ -266,9 +266,9 @@ namespace AhBearStudios.Core.HealthChecking.Services
             if (_configurations.TryGetValue(name, out var config))
             {
                 metadata["Enabled"] = config.Enabled;
-                metadata["Timeout"] = config.Timeout?.TotalMilliseconds ?? 0;
-                metadata["CriticalToSystem"] = config.CriticalToSystem;
-                metadata["Tags"] = config.Tags?.Count ?? 0;
+                metadata["Timeout"] = config.Timeout.TotalMilliseconds;
+                metadata["CriticalToSystem"] = config.IsCritical;
+                metadata["EnableAlerting"] = config.EnableAlerting;
             }
 
             if (_registrationTimes.TryGetValue(name, out var registrationTime))
