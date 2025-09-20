@@ -217,7 +217,7 @@ public sealed class CircuitBreakerFactory : ICircuitBreakerFactory
         if (validationErrors.Count > 0)
         {
             var errorMessage = $"Invalid circuit breaker configuration: {string.Join(", ", validationErrors)}";
-            _logger.LogError(errorMessage, Guid.Empty, sourceContext: null);
+            _logger.LogError(errorMessage, correlationId: Guid.Empty, sourceContext: null);
             throw new InvalidOperationException(errorMessage);
         }
     }

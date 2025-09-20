@@ -598,7 +598,7 @@ namespace AhBearStudios.Unity.Serialization.Jobs
                 return new byte[0];
 
             var correlationId = GetCorrelationId();
-            _logger?.LogInfo($"Starting job-based compression of {data.Length} bytes using {algorithm}", correlationId, sourceContext: null, properties: null);
+            _logger?.LogInfo($"Starting job-based compression of {data.Length} bytes using {algorithm}", correlationId: correlationId, sourceContext: null, properties: null);
 
             // Create native arrays
             var inputArray = new NativeArray<byte>(data, allocator);
@@ -627,11 +627,11 @@ namespace AhBearStudios.Unity.Serialization.Jobs
                 var result = resultArray[0];
                 if (!result.IsSuccess)
                 {
-                    _logger?.LogError($"Compression job failed with error: {result.ErrorCode}", correlationId, sourceContext: null, properties: null);
+                    _logger?.LogError($"Compression job failed with error: {result.ErrorCode}", correlationId: correlationId, sourceContext: null, properties: null);
                     throw new InvalidOperationException($"Compression job failed: {result.ErrorCode}");
                 }
 
-                _logger?.LogInfo($"Compression job completed: {result.InputSize} -> {result.OutputSize} bytes ({result.CompressionRatio:P1} compression) in {result.Duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                _logger?.LogInfo($"Compression job completed: {result.InputSize} -> {result.OutputSize} bytes ({result.CompressionRatio:P1} compression) in {result.Duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
 
                 // Create result array with actual size
                 var compressedData = new byte[result.OutputSize];
@@ -662,7 +662,7 @@ namespace AhBearStudios.Unity.Serialization.Jobs
                 return new byte[0];
 
             var correlationId = GetCorrelationId();
-            _logger?.LogInfo($"Starting job-based decompression of {compressedData.Length} bytes using {algorithm}", correlationId, sourceContext: null, properties: null);
+            _logger?.LogInfo($"Starting job-based decompression of {compressedData.Length} bytes using {algorithm}", correlationId: correlationId, sourceContext: null, properties: null);
 
             // Create native arrays
             var inputArray = new NativeArray<byte>(compressedData, allocator);
@@ -690,11 +690,11 @@ namespace AhBearStudios.Unity.Serialization.Jobs
                 var result = resultArray[0];
                 if (!result.IsSuccess)
                 {
-                    _logger?.LogError($"Decompression job failed with error: {result.ErrorCode}", correlationId, sourceContext: null, properties: null);
+                    _logger?.LogError($"Decompression job failed with error: {result.ErrorCode}", correlationId: correlationId, sourceContext: null, properties: null);
                     throw new InvalidOperationException($"Decompression job failed: {result.ErrorCode}");
                 }
 
-                _logger?.LogInfo($"Decompression job completed: {result.InputSize} -> {result.OutputSize} bytes in {result.Duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                _logger?.LogInfo($"Decompression job completed: {result.InputSize} -> {result.OutputSize} bytes in {result.Duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
 
                 // Create result array with actual size
                 var decompressedData = new byte[result.OutputSize];

@@ -289,7 +289,7 @@ namespace AhBearStudios.Unity.Serialization.Jobs
                 return new NativeArray<byte>(0, allocator);
 
             var correlationId = GetCorrelationId();
-            _logger?.LogInfo($"Starting job-based serialization of {data.Length} items of type {typeof(T).Name}", correlationId, sourceContext: null, properties: null);
+            _logger?.LogInfo($"Starting job-based serialization of {data.Length} items of type {typeof(T).Name}", correlationId: correlationId, sourceContext: null, properties: null);
 
             // Create native arrays
             var inputArray = new NativeArray<T>(data, allocator);
@@ -317,11 +317,11 @@ namespace AhBearStudios.Unity.Serialization.Jobs
                 var result = resultArray[0];
                 if (!result.IsSuccess)
                 {
-                    _logger?.LogError($"Serialization job failed with error: {result.ErrorCode}", correlationId, sourceContext: null, properties: null);
+                    _logger?.LogError($"Serialization job failed with error: {result.ErrorCode}", correlationId: correlationId, sourceContext: null, properties: null);
                     throw new InvalidOperationException($"Serialization job failed: {result.ErrorCode}");
                 }
 
-                _logger?.LogInfo($"Serialization job completed: {result.ItemsProcessed} items, {result.BytesWritten} bytes in {result.Duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                _logger?.LogInfo($"Serialization job completed: {result.ItemsProcessed} items, {result.BytesWritten} bytes in {result.Duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
 
                 // Create result array with actual size
                 var actualOutput = new NativeArray<byte>(result.BytesWritten, allocator);
@@ -351,7 +351,7 @@ namespace AhBearStudios.Unity.Serialization.Jobs
                 return new NativeArray<byte>[0];
 
             var correlationId = GetCorrelationId();
-            _logger?.LogInfo($"Starting batch serialization of {batches.Length} batches", correlationId, sourceContext: null, properties: null);
+            _logger?.LogInfo($"Starting batch serialization of {batches.Length} batches", correlationId: correlationId, sourceContext: null, properties: null);
 
             // Convert to native arrays
             var inputBatches = new NativeArray<NativeArray<T>>(batches.Length, allocator);
@@ -395,7 +395,7 @@ namespace AhBearStudios.Unity.Serialization.Jobs
                     }
                     else
                     {
-                        _logger?.LogError($"Batch {i} serialization failed: {result.ErrorCode}", correlationId, sourceContext: null, properties: null);
+                        _logger?.LogError($"Batch {i} serialization failed: {result.ErrorCode}", correlationId: correlationId, sourceContext: null, properties: null);
                         outputs[i] = new NativeArray<byte>(0, allocator);
                     }
                 }
@@ -404,7 +404,7 @@ namespace AhBearStudios.Unity.Serialization.Jobs
                 var totalBytes = results.AsValueEnumerable().Sum(r => r.BytesWritten);
                 var maxDuration = results.AsValueEnumerable().Max(r => r.Duration.TotalMilliseconds);
 
-                _logger?.LogInfo($"Batch serialization completed: {totalItems} items, {totalBytes} bytes, max duration {maxDuration:F2}ms", correlationId, sourceContext: null, properties: null);
+                _logger?.LogInfo($"Batch serialization completed: {totalItems} items, {totalBytes} bytes, max duration {maxDuration:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return outputs;
             }
@@ -435,7 +435,7 @@ namespace AhBearStudios.Unity.Serialization.Jobs
             if (!_disposed)
             {
                 _disposed = true;
-                _logger?.LogInfo("UnitySerializationJobService disposed", GetCorrelationId(), sourceContext: null, properties: null);
+                _logger?.LogInfo("UnitySerializationJobService disposed", correlationId: GetCorrelationId(), sourceContext: null, properties: null);
             }
         }
     }

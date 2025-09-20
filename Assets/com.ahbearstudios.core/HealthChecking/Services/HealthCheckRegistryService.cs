@@ -28,6 +28,10 @@ namespace AhBearStudios.Core.HealthChecking.Services
         private readonly ConcurrentDictionary<FixedString64Bytes, DateTime> _registrationTimes;
         private readonly ConcurrentDictionary<FixedString64Bytes, bool> _enabledStates;
 
+        // Health check history storage (bounded per check)
+        private readonly ConcurrentDictionary<FixedString64Bytes, ConcurrentQueue<HealthCheckResult>> _healthCheckHistory;
+        private readonly DateTime _serviceStartTime;
+
         /// <summary>
         /// Initializes a new instance of the HealthCheckRegistryService.
         /// </summary>
@@ -46,6 +50,8 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _configurations = new ConcurrentDictionary<FixedString64Bytes, HealthCheckConfiguration>();
             _registrationTimes = new ConcurrentDictionary<FixedString64Bytes, DateTime>();
             _enabledStates = new ConcurrentDictionary<FixedString64Bytes, bool>();
+            _healthCheckHistory = new ConcurrentDictionary<FixedString64Bytes, ConcurrentQueue<HealthCheckResult>>();
+            _serviceStartTime = DateTime.UtcNow;
 
             _logger.LogDebug($"HealthCheckRegistryService initialized with ID: {_serviceId}", sourceContext: nameof(HealthCheckRegistryService));
         }
@@ -283,6 +289,123 @@ namespace AhBearStudios.Core.HealthChecking.Services
             }
 
             return metadata;
+        }
+
+        /// <inheritdoc />
+        public void RecordHealthCheckHistory(HealthCheckResult result)
+        {
+            if (result == null) return;
+
+            var name = new FixedString64Bytes(result.Name);
+            var queue = _healthCheckHistory.GetOrAdd(name, _ => new ConcurrentQueue<HealthCheckResult>());
+
+            queue.Enqueue(result);
+
+            // Maintain bounded history per the configuration
+            var maxHistory = _config.MaxHistorySize;
+            while (queue.Count > maxHistory)
+            {
+                queue.TryDequeue(out _);
+            }
+
+            _logger.LogDebug($"Recorded health check history for {result.Name}: {result.Status}",
+                sourceContext: nameof(HealthCheckRegistryService));
+        }
+
+        /// <inheritdoc />
+        public List<HealthCheckResult> GetHealthCheckHistory(FixedString64Bytes name, int maxResults = 100)
+        {
+            if (!_healthCheckHistory.TryGetValue(name, out var queue))
+                return new List<HealthCheckResult>();
+
+            // Convert queue to list and take the most recent results
+            var results = queue.ToArray()
+                .AsValueEnumerable()
+                .TakeLast(maxResults)
+                .ToList();
+
+            return results;
+        }
+
+        /// <inheritdoc />
+        public int ClearHealthCheckHistory(FixedString64Bytes name)
+        {
+            if (!_healthCheckHistory.TryGetValue(name, out var queue))
+                return 0;
+
+            var count = queue.Count;
+
+            // Clear the queue by replacing it with a new empty one
+            _healthCheckHistory.TryUpdate(name, new ConcurrentQueue<HealthCheckResult>(), queue);
+
+            _logger.LogInfo($"Cleared {count} history entries for health check: {name}",
+                sourceContext: nameof(HealthCheckRegistryService));
+
+            return count;
+        }
+
+        /// <inheritdoc />
+        public HealthStatistics GetHealthStatistics()
+        {
+            var serviceUptime = DateTime.UtcNow - _serviceStartTime;
+            var registeredCount = _healthChecks.Count;
+            var enabledCount = GetEnabledHealthCheckCount();
+
+            // Calculate totals from all history
+            long totalChecks = 0;
+            long successfulChecks = 0;
+            long failedChecks = 0;
+            var allExecutionTimes = new List<TimeSpan>();
+            var circuitBreakerStats = new Dictionary<FixedString64Bytes, CircuitBreakerStatistics>();
+
+            foreach (var kvp in _healthCheckHistory)
+            {
+                var results = kvp.Value.ToArray();
+                totalChecks += results.Length;
+
+                foreach (var result in results)
+                {
+                    if (result.Status == HealthStatus.Healthy || result.Status == HealthStatus.Warning)
+                        successfulChecks++;
+                    else
+                        failedChecks++;
+
+                    allExecutionTimes.Add(result.Duration);
+                }
+
+                // Create basic circuit breaker statistics for each health check
+                if (results.Length > 0)
+                {
+                    var lastResult = results[results.Length - 1];
+                    circuitBreakerStats[kvp.Key] = new CircuitBreakerStatistics
+                    {
+                        Name = kvp.Key,
+                        State = CircuitBreakerState.Closed, // Would be determined by actual circuit breaker
+                        TotalExecutions = results.Length,
+                        TotalFailures = results.Count(r => r.Status == HealthStatus.Unhealthy || r.Status == HealthStatus.Degraded),
+                        TotalSuccesses = results.Count(r => r.Status == HealthStatus.Healthy || r.Status == HealthStatus.Warning),
+                        LastStateChange = lastResult.Timestamp
+                    };
+                }
+            }
+
+            // Calculate average execution time
+            var averageExecutionTime = allExecutionTimes.Count > 0
+                ? TimeSpan.FromTicks(allExecutionTimes.Sum(t => t.Ticks) / allExecutionTimes.Count)
+                : TimeSpan.Zero;
+
+            return HealthStatistics.Create(
+                serviceUptime: serviceUptime,
+                totalHealthChecks: totalChecks,
+                successfulHealthChecks: successfulChecks,
+                failedHealthChecks: failedChecks,
+                registeredHealthCheckCount: registeredCount,
+                currentDegradationLevel: DegradationLevel.None, // Would be determined by health service
+                lastOverallStatus: HealthStatus.Unknown, // Would be determined by health service
+                circuitBreakerStatistics: circuitBreakerStats,
+                averageExecutionTime: averageExecutionTime,
+                openCircuitBreakers: 0, // Would be determined by circuit breaker service
+                activeCircuitBreakers: circuitBreakerStats.Count);
         }
     }
 }

@@ -42,7 +42,7 @@ namespace AhBearStudios.Core.Serialization
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _adapter = adapter ?? throw new ArgumentNullException(nameof(adapter));
             
-            _logger.LogInfo("FishNetSerializer initialized", Guid.Empty, nameof(FishNetSerializer));
+            _logger.LogInfo("FishNetSerializer initialized", correlationId: Guid.Empty, sourceContext: nameof(FishNetSerializer));
         }
         
         /// <inheritdoc />
@@ -134,7 +134,7 @@ namespace AhBearStudios.Core.Serialization
                 throw new ArgumentNullException(nameof(type));
             
             _adapter.RegisterType(type);
-            _logger.LogInfo($"Registered type {type.Name} for FishNet serialization", Guid.Empty, sourceContext: nameof(RegisterType));
+            _logger.LogInfo($"Registered type {type.Name} for FishNet serialization", correlationId: Guid.Empty, sourceContext: nameof(RegisterType));
         }
         
         /// <inheritdoc />

@@ -61,7 +61,7 @@ namespace AhBearStudios.Unity.Serialization.Formatters
             var type = obj.GetType();
             var correlationId = GetCorrelationId();
             
-            logger?.LogInfo($"Serializing Unity object of type {type.Name}", correlationId, sourceContext: null, properties: null);
+            logger?.LogInfo($"Serializing Unity object of type {type.Name}", correlationId: correlationId, sourceContext: null, properties: null);
 
             try
             {
@@ -78,7 +78,7 @@ namespace AhBearStudios.Unity.Serialization.Formatters
             }
             catch (Exception ex)
             {
-                logger?.LogException($"Failed to serialize Unity object of type {type.Name}", ex, correlationId, sourceContext: null, properties: null);
+                logger?.LogException($"Failed to serialize Unity object of type {type.Name}", ex, correlationId: correlationId, sourceContext: null, properties: null);
                 throw new SerializationException($"Unity serialization failed for type {type.Name}", type, "SerializeUnityObject", ex);
             }
         }
@@ -99,7 +99,7 @@ namespace AhBearStudios.Unity.Serialization.Formatters
             var targetType = typeof(T);
             var correlationId = GetCorrelationId();
             
-            logger?.LogInfo($"Deserializing Unity object to type {targetType.Name}", correlationId, sourceContext: null, properties: null);
+            logger?.LogInfo($"Deserializing Unity object to type {targetType.Name}", correlationId: correlationId, sourceContext: null, properties: null);
 
             try
             {
@@ -116,7 +116,7 @@ namespace AhBearStudios.Unity.Serialization.Formatters
             }
             catch (Exception ex)
             {
-                logger?.LogException($"Failed to deserialize Unity object to type {targetType.Name}", ex, correlationId, sourceContext: null, properties: null);
+                logger?.LogException($"Failed to deserialize Unity object to type {targetType.Name}", ex, correlationId: correlationId, sourceContext: null, properties: null);
                 throw new SerializationException($"Unity deserialization failed for type {targetType.Name}", targetType, "DeserializeUnityObject", ex);
             }
         }

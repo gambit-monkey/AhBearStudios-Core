@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -59,7 +60,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
             _serviceId = DeterministicIdGenerator.GenerateCoreId("HealthCheckResilienceService");
 
-            _logger.LogDebug("HealthCheckResilienceService initialized with ID: {ServiceId}", _serviceId);
+            _logger.LogDebug($"HealthCheckResilienceService initialized with ID: {_serviceId}", correlationId: new FixedString64Bytes(), sourceContext: "HealthCheckResilienceService");
         }
 
         /// <inheritdoc />
@@ -103,8 +104,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 }
             }
 
-            _logger.LogDebug("Recorded success for operation '{Operation}' in {Time}ms",
-                operationName, executionTime.TotalMilliseconds);
+            _logger.LogDebug($"Recorded success for operation '{operationName}' in {executionTime.TotalMilliseconds}ms", correlationId: new FixedString64Bytes(), sourceContext: "HealthCheckResilienceService");
         }
 
         /// <inheritdoc />
@@ -131,15 +131,14 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
                     // Send critical alert for circuit breaker trip
                     _ = _alertService.RaiseAlertAsync(
-                        $"Circuit Breaker Tripped: {operationName}",
-                        $"Operation '{operationName}' has failed {metrics.ConsecutiveFailures} consecutive times. Circuit breaker is now OPEN.",
+                        $"Circuit Breaker Tripped: {operationName}. Operation '{operationName}' has failed {metrics.ConsecutiveFailures} consecutive times. Circuit breaker is now OPEN.",
                         AlertSeverity.Critical,
-                        new[] { new FixedString64Bytes("CircuitBreaker"), operationName });
+                        "HealthCheckResilienceService",
+                        "CircuitBreaker");
                 }
             }
 
-            _logger.LogWarning("Recorded failure for operation '{Operation}': {Exception}",
-                operationName, exception?.Message ?? "Unknown error");
+            _logger.LogWarning($"Recorded failure for operation '{operationName}': {exception?.Message ?? "Unknown error"}", correlationId: new FixedString64Bytes(), sourceContext: "HealthCheckResilienceService");
         }
 
         /// <inheritdoc />
@@ -176,8 +175,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
             PublishCircuitBreakerStateChange(operationName, previousState, CircuitBreakerState.Open);
 
-            _logger.LogWarning("Forced circuit breaker OPEN for '{Operation}': {Reason}",
-                operationName, reason);
+            _logger.LogWarning($"Forced circuit breaker OPEN for '{operationName}': {reason}", correlationId: new FixedString64Bytes(), sourceContext: "HealthCheckResilienceService");
         }
 
         /// <inheritdoc />
@@ -196,8 +194,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
             PublishCircuitBreakerStateChange(operationName, previousState, CircuitBreakerState.Closed);
 
-            _logger.LogInfo("Forced circuit breaker CLOSED for '{Operation}': {Reason}",
-                operationName, reason);
+            _logger.LogInfo($"Forced circuit breaker CLOSED for '{operationName}': {reason}", correlationId: new FixedString64Bytes(), sourceContext: "HealthCheckResilienceService");
         }
 
         /// <inheritdoc />
@@ -224,8 +221,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 PublishCircuitBreakerStateChange(operationName, previousState, newState);
             }
 
-            _logger.LogInfo("Reset circuit breaker for '{Operation}', new state: {State}",
-                operationName, newState);
+            _logger.LogInfo($"Reset circuit breaker for '{operationName}', new state: {newState}", correlationId: new FixedString64Bytes(), sourceContext: "HealthCheckResilienceService");
 
             return true;
         }
@@ -256,9 +252,11 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
             // Publish degradation change message directly via IMessageBusService
             var message = HealthCheckDegradationChangeMessage.Create(
+                "HealthCheckResilienceService",
                 previousLevel,
                 level,
                 reason,
+                true,
                 "HealthCheckResilienceService",
                 DeterministicIdGenerator.GenerateCorrelationId("DegradationChange", reason));
 
@@ -269,14 +267,13 @@ namespace AhBearStudios.Core.HealthChecking.Services
             {
                 var severity = level >= DegradationLevel.Severe ? AlertSeverity.Critical : AlertSeverity.Warning;
                 await _alertService.RaiseAlertAsync(
-                    "System Degradation Level Changed",
-                    $"System degradation level changed from {previousLevel} to {level}. Reason: {reason}. Triggered by: {triggeredBy ?? "Unknown"}",
+                    $"System Degradation Level Changed: System degradation level changed from {previousLevel} to {level}. Reason: {reason}. Triggered by: {triggeredBy ?? "Unknown"}",
                     severity,
-                    new[] { new FixedString64Bytes("Degradation"), new FixedString64Bytes(level.ToString()) });
+                    "HealthCheckResilienceService",
+                    "Degradation");
             }
 
-            _logger.LogWarning("Degradation level changed from {Previous} to {New}: {Reason}",
-                previousLevel, level, reason);
+            _logger.LogWarning($"Degradation level changed from {previousLevel} to {level}: {reason}", correlationId: new FixedString64Bytes(), sourceContext: "HealthCheckResilienceService");
         }
 
         /// <inheritdoc />
@@ -311,7 +308,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
         /// <inheritdoc />
         public async UniTask InitiateRecoveryAsync(RecoveryScenario scenario, CancellationToken cancellationToken = default)
         {
-            _logger.LogInfo("Initiating recovery scenario: {Scenario}", scenario);
+            _logger.LogInfo($"Initiating recovery scenario: {scenario}", correlationId: new FixedString64Bytes(), sourceContext: "HealthCheckResilienceService");
 
             switch (scenario)
             {
@@ -336,7 +333,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                     break;
 
                 default:
-                    _logger.LogWarning("Unknown recovery scenario: {Scenario}", scenario);
+                    _logger.LogWarning($"Unknown recovery scenario: {scenario}", correlationId: new FixedString64Bytes(), sourceContext: "HealthCheckResilienceService");
                     break;
             }
         }
@@ -439,16 +436,14 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
             if (openCircuitBreakers > _circuitBreakers.Count * 0.5) // More than 50% open
             {
-                _logger.LogError("Resilience health check failed: {Open}/{Total} circuit breakers are open",
-                    openCircuitBreakers, _circuitBreakers.Count);
+                _logger.LogError($"Resilience health check failed: {openCircuitBreakers}/{_circuitBreakers.Count} circuit breakers are open", correlationId: new FixedString64Bytes(), sourceContext: "HealthCheckResilienceService");
                 return false;
             }
 
             // Check degradation level
             if (_currentDegradationLevel >= DegradationLevel.Severe)
             {
-                _logger.LogError("Resilience health check failed: System degradation level is {Level}",
-                    _currentDegradationLevel);
+                _logger.LogError($"Resilience health check failed: System degradation level is {_currentDegradationLevel}", correlationId: new FixedString64Bytes(), sourceContext: "HealthCheckResilienceService");
                 return false;
             }
 
@@ -490,10 +485,12 @@ namespace AhBearStudios.Core.HealthChecking.Services
         private void PublishCircuitBreakerStateChange(FixedString64Bytes operationName, CircuitBreakerState from, CircuitBreakerState to)
         {
             var message = HealthCheckCircuitBreakerStateChangedMessage.Create(
-                operationName.ToString(),
+                operationName,
                 from,
                 to,
                 "Circuit breaker state transition",
+                0, // consecutiveFailures - we don't have this info in this context
+                0, // totalActivations - we don't have this info in this context
                 "HealthCheckResilienceService");
 
             // Publish directly via IMessageBusService
@@ -604,10 +601,12 @@ namespace AhBearStudios.Core.HealthChecking.Services
         {
             // This would trigger a system restart - for now just alert
             await _alertService.RaiseAlertAsync(
-                "System Restart Recovery Initiated",
-                "System restart recovery has been triggered. Manual intervention may be required.",
+                "System Restart Recovery Initiated: System restart recovery has been triggered. Manual intervention may be required.",
                 AlertSeverity.Emergency,
-                cancellationToken: cancellationToken);
+                "HealthCheckResilienceService",
+                "Recovery",
+                Guid.Empty,
+                cancellationToken);
         }
 
         /// <summary>

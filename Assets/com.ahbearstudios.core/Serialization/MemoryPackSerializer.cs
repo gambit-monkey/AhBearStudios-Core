@@ -61,7 +61,7 @@ namespace AhBearStudios.Core.Serialization
             _memoryPackOptions = CreateMemoryPackOptions();
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo("MemoryPackSerializer initialized with MemoryPack format", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo("MemoryPackSerializer initialized with MemoryPack format", correlationId: correlationId, sourceContext: null, properties: null);
         }
 
         /// <inheritdoc />
@@ -77,7 +77,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Starting serialization of type {typeof(T).Name}", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Starting serialization of type {typeof(T).Name}", correlationId: correlationId, sourceContext: null, properties: null);
 
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
@@ -91,7 +91,7 @@ namespace AhBearStudios.Core.Serialization
                 var duration = DateTime.UtcNow - startTime;
                 _statistics.RecordSerialization(typeof(T), result.Length, duration, true);
 
-                _logger.LogInfo($"Successfully serialized {typeof(T).Name} to {result.Length} bytes in {duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully serialized {typeof(T).Name} to {result.Length} bytes in {duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return result;
             }
@@ -124,7 +124,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Starting deserialization of type {typeof(T).Name} from {data.Length} bytes", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Starting deserialization of type {typeof(T).Name} from {data.Length} bytes", correlationId: correlationId, sourceContext: null, properties: null);
 
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
@@ -143,7 +143,7 @@ namespace AhBearStudios.Core.Serialization
                 var duration = DateTime.UtcNow - startTime;
                 _statistics.RecordDeserialization(typeof(T), data.Length, duration, true);
 
-                _logger.LogInfo($"Successfully deserialized {typeof(T).Name} in {duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully deserialized {typeof(T).Name} in {duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return result;
             }
@@ -176,7 +176,7 @@ namespace AhBearStudios.Core.Serialization
             catch (Exception ex)
             {
                 var correlationId = GetCorrelationId();
-                _logger.LogError($"TryDeserialize failed for type {typeof(T).Name}: {ex.Message}", correlationId, sourceContext: null, properties: null);
+                _logger.LogError($"TryDeserialize failed for type {typeof(T).Name}: {ex.Message}", correlationId: correlationId, sourceContext: null, properties: null);
                 return false;
             }
         }
@@ -205,11 +205,11 @@ namespace AhBearStudios.Core.Serialization
                 var hasMemoryPackableAttribute = type.GetCustomAttributes(typeof(MemoryPackableAttribute), false).Length > 0;
                 if (hasMemoryPackableAttribute)
                 {
-                    _logger.LogInfo($"Registered MemoryPackable type {type.FullName} for serialization", correlationId, sourceContext: null, properties: null);
+                    _logger.LogInfo($"Registered MemoryPackable type {type.FullName} for serialization", correlationId: correlationId, sourceContext: null, properties: null);
                 }
                 else
                 {
-                    _logger.LogWarning($"Type {type.FullName} is not marked with [MemoryPackable] attribute. MemoryPack serialization may fail.", correlationId, sourceContext: null, properties: null);
+                    _logger.LogWarning($"Type {type.FullName} is not marked with [MemoryPackable] attribute. MemoryPack serialization may fail.", correlationId: correlationId, sourceContext: null, properties: null);
                 }
             }
         }
@@ -431,7 +431,7 @@ namespace AhBearStudios.Core.Serialization
                 _disposed = true;
 
                 var correlationId = GetCorrelationId();
-                _logger.LogInfo("MemoryPackSerializer disposed", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo("MemoryPackSerializer disposed", correlationId: correlationId, sourceContext: null, properties: null);
             }
         }
     }

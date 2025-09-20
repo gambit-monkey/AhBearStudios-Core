@@ -29,7 +29,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
         // Scheduling state
         private CancellationTokenSource _scheduleCts;
-        private UniTask _schedulingTask;
+        private UniTask? _schedulingTask;
         private DateTime? _nextExecutionTime;
         private DateTime? _lastExecutionTime;
         private TimeSpan _currentInterval;
@@ -104,38 +104,41 @@ namespace AhBearStudios.Core.HealthChecking.Services
                     _profilerService.RecordSample(tag, (float)stopwatch.ElapsedMilliseconds, "ms");
                     _profilerService.IncrementCounter("healthcheck.executions.success");
 
-                    _logger.LogDebug($"Health check '{healthCheck.Name}' completed with status {result.Status} in {stopwatch.ElapsedMilliseconds}ms", default(FixedString64Bytes), "HealthCheckOperationService");
+                    _logger.LogDebug($"Health check '{healthCheck.Name}' completed with status {result.Status} in {stopwatch.ElapsedMilliseconds}ms", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
                 }
                 catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
                 {
                     result = HealthCheckResult.Unhealthy(
+                        healthCheck.Name.ToString(),
                         $"Health check '{healthCheck.Name}' was cancelled",
                         duration: stopwatch.Elapsed);
 
                     _profilerService.IncrementCounter("healthcheck.executions.cancelled");
 
-                    _logger.LogWarning($"Health check '{healthCheck.Name}' was cancelled after {stopwatch.ElapsedMilliseconds}ms", default(FixedString64Bytes), "HealthCheckOperationService");
+                    _logger.LogWarning($"Health check '{healthCheck.Name}' was cancelled after {stopwatch.ElapsedMilliseconds}ms", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
                 }
                 catch (OperationCanceledException)
                 {
                     result = HealthCheckResult.Unhealthy(
+                        healthCheck.Name.ToString(),
                         $"Health check '{healthCheck.Name}' timed out after {stopwatch.Elapsed}",
                         duration: stopwatch.Elapsed);
 
                     _profilerService.IncrementCounter("healthcheck.executions.timeout");
 
-                    _logger.LogWarning($"Health check '{healthCheck.Name}' timed out after {stopwatch.ElapsedMilliseconds}ms", default(FixedString64Bytes), "HealthCheckOperationService");
+                    _logger.LogWarning($"Health check '{healthCheck.Name}' timed out after {stopwatch.ElapsedMilliseconds}ms", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
                 }
                 catch (Exception ex)
                 {
                     result = HealthCheckResult.Unhealthy(
+                        healthCheck.Name.ToString(),
                         $"Health check '{healthCheck.Name}' threw exception: {ex.Message}",
-                        ex,
-                        stopwatch.Elapsed);
+                        duration: stopwatch.Elapsed,
+                        exception: ex);
 
                     _profilerService.IncrementCounter("healthcheck.executions.failed");
 
-                    _logger.LogException($"Health check '{healthCheck.Name}' failed with exception after {stopwatch.ElapsedMilliseconds}ms", ex, default(FixedString64Bytes), "HealthCheckOperationService");
+                    _logger.LogException($"Health check '{healthCheck.Name}' failed with exception after {stopwatch.ElapsedMilliseconds}ms", ex, correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
                 }
                 finally
                 {
@@ -145,7 +148,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                     if (_config.EnableProfiling && stopwatch.ElapsedMilliseconds > _config.SlowHealthCheckThreshold)
                     {
                         _profilerService.IncrementCounter("healthcheck.executions.slow");
-                        _logger.LogWarning($"Slow health check detected: {healthCheck.Name} took {stopwatch.ElapsedMilliseconds}ms", default(FixedString64Bytes), "HealthCheckOperationService");
+                        _logger.LogWarning($"Slow health check detected: {healthCheck.Name} took {stopwatch.ElapsedMilliseconds}ms", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
                     }
                 }
 
@@ -171,20 +174,10 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 var semaphore = new SemaphoreSlim(maxConcurrency, maxConcurrency);
 
                 // Use ZLinq for zero-allocation operations
-                var tasks = healthChecks.AsValueEnumerable().Select(async kvp =>
+                var tasks = healthChecks.AsValueEnumerable().Select(kvp =>
                 {
                     var (healthCheck, configuration) = kvp;
-
-                    await semaphore.WaitAsync(cancellationToken);
-                    try
-                    {
-                        var result = await ExecuteHealthCheckAsync(healthCheck, configuration, cancellationToken);
-                        return (healthCheck.Name.ToString(), result);
-                    }
-                    finally
-                    {
-                        semaphore.Release();
-                    }
+                    return ProcessHealthCheckAsync(healthCheck, configuration, semaphore, cancellationToken);
                 }).ToArray();
 
                 var completedResults = await UniTask.WhenAll(tasks);
@@ -194,11 +187,29 @@ namespace AhBearStudios.Core.HealthChecking.Services
                     results[name] = result;
                 }
 
+                async UniTask<(string name, HealthCheckResult result)> ProcessHealthCheckAsync(
+                    IHealthCheck healthCheck,
+                    HealthCheckConfiguration configuration,
+                    SemaphoreSlim semaphore,
+                    CancellationToken ct)
+                {
+                    await semaphore.WaitAsync(ct);
+                    try
+                    {
+                        var result = await ExecuteHealthCheckAsync(healthCheck, configuration, ct);
+                        return (healthCheck.Name.ToString(), result);
+                    }
+                    finally
+                    {
+                        semaphore.Release();
+                    }
+                }
+
                 // Record batch metrics in IProfilerService
                 _profilerService.RecordMetric("healthcheck.batch.size", results.Count);
                 _profilerService.RecordMetric("healthcheck.batch.concurrency", maxConcurrency);
 
-                _logger.LogDebug($"Executed {results.Count} health checks with max concurrency {maxConcurrency}", default(FixedString64Bytes), "HealthCheckOperationService");
+                _logger.LogDebug($"Executed {results.Count} health checks with max concurrency {maxConcurrency}", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
 
                 return results;
             }
@@ -229,7 +240,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 {
                     if (attempt > 0)
                     {
-                        _logger.LogDebug($"Retrying health check '{healthCheck.Name}', attempt {attempt}/{maxRetries}", default(FixedString64Bytes), "HealthCheckOperationService");
+                        _logger.LogDebug($"Retrying health check '{healthCheck.Name}', attempt {attempt}/{maxRetries}", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
 
                         await UniTask.Delay(retryDelay, cancellationToken: cancellationToken);
                         _profilerService.IncrementCounter("healthcheck.retries");
@@ -246,7 +257,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                         {
                             if (attempt > 0)
                             {
-                                _logger.LogInfo($"Health check '{healthCheck.Name}' succeeded after {attempt + 1} attempts", default(FixedString64Bytes), "HealthCheckOperationService");
+                                _logger.LogInfo($"Health check '{healthCheck.Name}' succeeded after {attempt + 1} attempts", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
                             }
                             return result;
                         }
@@ -256,17 +267,18 @@ namespace AhBearStudios.Core.HealthChecking.Services
                     catch (Exception ex)
                     {
                         lastException = ex;
-                        _logger.LogException($"Health check '{healthCheck.Name}' failed on attempt {attempt + 1}", ex, default(FixedString64Bytes), "HealthCheckOperationService");
+                        _logger.LogException($"Health check '{healthCheck.Name}' failed on attempt {attempt + 1}", ex, correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
                     }
                 }
 
                 // All retries exhausted
                 _profilerService.IncrementCounter("healthcheck.retries.exhausted");
-                _logger.LogError($"Health check '{healthCheck.Name}' failed after {maxRetries + 1} retries", default(FixedString64Bytes), "HealthCheckOperationService");
+                _logger.LogError($"Health check '{healthCheck.Name}' failed after {maxRetries + 1} retries", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
 
                 return result ?? HealthCheckResult.Unhealthy(
+                    healthCheck.Name.ToString(),
                     $"Health check '{healthCheck.Name}' failed after {maxRetries + 1} attempts",
-                    lastException);
+                    exception: lastException);
             }
         }
 
@@ -293,11 +305,11 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 _scheduleCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             }
 
-            _logger.LogInfo($"Starting scheduled health check execution with interval: {interval}", default(FixedString64Bytes), "HealthCheckOperationService");
+            _logger.LogInfo($"Starting scheduled health check execution with interval: {interval}", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
 
             // Start the scheduling loop
             _schedulingTask = RunSchedulingLoopAsync(_scheduleCts.Token);
-            await _schedulingTask.SuppressCancellationThrow();
+            await _schedulingTask.Value.SuppressCancellationThrow();
         }
 
         /// <inheritdoc />
@@ -313,12 +325,12 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 _scheduleCts?.Cancel();
             }
 
-            if (_schedulingTask != null)
+            if (_schedulingTask.HasValue)
             {
-                await _schedulingTask.SuppressCancellationThrow();
+                await _schedulingTask.Value.SuppressCancellationThrow();
             }
 
-            _logger.LogInfo("Stopped scheduled health check execution", default(FixedString64Bytes), "HealthCheckOperationService");
+            _logger.LogInfo("Stopped scheduled health check execution", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
         }
 
         /// <inheritdoc />
@@ -332,7 +344,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 _isPaused = true;
             }
 
-            _logger.LogInfo("Paused scheduled health check execution", default(FixedString64Bytes), "HealthCheckOperationService");
+            _logger.LogInfo("Paused scheduled health check execution", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
         }
 
         /// <inheritdoc />
@@ -346,7 +358,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 _isPaused = false;
             }
 
-            _logger.LogInfo("Resumed scheduled health check execution", default(FixedString64Bytes), "HealthCheckOperationService");
+            _logger.LogInfo("Resumed scheduled health check execution", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
         }
 
         /// <inheritdoc />
@@ -362,7 +374,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 await _executeCallback(cancellationToken);
             }
 
-            _logger.LogInfo("Manual health check execution completed", default(FixedString64Bytes), "HealthCheckOperationService");
+            _logger.LogInfo("Manual health check execution completed", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
         }
 
         /// <inheritdoc />
@@ -380,7 +392,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 }
             }
 
-            _logger.LogInfo($"Updated schedule interval to: {newInterval}", default(FixedString64Bytes), "HealthCheckOperationService");
+            _logger.LogInfo($"Updated schedule interval to: {newInterval}", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
         }
 
         /// <inheritdoc />
@@ -392,7 +404,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             // Check if the health check is enabled
             if (!configuration.Enabled)
             {
-                _logger.LogDebug($"Health check '{healthCheck.Name}' is disabled", default(FixedString64Bytes), "HealthCheckOperationService");
+                _logger.LogDebug($"Health check '{healthCheck.Name}' is disabled", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
                 return false;
             }
 
@@ -405,6 +417,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             // Get statistics directly from IProfilerService instead of duplicating
             var profilerStats = _profilerService.GetStatistics();
             var healthCheckMetrics = _profilerService.GetAllMetrics()
+                .AsValueEnumerable()
                 .Where(kvp => kvp.Key.StartsWith("HealthCheck"))
                 .ToDictionary(kvp => kvp.Key, kvp => (object)kvp.Value);
 
@@ -414,7 +427,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 ["IsPaused"] = _isPaused,
                 ["NextExecutionTime"] = _nextExecutionTime,
                 ["LastExecutionTime"] = _lastExecutionTime,
-                ["CurrentInterval"] = _currentInterval?.TotalSeconds ?? 0,
+                ["CurrentInterval"] = _currentInterval.TotalSeconds,
                 ["ProfilerMetrics"] = healthCheckMetrics
             };
         }
@@ -452,7 +465,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogException("Error in scheduled health check execution", ex, default(FixedString64Bytes), "HealthCheckOperationService");
+                    _logger.LogException("Error in scheduled health check execution", ex, correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
                     _profilerService.IncrementCounter("healthcheck.executions.scheduled.failed");
                 }
             }
@@ -473,7 +486,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             }
             catch (Exception ex)
             {
-                _logger.LogException("Error during HealthCheckOperationService disposal", ex, default(FixedString64Bytes), "HealthCheckOperationService");
+                _logger.LogException("Error during HealthCheckOperationService disposal", ex, correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckOperationService");
             }
             finally
             {

@@ -84,7 +84,7 @@ namespace AhBearStudios.Core.Serialization
             };
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo("XmlSerializer initialized with XML format", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo("XmlSerializer initialized with XML format", correlationId: correlationId, sourceContext: null, properties: null);
         }
 
         /// <inheritdoc />
@@ -100,7 +100,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Starting XML serialization of type {typeof(T).Name}", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Starting XML serialization of type {typeof(T).Name}", correlationId: correlationId, sourceContext: null, properties: null);
 
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
@@ -123,7 +123,7 @@ namespace AhBearStudios.Core.Serialization
                 var duration = DateTime.UtcNow - startTime;
                 _statistics.RecordSerialization(typeof(T), result.Length, duration, true);
 
-                _logger.LogInfo($"Successfully serialized {typeof(T).Name} to {result.Length} bytes in {duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully serialized {typeof(T).Name} to {result.Length} bytes in {duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return result;
             }
@@ -132,7 +132,7 @@ namespace AhBearStudios.Core.Serialization
                 var duration = DateTime.UtcNow - startTime;
                 _statistics.RecordSerialization(typeof(T), 0, duration, false);
 
-                _logger.LogException($"Failed to serialize type {typeof(T).Name}", ex, correlationId, sourceContext: null, properties: null);
+                _logger.LogException($"Failed to serialize type {typeof(T).Name}", ex, correlationId: correlationId, sourceContext: null, properties: null);
                 throw new SerializationException($"XML serialization failed for type {typeof(T).Name}", typeof(T), "Serialize", ex);
             }
         }
@@ -156,7 +156,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Starting XML deserialization of type {typeof(T).Name} from {data.Length} bytes", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Starting XML deserialization of type {typeof(T).Name} from {data.Length} bytes", correlationId: correlationId, sourceContext: null, properties: null);
 
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
@@ -182,7 +182,7 @@ namespace AhBearStudios.Core.Serialization
                 var duration = DateTime.UtcNow - startTime;
                 _statistics.RecordDeserialization(typeof(T), data.Length, duration, true);
 
-                _logger.LogInfo($"Successfully deserialized {typeof(T).Name} in {duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully deserialized {typeof(T).Name} in {duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return result;
             }
@@ -191,7 +191,7 @@ namespace AhBearStudios.Core.Serialization
                 var duration = DateTime.UtcNow - startTime;
                 _statistics.RecordDeserialization(typeof(T), data.Length, duration, false);
 
-                _logger.LogException($"Failed to deserialize type {typeof(T).Name}", ex, correlationId, sourceContext: null, properties: null);
+                _logger.LogException($"Failed to deserialize type {typeof(T).Name}", ex, correlationId: correlationId, sourceContext: null, properties: null);
                 throw new SerializationException($"XML deserialization failed for type {typeof(T).Name}", typeof(T), "Deserialize", ex);
             }
         }
@@ -215,7 +215,7 @@ namespace AhBearStudios.Core.Serialization
             catch (Exception ex)
             {
                 var correlationId = GetCorrelationId();
-                _logger.LogError($"TryDeserialize failed for type {typeof(T).Name}: {ex.Message}", correlationId, sourceContext: null, properties: null);
+                _logger.LogError($"TryDeserialize failed for type {typeof(T).Name}: {ex.Message}", correlationId: correlationId, sourceContext: null, properties: null);
                 return false;
             }
         }
@@ -243,7 +243,7 @@ namespace AhBearStudios.Core.Serialization
                 // Pre-create the XML serializer for better performance
                 GetOrCreateXmlSerializer(type);
                 
-                _logger.LogInfo($"Registered type {type.FullName} for XML serialization", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Registered type {type.FullName} for XML serialization", correlationId: correlationId, sourceContext: null, properties: null);
             }
         }
 
@@ -319,7 +319,7 @@ namespace AhBearStudios.Core.Serialization
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
 
-                _logger.LogInfo($"Serializing {typeof(T).Name} directly to stream", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Serializing {typeof(T).Name} directly to stream", correlationId: correlationId, sourceContext: null, properties: null);
 
                 var xmlSerializer = GetOrCreateXmlSerializer<T>();
 
@@ -338,7 +338,7 @@ namespace AhBearStudios.Core.Serialization
             }
             catch (Exception ex)
             {
-                _logger.LogException($"Failed to serialize {typeof(T).Name} to stream", ex, correlationId, sourceContext: null, properties: null);
+                _logger.LogException($"Failed to serialize {typeof(T).Name} to stream", ex, correlationId: correlationId, sourceContext: null, properties: null);
                 throw;
             }
         }
@@ -358,7 +358,7 @@ namespace AhBearStudios.Core.Serialization
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
 
-                _logger.LogInfo($"Deserializing {typeof(T).Name} from stream", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Deserializing {typeof(T).Name} from stream", correlationId: correlationId, sourceContext: null, properties: null);
 
                 var xmlSerializer = GetOrCreateXmlSerializer<T>();
                 
@@ -387,7 +387,7 @@ namespace AhBearStudios.Core.Serialization
             }
             catch (Exception ex)
             {
-                _logger.LogException($"Failed to deserialize {typeof(T).Name} from stream", ex, correlationId, sourceContext: null, properties: null);
+                _logger.LogException($"Failed to deserialize {typeof(T).Name} from stream", ex, correlationId: correlationId, sourceContext: null, properties: null);
                 throw;
             }
         }
@@ -450,7 +450,7 @@ namespace AhBearStudios.Core.Serialization
             
             _serializerCache.Clear();
             
-            _logger.LogInfo($"Cleared XML serializer cache. Removed {count} cached serializers", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo($"Cleared XML serializer cache. Removed {count} cached serializers", correlationId: correlationId, sourceContext: null, properties: null);
         }
 
         private System.Xml.Serialization.XmlSerializer GetOrCreateXmlSerializer<T>()
@@ -471,7 +471,7 @@ namespace AhBearStudios.Core.Serialization
                 
                 try
                 {
-                    _logger.LogInfo($"Creating XML serializer for type {type.Name}", correlationId, sourceContext: null, properties: null);
+                    _logger.LogInfo($"Creating XML serializer for type {type.Name}", correlationId: correlationId, sourceContext: null, properties: null);
                     
                     var xmlSerializer = new System.Xml.Serialization.XmlSerializer(type);
                     
@@ -487,15 +487,15 @@ namespace AhBearStudios.Core.Serialization
                     }
                     catch (Exception warmupEx)
                     {
-                        _logger.LogWarning($"Failed to warm up XML serializer for {type.Name}: {warmupEx.Message}", correlationId, sourceContext: null, properties: null);
+                        _logger.LogWarning($"Failed to warm up XML serializer for {type.Name}: {warmupEx.Message}", correlationId: correlationId, sourceContext: null, properties: null);
                     }
                     
-                    _logger.LogInfo($"Created and cached XML serializer for type {type.Name}", correlationId, sourceContext: null, properties: null);
+                    _logger.LogInfo($"Created and cached XML serializer for type {type.Name}", correlationId: correlationId, sourceContext: null, properties: null);
                     return xmlSerializer;
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogException($"Failed to create XML serializer for type {type.Name}", ex, correlationId, sourceContext: null, properties: null);
+                    _logger.LogException($"Failed to create XML serializer for type {type.Name}", ex, correlationId: correlationId, sourceContext: null, properties: null);
                     throw new SerializationException($"Could not create XML serializer for type {type.Name}", type, "CreateSerializer", ex);
                 }
             }
@@ -577,7 +577,7 @@ namespace AhBearStudios.Core.Serialization
                 _disposed = true;
 
                 var correlationId = GetCorrelationId();
-                _logger.LogInfo("XmlSerializer disposed", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo("XmlSerializer disposed", correlationId: correlationId, sourceContext: null, properties: null);
             }
         }
     }

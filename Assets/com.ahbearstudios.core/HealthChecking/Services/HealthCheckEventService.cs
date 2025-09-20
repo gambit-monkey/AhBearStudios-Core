@@ -56,7 +56,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
             _serviceId = DeterministicIdGenerator.GenerateCoreId("HealthCheckEventService");
 
-            _logger.LogDebug("HealthCheckEventService initialized with ID: {ServiceId}", default(FixedString64Bytes), "HealthCheckEventService", new Dictionary<string, object> { ["ServiceId"] = _serviceId });
+            _logger.LogDebug("HealthCheckEventService initialized with ID: {ServiceId}", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckEventService", properties: new Dictionary<string, object> { ["ServiceId"] = _serviceId });
         }
 
         /// <inheritdoc />
@@ -115,7 +115,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                     await CoordinateCriticalAlertAsync(checkName, result, correlationId, cancellationToken);
                 }
 
-                _logger.LogDebug("Published lifecycle events for health check '{Name}' with status {Status}", default(FixedString64Bytes), "HealthCheckEventService", new Dictionary<string, object> { ["Name"] = checkName, ["Status"] = result.Status });
+                _logger.LogDebug("Published lifecycle events for health check '{Name}' with status {Status}", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckEventService", properties: new Dictionary<string, object> { ["Name"] = checkName, ["Status"] = result.Status });
             }
         }
 
@@ -319,7 +319,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 _profilerService.IncrementCounter("healthcheck.escalations");
                 _profilerService.RecordMetric("healthcheck.escalation.unhealthy_count", unhealthyChecks.Count);
 
-                _logger.LogWarning("Alert escalation triggered for {Count} unhealthy checks", default(FixedString64Bytes), "HealthCheckEventService", new Dictionary<string, object> { ["Count"] = unhealthyChecks.Count });
+                _logger.LogWarning("Alert escalation triggered for {Count} unhealthy checks", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckEventService", properties: new Dictionary<string, object> { ["Count"] = unhealthyChecks.Count });
             }
         }
 
@@ -462,7 +462,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                 _profilerService.RecordMetric("healthcheck.batch.unhealthy",
                     results.Count(r => r.Value.Status == HealthStatus.Unhealthy));
 
-                _logger.LogDebug("Coordinated batch results for {Count} health checks", default(FixedString64Bytes), "HealthCheckEventService", new Dictionary<string, object> { ["Count"] = results.Count });
+                _logger.LogDebug("Coordinated batch results for {Count} health checks", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckEventService", properties: new Dictionary<string, object> { ["Count"] = results.Count });
             }
         }
 
@@ -489,7 +489,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
             _profilerService.IncrementCounter($"healthcheck.{checkName}.status_changes");
             _profilerService.RecordMetric($"healthcheck.{checkName}.status", (int)newStatus);
 
-            _logger.LogInfo("Health check '{Name}' status changed from {Previous} to {New}", default(FixedString64Bytes), "HealthCheckEventService", new Dictionary<string, object> { ["Name"] = checkName, ["Previous"] = previousStatus, ["New"] = newStatus });
+            _logger.LogInfo("Health check '{Name}' status changed from {Previous} to {New}", correlationId: default(FixedString64Bytes), sourceContext: "HealthCheckEventService", properties: new Dictionary<string, object> { ["Name"] = checkName, ["Previous"] = previousStatus, ["New"] = newStatus });
         }
 
         private async UniTask CoordinateCriticalAlertAsync(

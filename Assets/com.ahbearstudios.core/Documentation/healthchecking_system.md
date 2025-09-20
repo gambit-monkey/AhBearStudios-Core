@@ -2,177 +2,221 @@
 
 ## 📋 Overview
 
-**Namespace:** `AhBearStudios.Core.HealthCheck`  
-**Role:** System health monitoring, protection, and graceful degradation  
-**Status:** ✅ Core Infrastructure
+**Namespace:** `AhBearStudios.Core.HealthChecking`
+**Role:** System health monitoring, protection, and graceful degradation
+**Status:** ✅ Production Ready
 
-The HealthCheck System provides comprehensive health monitoring capabilities for all systems, enabling proactive issue detection, automated health reporting, system protection through circuit breakers, and graceful degradation patterns. This system serves as the central point for maintaining system resilience and operational health.
+The HealthCheck System provides comprehensive health monitoring capabilities for all systems, enabling proactive issue detection, automated health reporting, system protection through circuit breakers, and graceful degradation patterns. This production-ready system serves as the central point for maintaining system resilience and operational health in Unity game development environments.
 
 ## 🚀 Key Features
 
 - **⚡ Real-Time Monitoring**: Continuous health assessment of all registered systems
-- **🛡️ Circuit Breaker Protection**: Automatic failure isolation and system protection
-- **🔧 Flexible Health Checks**: Custom health check implementations for any system
-- **📊 Health Aggregation**: Hierarchical health status with dependency tracking
-- **🎯 Automated Scheduling**: Configurable health check intervals and timing
-- **📈 Health History**: Historical health data tracking and trend analysis
-- **🔄 Alert Integration**: Automatic alert generation for health status changes
-- **🏥 Graceful Degradation**: Automatic system degradation based on health status
-- **🔁 Recovery Management**: Automatic recovery detection and circuit breaker reset
+- **🛡️ Circuit Breaker Protection**: Production-ready circuit breaker implementation with fault tolerance
+- **🔧 Flexible Health Checks**: Custom health check implementations using IHealthCheck interface
+- **📊 Health Aggregation**: Comprehensive health reports with status aggregation
+- **🎯 Automated Scheduling**: Configurable health check intervals with automatic execution
+- **📈 Health History**: Historical health data tracking and statistical analysis
+- **🔄 Message Bus Integration**: Event-driven architecture using IMessageBusService following CLAUDE.md patterns
+- **🏥 Graceful Degradation**: Configurable degradation levels based on health status
+- **⚙️ Service-Based Architecture**: Modular services for operations, events, resilience, and registry management
+- **🎮 Unity-Optimized**: 60+ FPS performance targets with zero-allocation patterns using ZLinq and UniTask
 
 ## 🏗️ Architecture
 
-### Folder Structure
+### Production Architecture
+
+The HealthCheck System follows the **Builder → Config → Factory → Service** pattern as specified in CLAUDE.md:
 
 ```
-AhBearStudios.Core.HealthCheck/
-├── IHealthCheckService.cs                # Enhanced primary service interface
-├── HealthCheckService.cs                 # Health monitoring with circuit breakers
+AhBearStudios.Core.HealthChecking/
+├── IHealthCheckService.cs                # Primary service interface
 ├── ICircuitBreaker.cs                    # Circuit breaker interface
-├── CircuitBreaker.cs                     # Circuit breaker implementation
+├── CircuitBreaker.cs                     # Production circuit breaker implementation
+├── CircuitBreakerOpenException.cs        # Circuit breaker exception handling
+├── HealthCheckRegistrationManager.cs     # Health check registration management
+├── IDomainHealthCheckRegistrar.cs        # Domain-specific registration interface
+├── Builders/
+│   ├── IHealthCheckServiceConfigBuilder.cs # Service configuration builder interface
+│   ├── HealthCheckServiceConfigBuilder.cs  # Main configuration builder
+│   ├── IHealthCheckConfigBuilder.cs      # Individual check config builder interface
+│   ├── HealthCheckConfigBuilder.cs       # Individual check configuration builder
+│   ├── ICircuitBreakerConfigBuilder.cs   # Circuit breaker config builder interface
+│   └── CircuitBreakerConfigBuilder.cs    # Circuit breaker configuration builder
 ├── Configs/
 │   ├── HealthCheckServiceConfig.cs       # Main service configuration
-│   ├── HealthCheckConfig.cs              # Individual check configuration
+│   ├── IHealthCheckServiceConfig.cs      # Service configuration interface
+│   ├── HealthCheckConfiguration.cs       # Individual check configuration
 │   ├── CircuitBreakerConfig.cs           # Circuit breaker settings
-│   ├── DegradationConfig.cs              # Graceful degradation rules
-│   └── SchedulingConfig.cs               # Check scheduling settings
-├── Builders/
-│   ├── IHealthCheckServiceConfigBuilder.cs # Configuration builder interface
-│   └── HealthCheckServiceConfigBuilder.cs  # Builder implementation
+│   ├── ICircuitBreakerConfig.cs          # Circuit breaker config interface
+│   ├── DegradationConfig.cs              # Graceful degradation configuration
+│   ├── RetryConfig.cs                    # Retry policy configuration
+│   ├── IRetryConfig.cs                   # Retry configuration interface
+│   ├── RateLimitConfig.cs                # Rate limiting configuration
+│   ├── IRateLimitConfig.cs               # Rate limit config interface
+│   ├── PerformanceConfig.cs              # Performance monitoring configuration
+│   ├── ISlowCallConfig.cs                # Slow call detection interface
+│   ├── IFailoverConfig.cs                # Failover configuration interface
+│   └── IBulkheadConfig.cs                # Bulkhead pattern configuration interface
 ├── Factories/
+│   ├── IHealthCheckServiceFactory.cs     # Service factory interface
+│   ├── HealthCheckServiceFactory.cs      # Production service factory
 │   ├── IHealthCheckFactory.cs            # Health check creation interface
-│   ├── HealthCheckFactory.cs             # Factory implementation
-│   └── CircuitBreakerFactory.cs          # Circuit breaker factory
+│   ├── HealthCheckFactory.cs             # Health check factory implementation
+│   └── ICircuitBreakerFactory.cs         # Circuit breaker factory interface
 ├── Services/
-│   ├── HealthAggregationService.cs       # Health status aggregation
-│   ├── HealthHistoryService.cs           # Historical tracking
-│   ├── HealthSchedulingService.cs        # Check scheduling
-│   ├── DegradationManagementService.cs   # Graceful degradation
-│   └── CircuitBreakerManager.cs          # Circuit breaker management
-├── Schedulers/
-│   ├── IHealthCheckScheduler.cs          # Scheduler interface
-│   ├── IntervalScheduler.cs              # Interval-based scheduling
-│   ├── CronScheduler.cs                  # Cron-based scheduling
-│   └── AdaptiveScheduler.cs              # Adaptive scheduling
+│   ├── IHealthCheckOperationService.cs   # Operations service interface
+│   ├── HealthCheckOperationService.cs    # Health check execution and scheduling
+│   ├── IHealthCheckEventService.cs       # Event service interface
+│   ├── HealthCheckEventService.cs        # Event handling and message publishing
+│   ├── IHealthCheckResilienceService.cs  # Resilience service interface
+│   ├── HealthCheckResilienceService.cs   # Circuit breakers and degradation
+│   ├── IHealthCheckRegistryService.cs    # Registry service interface
+│   └── HealthCheckRegistryService.cs     # Health check registration and metadata
+├── Checks/
+│   └── IHealthCheck.cs                   # Enhanced health check interface
 ├── Models/
-│   ├── HealthCheckResult.cs              # Health check result
-│   ├── HealthReport.cs                   # Comprehensive health report
-│   ├── HealthStatus.cs                   # Status enumeration
+│   ├── HealthStatus.cs                   # Enhanced status enumeration (6 levels)
 │   ├── HealthCheckCategory.cs            # Category enumeration
+│   ├── HealthCheckResult.cs              # Health check result
+│   ├── IHealthCheckResult.cs             # Health check result interface
+│   ├── HealthReport.cs                   # Comprehensive health report
+│   ├── OverallHealthStatus.cs            # Overall system health status
 │   ├── DegradationLevel.cs               # Degradation levels
-│   └── CircuitBreakerState.cs            # Circuit breaker states
+│   ├── CircuitBreakerState.cs            # Circuit breaker states
+│   ├── CircuitBreakerStatistics.cs       # Circuit breaker performance metrics
+│   ├── HealthStatistics.cs               # System health statistics
+│   ├── IndividualHealthCheckStatistics.cs # Individual check statistics
+│   ├── PerformanceMetrics.cs             # Performance monitoring data
+│   ├── HealthThresholds.cs               # Health threshold configuration
+│   ├── DatabaseTestResult.cs             # Database test result model
+│   ├── ExecutionType.cs                  # Health check execution types
+│   ├── HealthCheckExecution.cs           # Execution tracking model
+│   └── IValidatable.cs                   # Validation interface for configurations
+├── Messages/
+│   ├── HealthCheckStatusChangedMessage.cs        # Status change notifications
+│   ├── HealthCheckCircuitBreakerStateChangedMessage.cs # Circuit breaker events
+│   ├── HealthCheckDegradationChangeMessage.cs    # Degradation level changes
+│   ├── HealthCheckStartedMessage.cs              # Health check start events
+│   ├── HealthCheckCompletedMessage.cs            # Health check completion events
+│   ├── HealthCheckCompletedWithResultsMessage.cs # Health check results
+│   ├── HealthCheckServiceCreatedMessage.cs       # Service creation events
+│   ├── HealthCheckServiceCreationFailedMessage.cs # Service creation failures
+│   ├── HealthCheckCreatedMessage.cs              # Health check creation events
+│   ├── HealthCheckAlertMessage.cs                # Alert integration messages
+│   ├── CircuitBreakerCreatedMessage.cs           # Circuit breaker creation
+│   └── (Additional message types for comprehensive event coverage)
+├── Extensions/
+│   └── HealthCheckServiceExtensions.cs   # Service extension methods
 └── HealthChecks/
-    ├── SystemHealthCheck.cs              # System-level checks
-    ├── DatabaseHealthCheck.cs            # Database connectivity
-    ├── NetworkHealthCheck.cs             # Network connectivity
-    └── PerformanceHealthCheck.cs         # Performance monitoring
+    └── HealthCheckServiceHealthCheck.cs  # Self-monitoring health check
 
-AhBearStudios.Unity.HealthCheck/
+AhBearStudios.Unity.HealthChecking/
 ├── Installers/
-│   └── HealthCheckInstaller.cs           # Reflex registration
+│   └── HealthCheckInstaller.cs           # Reflex dependency injection setup
 ├── Components/
 │   ├── HealthMonitorComponent.cs         # Unity monitoring component
 │   └── HealthDisplayComponent.cs         # Visual health display
 └── ScriptableObjects/
-    └── HealthCheckConfigAsset.cs         # Unity configuration
+    └── HealthCheckConfigAsset.cs         # Unity configuration assets
 ```
 
 ## 🔌 Key Interfaces
 
 ### IHealthCheckService
 
-The primary interface for all health monitoring operations.
+The primary interface for all health monitoring operations. All health status changes are published via IMessageBusService following CLAUDE.md patterns.
 
 ```csharp
 public interface IHealthCheckService
 {
     // Health check registration
-    void RegisterHealthCheck(IHealthCheck healthCheck);
-    void RegisterHealthCheck<T>() where T : class, IHealthCheck;
-    void UnregisterHealthCheck(FixedString64Bytes name);
-    
-    // Health check execution
-    Task<HealthCheckResult> CheckHealthAsync(FixedString64Bytes name, CancellationToken cancellationToken = default);
-    Task<HealthReport> CheckAllHealthAsync(CancellationToken cancellationToken = default);
-    Task<HealthReport> CheckHealthByCategory(HealthCheckCategory category, CancellationToken cancellationToken = default);
-    
+    void RegisterHealthCheck(IHealthCheck healthCheck, HealthCheckConfiguration config = null);
+    void RegisterHealthChecks(Dictionary<IHealthCheck, HealthCheckConfiguration> healthChecks);
+    bool UnregisterHealthCheck(FixedString64Bytes name);
+
+    // Health check execution using UniTask for Unity optimization
+    UniTask<HealthCheckResult> ExecuteHealthCheckAsync(FixedString64Bytes name, CancellationToken cancellationToken = default);
+    UniTask<HealthReport> ExecuteAllHealthChecksAsync(CancellationToken cancellationToken = default);
+
     // Overall health status
-    Task<HealthStatus> GetOverallHealthStatusAsync(CancellationToken cancellationToken = default);
-    HealthStatus GetCachedOverallHealthStatus();
-    
+    UniTask<HealthStatus> GetOverallHealthStatusAsync(CancellationToken cancellationToken = default);
+    DegradationLevel GetCurrentDegradationLevel();
+
+    // Circuit breaker management
+    CircuitBreakerState GetCircuitBreakerState(FixedString64Bytes operationName);
+    Dictionary<FixedString64Bytes, CircuitBreakerState> GetAllCircuitBreakerStates();
+    void ForceCircuitBreakerOpen(FixedString64Bytes operationName, string reason);
+    void ForceCircuitBreakerClosed(FixedString64Bytes operationName, string reason);
+
+    // Graceful degradation
+    void SetDegradationLevel(DegradationLevel level, string reason);
+
+    // History and reporting
+    List<HealthCheckResult> GetHealthCheckHistory(FixedString64Bytes name, int maxResults = 100);
+
+    // Health check management
+    List<FixedString64Bytes> GetRegisteredHealthCheckNames();
+    Dictionary<string, object> GetHealthCheckMetadata(FixedString64Bytes name);
+    bool IsHealthCheckEnabled(FixedString64Bytes name);
+    void SetHealthCheckEnabled(FixedString64Bytes name, bool enabled);
+
     // Automatic monitoring
     void StartAutomaticChecks();
     void StopAutomaticChecks();
-    bool IsAutomaticChecksEnabled { get; }
-    
-    // Circuit breaker management
-    void EnableCircuitBreaker(FixedString64Bytes healthCheckName, CircuitBreakerConfig config);
-    void DisableCircuitBreaker(FixedString64Bytes healthCheckName);
-    CircuitBreakerState GetCircuitBreakerState(FixedString64Bytes healthCheckName);
-    
-    // Graceful degradation
-    DegradationLevel GetCurrentDegradationLevel();
-    void SetDegradationLevel(DegradationLevel level, string reason);
-    bool IsFeatureEnabled(FixedString64Bytes featureName);
-    
-    // History and reporting
-    IEnumerable<HealthCheckResult> GetHealthHistory(FixedString64Bytes name, TimeSpan period);
-    HealthReport GetLastHealthReport();
-    IEnumerable<HealthReport> GetHealthReportHistory(TimeSpan period);
-    
+    bool IsAutomaticChecksRunning();
+
     // Statistics
-    HealthServiceStatistics GetStatistics();
-    
-    // Events
-    event EventHandler<HealthStatusChangedEventArgs> HealthStatusChanged;
-    event EventHandler<CircuitBreakerStateChangedEventArgs> CircuitBreakerStateChanged;
-    event EventHandler<DegradationStatusChangedEventArgs> DegradationStatusChanged;
-    event EventHandler<HealthCheckExecutedEventArgs> HealthCheckExecuted;
+    HealthStatistics GetHealthStatistics();
 }
 ```
 
 ### IHealthCheck
 
-Interface for individual health check implementations.
+Enhanced interface for implementing health checks with comprehensive monitoring capabilities.
 
 ```csharp
 public interface IHealthCheck
 {
-    // Basic properties
+    // Basic properties using high-performance FixedString
     FixedString64Bytes Name { get; }
     string Description { get; }
     HealthCheckCategory Category { get; }
     TimeSpan Timeout { get; }
-    
-    // Execution
-    Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default);
-    
-    // Configuration
+
+    // Execution using UniTask for Unity optimization
+    UniTask<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default);
+
+    // Configuration with enhanced settings
     HealthCheckConfiguration Configuration { get; }
     void Configure(HealthCheckConfiguration configuration);
-    
-    // Dependencies and metadata
+
+    // Dependencies and metadata for introspection
     IEnumerable<FixedString64Bytes> Dependencies { get; }
     Dictionary<string, object> GetMetadata();
 }
 
 public enum HealthCheckCategory
 {
-    System,
-    Database,
-    Network,
-    Performance,
-    Security,
-    CircuitBreaker,
-    Custom
+    System,           // System-level health checks (CPU, memory, disk)
+    Database,         // Database connectivity and performance checks
+    Development,      // Development Logging Service Health Check
+    Testing,          // Testing Logging Service Health Check
+    Network,          // Network connectivity and latency checks
+    Performance,      // Performance and throughput checks
+    Security,         // Security-related health checks
+    CircuitBreaker,   // Circuit breaker health checks
+    Custom            // Custom application-specific health checks
 }
 
 public enum HealthStatus
 {
-    Healthy,
-    Degraded,
-    Unhealthy,
-    Unknown
+    Unknown = 0,      // The health status is unknown
+    Healthy = 1,      // The component is healthy
+    Degraded = 2,     // The component is degraded but still functional
+    Unhealthy = 3,    // The component is unhealthy
+    Warning = 4,      // The component has a warning status
+    Critical = 5,     // The component is in a critical state
+    Offline = 6       // The component is offline
 }
 
 public enum DegradationLevel
@@ -280,15 +324,20 @@ public enum CircuitBreakerState
 
 ## ⚙️ Configuration
 
-### Basic Configuration
+### Production Configuration
+
+The system uses the **Builder → Config → Factory → Service** pattern as specified in CLAUDE.md. Configuration builders provide fluent APIs for setup:
 
 ```csharp
+// Basic configuration using the production builder
 var config = new HealthCheckServiceConfigBuilder()
-    .WithDefaultHealthCheckInterval(TimeSpan.FromMinutes(1))
+    .WithAutomaticCheckInterval(TimeSpan.FromMinutes(1))
     .WithDefaultTimeout(TimeSpan.FromSeconds(30))
+    .WithMaxConcurrentHealthChecks(5)
     .WithAutomaticChecks(enabled: true)
-    .WithHistoryRetention(TimeSpan.FromHours(24))
-    .WithCircuitBreakers(enabled: true)
+    .WithMaxHistorySize(100)
+    .WithMaxHistoryAge(TimeSpan.FromHours(24))
+    .WithCircuitBreaker(enabled: true)
     .WithGracefulDegradation(enabled: true)
     .Build();
 ```
@@ -296,66 +345,75 @@ var config = new HealthCheckServiceConfigBuilder()
 ### Advanced Configuration with Circuit Breakers
 
 ```csharp
+// Advanced configuration with comprehensive resilience features
 var config = new HealthCheckServiceConfigBuilder()
-    .WithDefaultHealthCheckInterval(TimeSpan.FromMinutes(5))
-    .WithDefaultTimeout(TimeSpan.FromSeconds(10))
-    .WithScheduling(builder => builder
-        .WithScheduler<IntervalScheduler>()
-        .WithConcurrentChecks(maxConcurrency: 10)
-        .WithFailureRetry(maxRetries: 3, backoff: TimeSpan.FromSeconds(5)))
-    .WithCircuitBreakers(builder => builder
-        .WithDefaultFailureThreshold(5)
-        .WithDefaultOpenTimeout(TimeSpan.FromSeconds(30))
-        .WithDefaultSuccessThreshold(2)
-        .WithAutoHealthCheckIntegration(true))
-    .WithGracefulDegradation(builder => builder
-        .WithThresholds(minor: 0.10, moderate: 0.25, severe: 0.50, disable: 0.75)
-        .WithAutoFeatureDisabling(true)
-        .WithRecoveryHysteresis(TimeSpan.FromMinutes(5)))
-    .WithHistory(builder => builder
-        .WithRetention(TimeSpan.FromDays(7))
-        .WithMaxEntries(10000)
-        .WithCompression(enabled: true))
-    .WithAlerting(builder => builder
-        .WithAlertOnStatusChange(true)
-        .WithAlertOnDegradation(true)
-        .WithAlertThrottling(TimeSpan.FromMinutes(5)))
+    .WithAutomaticCheckInterval(TimeSpan.FromMinutes(2))
+    .WithDefaultTimeout(TimeSpan.FromSeconds(15))
+    .WithMaxConcurrentHealthChecks(10)
+    .WithAutomaticChecks(enabled: true)
+    .WithMaxHistorySize(500)
+    .WithMaxHistoryAge(TimeSpan.FromDays(7))
+    .WithMaxRetries(3)
+    .WithRetryDelay(TimeSpan.FromSeconds(5))
+    .WithCircuitBreaker(enabled: true)
+    .WithDefaultFailureThreshold(5)
+    .WithDefaultCircuitBreakerTimeout(TimeSpan.FromMinutes(2))
+    .WithCircuitBreakerAlerts(enabled: true)
+    .WithGracefulDegradation(enabled: true)
+    .WithDegradationThresholds(
+        minorThreshold: 0.10,
+        moderateThreshold: 0.25,
+        severeThreshold: 0.50,
+        disabledThreshold: 0.75)
+    .WithDegradationAlerts(enabled: true)
+    .WithPerformanceTracking(enabled: true)
+    .WithEventPublishing(enabled: true)
+    .WithLogging(enabled: true, logLevel: LogLevel.Information)
+    .WithAlerting(enabled: true, alertLevel: AlertSeverity.Warning)
     .Build();
 ```
 
 ### Unity Integration
 
+Unity-specific configuration uses ScriptableObject assets for designer-friendly workflow:
+
 ```csharp
 [CreateAssetMenu(menuName = "AhBear/HealthCheck/Config")]
 public class HealthCheckConfigAsset : ScriptableObject
 {
-    [Header("General")]
+    [Header("General Settings")]
     public bool enableAutomaticChecks = true;
-    public float defaultCheckIntervalSeconds = 60f;
+    public float automaticCheckIntervalSeconds = 60f;
     public float defaultTimeoutSeconds = 30f;
-    
-    [Header("Circuit Breakers")]
-    public bool enableCircuitBreakers = true;
+    public int maxConcurrentHealthChecks = 5;
+
+    [Header("History and Retention")]
+    public int maxHistorySize = 100;
+    public float maxHistoryAgeHours = 24f;
+    public int maxRetries = 3;
+    public float retryDelaySeconds = 5f;
+
+    [Header("Circuit Breaker Settings")]
+    public bool enableCircuitBreaker = true;
+    public bool enableCircuitBreakerAlerts = true;
     public int defaultFailureThreshold = 5;
-    public float defaultOpenTimeoutSeconds = 30f;
-    public int defaultSuccessThreshold = 2;
-    
+    public float defaultCircuitBreakerTimeoutSeconds = 120f;
+
     [Header("Graceful Degradation")]
     public bool enableGracefulDegradation = true;
+    public bool enableDegradationAlerts = true;
     [Range(0f, 1f)] public float minorDegradationThreshold = 0.10f;
     [Range(0f, 1f)] public float moderateDegradationThreshold = 0.25f;
     [Range(0f, 1f)] public float severeDegradationThreshold = 0.50f;
-    [Range(0f, 1f)] public float disableDegradationThreshold = 0.75f;
-    
-    [Header("History")]
-    public bool enableHistory = true;
-    public float historyRetentionHours = 24f;
-    public int maxHistoryEntries = 1000;
-    
-    [Header("Performance")]
-    public int maxConcurrentChecks = 5;
-    public bool enableAsyncExecution = true;
-    public bool enablePerformanceMonitoring = true;
+    [Range(0f, 1f)] public float disabledDegradationThreshold = 0.75f;
+
+    [Header("Integration Settings")]
+    public bool enablePerformanceTracking = true;
+    public bool enableEventPublishing = true;
+    public bool enableLogging = true;
+    public LogLevel logLevel = LogLevel.Information;
+    public bool enableAlerting = true;
+    public AlertSeverity alertLevel = AlertSeverity.Warning;
 }
 ```
 
@@ -363,127 +421,81 @@ public class HealthCheckConfigAsset : ScriptableObject
 
 ### 1. Package Installation
 
-```csharp
-// In Package Manager, add:
-"com.ahbearstudios.core.healthcheck": "2.0.0"
+The HealthCheck System is part of the core framework:
+
+```json
+// Already included in com.ahbearstudios.core package
+"com.ahbearstudios.core": "latest"
+"com.ahbearstudios.unity": "latest"  // For Unity-specific components
 ```
 
-### 2. Reflex Bootstrap Installation
+### 2. Factory-Based Service Creation
+
+The HealthCheck System uses the **Factory pattern** for service creation following CLAUDE.md guidelines:
 
 ```csharp
 /// <summary>
-/// Reflex installer for the HealthCheck System following AhBearStudios Core Development Guidelines.
-/// Provides comprehensive health monitoring with circuit breaker protection and graceful degradation.
+/// Production service creation using HealthCheckServiceFactory.
+/// Demonstrates proper Builder → Config → Factory → Service pattern.
+/// </summary>
+public async UniTask<IHealthCheckService> CreateHealthCheckServiceAsync()
+{
+    // Step 1: Build configuration using builder pattern
+    var config = new HealthCheckServiceConfigBuilder()
+        .WithAutomaticCheckInterval(TimeSpan.FromMinutes(1))
+        .WithDefaultTimeout(TimeSpan.FromSeconds(30))
+        .WithMaxConcurrentHealthChecks(5)
+        .WithAutomaticChecks(enabled: true)
+        .WithCircuitBreaker(enabled: true)
+        .WithGracefulDegradation(enabled: true)
+        .WithPerformanceTracking(enabled: true)
+        .WithEventPublishing(enabled: true)
+        .Build();
+
+    // Step 2: Use factory to create service instance
+    var healthCheckService = await _healthCheckServiceFactory.CreateServiceAsync(config);
+
+    // Step 3: Register built-in health checks
+    var selfHealthCheck = _healthCheckFactory.CreateHealthCheckServiceHealthCheck(healthCheckService);
+    healthCheckService.RegisterHealthCheck(selfHealthCheck);
+
+    // Step 4: Start automatic monitoring
+    healthCheckService.StartAutomaticChecks();
+
+    return healthCheckService;
+}
+```
+
+### 3. Dependency Injection Integration
+
+```csharp
+/// <summary>
+/// Reflex installer for the HealthCheck System dependencies.
+/// Registers factories and core dependencies following CLAUDE.md patterns.
 /// </summary>
 public class HealthCheckInstaller : IBootstrapInstaller
 {
     public string InstallerName => "HealthCheckInstaller";
     public int Priority => 300; // After Logging (100), Messaging (150), Alerts (200)
     public bool IsEnabled => true;
-    public Type[] Dependencies => new[] { typeof(LoggingInstaller), typeof(MessagingInstaller), typeof(AlertsInstaller) };
-
-    public bool ValidateInstaller()
+    public Type[] Dependencies => new[]
     {
-        // Validate required dependencies
-        if (!Container.HasBinding<ILoggingService>())
-        {
-            Debug.LogError("HealthCheckInstaller: ILoggingService not registered");
-            return false;
-        }
-
-        if (!Container.HasBinding<IMessageBusService>())
-        {
-            Debug.LogError("HealthCheckInstaller: IMessageBusService not registered");
-            return false;
-        }
-
-        if (!Container.HasBinding<IAlertService>())
-        {
-            Debug.LogError("HealthCheckInstaller: IAlertService not registered");
-            return false;
-        }
-
-        return true;
-    }
-
-    public void PreInstall()
-    {
-        Debug.Log("HealthCheckInstaller: Beginning pre-installation validation");
-    }
+        typeof(LoggingInstaller),
+        typeof(MessagingInstaller),
+        typeof(AlertsInstaller),
+        typeof(PoolingInstaller),
+        typeof(ProfilerInstaller),
+        typeof(SerializationInstaller)
+    };
 
     public void Install(ContainerBuilder builder)
     {
-        // Configure health check service with builder pattern
-        var config = new HealthCheckServiceConfigBuilder()
-            .WithDefaultHealthCheckInterval(TimeSpan.FromMinutes(1))
-            .WithDefaultTimeout(TimeSpan.FromSeconds(30))
-            .WithAutomaticChecks(enabled: true)
-            .WithHistoryRetention(TimeSpan.FromHours(24))
-            .WithCircuitBreakers(enabled: true)
-            .WithGracefulDegradation(enabled: true)
-            .WithPerformanceMonitoring(enabled: true)
-            .Build();
-
-        // Bind configuration
-        builder.Bind<HealthCheckServiceConfig>().FromInstance(config);
-        
-        // Bind core services using Reflex patterns
-        builder.Bind<IHealthCheckService>().To<HealthCheckService>().AsSingle();
+        // Bind factories (creation only, no lifecycle management)
+        builder.Bind<IHealthCheckServiceFactory>().To<HealthCheckServiceFactory>().AsSingle();
         builder.Bind<IHealthCheckFactory>().To<HealthCheckFactory>().AsSingle();
-        builder.Bind<ICircuitBreakerFactory>().To<CircuitBreakerFactory>().AsSingle();
-        
-        // Bind specialized services
-        builder.Bind<HealthAggregationService>().To<HealthAggregationService>().AsSingle();
-        builder.Bind<HealthHistoryService>().To<HealthHistoryService>().AsSingle();
-        builder.Bind<HealthSchedulingService>().To<HealthSchedulingService>().AsSingle();
-        builder.Bind<DegradationManagementService>().To<DegradationManagementService>().AsSingle();
-        builder.Bind<CircuitBreakerManager>().To<CircuitBreakerManager>().AsSingle();
-        
-        // Bind schedulers
-        builder.Bind<IHealthCheckScheduler>().WithId("Interval").To<IntervalScheduler>().AsSingle();
-        builder.Bind<IHealthCheckScheduler>().WithId("Cron").To<CronScheduler>().AsSingle();
-        builder.Bind<IHealthCheckScheduler>().WithId("Adaptive").To<AdaptiveScheduler>().AsSingle();
-        
-        // Bind default health checks
-        builder.Bind<SystemHealthCheck>().To<SystemHealthCheck>().AsSingle();
-        builder.Bind<NetworkHealthCheck>().To<NetworkHealthCheck>().AsSingle();
-        builder.Bind<PerformanceHealthCheck>().To<PerformanceHealthCheck>().AsSingle();
-    }
 
-    public void PostInstall()
-    {
-        try
-        {
-            var healthService = Container.Resolve<IHealthCheckService>();
-            var logger = Container.Resolve<ILoggingService>();
-
-            // Register default health checks
-            var systemHealthCheck = Container.Resolve<SystemHealthCheck>();
-            var networkHealthCheck = Container.Resolve<NetworkHealthCheck>();
-            var performanceHealthCheck = Container.Resolve<PerformanceHealthCheck>();
-
-            healthService.RegisterHealthCheck(systemHealthCheck);
-            healthService.RegisterHealthCheck(networkHealthCheck);
-            healthService.RegisterHealthCheck(performanceHealthCheck);
-
-            // Configure circuit breakers for critical checks
-            healthService.EnableCircuitBreaker(systemHealthCheck.Name, new CircuitBreakerConfig
-            {
-                FailureThreshold = 3,
-                OpenTimeout = TimeSpan.FromMinutes(1),
-                SuccessThreshold = 2
-            });
-
-            // Start automatic health checks
-            healthService.StartAutomaticChecks();
-
-            logger.LogInfo("HealthCheckInstaller: Post-installation completed successfully");
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"HealthCheckInstaller: Post-installation failed: {ex.Message}");
-            throw;
-        }
+        // Service instances are created via factory, not directly bound
+        // This follows CLAUDE.md pattern: Factories create, services manage lifecycle
     }
 }
 ```
@@ -494,8 +506,8 @@ public class HealthCheckInstaller : IBootstrapInstaller
 
 ```csharp
 /// <summary>
-/// Database health check implementation demonstrating modern C# patterns and comprehensive monitoring.
-/// Follows AhBearStudios Core Development Guidelines with proper error handling and correlation tracking.
+/// Production health check implementation demonstrating CLAUDE.md patterns.
+/// Uses UniTask, ZLinq, and integrates with all core systems for comprehensive monitoring.
 /// </summary>
 public class DatabaseHealthCheck : IHealthCheck
 {
@@ -543,11 +555,11 @@ public class DatabaseHealthCheck : IHealthCheck
     }
     
     /// <summary>
-    /// Performs comprehensive database health assessment.
+    /// Performs comprehensive database health assessment using UniTask for Unity optimization.
     /// </summary>
     /// <param name="cancellationToken">Cancellation token for the operation</param>
     /// <returns>Health check result with detailed database status</returns>
-    public async Task<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
+    public async UniTask<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
     {
         using var scope = _profiler?.BeginScope("DatabaseHealthCheck.CheckHealthAsync");
         var stopwatch = Stopwatch.StartNew();
@@ -1518,14 +1530,14 @@ public enum NetworkEndpointType
 
 ## 📊 Statistics and Monitoring
 
-### Health Service Statistics
+### Production Health Statistics
 
 ```csharp
 /// <summary>
-/// Comprehensive statistics for health check service performance and status.
-/// Provides detailed metrics for system monitoring and optimization.
+/// Production health statistics providing comprehensive metrics for monitoring and optimization.
+/// Integrates with profiling and alerting systems for operational visibility.
 /// </summary>
-public sealed record HealthServiceStatistics
+public sealed record HealthStatistics
 {
     /// <summary>
     /// Gets the total number of health checks registered with the service.
@@ -1682,15 +1694,98 @@ public sealed record DegradationEvent
 }
 ```
 
+## 🔄 Message Bus Integration
+
+The HealthCheck System publishes events via IMessageBusService following CLAUDE.md patterns. All messages use static factory methods with DeterministicIdGenerator:
+
+### Key Message Types
+
+```csharp
+// Health status changes
+var statusMessage = HealthCheckStatusChangedMessage.Create(
+    healthCheckName: "DatabaseCheck",
+    oldStatus: HealthStatus.Healthy,
+    newStatus: HealthStatus.Degraded,
+    reason: "High latency detected",
+    source: "HealthCheckService");
+
+// Circuit breaker state changes
+var circuitMessage = HealthCheckCircuitBreakerStateChangedMessage.Create(
+    operationName: "DatabaseOperations",
+    oldState: CircuitBreakerState.Closed,
+    newState: CircuitBreakerState.Open,
+    reason: "Failure threshold exceeded",
+    source: "HealthCheckResilienceService");
+
+// Degradation level changes
+var degradationMessage = HealthCheckDegradationChangeMessage.Create(
+    oldLevel: DegradationLevel.None,
+    newLevel: DegradationLevel.Minor,
+    reason: "Multiple health checks failing",
+    affectedFeatures: new[] { "BackgroundSync", "Analytics" },
+    source: "HealthCheckService");
+```
+
+### Message Type Codes
+
+Following CLAUDE.md system ranges (1200-1299 for HealthCheck System):
+
+```csharp
+public static class MessageTypeCodes
+{
+    // Health Check System: 1200-1299
+    public const ushort HealthCheckStatusChangedMessage = 1200;
+    public const ushort HealthCheckCircuitBreakerStateChangedMessage = 1201;
+    public const ushort HealthCheckDegradationChangeMessage = 1202;
+    public const ushort HealthCheckStartedMessage = 1203;
+    public const ushort HealthCheckCompletedMessage = 1204;
+    public const ushort HealthCheckCompletedWithResultsMessage = 1205;
+    public const ushort HealthCheckServiceCreatedMessage = 1206;
+    public const ushort HealthCheckCreatedMessage = 1207;
+    public const ushort HealthCheckAlertMessage = 1208;
+    // ... additional message types within range
+}
+```
+
+## 🎮 Unity Performance Optimization
+
+### Frame Budget Compliance
+
+The HealthCheck System is optimized for Unity's 60+ FPS performance targets:
+
+- **Zero-allocation patterns**: Uses ZLinq instead of LINQ
+- **UniTask optimization**: Replaces Task for Unity-specific async operations
+- **Profiler integration**: Built-in performance tracking with IProfilerService
+- **Efficient data structures**: FixedString64Bytes for identifiers, pooled objects for temporary allocations
+
+### Performance Best Practices
+
+```csharp
+// ✅ CORRECT: Zero-allocation health check execution
+public async UniTask<HealthCheckResult> CheckHealthAsync(CancellationToken cancellationToken = default)
+{
+    using var scope = _profilerService.BeginScope("HealthCheck.Execution");
+
+    // Use ZLinq for zero-allocation operations
+    var results = healthChecks.AsValueEnumerable()
+        .Where(check => check.IsEnabled)
+        .Select(check => ExecuteCheckAsync(check, cancellationToken))
+        .ToList();
+
+    // Profiler integration for performance monitoring
+    _profilerService.RecordMetric("healthchecks.executed", results.Count);
+
+    return await UniTask.WhenAll(results);
+}
+```
+
 ## 📚 Additional Resources
 
-- [Health Check Design Patterns](HEALTHCHECK_PATTERNS.md)
-- [Circuit Breaker Implementation Guide](HEALTHCHECK_CIRCUIT_BREAKERS.md)
-- [Graceful Degradation Strategies](HEALTHCHECK_DEGRADATION.md)
-- [Custom Health Check Development](HEALTHCHECK_CUSTOM.md)
-- [Performance Optimization Guide](HEALTHCHECK_PERFORMANCE.md)
-- [Integration Guide](HEALTHCHECK_INTEGRATION.md)
-- [Troubleshooting Guide](HEALTHCHECK_TROUBLESHOOTING.md)
+- [CLAUDE.md Development Guidelines](../../CLAUDE.md)
+- [Message Bus Integration Patterns](../messaging_system.md)
+- [Circuit Breaker Implementation Guide](../resilience_patterns.md)
+- [Profiling and Performance Monitoring](../profiling_system.md)
+- [Alerting System Integration](../alerting_system.md)
 
 ## 🤝 Contributing
 
@@ -1698,11 +1793,34 @@ See our [Contributing Guidelines](../../CONTRIBUTING.md) for information on how 
 
 ## 📄 Dependencies
 
-- **Direct**: Logging, Messaging, Alerts
-- **Dependents**: All systems requiring health monitoring
-- **Optional**: Profiling (for performance monitoring), Pooling (for high-throughput scenarios)
+### Core Dependencies (Required)
+- **ILoggingService**: System logging and diagnostic output
+- **IMessageBusService**: Event publishing for health status changes
+- **IAlertService**: Critical notification and alerting integration
+- **IPoolingService**: Object pooling for performance optimization
+- **IProfilerService**: Performance monitoring and metrics collection
+- **ISerializationService**: Data serialization using MemoryPack backend
+
+### Unity Dependencies
+- **UniTask**: Unity-optimized async/await operations
+- **Unity.Collections**: High-performance data structures (FixedString64Bytes)
+- **ZLinq**: Zero-allocation LINQ operations
+
+### Integration Points
+- **Circuit Breaker Integration**: Automatic failure isolation and recovery
+- **Degradation Management**: Graceful system degradation based on health status
+- **Event-Driven Architecture**: Full integration with message bus for system-wide notifications
+
+### Dependent Systems
+All systems requiring health monitoring can integrate with the HealthCheck System through:
+- Custom IHealthCheck implementations
+- Event subscription via IMessageBusService
+- Circuit breaker protection for critical operations
+- Graceful degradation policies
 
 ---
 
-*The HealthCheck System provides comprehensive health monitoring and system resilience capabilities across all AhBearStudios Core systems.*
+**Status: ✅ Production Ready**
+
+*The HealthCheck System provides enterprise-grade health monitoring and system resilience capabilities optimized for Unity game development at 60+ FPS performance targets.*
     

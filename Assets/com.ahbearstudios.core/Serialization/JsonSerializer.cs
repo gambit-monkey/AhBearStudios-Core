@@ -63,7 +63,7 @@ namespace AhBearStudios.Core.Serialization
             _jsonSettings = CreateJsonSettings();
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo("JsonSerializer initialized with Newtonsoft.Json", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo("JsonSerializer initialized with Newtonsoft.Json", correlationId: correlationId, sourceContext: null, properties: null);
         }
 
         /// <inheritdoc />
@@ -79,7 +79,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Starting JSON serialization of type {typeof(T).Name}", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Starting JSON serialization of type {typeof(T).Name}", correlationId: correlationId, sourceContext: null, properties: null);
 
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
@@ -94,7 +94,7 @@ namespace AhBearStudios.Core.Serialization
                 var duration = DateTime.UtcNow - startTime;
                 _statistics.RecordSerialization(typeof(T), result.Length, duration, true);
 
-                _logger.LogInfo($"Successfully serialized {typeof(T).Name} to {result.Length} bytes in {duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully serialized {typeof(T).Name} to {result.Length} bytes in {duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return result;
             }
@@ -127,7 +127,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Starting JSON deserialization of type {typeof(T).Name} from {data.Length} bytes", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Starting JSON deserialization of type {typeof(T).Name} from {data.Length} bytes", correlationId: correlationId, sourceContext: null, properties: null);
 
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
@@ -147,7 +147,7 @@ namespace AhBearStudios.Core.Serialization
                 var duration = DateTime.UtcNow - startTime;
                 _statistics.RecordDeserialization(typeof(T), data.Length, duration, true);
 
-                _logger.LogInfo($"Successfully deserialized {typeof(T).Name} in {duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully deserialized {typeof(T).Name} in {duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return result;
             }
@@ -180,7 +180,7 @@ namespace AhBearStudios.Core.Serialization
             catch (Exception ex)
             {
                 var correlationId = GetCorrelationId();
-                _logger.LogError($"TryDeserialize failed for type {typeof(T).Name}: {ex.Message}", correlationId, sourceContext: null, properties: null);
+                _logger.LogError($"TryDeserialize failed for type {typeof(T).Name}: {ex.Message}", correlationId: correlationId, sourceContext: null, properties: null);
                 return false;
             }
         }
@@ -204,7 +204,7 @@ namespace AhBearStudios.Core.Serialization
             if (_registeredTypes.TryAdd(type, true))
             {
                 _registry.RegisterType(type);
-                _logger.LogInfo($"Registered type {type.FullName} for JSON serialization", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Registered type {type.FullName} for JSON serialization", correlationId: correlationId, sourceContext: null, properties: null);
             }
         }
 
@@ -280,7 +280,7 @@ namespace AhBearStudios.Core.Serialization
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
 
-                _logger.LogInfo($"Serializing {typeof(T).Name} directly to stream", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Serializing {typeof(T).Name} directly to stream", correlationId: correlationId, sourceContext: null, properties: null);
 
                 if (_config.Compression != CompressionLevel.None)
                 {
@@ -330,7 +330,7 @@ namespace AhBearStudios.Core.Serialization
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
 
-                _logger.LogInfo($"Deserializing {typeof(T).Name} from stream", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Deserializing {typeof(T).Name} from stream", correlationId: correlationId, sourceContext: null, properties: null);
 
                 T result;
                 if (_config.Compression != CompressionLevel.None)
@@ -458,7 +458,7 @@ namespace AhBearStudios.Core.Serialization
                 Error = (sender, args) =>
                 {
                     var correlationId = GetCorrelationId();
-                    _logger.LogError($"JSON serialization error: {args.ErrorContext.Error?.Message}", correlationId, sourceContext: null, properties: null);
+                    _logger.LogError($"JSON serialization error: {args.ErrorContext.Error?.Message}", correlationId: correlationId, sourceContext: null, properties: null);
                     
                     // Mark error as handled to continue processing when possible
                     args.ErrorContext.Handled = true;
@@ -569,7 +569,7 @@ namespace AhBearStudios.Core.Serialization
                 _disposed = true;
 
                 var correlationId = GetCorrelationId();
-                _logger.LogInfo("JsonSerializer disposed", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo("JsonSerializer disposed", correlationId: correlationId, sourceContext: null, properties: null);
             }
         }
     }

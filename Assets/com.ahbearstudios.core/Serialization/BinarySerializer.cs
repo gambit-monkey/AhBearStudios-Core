@@ -69,7 +69,7 @@ namespace AhBearStudios.Core.Serialization
             }
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo("BinarySerializer initialized with Binary format", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo("BinarySerializer initialized with Binary format", correlationId: correlationId, sourceContext: null, properties: null);
         }
 
         /// <inheritdoc />
@@ -85,7 +85,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Starting binary serialization of type {typeof(T).Name}", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Starting binary serialization of type {typeof(T).Name}", correlationId: correlationId, sourceContext: null, properties: null);
 
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
@@ -104,7 +104,7 @@ namespace AhBearStudios.Core.Serialization
                 var duration = DateTime.UtcNow - startTime;
                 _statistics.RecordSerialization(typeof(T), result.Length, duration, true);
 
-                _logger.LogInfo($"Successfully serialized {typeof(T).Name} to {result.Length} bytes in {duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully serialized {typeof(T).Name} to {result.Length} bytes in {duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return result;
             }
@@ -137,7 +137,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Starting binary deserialization of type {typeof(T).Name} from {data.Length} bytes", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Starting binary deserialization of type {typeof(T).Name} from {data.Length} bytes", correlationId: correlationId, sourceContext: null, properties: null);
 
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
@@ -161,7 +161,7 @@ namespace AhBearStudios.Core.Serialization
                 var duration = DateTime.UtcNow - startTime;
                 _statistics.RecordDeserialization(typeof(T), data.Length, duration, true);
 
-                _logger.LogInfo($"Successfully deserialized {typeof(T).Name} in {duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully deserialized {typeof(T).Name} in {duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return result;
             }
@@ -194,7 +194,7 @@ namespace AhBearStudios.Core.Serialization
             catch (Exception ex)
             {
                 var correlationId = GetCorrelationId();
-                _logger.LogError($"TryDeserialize failed for type {typeof(T).Name}: {ex.Message}", correlationId, sourceContext: null, properties: null);
+                _logger.LogError($"TryDeserialize failed for type {typeof(T).Name}: {ex.Message}", correlationId: correlationId, sourceContext: null, properties: null);
                 return false;
             }
         }
@@ -218,12 +218,12 @@ namespace AhBearStudios.Core.Serialization
             if (_registeredTypes.TryAdd(type, true))
             {
                 _registry.RegisterType(type);
-                _logger.LogInfo($"Registered type {type.FullName} for binary serialization", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Registered type {type.FullName} for binary serialization", correlationId: correlationId, sourceContext: null, properties: null);
 
                 // Validate the type is serializable
                 if (!type.IsSerializable && !typeof(ISerializable).IsAssignableFrom(type))
                 {
-                    _logger.LogWarning($"Type {type.FullName} is not marked as [Serializable] and may not serialize correctly", correlationId, sourceContext: null, properties: null);
+                    _logger.LogWarning($"Type {type.FullName} is not marked as [Serializable] and may not serialize correctly", correlationId: correlationId, sourceContext: null, properties: null);
                 }
             }
         }
@@ -300,7 +300,7 @@ namespace AhBearStudios.Core.Serialization
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
 
-                _logger.LogInfo($"Serializing {typeof(T).Name} directly to stream", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Serializing {typeof(T).Name} directly to stream", correlationId: correlationId, sourceContext: null, properties: null);
 
                 if (_config.Compression != CompressionLevel.None)
                 {
@@ -336,7 +336,7 @@ namespace AhBearStudios.Core.Serialization
                 EnsureTypeRegistered<T>();
                 ValidateTypeIfEnabled<T>();
 
-                _logger.LogInfo($"Deserializing {typeof(T).Name} from stream", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Deserializing {typeof(T).Name} from stream", correlationId: correlationId, sourceContext: null, properties: null);
 
                 T result;
                 if (_config.Compression != CompressionLevel.None)
@@ -486,7 +486,7 @@ namespace AhBearStudios.Core.Serialization
                 _disposed = true;
 
                 var correlationId = GetCorrelationId();
-                _logger.LogInfo("BinarySerializer disposed", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo("BinarySerializer disposed", correlationId: correlationId, sourceContext: null, properties: null);
             }
         }
     }
@@ -517,7 +517,7 @@ namespace AhBearStudios.Core.Serialization
             {
                 if (typeName.Contains(pattern, StringComparison.OrdinalIgnoreCase))
                 {
-                    _logger.LogWarning($"Blocked deserialization of blacklisted type: {typeName}", correlationId, sourceContext: null, properties: null);
+                    _logger.LogWarning($"Blocked deserialization of blacklisted type: {typeName}", correlationId: correlationId, sourceContext: null, properties: null);
                     throw new SerializationException($"Type {typeName} is blacklisted from deserialization");
                 }
             }
@@ -537,7 +537,7 @@ namespace AhBearStudios.Core.Serialization
 
                 if (!isWhitelisted)
                 {
-                    _logger.LogWarning($"Blocked deserialization of non-whitelisted type: {typeName}", correlationId, sourceContext: null, properties: null);
+                    _logger.LogWarning($"Blocked deserialization of non-whitelisted type: {typeName}", correlationId: correlationId, sourceContext: null, properties: null);
                     throw new SerializationException($"Type {typeName} is not whitelisted for deserialization");
                 }
             }

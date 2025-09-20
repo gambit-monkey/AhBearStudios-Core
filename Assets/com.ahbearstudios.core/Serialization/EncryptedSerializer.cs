@@ -66,7 +66,7 @@ namespace AhBearStudios.Core.Serialization
             _decryptor = _aes.CreateDecryptor();
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo($"EncryptedSerializer initialized wrapping {innerSerializer.GetType().Name} with {_encryptionConfig.Algorithm} encryption", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo($"EncryptedSerializer initialized wrapping {innerSerializer.GetType().Name} with {_encryptionConfig.Algorithm} encryption", correlationId: correlationId, sourceContext: null, properties: null);
         }
 
         /// <inheritdoc />
@@ -78,7 +78,7 @@ namespace AhBearStudios.Core.Serialization
             
             try
             {
-                _logger.LogInfo($"Encrypting serialized data for type {typeof(T).Name}", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Encrypting serialized data for type {typeof(T).Name}", correlationId: correlationId, sourceContext: null, properties: null);
 
                 // Serialize with inner serializer first
                 var plainData = _innerSerializer.Serialize(obj);
@@ -86,7 +86,7 @@ namespace AhBearStudios.Core.Serialization
                 // Encrypt the serialized data
                 var encryptedData = EncryptData(plainData);
 
-                _logger.LogInfo($"Successfully encrypted {plainData.Length} bytes to {encryptedData.Length} bytes", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully encrypted {plainData.Length} bytes to {encryptedData.Length} bytes", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return encryptedData;
             }
@@ -106,7 +106,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Decrypting data for type {typeof(T).Name} from {data?.Length ?? 0} bytes", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Decrypting data for type {typeof(T).Name} from {data?.Length ?? 0} bytes", correlationId: correlationId, sourceContext: null, properties: null);
 
                 // Decrypt the data first
                 var plainData = DecryptData(data);
@@ -114,7 +114,7 @@ namespace AhBearStudios.Core.Serialization
                 // Deserialize with inner serializer
                 var result = _innerSerializer.Deserialize<T>(plainData);
 
-                _logger.LogInfo($"Successfully decrypted and deserialized {data.Length} bytes to {typeof(T).Name}", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully decrypted and deserialized {data.Length} bytes to {typeof(T).Name}", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return result;
             }
@@ -144,7 +144,7 @@ namespace AhBearStudios.Core.Serialization
             catch (Exception ex)
             {
                 var correlationId = GetCorrelationId();
-                _logger.LogError($"TryDeserialize with decryption failed for type {typeof(T).Name}: {ex.Message}", correlationId, sourceContext: null, properties: null);
+                _logger.LogError($"TryDeserialize with decryption failed for type {typeof(T).Name}: {ex.Message}", correlationId: correlationId, sourceContext: null, properties: null);
                 return false;
             }
         }
@@ -188,7 +188,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Async encrypting serialized data for type {typeof(T).Name}", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Async encrypting serialized data for type {typeof(T).Name}", correlationId: correlationId, sourceContext: null, properties: null);
 
                 // Serialize with inner serializer first
                 var plainData = await _innerSerializer.SerializeAsync(obj, cancellationToken);
@@ -196,7 +196,7 @@ namespace AhBearStudios.Core.Serialization
                 // Encrypt the serialized data (run on thread pool to avoid blocking)
                 var encryptedData = await UniTask.RunOnThreadPool(() => EncryptData(plainData), cancellationToken: cancellationToken);
 
-                _logger.LogInfo($"Successfully async encrypted {plainData.Length} bytes to {encryptedData.Length} bytes", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully async encrypted {plainData.Length} bytes to {encryptedData.Length} bytes", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return encryptedData;
             }
@@ -216,7 +216,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Async decrypting data for type {typeof(T).Name} from {data?.Length ?? 0} bytes", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Async decrypting data for type {typeof(T).Name} from {data?.Length ?? 0} bytes", correlationId: correlationId, sourceContext: null, properties: null);
 
                 // Decrypt the data first (run on thread pool to avoid blocking)
                 var plainData = await UniTask.RunOnThreadPool(() => DecryptData(data), cancellationToken: cancellationToken);
@@ -224,7 +224,7 @@ namespace AhBearStudios.Core.Serialization
                 // Deserialize with inner serializer
                 var result = await _innerSerializer.DeserializeAsync<T>(plainData, cancellationToken);
 
-                _logger.LogInfo($"Successfully async decrypted and deserialized {data.Length} bytes to {typeof(T).Name}", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully async decrypted and deserialized {data.Length} bytes to {typeof(T).Name}", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return result;
             }
@@ -244,7 +244,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Encrypting serialized data for type {typeof(T).Name} to stream", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Encrypting serialized data for type {typeof(T).Name} to stream", correlationId: correlationId, sourceContext: null, properties: null);
 
                 // Create a temporary memory stream for the inner serializer
                 using var tempStream = new MemoryStream();
@@ -256,7 +256,7 @@ namespace AhBearStudios.Core.Serialization
                 // Write encrypted data to the target stream
                 stream.Write(encryptedData, 0, encryptedData.Length);
 
-                _logger.LogInfo($"Successfully encrypted {plainData.Length} bytes to stream", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully encrypted {plainData.Length} bytes to stream", correlationId: correlationId, sourceContext: null, properties: null);
             }
             catch (Exception ex)
             {
@@ -274,7 +274,7 @@ namespace AhBearStudios.Core.Serialization
 
             try
             {
-                _logger.LogInfo($"Decrypting data for type {typeof(T).Name} from stream", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Decrypting data for type {typeof(T).Name} from stream", correlationId: correlationId, sourceContext: null, properties: null);
 
                 // Read all encrypted data from stream
                 using var memoryStream = new MemoryStream();
@@ -288,7 +288,7 @@ namespace AhBearStudios.Core.Serialization
                 using var plainStream = new MemoryStream(plainData);
                 var result = _innerSerializer.DeserializeFromStream<T>(plainStream);
 
-                _logger.LogInfo($"Successfully decrypted and deserialized {encryptedData.Length} bytes from stream to {typeof(T).Name}", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully decrypted and deserialized {encryptedData.Length} bytes from stream to {typeof(T).Name}", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return result;
             }
@@ -441,7 +441,7 @@ namespace AhBearStudios.Core.Serialization
                 _disposed = true;
 
                 var correlationId = GetCorrelationId();
-                _logger.LogInfo("EncryptedSerializer disposed", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo("EncryptedSerializer disposed", correlationId: correlationId, sourceContext: null, properties: null);
             }
         }
     }

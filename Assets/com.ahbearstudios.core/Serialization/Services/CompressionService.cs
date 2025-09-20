@@ -27,7 +27,7 @@ namespace AhBearStudios.Core.Serialization.Services;
             _logger = logger ?? throw new ArgumentNullException(nameof(logger));
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo("CompressionService initialized", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo("CompressionService initialized", correlationId: correlationId, sourceContext: null, properties: null);
         }
 
         /// <inheritdoc />
@@ -60,7 +60,7 @@ namespace AhBearStudios.Core.Serialization.Services;
                 
                 UpdateCompressionRatio(originalSize, compressed.Length);
                 
-                _logger.LogInfo($"Compressed {originalSize} bytes to {compressed.Length} bytes (ratio: {_lastCompressionRatio:P2})", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Compressed {originalSize} bytes to {compressed.Length} bytes (ratio: {_lastCompressionRatio:P2})", correlationId: correlationId, sourceContext: null, properties: null);
                 
                 return compressed;
             }
@@ -95,7 +95,7 @@ namespace AhBearStudios.Core.Serialization.Services;
                 decompressionStream.CopyTo(output);
                 var decompressed = output.ToArray();
                 
-                _logger.LogInfo($"Decompressed {compressedSize} bytes to {decompressed.Length} bytes", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Decompressed {compressedSize} bytes to {decompressed.Length} bytes", correlationId: correlationId, sourceContext: null, properties: null);
                 
                 return decompressed;
             }

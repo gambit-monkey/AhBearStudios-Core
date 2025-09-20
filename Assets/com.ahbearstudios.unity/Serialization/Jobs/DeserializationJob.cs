@@ -296,7 +296,7 @@ namespace AhBearStudios.Unity.Serialization.Jobs
                 return new T[0];
 
             var correlationId = GetCorrelationId();
-            _logger?.LogInfo($"Starting job-based deserialization of {data.Length} bytes to {expectedCount} items of type {typeof(T).Name}", correlationId, sourceContext: null, properties: null);
+            _logger?.LogInfo($"Starting job-based deserialization of {data.Length} bytes to {expectedCount} items of type {typeof(T).Name}", correlationId: correlationId, sourceContext: null, properties: null);
 
             // Create native arrays
             var inputArray = new NativeArray<byte>(data, allocator);
@@ -325,11 +325,11 @@ namespace AhBearStudios.Unity.Serialization.Jobs
                 var result = resultArray[0];
                 if (!result.IsSuccess)
                 {
-                    _logger?.LogError($"Deserialization job failed with error: {result.ErrorCode}", correlationId, sourceContext: null, properties: null);
+                    _logger?.LogError($"Deserialization job failed with error: {result.ErrorCode}", correlationId: correlationId, sourceContext: null, properties: null);
                     throw new InvalidOperationException($"Deserialization job failed: {result.ErrorCode}");
                 }
 
-                _logger?.LogInfo($"Deserialization job completed: {result.ItemsProcessed} items, {result.BytesRead} bytes in {result.Duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                _logger?.LogInfo($"Deserialization job completed: {result.ItemsProcessed} items, {result.BytesRead} bytes in {result.Duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
 
                 // Convert to managed array
                 var managedArray = new T[result.ItemsProcessed];
@@ -363,7 +363,7 @@ namespace AhBearStudios.Unity.Serialization.Jobs
                 throw new ArgumentException("Expected counts array must match batches array length");
 
             var correlationId = GetCorrelationId();
-            _logger?.LogInfo($"Starting batch deserialization of {batches.Length} batches", correlationId, sourceContext: null, properties: null);
+            _logger?.LogInfo($"Starting batch deserialization of {batches.Length} batches", correlationId: correlationId, sourceContext: null, properties: null);
 
             // Convert to native arrays
             var inputBatches = new NativeArray<NativeArray<byte>>(batches.Length, allocator);
@@ -408,7 +408,7 @@ namespace AhBearStudios.Unity.Serialization.Jobs
                     }
                     else
                     {
-                        _logger?.LogError($"Batch {i} deserialization failed: {result.ErrorCode}", correlationId, sourceContext: null, properties: null);
+                        _logger?.LogError($"Batch {i} deserialization failed: {result.ErrorCode}", correlationId: correlationId, sourceContext: null, properties: null);
                         outputs[i] = new T[0];
                     }
                 }
@@ -417,7 +417,7 @@ namespace AhBearStudios.Unity.Serialization.Jobs
                 var totalBytes = results.AsValueEnumerable().Sum(r => r.BytesRead);
                 var maxDuration = results.AsValueEnumerable().Max(r => r.Duration.TotalMilliseconds);
 
-                _logger?.LogInfo($"Batch deserialization completed: {totalItems} items, {totalBytes} bytes, max duration {maxDuration:F2}ms", correlationId, sourceContext: null, properties: null);
+                _logger?.LogInfo($"Batch deserialization completed: {totalItems} items, {totalBytes} bytes, max duration {maxDuration:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
 
                 return outputs;
             }

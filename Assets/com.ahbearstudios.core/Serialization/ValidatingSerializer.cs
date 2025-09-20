@@ -50,7 +50,7 @@ namespace AhBearStudios.Core.Serialization
             _statistics = new ValidationStatistics();
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo($"ValidatingSerializer initialized wrapping {innerSerializer.GetType().Name}", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo($"ValidatingSerializer initialized wrapping {innerSerializer.GetType().Name}", correlationId: correlationId, sourceContext: null, properties: null);
         }
 
         /// <inheritdoc />
@@ -149,7 +149,7 @@ namespace AhBearStudios.Core.Serialization
             {
                 _statistics.RecordValidationFailure(type, "TryDeserialize", ex);
                 var correlationId = GetCorrelationId();
-                _logger.LogError($"TryDeserialize validation failed for type {type.Name}: {ex.Message}", correlationId, sourceContext: null, properties: null);
+                _logger.LogError($"TryDeserialize validation failed for type {type.Name}: {ex.Message}", correlationId: correlationId, sourceContext: null, properties: null);
                 return false;
             }
         }
@@ -188,12 +188,12 @@ namespace AhBearStudios.Core.Serialization
                 _innerSerializer.RegisterType(type);
                 _statistics.RecordTypeRegistration(type, true);
 
-                _logger.LogInfo($"Successfully registered and validated type {type.FullName}", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Successfully registered and validated type {type.FullName}", correlationId: correlationId, sourceContext: null, properties: null);
             }
             catch (Exception ex)
             {
                 _statistics.RecordTypeRegistration(type, false);
-                _logger.LogException($"Failed to register type {type.FullName}", ex, correlationId, sourceContext: null, properties: null);
+                _logger.LogException($"Failed to register type {type.FullName}", ex, correlationId: correlationId, sourceContext: null, properties: null);
                 throw;
             }
         }
@@ -374,7 +374,7 @@ namespace AhBearStudios.Core.Serialization
             
             _typeValidationCache.Clear();
             
-            _logger.LogInfo($"Cleared validation cache. Removed {count} cached validation results", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo($"Cleared validation cache. Removed {count} cached validation results", correlationId: correlationId, sourceContext: null, properties: null);
         }
 
         /// <summary>
@@ -389,7 +389,7 @@ namespace AhBearStudios.Core.Serialization
             _validationEngine.AddRule(rule);
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo($"Added custom validation rule: {rule.GetType().Name}", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo($"Added custom validation rule: {rule.GetType().Name}", correlationId: correlationId, sourceContext: null, properties: null);
         }
 
         private void ValidateTypeForSerialization<T>(Type type, T obj)
@@ -474,7 +474,7 @@ namespace AhBearStudios.Core.Serialization
                 _disposed = true;
 
                 var correlationId = GetCorrelationId();
-                _logger.LogInfo("ValidatingSerializer disposed", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo("ValidatingSerializer disposed", correlationId: correlationId, sourceContext: null, properties: null);
             }
         }
     }

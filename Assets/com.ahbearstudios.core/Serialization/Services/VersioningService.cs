@@ -28,7 +28,7 @@ namespace AhBearStudios.Core.Serialization.Services;
             _migrations = new ConcurrentDictionary<string, Delegate>();
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo("VersioningService initialized", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo("VersioningService initialized", correlationId: correlationId, sourceContext: null, properties: null);
         }
 
         /// <inheritdoc />
@@ -56,7 +56,7 @@ namespace AhBearStudios.Core.Serialization.Services;
                 }
 
                 var correlationId = GetCorrelationId();
-                _logger.LogInfo($"Registered migration for {type.Name} from v{fromVersion} to v{toVersion}", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo($"Registered migration for {type.Name} from v{fromVersion} to v{toVersion}", correlationId: correlationId, sourceContext: null, properties: null);
             }
         }
 
@@ -73,7 +73,7 @@ namespace AhBearStudios.Core.Serialization.Services;
                 return obj;
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo($"Migrating {type.Name} from v{currentVersion} to v{latestVersion}", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo($"Migrating {type.Name} from v{currentVersion} to v{latestVersion}", correlationId: correlationId, sourceContext: null, properties: null);
 
             var result = obj;
             
@@ -86,7 +86,7 @@ namespace AhBearStudios.Core.Serialization.Services;
                     if (migration is Func<T, T> typedMigration)
                     {
                         result = typedMigration(result);
-                        _logger.LogInfo($"Applied migration {type.Name} v{version} -> v{version + 1}", correlationId, sourceContext: null, properties: null);
+                        _logger.LogInfo($"Applied migration {type.Name} v{version} -> v{version + 1}", correlationId: correlationId, sourceContext: null, properties: null);
                     }
                     else
                     {
@@ -124,7 +124,7 @@ namespace AhBearStudios.Core.Serialization.Services;
             _latestVersions[type] = version;
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo($"Set latest version for {type.Name} to v{version}", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo($"Set latest version for {type.Name} to v{version}", correlationId: correlationId, sourceContext: null, properties: null);
         }
 
         private FixedString64Bytes GetCorrelationId()

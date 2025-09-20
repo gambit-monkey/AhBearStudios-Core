@@ -1,13 +1,17 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Cysharp.Threading.Tasks;
 using Unity.Collections;
 using ZLinq;
 using AhBearStudios.Core.Alerting;
+using AhBearStudios.Core.Alerting.Models;
 using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.HealthChecking.Checks;
 using AhBearStudios.Core.HealthChecking.Configs;
+using AhBearStudios.Core.HealthChecking.Messages;
 using AhBearStudios.Core.HealthChecking.Models;
 using AhBearStudios.Core.HealthChecking.Services;
 using AhBearStudios.Core.Logging;
@@ -52,6 +56,17 @@ namespace AhBearStudios.Core.HealthChecking
 
         #endregion
 
+        #region Statistics Tracking
+
+        private readonly DateTime _serviceStartTime;
+        private long _totalHealthChecks;
+        private long _successfulHealthChecks;
+        private long _failedHealthChecks;
+        private readonly ConcurrentQueue<TimeSpan> _executionTimes;
+        private const int MaxExecutionTimesStored = 1000;
+
+        #endregion
+
         /// <summary>
         /// Initializes a new instance of the simplified HealthCheckService.
         /// Uses consolidated services and core systems directly per CLAUDE.md patterns.
@@ -86,11 +101,25 @@ namespace AhBearStudios.Core.HealthChecking
             _profilerService = profilerService ?? throw new ArgumentNullException(nameof(profilerService));
             _messageBus = messageBus ?? throw new ArgumentNullException(nameof(messageBus));
 
+            // Validate configuration
+            if (_config.MaxConcurrentHealthChecks <= 0)
+                throw new ArgumentException("MaxConcurrentHealthChecks must be greater than 0", nameof(config));
+            if (_config.AutomaticCheckInterval <= TimeSpan.Zero)
+                throw new ArgumentException("AutomaticCheckInterval must be greater than zero", nameof(config));
+
             _serviceId = DeterministicIdGenerator.GenerateCoreId("HealthCheckService");
             _serviceCancellationSource = new CancellationTokenSource();
             _overallStatus = OverallHealthStatus.Unknown;
 
-            _logger.LogInfo("HealthCheckService initialized in orchestration mode with ID: {ServiceId}", _serviceId);
+            // Initialize statistics tracking
+            _serviceStartTime = DateTime.UtcNow;
+            _totalHealthChecks = 0;
+            _successfulHealthChecks = 0;
+            _failedHealthChecks = 0;
+            _executionTimes = new ConcurrentQueue<TimeSpan>();
+
+            _logger.LogInfo($"HealthCheckService initialized in orchestration mode with ID: {_serviceId}",
+                correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
         }
 
         #region IHealthCheckService Implementation (Delegated to Specialized Services)
@@ -99,20 +128,57 @@ namespace AhBearStudios.Core.HealthChecking
         public void RegisterHealthCheck(IHealthCheck healthCheck, HealthCheckConfiguration config = null)
         {
             ThrowIfDisposed();
-            _registryService.RegisterHealthCheck(healthCheck, config);
 
-            _logger.LogDebug("Delegated health check registration to registry service: {HealthCheckName}",
-                healthCheck?.Name ?? "Unknown");
+            if (healthCheck == null)
+                throw new ArgumentNullException(nameof(healthCheck));
+
+            try
+            {
+                _registryService.RegisterHealthCheck(healthCheck, config);
+
+                _logger.LogDebug($"Successfully registered health check: {healthCheck.Name}",
+                    correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
+
+                _profilerService.RecordMetric("healthcheck.registrations", 1);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogException($"Failed to register health check '{healthCheck.Name}'", ex,
+                    correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
+                throw;
+            }
         }
 
         /// <inheritdoc />
         public void RegisterHealthChecks(Dictionary<IHealthCheck, HealthCheckConfiguration> healthChecks)
         {
             ThrowIfDisposed();
-            _registryService.RegisterHealthChecks(healthChecks);
 
-            _logger.LogInfo("Delegated bulk health check registration to registry service: {Count} checks",
-                healthChecks?.Count ?? 0);
+            if (healthChecks == null)
+                throw new ArgumentNullException(nameof(healthChecks));
+
+            if (healthChecks.Count == 0)
+            {
+                _logger.LogWarning("Attempted to register empty health check collection",
+                    correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
+                return;
+            }
+
+            try
+            {
+                _registryService.RegisterHealthChecks(healthChecks);
+
+                _logger.LogInfo($"Successfully registered {healthChecks.Count} health checks in bulk operation",
+                    correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
+
+                _profilerService.RecordMetric("healthcheck.bulk_registrations", healthChecks.Count);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogException($"Failed to register {healthChecks.Count} health checks in bulk operation", ex,
+                    correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
+                throw;
+            }
         }
 
         /// <inheritdoc />
@@ -129,56 +195,92 @@ namespace AhBearStudios.Core.HealthChecking
         {
             ThrowIfDisposed();
 
-            var healthCheck = _registryService.GetHealthCheck(name);
-            if (healthCheck == null)
+            using (_profilerService.BeginScope($"HealthCheckService.ExecuteHealthCheck.{name}"))
             {
-                throw new InvalidOperationException($"Health check '{name}' is not registered");
-            }
-
-            var configuration = _registryService.GetHealthCheckConfiguration(name) ??
-                               HealthCheckConfiguration.Create(name.ToString());
-
-            // Check circuit breaker before execution
-            if (!_resilienceService.CanExecuteOperation(name))
-            {
-                var result = HealthCheckResult.Unhealthy(
-                    $"Health check '{name}' circuit breaker is open");
-
-                // Publish directly via IMessageBusService - no wrapper
-                var message = HealthCheckCompletedWithResultsMessage.Create(
-                    name.ToString(), "HealthCheck", result.Status, result.Message,
-                    result.Duration.TotalMilliseconds, true, false,
-                    "HealthCheckService", DeterministicIdGenerator.GenerateCorrelationId("HealthCheck", name.ToString()));
-                await _messageBus.PublishMessageAsync(message, cancellationToken);
-
-                return result;
-            }
-
-            try
-            {
-                var result = await _operationService.ExecuteHealthCheckAsync(healthCheck, configuration, cancellationToken);
-
-                // Record circuit breaker result
-                if (result.Status == HealthStatus.Healthy || result.Status == HealthStatus.Warning)
+                var healthCheck = _registryService.GetHealthCheck(name);
+                if (healthCheck == null)
                 {
-                    _resilienceService.RecordSuccess(name, result.Duration);
-                }
-                else
-                {
-                    _resilienceService.RecordFailure(name, result.Exception, result.Duration);
+                    throw new InvalidOperationException($"Health check '{name}' is not registered");
                 }
 
-                // Use event service for complex lifecycle coordination
-                await _eventService.PublishHealthCheckLifecycleEventsAsync(
-                    name.ToString(), result, HealthStatus.Unknown,
-                    DeterministicIdGenerator.GenerateCorrelationId("HealthCheck", name.ToString()), cancellationToken);
+                var configuration = _registryService.GetHealthCheckConfiguration(name) ??
+                                   HealthCheckConfiguration.Create(name.ToString());
 
-                return result;
-            }
-            catch (Exception ex)
-            {
-                _resilienceService.RecordFailure(name, ex, TimeSpan.Zero);
-                throw;
+                // Increment total health checks counter
+                Interlocked.Increment(ref _totalHealthChecks);
+
+                // Check circuit breaker before execution
+                if (!_resilienceService.CanExecuteOperation(name))
+                {
+                    var result = HealthCheckResult.Unhealthy(
+                        name.ToString(),
+                        $"Health check '{name}' circuit breaker is open");
+
+                    // Track failed execution due to circuit breaker
+                    Interlocked.Increment(ref _failedHealthChecks);
+                    TrackExecutionTime(result.Duration);
+                    _profilerService.RecordMetric($"healthcheck.{name}.circuit_breaker_blocked", 1);
+
+                    // Publish via IMessageBusService with proper error handling
+                    var message = HealthCheckCompletedWithResultsMessage.Create(
+                        name.ToString(), "HealthCheck", result.Status, result.Message,
+                        result.Duration.TotalMilliseconds, true, false,
+                        "HealthCheckService", DeterministicIdGenerator.GenerateCorrelationId("HealthCheck", name.ToString()));
+
+                    try
+                    {
+                        await _messageBus.PublishMessageAsync(message, cancellationToken);
+                    }
+                    catch (Exception publishEx)
+                    {
+                        _logger.LogException("Failed to publish health check circuit breaker message", publishEx,
+                            correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
+                    }
+
+                    return result;
+                }
+
+                try
+                {
+                    var result = await _operationService.ExecuteHealthCheckAsync(healthCheck, configuration, cancellationToken);
+
+                    // Track execution statistics based on result
+                    if (result.Status == HealthStatus.Healthy || result.Status == HealthStatus.Warning)
+                    {
+                        Interlocked.Increment(ref _successfulHealthChecks);
+                        _resilienceService.RecordSuccess(name, result.Duration);
+                        _profilerService.RecordMetric($"healthcheck.{name}.success", 1);
+                    }
+                    else
+                    {
+                        Interlocked.Increment(ref _failedHealthChecks);
+                        _resilienceService.RecordFailure(name, result.Exception, result.Duration);
+                        _profilerService.RecordMetric($"healthcheck.{name}.failure", 1);
+                    }
+
+                    TrackExecutionTime(result.Duration);
+                    _profilerService.RecordMetric($"healthcheck.{name}.duration_ms", result.Duration.TotalMilliseconds);
+
+                    // Record result in history for future retrieval
+                    _registryService.RecordHealthCheckHistory(result);
+
+                    // Use event service for complex lifecycle coordination
+                    await _eventService.PublishHealthCheckLifecycleEventsAsync(
+                        name.ToString(), result, HealthStatus.Unknown,
+                        DeterministicIdGenerator.GenerateCorrelationId("HealthCheck", name.ToString()), cancellationToken);
+
+                    return result;
+                }
+                catch (Exception ex)
+                {
+                    Interlocked.Increment(ref _failedHealthChecks);
+                    _resilienceService.RecordFailure(name, ex, TimeSpan.Zero);
+                    _profilerService.RecordMetric($"healthcheck.{name}.exception", 1);
+
+                    _logger.LogException($"Health check '{name}' execution failed", ex,
+                        correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
+                    throw;
+                }
             }
         }
 
@@ -189,6 +291,7 @@ namespace AhBearStudios.Core.HealthChecking
 
             using (_profilerService.BeginScope("HealthCheckService.ExecuteAllHealthChecks"))
             {
+                var batchStartTime = DateTime.UtcNow;
                 var allHealthChecks = _registryService.GetAllHealthChecks();
 
                 // Use ZLinq for zero-allocation operations
@@ -198,21 +301,27 @@ namespace AhBearStudios.Core.HealthChecking
 
                 if (enabledChecks.Count == 0)
                 {
-                    return new HealthReport
-                    {
-                        OverallStatus = OverallHealthStatus.Unknown,
-                        CheckResults = new Dictionary<string, HealthCheckResult>(),
-                        GeneratedAt = DateTime.UtcNow,
-                        TotalChecks = 0,
-                        HealthyChecks = 0,
-                        UnhealthyChecks = 0,
-                        DegradedChecks = 0
-                    };
+                    return HealthReport.Create(
+                        status: HealthStatus.Unknown,
+                        results: new List<HealthCheckResult>(),
+                        duration: TimeSpan.Zero,
+                        correlationId: DeterministicIdGenerator.GenerateCorrelationId("HealthReport", "EmptyReport"),
+                        data: new Dictionary<string, object>(),
+                        degradationLevel: DegradationLevel.None);
                 }
 
                 // Execute health checks using consolidated operation service
                 var results = await _operationService.ExecuteBatchAsync(
                     enabledChecks, _config.MaxConcurrentHealthChecks, cancellationToken);
+
+                // Record all results in history
+                foreach (var result in results.Values)
+                {
+                    _registryService.RecordHealthCheckHistory(result);
+                }
+
+                // Track batch execution statistics
+                TrackBatchExecutionStatistics(results);
 
                 // Update overall status and degradation
                 await UpdateOverallHealthStatusAsync(results);
@@ -221,18 +330,24 @@ namespace AhBearStudios.Core.HealthChecking
                 // Use event service for complex batch coordination
                 await _eventService.CoordinateBatchResultsAsync(results, _overallStatus, _serviceId, cancellationToken);
 
-                _logger.LogDebug("Executed {Count} health checks via simplified orchestration", results.Count);
+                // Calculate actual batch execution duration
+                var batchDuration = DateTime.UtcNow - batchStartTime;
 
-                return new HealthReport
-                {
-                    OverallStatus = _overallStatus,
-                    CheckResults = results,
-                    GeneratedAt = DateTime.UtcNow,
-                    TotalChecks = results.Count,
-                    HealthyChecks = results.Values.AsValueEnumerable().Count(r => r.Status == HealthStatus.Healthy),
-                    UnhealthyChecks = results.Values.AsValueEnumerable().Count(r => r.Status == HealthStatus.Unhealthy),
-                    DegradedChecks = results.Values.AsValueEnumerable().Count(r => r.Status == HealthStatus.Degraded)
-                };
+                // Record batch execution metrics
+                _profilerService.RecordMetric("healthcheck.batch.total_checks", results.Count);
+                _profilerService.RecordMetric("healthcheck.batch.duration_ms", batchDuration.TotalMilliseconds);
+                _profilerService.RecordMetric("healthcheck.batch.enabled_checks", enabledChecks.Count);
+
+                _logger.LogDebug($"Executed {results.Count} health checks via simplified orchestration in {batchDuration.TotalMilliseconds:F1}ms",
+                    correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
+
+                return HealthReport.Create(
+                    status: ConvertToHealthStatus(_overallStatus),
+                    results: results.Values,
+                    duration: batchDuration,
+                    correlationId: DeterministicIdGenerator.GenerateCorrelationId("HealthReport", "BatchExecution"),
+                    data: new Dictionary<string, object> { ["ExecutionCount"] = results.Count },
+                    degradationLevel: _resilienceService.GetCurrentDegradationLevel());
             }
         }
 
@@ -241,17 +356,22 @@ namespace AhBearStudios.Core.HealthChecking
         {
             ThrowIfDisposed();
 
-            // This would be delegated to a statistics service in a full implementation
-            return new HealthReport
-            {
-                OverallStatus = _overallStatus,
-                CheckResults = new Dictionary<string, HealthCheckResult>(),
-                GeneratedAt = DateTime.UtcNow,
-                TotalChecks = _registryService.GetHealthCheckCount(),
-                HealthyChecks = 0,
-                UnhealthyChecks = 0,
-                DegradedChecks = 0
-            };
+            // Delegate to registry service for comprehensive statistics
+            var statistics = _registryService.GetHealthStatistics();
+
+            return HealthReport.Create(
+                status: ConvertToHealthStatus(_overallStatus),
+                results: new List<HealthCheckResult>(),
+                duration: TimeSpan.Zero,
+                correlationId: DeterministicIdGenerator.GenerateCorrelationId("HealthReport", "StatusOnly"),
+                data: new Dictionary<string, object>
+                {
+                    ["RegisteredCount"] = statistics.RegisteredHealthCheckCount,
+                    ["TotalExecutions"] = statistics.TotalHealthChecks,
+                    ["SuccessRate"] = statistics.SuccessRate,
+                    ["AverageExecutionTime"] = statistics.AverageExecutionTime.TotalMilliseconds
+                },
+                degradationLevel: _resilienceService.GetCurrentDegradationLevel());
         }
 
         /// <inheritdoc />
@@ -300,8 +420,7 @@ namespace AhBearStudios.Core.HealthChecking
         public List<HealthCheckResult> GetHealthCheckHistory(FixedString64Bytes name, int maxResults = 100)
         {
             ThrowIfDisposed();
-            // This would be delegated to a statistics service in a full implementation
-            return new List<HealthCheckResult>();
+            return _registryService.GetHealthCheckHistory(name, maxResults);
         }
 
         /// <inheritdoc />
@@ -388,7 +507,7 @@ namespace AhBearStudios.Core.HealthChecking
         public void SetDegradationLevel(DegradationLevel level, string reason)
         {
             ThrowIfDisposed();
-            _logger.LogInfo("Degradation level change requested to {Level}: {Reason}", level, reason);
+            _logger.LogInfo($"Degradation level change requested to {level}: {reason}", correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
             _ = _resilienceService.SetDegradationLevelAsync(level, reason);
         }
 
@@ -396,16 +515,38 @@ namespace AhBearStudios.Core.HealthChecking
         public HealthStatistics GetHealthStatistics()
         {
             ThrowIfDisposed();
-            // This would be delegated to a statistics service in a full implementation
-            return new HealthStatistics
-            {
-                TotalHealthChecks = _registryService.GetHealthCheckCount(),
-                HealthyChecks = 0,
-                UnhealthyChecks = 0,
-                DegradedChecks = 0,
-                OverallStatus = _overallStatus,
-                LastUpdated = DateTime.UtcNow
-            };
+
+            // Calculate service uptime
+            var serviceUptime = DateTime.UtcNow - _serviceStartTime;
+
+            // Get current statistics values (thread-safe reads)
+            var totalChecks = Interlocked.Read(ref _totalHealthChecks);
+            var successfulChecks = Interlocked.Read(ref _successfulHealthChecks);
+            var failedChecks = Interlocked.Read(ref _failedHealthChecks);
+
+            // Calculate average execution time from tracked execution times
+            var averageExecutionTime = CalculateAverageExecutionTime();
+
+            // Get circuit breaker statistics from resilience service
+            var circuitBreakerStates = _resilienceService.GetAllCircuitBreakerStates();
+            var circuitBreakerStats = GetCircuitBreakerStatistics(circuitBreakerStates);
+
+            // Count open and active circuit breakers
+            var openCircuitBreakers = circuitBreakerStates.Values.Count(state => state == CircuitBreakerState.Open);
+            var activeCircuitBreakers = circuitBreakerStates.Count;
+
+            return HealthStatistics.Create(
+                serviceUptime: serviceUptime,
+                totalHealthChecks: totalChecks,
+                successfulHealthChecks: successfulChecks,
+                failedHealthChecks: failedChecks,
+                registeredHealthCheckCount: _registryService.GetHealthCheckCount(),
+                currentDegradationLevel: _resilienceService.GetCurrentDegradationLevel(),
+                lastOverallStatus: ConvertToHealthStatus(_overallStatus),
+                circuitBreakerStatistics: circuitBreakerStats,
+                averageExecutionTime: averageExecutionTime,
+                openCircuitBreakers: openCircuitBreakers,
+                activeCircuitBreakers: activeCircuitBreakers);
         }
 
         /// <inheritdoc />
@@ -426,32 +567,142 @@ namespace AhBearStudios.Core.HealthChecking
 
         #region Private Helper Methods
 
+        private void TrackExecutionTime(TimeSpan executionTime)
+        {
+            _executionTimes.Enqueue(executionTime);
+
+            // Maintain a rolling window of execution times
+            while (_executionTimes.Count > MaxExecutionTimesStored)
+            {
+                _executionTimes.TryDequeue(out _);
+            }
+        }
+
+        private void TrackBatchExecutionStatistics(Dictionary<string, HealthCheckResult> results)
+        {
+            if (results?.Count == 0)
+                return;
+
+            // Use ZLinq for zero-allocation grouping and counting
+            var successCount = 0;
+            var failureCount = 0;
+
+            foreach (var result in results.Values)
+            {
+                // Increment total counter for each health check in batch
+                Interlocked.Increment(ref _totalHealthChecks);
+
+                // Track success/failure based on result status
+                if (IsSuccessfulResult(result.Status))
+                {
+                    successCount++;
+                }
+                else
+                {
+                    failureCount++;
+                }
+
+                // Track execution time for each result
+                TrackExecutionTime(result.Duration);
+            }
+
+            // Batch update counters for better performance
+            Interlocked.Add(ref _successfulHealthChecks, successCount);
+            Interlocked.Add(ref _failedHealthChecks, failureCount);
+
+            // Record batch metrics
+            _profilerService.RecordMetric("healthcheck.batch.success_count", successCount);
+            _profilerService.RecordMetric("healthcheck.batch.failure_count", failureCount);
+        }
+
+        private static bool IsSuccessfulResult(HealthStatus status) =>
+            status == HealthStatus.Healthy || status == HealthStatus.Warning;
+
+        private TimeSpan CalculateAverageExecutionTime()
+        {
+            var executionTimes = _executionTimes.ToArray();
+            if (executionTimes.Length == 0)
+                return TimeSpan.Zero;
+
+            var totalTicks = executionTimes.Sum(t => t.Ticks);
+            var averageTicks = totalTicks / executionTimes.Length;
+            return new TimeSpan(averageTicks);
+        }
+
+        private Dictionary<FixedString64Bytes, CircuitBreakerStatistics> GetCircuitBreakerStatistics(
+            Dictionary<FixedString64Bytes, CircuitBreakerState> circuitBreakerStates)
+        {
+            var statistics = new Dictionary<FixedString64Bytes, CircuitBreakerStatistics>();
+
+            // Get resilience statistics which should contain circuit breaker metrics
+            var resilienceStats = _resilienceService.GetResilienceStatistics();
+
+            foreach (var kvp in circuitBreakerStates)
+            {
+                var name = kvp.Key;
+                var state = kvp.Value;
+
+                // Create basic circuit breaker statistics
+                // In a full implementation, these would come from the resilience service
+                var stats = new CircuitBreakerStatistics
+                {
+                    Name = name,
+                    State = state,
+                    TotalExecutions = 0, // Would be tracked by resilience service
+                    TotalFailures = 0,   // Would be tracked by resilience service
+                    TotalSuccesses = 0,  // Would be tracked by resilience service
+                    LastStateChange = DateTime.UtcNow // Would be tracked by resilience service
+                };
+
+                statistics[name] = stats;
+            }
+
+            return statistics;
+        }
+
         private async UniTask UpdateOverallHealthStatusAsync(Dictionary<string, HealthCheckResult> results)
         {
-            var previousStatus = _overallStatus;
+            using (_profilerService.BeginScope("HealthCheckService.UpdateOverallStatus"))
+            {
+                var previousStatus = _overallStatus;
+                _overallStatus = CalculateOverallHealthStatus(results);
+
+                // Record status change metrics
+                _profilerService.RecordMetric("healthcheck.overall_status_updates", 1);
+                _profilerService.RecordMetric($"healthcheck.overall_status.{_overallStatus.ToString().ToLowerInvariant()}", 1);
+
+                // Fire event if status changed
+                if (_overallStatus != previousStatus)
+                {
+                    _logger.LogInfo($"Overall health status changed from {previousStatus} to {_overallStatus}",
+                        correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
+
+                    await PublishStatusChangeEventsAsync(previousStatus, results);
+                }
+            }
+        }
+
+        private OverallHealthStatus CalculateOverallHealthStatus(Dictionary<string, HealthCheckResult> results)
+        {
+            if (results?.Count == 0)
+                return OverallHealthStatus.Unknown;
 
             // Use ZLinq for zero-allocation operations
             var hasUnhealthy = results.Values.AsValueEnumerable().Any(r => r.Status == HealthStatus.Unhealthy);
             var hasDegraded = results.Values.AsValueEnumerable().Any(r => r.Status == HealthStatus.Degraded);
             var hasWarning = results.Values.AsValueEnumerable().Any(r => r.Status == HealthStatus.Warning);
 
-            if (hasUnhealthy)
-                _overallStatus = OverallHealthStatus.Unhealthy;
-            else if (hasDegraded)
-                _overallStatus = OverallHealthStatus.Degraded;
-            else if (hasWarning)
-                _overallStatus = OverallHealthStatus.Warning;
-            else if (results.Count > 0)
-                _overallStatus = OverallHealthStatus.Healthy;
-            else
-                _overallStatus = OverallHealthStatus.Unknown;
+            return hasUnhealthy ? OverallHealthStatus.Unhealthy :
+                   hasDegraded ? OverallHealthStatus.Degraded :
+                   hasWarning ? OverallHealthStatus.Warning :
+                   results.Count > 0 ? OverallHealthStatus.Healthy :
+                   OverallHealthStatus.Unknown;
+        }
 
-            // Fire event if status changed
-            if (_overallStatus != previousStatus)
+        private async UniTask PublishStatusChangeEventsAsync(OverallHealthStatus previousStatus, Dictionary<string, HealthCheckResult> results)
+        {
+            try
             {
-                _logger.LogInfo("Overall health status changed from {PreviousStatus} to {NewStatus}",
-                    previousStatus, _overallStatus);
-
                 // Coordinate complex event publishing using event service
                 await _eventService.PublishHealthCheckLifecycleEventsAsync(
                     "OverallHealthStatus",
@@ -463,7 +714,7 @@ namespace AhBearStudios.Core.HealthChecking
                         Timestamp = DateTime.UtcNow
                     },
                     ConvertToHealthStatus(previousStatus),
-                    Guid.NewGuid());
+                    DeterministicIdGenerator.GenerateCorrelationId("OverallHealthStatusChange", _serviceId.ToString()));
 
                 // Send alert if configured
                 if (_config.EnableHealthAlerts)
@@ -471,56 +722,74 @@ namespace AhBearStudios.Core.HealthChecking
                     await SendHealthStatusAlertAsync(_overallStatus, previousStatus);
                 }
             }
+            catch (Exception ex)
+            {
+                _logger.LogException("Failed to publish overall health status change events", ex,
+                    correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
+            }
         }
 
         private async UniTask SendHealthStatusAlertAsync(OverallHealthStatus newStatus, OverallHealthStatus previousStatus)
         {
-            try
+            using (_profilerService.BeginScope("HealthCheckService.SendHealthStatusAlert"))
             {
-                var severity = newStatus switch
+                try
                 {
-                    OverallHealthStatus.Healthy => AlertSeverity.Info,
-                    OverallHealthStatus.Warning => AlertSeverity.Warning,
-                    OverallHealthStatus.Degraded => AlertSeverity.Warning,
-                    OverallHealthStatus.Unhealthy => AlertSeverity.Critical,
-                    _ => AlertSeverity.Info
-                };
+                    var severity = DetermineAlertSeverity(newStatus);
+                    var message = $"Overall health status changed from {previousStatus} to {newStatus}";
 
-                var message = $"Overall health status changed from {previousStatus} to {newStatus}";
+                    await _alertService.RaiseAlertAsync(
+                        message: $"Health Status Change: {message}",
+                        severity: severity,
+                        source: nameof(HealthCheckService),
+                        tag: "HealthStatusChange",
+                        correlationId: DeterministicIdGenerator.GenerateCorrelationId("HealthAlert", "StatusChange"));
 
-                await _alertService.SendAlertAsync(
-                    title: "Health Status Change",
-                    message: message,
-                    severity: severity,
-                    tags: _config.AlertTags?.ToArray() ?? Array.Empty<FixedString64Bytes>());
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to send health status alert");
+                    _profilerService.RecordMetric("healthcheck.alerts_sent", 1);
+                    _profilerService.RecordMetric($"healthcheck.alerts.{severity.ToString().ToLowerInvariant()}", 1);
+
+                    _logger.LogDebug($"Health status alert sent: {severity} - {message}",
+                        correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
+                }
+                catch (Exception ex)
+                {
+                    _profilerService.RecordMetric("healthcheck.alert_failures", 1);
+                    _logger.LogException("Failed to send health status alert", ex,
+                        correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
+                }
             }
         }
+
+        private static AlertSeverity DetermineAlertSeverity(OverallHealthStatus status) => status switch
+        {
+            OverallHealthStatus.Healthy => AlertSeverity.Info,
+            OverallHealthStatus.Warning => AlertSeverity.Warning,
+            OverallHealthStatus.Degraded => AlertSeverity.Warning,
+            OverallHealthStatus.Unhealthy => AlertSeverity.Critical,
+            _ => AlertSeverity.Info
+        };
 
         private double CalculateOverallHealthScore(Dictionary<string, HealthCheckResult> results)
         {
-            if (results.Count == 0)
+            if (results?.Count == 0)
                 return 0.0;
 
-            var totalScore = 0.0;
-            foreach (var result in results.Values)
-            {
-                var score = result.Status switch
-                {
-                    HealthStatus.Healthy => 1.0,
-                    HealthStatus.Warning => 0.8,
-                    HealthStatus.Degraded => 0.5,
-                    HealthStatus.Unhealthy => 0.0,
-                    _ => 0.0
-                };
-                totalScore += score;
-            }
+            // Use ZLinq for zero-allocation calculation with mapping
+            var totalScore = results.Values.AsValueEnumerable()
+                .Select(result => GetHealthStatusScore(result.Status))
+                .Sum();
 
             return totalScore / results.Count;
         }
+
+        private static double GetHealthStatusScore(HealthStatus status) => status switch
+        {
+            HealthStatus.Healthy => 1.0,
+            HealthStatus.Warning => 0.8,
+            HealthStatus.Degraded => 0.5,
+            HealthStatus.Unhealthy => 0.0,
+            _ => 0.0
+        };
 
         private static HealthStatus ConvertToHealthStatus(OverallHealthStatus overallStatus)
         {
@@ -563,26 +832,26 @@ namespace AhBearStudios.Core.HealthChecking
 
             try
             {
-                _logger.LogInfo("Disposing HealthCheckService: {ServiceId}", _serviceId);
+                _logger.LogInfo($"Disposing HealthCheckService: {_serviceId}",
+                    correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
 
                 _isRunning = false;
                 _serviceCancellationSource?.Cancel();
 
-                // Dispose consolidated services
+                // Dispose consolidated services that implement IDisposable
                 _operationService?.Dispose();
-                _eventService?.Dispose();
-                _resilienceService?.Dispose();
 
                 _serviceCancellationSource?.Dispose();
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error during HealthCheckService disposal");
+                _logger.LogException("Error during HealthCheckService disposal", ex, correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
             }
             finally
             {
                 _isDisposed = true;
-                _logger.LogDebug("HealthCheckService disposed: {ServiceId}", _serviceId);
+                _logger.LogDebug($"HealthCheckService disposed: {_serviceId}",
+                    correlationId: default(FixedString64Bytes), sourceContext: nameof(HealthCheckService), properties: null);
             }
         }
 

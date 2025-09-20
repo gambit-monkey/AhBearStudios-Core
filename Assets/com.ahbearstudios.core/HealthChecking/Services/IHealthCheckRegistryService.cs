@@ -123,5 +123,32 @@ namespace AhBearStudios.Core.HealthChecking.Services
         /// <param name="name">Name of the health check</param>
         /// <returns>Metadata dictionary</returns>
         Dictionary<string, object> GetHealthCheckMetadata(FixedString64Bytes name);
+
+        /// <summary>
+        /// Records a health check result in the history.
+        /// </summary>
+        /// <param name="result">The health check result to record</param>
+        void RecordHealthCheckHistory(HealthCheckResult result);
+
+        /// <summary>
+        /// Gets health check history for a specific check.
+        /// </summary>
+        /// <param name="name">Name of the health check</param>
+        /// <param name="maxResults">Maximum number of results to return</param>
+        /// <returns>List of historical health check results</returns>
+        List<HealthCheckResult> GetHealthCheckHistory(FixedString64Bytes name, int maxResults = 100);
+
+        /// <summary>
+        /// Clears health check history for a specific check.
+        /// </summary>
+        /// <param name="name">Name of the health check</param>
+        /// <returns>Number of history entries removed</returns>
+        int ClearHealthCheckHistory(FixedString64Bytes name);
+
+        /// <summary>
+        /// Gets comprehensive health statistics from registry data.
+        /// </summary>
+        /// <returns>Current health statistics</returns>
+        HealthStatistics GetHealthStatistics();
     }
 }

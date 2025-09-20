@@ -46,7 +46,7 @@ namespace AhBearStudios.Core.Serialization
             _reportingTimer = new Timer(ReportMetrics, null, reportingIntervalMs, reportingIntervalMs);
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo($"PerformanceMonitoringSerializer initialized wrapping {innerSerializer.GetType().Name}", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo($"PerformanceMonitoringSerializer initialized wrapping {innerSerializer.GetType().Name}", correlationId: correlationId, sourceContext: null, properties: null);
         }
 
         /// <inheritdoc />
@@ -90,7 +90,7 @@ namespace AhBearStudios.Core.Serialization
                 // Log slow operations
                 if (duration.TotalMilliseconds > 100) // Log operations over 100ms
                 {
-                    _logger.LogWarning($"Slow serialization operation: {operationName} took {duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                    _logger.LogWarning($"Slow serialization operation: {operationName} took {duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
                 }
 
                 return result;
@@ -103,7 +103,7 @@ namespace AhBearStudios.Core.Serialization
 
                 RecordFailure(operationName, duration, memoryDelta, ex);
                 
-                _logger.LogException($"Performance-monitored operation failed: {operationName}", ex, correlationId, sourceContext: null, properties: null);
+                _logger.LogException($"Performance-monitored operation failed: {operationName}", ex, correlationId: correlationId, sourceContext: null, properties: null);
                 throw;
             }
         }
@@ -150,7 +150,7 @@ namespace AhBearStudios.Core.Serialization
                 // Log slow operations
                 if (duration.TotalMilliseconds > 100) // Log operations over 100ms
                 {
-                    _logger.LogWarning($"Slow serialization operation: {operationName} took {duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                    _logger.LogWarning($"Slow serialization operation: {operationName} took {duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
                 }
 
                 return success;
@@ -163,7 +163,7 @@ namespace AhBearStudios.Core.Serialization
 
                 RecordFailure(operationName, duration, memoryDelta, ex);
                 
-                _logger.LogException($"Performance-monitored operation failed: {operationName}", ex, correlationId, sourceContext: null, properties: null);
+                _logger.LogException($"Performance-monitored operation failed: {operationName}", ex, correlationId: correlationId, sourceContext: null, properties: null);
                 result = default;
                 return false;
             }
@@ -310,7 +310,7 @@ namespace AhBearStudios.Core.Serialization
             _operationMetrics.Clear();
 
             var correlationId = GetCorrelationId();
-            _logger.LogInfo("Performance metrics reset", correlationId, sourceContext: null, properties: null);
+            _logger.LogInfo("Performance metrics reset", correlationId: correlationId, sourceContext: null, properties: null);
         }
 
         private TResult ExecuteWithMonitoring<TResult>(Func<TResult> operation, string operationName, object context = null)
@@ -332,7 +332,7 @@ namespace AhBearStudios.Core.Serialization
                 // Log slow operations
                 if (duration.TotalMilliseconds > 100) // Log operations over 100ms
                 {
-                    _logger.LogWarning($"Slow serialization operation: {operationName} took {duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                    _logger.LogWarning($"Slow serialization operation: {operationName} took {duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
                 }
 
                 return result;
@@ -345,7 +345,7 @@ namespace AhBearStudios.Core.Serialization
 
                 RecordFailure(operationName, duration, memoryDelta, ex);
                 
-                _logger.LogException($"Performance-monitored operation failed: {operationName}", ex, correlationId, sourceContext: null, properties: null);
+                _logger.LogException($"Performance-monitored operation failed: {operationName}", ex, correlationId: correlationId, sourceContext: null, properties: null);
                 throw;
             }
         }
@@ -369,7 +369,7 @@ namespace AhBearStudios.Core.Serialization
                 // Log slow operations
                 if (duration.TotalMilliseconds > 100) // Log operations over 100ms
                 {
-                    _logger.LogWarning($"Slow async serialization operation: {operationName} took {duration.TotalMilliseconds:F2}ms", correlationId, sourceContext: null, properties: null);
+                    _logger.LogWarning($"Slow async serialization operation: {operationName} took {duration.TotalMilliseconds:F2}ms", correlationId: correlationId, sourceContext: null, properties: null);
                 }
 
                 return result;
@@ -382,7 +382,7 @@ namespace AhBearStudios.Core.Serialization
 
                 RecordFailure(operationName, duration, memoryDelta, ex);
                 
-                _logger.LogException($"Performance-monitored async operation failed: {operationName}", ex, correlationId, sourceContext: null, properties: null);
+                _logger.LogException($"Performance-monitored async operation failed: {operationName}", ex, correlationId: correlationId, sourceContext: null, properties: null);
                 throw;
             }
         }
@@ -430,7 +430,7 @@ namespace AhBearStudios.Core.Serialization
                 _logger.LogInfo($"Performance Metrics Report - Operations: {metrics.TotalOperations}, " +
                               $"Avg Time: {metrics.AverageOperationTime.TotalMilliseconds:F2}ms, " +
                               $"Success Rate: {metrics.SuccessRate:P2}, " +
-                              $"Peak Memory: {metrics.PeakMemoryUsage:N0} bytes", correlationId, sourceContext: null, properties: null);
+                              $"Peak Memory: {metrics.PeakMemoryUsage:N0} bytes", correlationId: correlationId, sourceContext: null, properties: null);
 
                 // Report top 5 slowest operations
                 var slowestOps = _operationMetrics.Values.AsValueEnumerable()
@@ -442,14 +442,14 @@ namespace AhBearStudios.Core.Serialization
                 {
                     _logger.LogInfo($"  {op.OperationName}: {op.TotalExecutions} calls, " +
                                   $"avg {op.AverageExecutionTime.TotalMilliseconds:F2}ms, " +
-                                  $"success rate {op.SuccessRate:P2}", correlationId, sourceContext: null, properties: null);
+                                  $"success rate {op.SuccessRate:P2}", correlationId: correlationId, sourceContext: null, properties: null);
                 }
             }
             catch (Exception ex)
             {
                 // Don't let metrics reporting crash the application
                 var correlationId = GetCorrelationId();
-                _logger.LogException("Failed to report performance metrics", ex, correlationId, sourceContext: null, properties: null);
+                _logger.LogException("Failed to report performance metrics", ex, correlationId: correlationId, sourceContext: null, properties: null);
             }
         }
 
@@ -486,7 +486,7 @@ namespace AhBearStudios.Core.Serialization
                 _disposed = true;
 
                 var correlationId = GetCorrelationId();
-                _logger.LogInfo("PerformanceMonitoringSerializer disposed", correlationId, sourceContext: null, properties: null);
+                _logger.LogInfo("PerformanceMonitoringSerializer disposed", correlationId: correlationId, sourceContext: null, properties: null);
             }
         }
     }
