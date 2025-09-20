@@ -97,7 +97,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
                     timeoutCts.CancelAfter(timeout);
 
                     // Execute the health check
-                    result = await healthCheck.CheckAsync(timeoutCts.Token);
+                    result = await healthCheck.CheckHealthAsync(timeoutCts.Token);
                     result = result with { Duration = stopwatch.Elapsed };
 
                     // Record metrics directly in IProfilerService
