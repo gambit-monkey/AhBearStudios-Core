@@ -382,8 +382,8 @@ namespace AhBearStudios.Core.HealthChecking.Services
                         Name = kvp.Key,
                         State = CircuitBreakerState.Closed, // Would be determined by actual circuit breaker
                         TotalExecutions = results.Length,
-                        TotalFailures = results.Count(r => r.Status == HealthStatus.Unhealthy || r.Status == HealthStatus.Degraded),
-                        TotalSuccesses = results.Count(r => r.Status == HealthStatus.Healthy || r.Status == HealthStatus.Warning),
+                        TotalFailures = results.AsValueEnumerable().Count(r => r.Status == HealthStatus.Unhealthy || r.Status == HealthStatus.Degraded),
+                        TotalSuccesses = results.AsValueEnumerable().Count(r => r.Status == HealthStatus.Healthy || r.Status == HealthStatus.Warning),
                         LastStateChange = lastResult.Timestamp
                     };
                 }
@@ -391,7 +391,7 @@ namespace AhBearStudios.Core.HealthChecking.Services
 
             // Calculate average execution time
             var averageExecutionTime = allExecutionTimes.Count > 0
-                ? TimeSpan.FromTicks(allExecutionTimes.Sum(t => t.Ticks) / allExecutionTimes.Count)
+                ? TimeSpan.FromTicks(allExecutionTimes.AsValueEnumerable().Sum(t => t.Ticks) / allExecutionTimes.Count)
                 : TimeSpan.Zero;
 
             return HealthStatistics.Create(
