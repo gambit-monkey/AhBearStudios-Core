@@ -5,6 +5,7 @@ using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Pools;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.Logging.Models
 {
@@ -15,7 +16,6 @@ namespace AhBearStudios.Core.Logging.Models
     /// Implements IMessage for integration with the messaging system.
     /// Burst-compatible for native job system integration.
     /// </summary>
-    [BurstCompile]
     public readonly struct LogMessage : IMessage, IDisposable
     {
         /// <summary>
@@ -24,9 +24,9 @@ namespace AhBearStudios.Core.Logging.Models
         private readonly Guid _id;
 
         /// <summary>
-        /// Gets the timestamp when this message was created.
+        /// Gets the timestamp when this message was created, stored as UTC ticks for Burst compatibility.
         /// </summary>
-        public readonly DateTime Timestamp;
+        public readonly long TimestampTicks;
 
         /// <summary>
         /// Gets the log level severity.
@@ -90,9 +90,14 @@ namespace AhBearStudios.Core.Logging.Models
         public Guid Id => _id;
 
         /// <summary>
+        /// Gets the timestamp as DateTime for compatibility.
+        /// </summary>
+        public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
+
+        /// <summary>
         /// Gets the timestamp as ticks for IMessage interface compatibility.
         /// </summary>
-        public long TimestampTicks => Timestamp.Ticks;
+        long IMessage.TimestampTicks => TimestampTicks;
 
         /// <summary>
         /// Gets the type code for IMessage interface compatibility.
@@ -134,7 +139,7 @@ namespace AhBearStudios.Core.Logging.Models
         /// Initializes a new instance of the LogMessage struct.
         /// </summary>
         /// <param name="id">The unique message identifier</param>
-        /// <param name="timestamp">The message timestamp</param>
+        /// <param name="timestampTicks">The message timestamp in UTC ticks</param>
         /// <param name="level">The log level</param>
         /// <param name="channel">The channel name</param>
         /// <param name="message">The log message text</param>
@@ -148,7 +153,7 @@ namespace AhBearStudios.Core.Logging.Models
         /// <param name="managedDataPool">The managed data pool for storing non-native data</param>
         public LogMessage(
             Guid id,
-            DateTime timestamp,
+            long timestampTicks,
             LogLevel level,
             FixedString64Bytes channel,
             FixedString512Bytes message,
@@ -162,7 +167,7 @@ namespace AhBearStudios.Core.Logging.Models
             ManagedLogDataPool managedDataPool = null)
         {
             _id = id;
-            Timestamp = timestamp;
+            TimestampTicks = timestampTicks;
             Level = level;
             Channel = channel.IsEmpty ? new FixedString64Bytes("Default") : channel;
             Message = message;
@@ -215,7 +220,7 @@ namespace AhBearStudios.Core.Logging.Models
         {
             return new LogMessage(
                 id: Guid.NewGuid(),
-                timestamp: DateTime.UtcNow,
+                timestampTicks: DateTime.UtcNow.Ticks,
                 level: level,
                 channel: new FixedString64Bytes(channel ?? "Default"),
                 message: new FixedString512Bytes(message ?? string.Empty),
@@ -235,6 +240,7 @@ namespace AhBearStudios.Core.Logging.Models
         /// <param name="level">The log level</param>
         /// <param name="channel">The channel name as FixedString</param>
         /// <param name="message">The log message as FixedString</param>
+        /// <param name="timestampTicks">The timestamp in UTC ticks</param>
         /// <param name="correlationId">The correlation ID as FixedString</param>
         /// <param name="sourceContext">The source context as FixedString</param>
         /// <param name="source">The source system as FixedString</param>
@@ -246,15 +252,19 @@ namespace AhBearStudios.Core.Logging.Models
             LogLevel level,
             FixedString64Bytes channel,
             FixedString512Bytes message,
+            long timestampTicks,
             FixedString128Bytes correlationId = default,
             FixedString128Bytes sourceContext = default,
             FixedString64Bytes source = default,
             MessagePriority priority = MessagePriority.Normal,
             int threadId = 0)
         {
+            // Generate a simple deterministic ID in Burst context
+            var messageId = new Guid(); // Empty GUID for Burst compatibility
+
             return new LogMessage(
-                id: Guid.NewGuid(),
-                timestamp: DateTime.UtcNow,
+                id: messageId,
+                timestampTicks: timestampTicks,
                 level: level,
                 channel: channel.IsEmpty ? new FixedString64Bytes("Default") : channel,
                 message: message,
@@ -262,7 +272,7 @@ namespace AhBearStudios.Core.Logging.Models
                 sourceContext: sourceContext,
                 source: source.IsEmpty ? new FixedString64Bytes("LoggingSystem") : source,
                 priority: priority,
-                threadId: threadId == 0 ? System.Threading.Thread.CurrentThread.ManagedThreadId : threadId,
+                threadId: threadId,
                 exception: null,
                 properties: null,
                 managedDataPool: null);
@@ -340,7 +350,7 @@ namespace AhBearStudios.Core.Logging.Models
         [BurstCompile]
         public int GetNativeSize()
         {
-            return 16 + 8 + sizeof(LogLevel) + sizeof(MessagePriority) + // Guid (16 bytes) + DateTime (8 bytes) + LogLevel + MessagePriority
+            return 16 + sizeof(long) + sizeof(LogLevel) + sizeof(MessagePriority) + // Guid (16 bytes) + TimestampTicks (8 bytes) + LogLevel + MessagePriority
                    Channel.Length + Message.Length + 
                    CorrelationId.Length + SourceContext.Length + Source.Length +
                    sizeof(int) + sizeof(bool) + sizeof(bool) + // ThreadId + HasException + HasProperties
@@ -402,7 +412,7 @@ namespace AhBearStudios.Core.Logging.Models
         {
             return new LogMessage(
                 id: Guid.NewGuid(),
-                timestamp: DateTime.UtcNow,
+                timestampTicks: DateTime.UtcNow.Ticks,
                 level: level,
                 channel: new FixedString64Bytes(channel ?? "Default"),
                 message: new FixedString512Bytes(message ?? string.Empty),
@@ -481,7 +491,7 @@ namespace AhBearStudios.Core.Logging.Models
 
             return new LogMessage(
                 id: message.Id,
-                timestamp: message.Timestamp,
+                timestampTicks: message.TimestampTicks,
                 level: message.Level,
                 channel: message.Channel,
                 message: message.Message,

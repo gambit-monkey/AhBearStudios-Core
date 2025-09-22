@@ -1,0 +1,29 @@
+{
+    "name": "AhBearStudios.Core.Tests",
+    "rootNamespace": "AhBearStudios.Core.Tests",
+    "references": [
+        "GUID:a3bd2668de3a4cd68b00055ebe36e6ed",
+        "GUID:e0cd26848372d4e5c891c569017e11f1",
+        "GUID:2665a8d13d1b3f18800f46e256720795",
+        "GUID:d8b63aba1907145bea998dd612889d6b",
+        "GUID:1530a967b84cfb44dbdd5e8a1989764f",
+        "GUID:08b38f39e2d9e594389b7a4cf4c2c338",
+        "GUID:f51ebe6a0ceec4240a699833d6309b23",
+        "GUID:c71612acbe346a344abbc0dcfdf4f0bd"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

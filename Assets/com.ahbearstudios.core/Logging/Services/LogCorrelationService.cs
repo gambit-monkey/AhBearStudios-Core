@@ -132,8 +132,7 @@ namespace AhBearStudios.Core.Logging.Services
                 null,
                 null,
                 "LoggingSystem",
-                0,
-                properties);
+                0);
 
             _correlationRegistry.TryAdd(correlationId.ToString(), correlationInfo);
             Metrics.IncrementStartedCorrelations();
@@ -184,8 +183,7 @@ namespace AhBearStudios.Core.Logging.Services
                 null,
                 null,
                 "LoggingSystem",
-                0,
-                properties);
+                0);
 
             _correlationRegistry.TryAdd(correlationId.ToString(), correlationInfo);
             Metrics.IncrementStartedCorrelations();
@@ -338,7 +336,7 @@ namespace AhBearStudios.Core.Logging.Services
             // Create new log entry with enriched data using hybrid approach
             return new LogEntry(
                 logEntry.Id,
-                logEntry.Timestamp,
+                logEntry.TimestampTicks,
                 logEntry.Level,
                 logEntry.Channel,
                 logEntry.Message,

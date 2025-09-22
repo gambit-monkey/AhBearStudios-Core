@@ -15,7 +15,10 @@
       "Read(//usr/bin/**)",
       "Bash(apt list:*)",
       "Bash(dotnet build:*)",
-      "Bash(csc:*)"
+      "Bash(csc:*)",
+      "Bash(/mnt/c/Program Files/Unity/Hub/Editor/2022.3.25f1/Editor/Unity.exe -batchmode -projectPath . -executeMethod UnityEditor.TestTools.TestRunner.Api.ScriptingRuntimeApiUpdater.RunTests -runTests -testMode EditMode -testFilter \"CorrelationInfoBurstTests\" -logFile - -quit)",
+      "Read(//mnt/c/**)",
+      "Bash(dotnet --version)"
     ],
     "deny": [],
     "ask": []

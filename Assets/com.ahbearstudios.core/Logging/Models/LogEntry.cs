@@ -4,6 +4,7 @@ using Unity.Burst;
 using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Pooling.Pools;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.Logging.Models
 {
@@ -13,7 +14,6 @@ namespace AhBearStudios.Core.Logging.Models
     /// Uses hybrid approach: native-compatible core data with managed data stored in pool.
     /// Primary data structure used throughout the logging system for processing and storage.
     /// </summary>
-    [BurstCompile]
     public readonly struct LogEntry : IDisposable
     {
         /// <summary>
@@ -22,9 +22,9 @@ namespace AhBearStudios.Core.Logging.Models
         public readonly Guid Id;
 
         /// <summary>
-        /// Gets the timestamp when this entry was created.
+        /// Gets the timestamp when this entry was created, stored as UTC ticks for Burst compatibility.
         /// </summary>
-        public readonly DateTime Timestamp;
+        public readonly long TimestampTicks;
 
         /// <summary>
         /// Gets the log level severity.
@@ -98,6 +98,11 @@ namespace AhBearStudios.Core.Logging.Models
         public readonly Guid ManagedDataId;
 
         /// <summary>
+        /// Gets the timestamp as DateTime for compatibility.
+        /// </summary>
+        public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
+
+        /// <summary>
         /// Gets the associated exception, if any (retrieved from managed data pool).
         /// </summary>
         public Exception Exception => GetManagedData()?.Exception;
@@ -122,7 +127,7 @@ namespace AhBearStudios.Core.Logging.Models
         /// Initializes a new instance of the LogEntry struct.
         /// </summary>
         /// <param name="id">The unique entry identifier</param>
-        /// <param name="timestamp">The entry timestamp</param>
+        /// <param name="timestampTicks">The entry timestamp in UTC ticks</param>
         /// <param name="level">The log level</param>
         /// <param name="channel">The channel name</param>
         /// <param name="message">The log message text</param>
@@ -139,7 +144,7 @@ namespace AhBearStudios.Core.Logging.Models
         /// <param name="managedDataPool">The managed data pool for storing non-native data</param>
         public LogEntry(
             Guid id,
-            DateTime timestamp,
+            long timestampTicks,
             LogLevel level,
             FixedString64Bytes channel,
             FixedString512Bytes message,
@@ -156,7 +161,7 @@ namespace AhBearStudios.Core.Logging.Models
             ManagedLogDataPool managedDataPool = null)
         {
             Id = id;
-            Timestamp = timestamp;
+            TimestampTicks = timestampTicks;
             Level = level;
             Channel = channel.IsEmpty ? new FixedString64Bytes("Default") : channel;
             Message = message;
@@ -212,7 +217,7 @@ namespace AhBearStudios.Core.Logging.Models
         {
             return new LogEntry(
                 id: Guid.NewGuid(),
-                timestamp: DateTime.UtcNow,
+                timestampTicks: DateTime.UtcNow.Ticks,
                 level: level,
                 channel: new FixedString64Bytes(channel ?? "Default"),
                 message: new FixedString512Bytes(message ?? string.Empty),
@@ -237,7 +242,7 @@ namespace AhBearStudios.Core.Logging.Models
         {
             return new LogEntry(
                 id: logMessage.Id,
-                timestamp: logMessage.Timestamp,
+                timestampTicks: logMessage.TimestampTicks,
                 level: logMessage.Level,
                 channel: logMessage.Channel,
                 message: logMessage.Message,
@@ -258,6 +263,7 @@ namespace AhBearStudios.Core.Logging.Models
         /// <param name="level">The log level</param>
         /// <param name="channel">The channel name as FixedString</param>
         /// <param name="message">The log message as FixedString</param>
+        /// <param name="timestampTicks">The timestamp in UTC ticks</param>
         /// <param name="correlationId">The correlation ID as FixedString</param>
         /// <param name="sourceContext">The source context as FixedString</param>
         /// <param name="source">The source system as FixedString</param>
@@ -268,14 +274,18 @@ namespace AhBearStudios.Core.Logging.Models
             LogLevel level,
             FixedString64Bytes channel,
             FixedString512Bytes message,
+            long timestampTicks,
             FixedString128Bytes correlationId = default,
             FixedString128Bytes sourceContext = default,
             FixedString64Bytes source = default,
             MessagePriority priority = MessagePriority.Normal)
         {
+            // Use empty GUID for Burst compatibility
+            var logEntryId = new Guid();
+
             return new LogEntry(
-                id: Guid.NewGuid(),
-                timestamp: DateTime.UtcNow,
+                id: logEntryId,
+                timestampTicks: timestampTicks,
                 level: level,
                 channel: channel.IsEmpty ? new FixedString64Bytes("Default") : channel,
                 message: message,
@@ -307,7 +317,7 @@ namespace AhBearStudios.Core.Logging.Models
         [BurstCompile]
         public int GetNativeSize()
         {
-            return 16 + 8 + sizeof(LogLevel) + sizeof(MessagePriority) + // Guid (16 bytes) + DateTime (8 bytes) + LogLevel + MessagePriority
+            return 16 + sizeof(long) + sizeof(LogLevel) + sizeof(MessagePriority) + // Guid (16 bytes) + TimestampTicks (8 bytes) + LogLevel + MessagePriority
                    Channel.Length + Message.Length + 
                    CorrelationId.Length + SourceContext.Length + Source.Length +
                    MachineName.Length + InstanceId.Length +
@@ -323,7 +333,7 @@ namespace AhBearStudios.Core.Logging.Models
         {
             return new LogMessage(
                 id: Id,
-                timestamp: Timestamp,
+                timestampTicks: Timestamp.Ticks,
                 level: Level,
                 channel: Channel,
                 message: Message,
@@ -499,7 +509,7 @@ namespace AhBearStudios.Core.Logging.Models
 
             return new LogEntry(
                 id: entry.Id,
-                timestamp: entry.Timestamp,
+                timestampTicks: entry.TimestampTicks,
                 level: entry.Level,
                 channel: entry.Channel,
                 message: entry.Message,

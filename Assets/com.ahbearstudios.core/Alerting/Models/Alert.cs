@@ -1,5 +1,6 @@
 using System;
 using Unity.Collections;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.Alerting.Models
 {
@@ -14,7 +15,7 @@ namespace AhBearStudios.Core.Alerting.Models
         /// <summary>
         /// Unique identifier for this alert instance.
         /// </summary>
-        public Guid Id { get; init; } = Guid.NewGuid();
+        public Guid Id { get; init; }
 
         /// <summary>
         /// Alert message content using FixedString for zero allocation.
@@ -39,7 +40,7 @@ namespace AhBearStudios.Core.Alerting.Models
         /// <summary>
         /// Timestamp when this alert was created (UTC ticks).
         /// </summary>
-        public long TimestampTicks { get; init; } = DateTime.UtcNow.Ticks;
+        public long TimestampTicks { get; init; }
 
         /// <summary>
         /// Correlation ID for tracking alerts across system boundaries.
@@ -59,7 +60,7 @@ namespace AhBearStudios.Core.Alerting.Models
         /// <summary>
         /// Current state of this alert.
         /// </summary>
-        public AlertState State { get; init; } = AlertState.Active;
+        public AlertState State { get; init; }
 
         /// <summary>
         /// Timestamp when this alert was acknowledged (UTC ticks), null if not acknowledged.
@@ -84,7 +85,7 @@ namespace AhBearStudios.Core.Alerting.Models
         /// <summary>
         /// Number of times this alert has been raised (for duplicate suppression).
         /// </summary>
-        public int Count { get; init; } = 1;
+        public int Count { get; init; }
 
         /// <summary>
         /// Gets the DateTime representation of the timestamp.
@@ -150,18 +151,28 @@ namespace AhBearStudios.Core.Alerting.Models
             Guid operationId = default,
             AlertContext context = default)
         {
+            if (string.IsNullOrEmpty(message))
+                throw new ArgumentException("Message cannot be null or empty", nameof(message));
+
+            var sourceString = source.IsEmpty ? "Unknown" : source.ToString();
+            var alertId = DeterministicIdGenerator.GenerateAlertId(severity.ToString(), sourceString, message);
+            var finalCorrelationId = correlationId == default
+                ? DeterministicIdGenerator.GenerateCorrelationId("Alert", sourceString)
+                : correlationId;
+
             return new Alert
             {
-                Id = Guid.NewGuid(),
+                Id = alertId,
                 Message = message.Length <= 512 ? message : message[..512],
                 Severity = severity,
                 Source = source,
                 Tag = tag,
                 TimestampTicks = DateTime.UtcNow.Ticks,
-                CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
+                CorrelationId = finalCorrelationId,
                 OperationId = operationId,
                 Context = context,
-                State = AlertState.Active
+                State = AlertState.Active,
+                Count = 1
             };
         }
 
@@ -185,18 +196,29 @@ namespace AhBearStudios.Core.Alerting.Models
             Guid operationId = default,
             AlertContext context = default)
         {
+            if (message.IsEmpty)
+                throw new ArgumentException("Message cannot be empty", nameof(message));
+
+            var sourceString = source.IsEmpty ? "Unknown" : source.ToString();
+            var messageString = message.ToString();
+            var alertId = DeterministicIdGenerator.GenerateAlertId(severity.ToString(), sourceString, messageString);
+            var finalCorrelationId = correlationId == default
+                ? DeterministicIdGenerator.GenerateCorrelationId("Alert", sourceString)
+                : correlationId;
+
             return new Alert
             {
-                Id = Guid.NewGuid(),
+                Id = alertId,
                 Message = message,
                 Severity = severity,
                 Source = source,
                 Tag = tag,
                 TimestampTicks = DateTime.UtcNow.Ticks,
-                CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
+                CorrelationId = finalCorrelationId,
                 OperationId = operationId,
                 Context = context,
-                State = AlertState.Active
+                State = AlertState.Active,
+                Count = 1
             };
         }
 

@@ -223,7 +223,7 @@ namespace AhBearStudios.Core.Logging.Services
             // Create new log entry with enriched data using hybrid approach
             return new LogEntry(
                 logEntry.Id,
-                logEntry.Timestamp,
+                logEntry.TimestampTicks,
                 logEntry.Level,
                 logEntry.Channel,
                 logEntry.Message,

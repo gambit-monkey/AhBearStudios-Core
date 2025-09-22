@@ -5,28 +5,28 @@
       "depth": 0,
       "source": "git",
       "dependencies": {},
-      "hash": "bbe6e75d795fd942f008a03bc7862bbb6d78eb44"
+      "hash": "0e82db35b73df1f608a2790cbc1b4298032ef999"
     },
     "com.cysharp.messagepipe": {
       "version": "https://github.com/Cysharp/MessagePipe.git?path=src/MessagePipe.Unity/Assets/Plugins/MessagePipe",
       "depth": 0,
       "source": "git",
       "dependencies": {},
-      "hash": "56cd68b2deafc1957832a57577aaad40dc647cde"
+      "hash": "823fce8ddac462100458a3280139f1d0fcc07d24"
     },
     "com.cysharp.unitask": {
       "version": "https://github.com/Cysharp/UniTask.git?path=src/UniTask/Assets/Plugins/UniTask",
       "depth": 0,
       "source": "git",
       "dependencies": {},
-      "hash": "64285ae060c9fe2aeb2a73b076b160939ce3be1a"
+      "hash": "98538ef7c7a22f4ec22101e72f7eec4ed831c724"
     },
     "com.cysharp.zlinq": {
       "version": "https://github.com/Cysharp/ZLinq.git?path=src/ZLinq.Unity/Assets/ZLinq.Unity",
       "depth": 0,
       "source": "git",
       "dependencies": {},
-      "hash": "d887c10ac0e13e0c2e57b03c57aafb54358c428d"
+      "hash": "a9ffb01a61e9f59374ed852367b63b3273e52065"
     },
     "com.github-glitchenzo.nugetforunity": {
       "version": "https://github.com/GlitchEnzo/NuGetForUnity.git?path=/src/NuGetForUnity",
@@ -40,7 +40,7 @@
       "depth": 0,
       "source": "git",
       "dependencies": {},
-      "hash": "9bc0af63c1a4db1814312d7c0a2cc6d001fc2cf4"
+      "hash": "3fe92ae6c67ca222841f984a51d67cf27bcb929d"
     },
     "com.unity.burst": {
       "version": "1.8.24",
