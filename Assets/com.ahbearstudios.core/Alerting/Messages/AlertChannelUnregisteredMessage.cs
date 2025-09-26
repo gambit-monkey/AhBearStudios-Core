@@ -72,6 +72,7 @@ namespace AhBearStudios.Core.Alerting.Messages
 
         #region Static Factory Methods
 
+
         /// <summary>
         /// Creates a new AlertChannelUnregisteredMessage with proper validation and defaults.
         /// </summary>

@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using Unity.Collections;
-using Unity.Profiling;
 using Cysharp.Threading.Tasks;
 using ZLinq;
 using AhBearStudios.Core.Alerting.Models;
@@ -20,220 +19,178 @@ using AhBearStudios.Core.Alerting.Builders;
 using AhBearStudios.Core.Pooling.Models;
 using AhBearStudios.Core.Common.Extensions;
 using AhBearStudios.Core.Common.Utilities;
+using AhBearStudios.Core.Profiling;
 
 namespace AhBearStudios.Core.Alerting
 {
     /// <summary>
-    /// Production-ready implementation of the IAlertService interface providing centralized alert management.
-    /// Integrates channels, filters, messaging, logging, pooling, and profiling for comprehensive alert processing.
-    /// Designed for Unity game development with zero-allocation patterns and high performance.
-    /// 
+    /// Refactored AlertService that orchestrates alert processing through decomposed services.
+    /// Uses AlertOrchestrationService, AlertStateManagementService, and AlertHealthMonitoringService
+    /// for improved maintainability and single responsibility principle compliance.
+    ///
     /// Features:
-    /// - Integrated AlertChannelService, AlertFilterService, and AlertSuppressionService
-    /// - Health monitoring and diagnostics
-    /// - Configuration hot-reload capabilities
-    /// - Emergency failover and circuit breaker patterns
-    /// - Comprehensive metrics and performance monitoring
-    /// - Bulk operations for high-throughput scenarios
-    /// - Thread-safe operations with minimal locking
+    /// - Decomposed architecture with specialized services
+    /// - IProfilerService integration for performance monitoring
+    /// - DeterministicIdGenerator for all correlation IDs
+    /// - Maintains backward compatibility with existing IAlertService interface
+    /// - Thread-safe operations through service delegation
     /// </summary>
-    public sealed class AlertService : IAlertService
+    public sealed class AlertService : IAlertService, IDisposable
     {
-        private readonly object _syncLock = new object();
-        private readonly Dictionary<Guid, Alert> _activeAlerts = new Dictionary<Guid, Alert>();
-        private readonly Dictionary<string, AlertSeverity> _sourceMinimumSeverities = new Dictionary<string, AlertSeverity>();
-        private readonly Queue<Alert> _alertHistory = new Queue<Alert>();
-        
-        // Fallback collections for backward compatibility
-        private readonly List<IAlertChannel> _channels = new List<IAlertChannel>();
-        private readonly List<IAlertFilter> _filters = new List<IAlertFilter>();
-        
-        // Core service dependencies
+        #region Dependencies
+
+        private readonly IAlertOrchestrationService _orchestrationService;
+        private readonly IAlertStateManagementService _stateManagementService;
+        private readonly IAlertHealthMonitoringService _healthMonitoringService;
+        private readonly IAlertChannelService _channelService;
+        private readonly IAlertFilterService _filterService;
+        private readonly IAlertSuppressionService _suppressionService;
         private readonly IMessageBusService _messageBusService;
         private readonly ILoggingService _loggingService;
         private readonly ISerializationService _serializationService;
         private readonly IPoolingService _poolingService;
-        
-        // Integrated subsystem services
-        private readonly IAlertChannelService _channelService;
-        private readonly IAlertFilterService _filterService;
-        private readonly IAlertSuppressionService _suppressionService;
-        
-        // Configuration and state management
+        private readonly IProfilerService _profilerService;
+
+        #endregion
+
+        #region State
+
         private AlertServiceConfiguration _configuration;
         private volatile bool _isStarted;
         private volatile bool _isEnabled = true;
         private volatile bool _isDisposed;
-        private volatile bool _emergencyMode;
-        private string _emergencyModeReason;
-        
-        // Performance markers
-        private readonly ProfilerMarker _raiseAlertMarker = new("AlertService.RaiseAlert");
-        private readonly ProfilerMarker _filterMarker = new("AlertService.ApplyFilters");
-        private readonly ProfilerMarker _deliveryMarker = new("AlertService.DeliverAlert");
-        private readonly ProfilerMarker _bulkOperationMarker = new("AlertService.BulkOperation");
-        private readonly ProfilerMarker _healthCheckMarker = new("AlertService.HealthCheck");
-        
-        // State and configuration
-        private AlertSeverity _globalMinimumSeverity = AlertSeverity.Info;
-        private AlertStatistics _statistics = AlertStatistics.Empty;
-        private AlertSystemPerformanceMetrics _performanceMetrics;
-        private DateTime _lastMaintenanceRun = DateTime.UtcNow;
-        private DateTime _lastHealthCheck = DateTime.UtcNow;
-        private readonly TimeSpan _maintenanceInterval = TimeSpan.FromMinutes(5);
-        private readonly TimeSpan _healthCheckInterval = TimeSpan.FromMinutes(1);
-        private const int MaxHistorySize = 1000;
-        
-        // Circuit breaker and resilience
-        private int _consecutiveFailures;
-        private DateTime _lastFailureTime = DateTime.MinValue;
-        private readonly int _circuitBreakerThreshold = 5;
-        private readonly TimeSpan _circuitBreakerTimeout = TimeSpan.FromMinutes(1);
 
-        #region Core Properties and State
-        
+        // Backward compatibility collections
+        private readonly List<IAlertChannel> _legacyChannels = new List<IAlertChannel>();
+        private readonly List<IAlertFilter> _legacyFilters = new List<IAlertFilter>();
+
+        #endregion
+
+        #region IAlertService Properties
+
         /// <summary>
         /// Gets whether the alerting service is enabled and operational.
         /// </summary>
         public bool IsEnabled => _isEnabled && !_isDisposed && _isStarted;
-        
+
         /// <summary>
         /// Gets whether the service is healthy and functioning normally.
         /// </summary>
-        public bool IsHealthy => IsEnabled && 
-                                _consecutiveFailures < _circuitBreakerThreshold &&
+        public bool IsHealthy => IsEnabled &&
+                                _healthMonitoringService?.IsHealthy == true &&
                                 _channelService?.IsEnabled == true &&
                                 _filterService?.IsEnabled == true &&
                                 _suppressionService?.IsEnabled == true;
-        
+
         /// <summary>
         /// Gets the current service configuration.
         /// </summary>
         public AlertServiceConfiguration Configuration => _configuration;
-        
+
         /// <summary>
         /// Gets the integrated channel service for advanced channel management.
         /// </summary>
         public IAlertChannelService ChannelService => _channelService;
-        
+
         /// <summary>
         /// Gets the integrated filter service for sophisticated filtering.
         /// </summary>
         public IAlertFilterService FilterService => _filterService;
-        
+
         /// <summary>
         /// Gets the integrated suppression service for deduplication and rate limiting.
         /// </summary>
         public IAlertSuppressionService SuppressionService => _suppressionService;
-        
+
         /// <summary>
         /// Gets whether emergency mode is currently active.
         /// </summary>
-        public bool IsEmergencyModeActive => _emergencyMode;
+        public bool IsEmergencyModeActive => _healthMonitoringService?.IsEmergencyModeActive ?? false;
 
         #endregion
 
+        #region Constructor
 
         /// <summary>
-        /// Initializes a new instance of the AlertService class with integrated subsystem services.
+        /// Initializes a new instance of the AlertService with decomposed service dependencies.
         /// </summary>
-        /// <param name="configuration">Service configuration</param>
+        /// <param name="orchestrationService">Service for alert orchestration</param>
+        /// <param name="stateManagementService">Service for alert state management</param>
+        /// <param name="healthMonitoringService">Service for health monitoring</param>
         /// <param name="channelService">Channel management service</param>
         /// <param name="filterService">Filter management service</param>
         /// <param name="suppressionService">Suppression management service</param>
+        /// <param name="configuration">Service configuration</param>
         /// <param name="messageBusService">Message bus service for publishing events</param>
         /// <param name="loggingService">Logging service for internal logging</param>
         /// <param name="serializationService">Serialization service for alert data serialization</param>
         /// <param name="poolingService">Pooling service for efficient alert container management</param>
+        /// <param name="profilerService">Profiling service for performance monitoring</param>
         public AlertService(
-            AlertServiceConfiguration configuration,
+            IAlertOrchestrationService orchestrationService,
+            IAlertStateManagementService stateManagementService,
+            IAlertHealthMonitoringService healthMonitoringService,
             IAlertChannelService channelService,
             IAlertFilterService filterService,
             IAlertSuppressionService suppressionService,
-            IMessageBusService messageBusService = null, 
-            ILoggingService loggingService = null, 
+            AlertServiceConfiguration configuration,
+            IMessageBusService messageBusService = null,
+            ILoggingService loggingService = null,
             ISerializationService serializationService = null,
-            IPoolingService poolingService = null)
+            IPoolingService poolingService = null,
+            IProfilerService profilerService = null)
         {
-            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+            _orchestrationService = orchestrationService ?? throw new ArgumentNullException(nameof(orchestrationService));
+            _stateManagementService = stateManagementService ?? throw new ArgumentNullException(nameof(stateManagementService));
+            _healthMonitoringService = healthMonitoringService ?? throw new ArgumentNullException(nameof(healthMonitoringService));
             _channelService = channelService ?? throw new ArgumentNullException(nameof(channelService));
             _filterService = filterService ?? throw new ArgumentNullException(nameof(filterService));
             _suppressionService = suppressionService ?? throw new ArgumentNullException(nameof(suppressionService));
-            
+            _configuration = configuration ?? throw new ArgumentNullException(nameof(configuration));
+
             _messageBusService = messageBusService;
             _loggingService = loggingService;
             _serializationService = serializationService;
             _poolingService = poolingService;
+            _profilerService = profilerService;
 
-            // Initialize performance metrics
-            _performanceMetrics = AlertSystemPerformanceMetrics.Create();
-            
-            // Initialize alert pooling if pooling service is available
-            InitializeAlertPooling();
-
-            LogInfo("Alert service initialized with integrated subsystems", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "Initialization"));
-        }
-        
-        /// <summary>
-        /// Legacy constructor for backward compatibility.
-        /// Creates minimal services internally if not provided.
-        /// </summary>
-        /// <param name="messageBusService">Message bus service for publishing events</param>
-        /// <param name="loggingService">Logging service for internal logging</param>
-        /// <param name="serializationService">Serialization service for alert data serialization</param>
-        /// <param name="poolingService">Pooling service for efficient alert container management</param>
-        public AlertService(
-            IMessageBusService messageBusService = null, 
-            ILoggingService loggingService = null, 
-            ISerializationService serializationService = null,
-            IPoolingService poolingService = null)
-        {
-            _messageBusService = messageBusService;
-            _loggingService = loggingService;
-            _serializationService = serializationService;
-            _poolingService = poolingService;
-
-            // Create default configuration
-            _configuration = new AlertConfigBuilder().ForProduction().BuildServiceConfiguration();
-            
-            // Create minimal internal services
-            _channelService = new AlertChannelService(new AlertChannelServiceConfig(), loggingService, messageBusService);
-            _filterService = new AlertFilterService(loggingService);
-            _suppressionService = new AlertSuppressionService(loggingService);
-            
-            // Initialize performance metrics
-            _performanceMetrics = AlertSystemPerformanceMetrics.Create();
-
-            // Initialize alert pooling if pooling service is available
-            InitializeAlertPooling();
-
-            LogInfo("Alert service initialized with legacy constructor", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "LegacyInitialization"));
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertService.Constructor", "RefactoredInitialization");
+            _loggingService?.LogInfo("AlertService initialized with decomposed services architecture", correlationId: correlationId);
         }
 
-        #region Core Alerting Methods
+
+        #endregion
+
+        #region IAlertService Implementation
 
         /// <summary>
         /// Raises an alert with correlation tracking.
         /// </summary>
-        public void RaiseAlert(string message, AlertSeverity severity, FixedString64Bytes source, 
+        public void RaiseAlert(string message, AlertSeverity severity, FixedString64Bytes source,
             FixedString32Bytes tag = default, Guid correlationId = default)
         {
-            if (!IsEnabled) return;
+            using (_profilerService?.BeginScope("AlertService.RaiseAlert"))
+            {
+                if (!IsEnabled) return;
 
-            var alert = CreateAlert(message, severity, source, tag, correlationId);
-            RaiseAlert(alert);
+                var alert = CreateAlert(message, severity, source, tag, correlationId);
+                RaiseAlert(alert);
+            }
         }
 
         /// <summary>
         /// Raises an alert using Unity.Collections types for Burst compatibility.
         /// </summary>
-        public void RaiseAlert(FixedString512Bytes message, AlertSeverity severity, FixedString64Bytes source, 
+        public void RaiseAlert(FixedString512Bytes message, AlertSeverity severity, FixedString64Bytes source,
             FixedString32Bytes tag = default, Guid correlationId = default)
         {
-            if (!IsEnabled) return;
+            using (_profilerService?.BeginScope("AlertService.RaiseAlert"))
+            {
+                if (!IsEnabled) return;
 
-            var alert = CreateAlert(message, severity, source, tag, correlationId);
-            RaiseAlert(alert);
+                var alert = CreateAlert(message.ToString(), severity, source, tag, correlationId);
+                RaiseAlert(alert);
+            }
         }
 
         /// <summary>
@@ -241,119 +198,127 @@ namespace AhBearStudios.Core.Alerting
         /// </summary>
         public void RaiseAlert(Alert alert)
         {
-            using (_raiseAlertMarker.Auto())
+            using (_profilerService?.BeginScope("AlertService.RaiseAlert"))
             {
                 if (!IsEnabled || alert == null) return;
 
-                var startTime = DateTime.UtcNow;
-                
+                var correlationId = alert.CorrelationId == default
+                    ? DeterministicIdGenerator.GenerateCorrelationId("AlertService.RaiseAlert", alert.Id.ToString())
+                    : alert.CorrelationId;
+
                 try
                 {
-                    // Check global minimum severity
-                    if (alert.Severity < GetMinimumSeverity(alert.Source))
-                        return;
+                    // Process alert through orchestration service
+                    _orchestrationService.ProcessAlertAsync(alert, correlationId).Forget();
 
-                    // Apply filters
-                    var filteredAlert = ApplyFilters(alert);
-                    if (filteredAlert == null) // Alert was suppressed
-                        return;
-
-                    // Apply suppression rules
-                    var suppressedAlert = ApplySuppressionRules(filteredAlert);
-                    if (suppressedAlert == null) // Alert was suppressed
-                        return;
-
-                    // Store as active alert
-                    lock (_syncLock)
-                    {
-                        if (_activeAlerts.ContainsKey(suppressedAlert.Id))
-                        {
-                            // Update existing alert (increment count)
-                            var existingAlert = _activeAlerts[suppressedAlert.Id];
-                            _activeAlerts[suppressedAlert.Id] = existingAlert.IncrementCount();
-                            suppressedAlert = _activeAlerts[suppressedAlert.Id];
-                        }
-                        else
-                        {
-                            _activeAlerts[suppressedAlert.Id] = suppressedAlert;
-                        }
-
-                        // Add to history
-                        _alertHistory.Enqueue(suppressedAlert);
-                        while (_alertHistory.Count > MaxHistorySize)
-                            _alertHistory.Dequeue();
-                    }
-
-                    // Send to channels
-                    DeliverAlertToChannelsAsync(suppressedAlert).Forget();
-
-                    // Publish message
-                    PublishAlertRaisedMessage(suppressedAlert);
-
-                    // Update statistics
-                    UpdateStatistics(true, DateTime.UtcNow - startTime);
-
-                    LogDebug($"Alert raised: {suppressedAlert.Severity} from {suppressedAlert.Source}", suppressedAlert.CorrelationId);
+                    _loggingService?.LogDebug(
+                        "Alert {AlertId} raised: {Severity} from {Source}",
+                        alert.Id,
+                        alert.Severity,
+                        alert.Source,
+                        correlationId: correlationId);
                 }
                 catch (Exception ex)
                 {
-                    LogError($"Error raising alert: {ex.Message}", alert?.CorrelationId ?? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "ErrorRaising"));
-                    UpdateStatistics(false, DateTime.UtcNow - startTime);
+                    _loggingService?.LogError(
+                        ex,
+                        "Failed to raise alert {AlertId}: {ErrorMessage}",
+                        alert.Id,
+                        ex.Message,
+                        correlationId: correlationId);
                 }
             }
         }
 
         /// <summary>
-        /// Raises an alert asynchronously with correlation tracking.
+        /// Asynchronously raises an alert with correlation tracking.
         /// </summary>
-        public async UniTask RaiseAlertAsync(Alert alert, CancellationToken cancellationToken = default)
+        public async UniTask RaiseAlertAsync(string message, AlertSeverity severity, string source,
+            string tag = null, Guid correlationId = default, CancellationToken cancellationToken = default)
         {
-            await UniTask.RunOnThreadPool(() => RaiseAlert(alert), cancellationToken: cancellationToken);
+            using (_profilerService?.BeginScope("AlertService.RaiseAlertAsync"))
+            {
+                if (!IsEnabled) return;
+
+                var fixedSource = source.ToFixedString64();
+                var fixedTag = string.IsNullOrEmpty(tag) ? default : tag.ToFixedString32();
+                var alert = CreateAlert(message, severity, fixedSource, fixedTag, correlationId);
+
+                await RaiseAlertAsync(alert, cancellationToken);
+            }
         }
 
         /// <summary>
-        /// Raises an alert asynchronously with message construction.
+        /// Asynchronously raises an alert using Unity.Collections types.
         /// </summary>
-        public async UniTask RaiseAlertAsync(string message, AlertSeverity severity, FixedString64Bytes source,
-            FixedString32Bytes tag = default, Guid correlationId = default, 
-            CancellationToken cancellationToken = default)
-        {
-            var alert = CreateAlert(message, severity, source, tag, correlationId);
-            await RaiseAlertAsync(alert, cancellationToken);
-        }
-
-        /// <inheritdoc />
         public async UniTask RaiseAlertAsync(FixedString512Bytes message, AlertSeverity severity, FixedString64Bytes source,
-            FixedString32Bytes tag = default, Guid correlationId = default,
-            CancellationToken cancellationToken = default)
+            FixedString32Bytes tag = default, Guid correlationId = default, CancellationToken cancellationToken = default)
         {
-            var alert = CreateAlert(message.ToString(), severity, source, tag, correlationId);
-            await RaiseAlertAsync(alert, cancellationToken);
+            using (_profilerService?.BeginScope("AlertService.RaiseAlertAsync"))
+            {
+                if (!IsEnabled) return;
+
+                var alert = CreateAlert(message.ToString(), severity, source, tag, correlationId);
+                await RaiseAlertAsync(alert, cancellationToken);
+            }
         }
 
-        /// <inheritdoc />
-        public async UniTask RaiseAlertAsync(string message, AlertSeverity severity, string source,
-            string tag = null, Guid correlationId = default,
-            CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Asynchronously raises an alert using a pre-constructed alert object.
+        /// </summary>
+        public async UniTask RaiseAlertAsync(Alert alert, CancellationToken cancellationToken = default)
         {
-            var fixedSource = source.ToFixedString64();
-            var fixedTag = string.IsNullOrEmpty(tag) ? default : tag.ToFixedString32();
-            var alert = CreateAlert(message, severity, fixedSource, fixedTag, correlationId);
-            await RaiseAlertAsync(alert, cancellationToken);
+            using (_profilerService?.BeginScope("AlertService.RaiseAlertAsync"))
+            {
+                if (!IsEnabled || alert == null) return;
+
+                var correlationId = alert.CorrelationId == default
+                    ? DeterministicIdGenerator.GenerateCorrelationId("AlertService.RaiseAlertAsync", alert.Id.ToString())
+                    : alert.CorrelationId;
+
+                try
+                {
+                    await _orchestrationService.ProcessAlertAsync(alert, correlationId, cancellationToken);
+
+                    _loggingService?.LogDebug(
+                        "Alert {AlertId} raised asynchronously: {Severity} from {Source}",
+                        alert.Id,
+                        alert.Severity,
+                        alert.Source,
+                        correlationId: correlationId);
+                }
+                catch (Exception ex)
+                {
+                    _loggingService?.LogError(
+                        ex,
+                        "Failed to raise alert {AlertId} asynchronously: {ErrorMessage}",
+                        alert.Id,
+                        ex.Message,
+                        correlationId: correlationId);
+                    throw;
+                }
+            }
         }
-
-        #endregion
-
-        #region Alert Management
 
         /// <summary>
         /// Gets all currently active alerts.
         /// </summary>
         public IEnumerable<Alert> GetActiveAlerts()
         {
-            lock (_syncLock)
+            using (_profilerService?.BeginScope("AlertService.GetActiveAlerts"))
             {
-                return _activeAlerts.Values.AsValueEnumerable().Where(a => a.State == AlertState.Active).ToList();
+                if (!IsEnabled) return Array.Empty<Alert>();
+
+                try
+                {
+                    return _stateManagementService.GetActiveAlerts();
+                }
+                catch (Exception ex)
+                {
+                    var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertService.GetActiveAlerts", "Error");
+                    _loggingService?.LogError(ex, "Failed to get active alerts: {ErrorMessage}", ex.Message, correlationId: correlationId);
+                    return Array.Empty<Alert>();
+                }
             }
         }
 
@@ -362,985 +327,318 @@ namespace AhBearStudios.Core.Alerting
         /// </summary>
         public IEnumerable<Alert> GetAlertHistory(TimeSpan period)
         {
-            var cutoff = DateTime.UtcNow - period;
-            lock (_syncLock)
+            using (_profilerService?.BeginScope("AlertService.GetAlertHistory"))
             {
-                return _alertHistory.AsValueEnumerable().Where(a => a.Timestamp >= cutoff).ToList();
-            }
-        }
+                if (!IsEnabled) return Array.Empty<Alert>();
 
-        /// <summary>
-        /// Acknowledges an alert by its ID.
-        /// </summary>
-        public void AcknowledgeAlert(Guid alertId, FixedString64Bytes correlationId = default)
-        {
-            lock (_syncLock)
-            {
-                if (!_activeAlerts.TryGetValue(alertId, out var alert))
-                    return;
-
-                if (alert.IsAcknowledged)
-                    return;
-
-                var acknowledgedAlert = alert.Acknowledge("System");
-                _activeAlerts[alertId] = acknowledgedAlert;
-
-                // Publish message
-                PublishAlertAcknowledgedMessage(acknowledgedAlert);
-
-                LogInfo($"Alert acknowledged: {alertId}", correlationId == default ? alert.CorrelationId : Guid.Parse(correlationId.ToString()));
-            }
-        }
-
-        /// <summary>
-        /// Resolves an alert by its ID.
-        /// </summary>
-        public void ResolveAlert(Guid alertId, FixedString64Bytes correlationId = default)
-        {
-            lock (_syncLock)
-            {
-                if (!_activeAlerts.TryGetValue(alertId, out var alert))
-                    return;
-
-                if (alert.IsResolved)
-                    return;
-
-                var resolvedAlert = alert.Resolve("System");
-                _activeAlerts[alertId] = resolvedAlert;
-
-                // Publish message
-                PublishAlertResolvedMessage(resolvedAlert);
-
-                LogInfo($"Alert resolved: {alertId}", correlationId == default ? alert.CorrelationId : Guid.Parse(correlationId.ToString()));
-            }
-        }
-
-        #endregion
-
-        #region Severity Management
-
-        /// <summary>
-        /// Sets the minimum severity level for alerts.
-        /// </summary>
-        public void SetMinimumSeverity(AlertSeverity minimumSeverity)
-        {
-            _globalMinimumSeverity = minimumSeverity;
-            LogInfo($"Global minimum severity set to {minimumSeverity}", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "SetGlobalMinimumSeverity"));
-        }
-
-        /// <summary>
-        /// Sets the minimum severity level for a specific source.
-        /// </summary>
-        public void SetMinimumSeverity(FixedString64Bytes source, AlertSeverity minimumSeverity)
-        {
-            var sourceStr = source.ToString();
-            lock (_syncLock)
-            {
-                _sourceMinimumSeverities[sourceStr] = minimumSeverity;
-            }
-            LogInfo($"Minimum severity for {sourceStr} set to {minimumSeverity}", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "SetSourceMinimumSeverity"));
-        }
-
-        /// <summary>
-        /// Gets the minimum severity level for a source or global.
-        /// </summary>
-        public AlertSeverity GetMinimumSeverity(FixedString64Bytes source = default)
-        {
-            if (source.IsEmpty)
-                return _globalMinimumSeverity;
-
-            var sourceStr = source.ToString();
-            lock (_syncLock)
-            {
-                return _sourceMinimumSeverities.TryGetValue(sourceStr, out var severity) 
-                    ? severity 
-                    : _globalMinimumSeverity;
-            }
-        }
-
-        #endregion
-
-        #region Channel Management
-
-        /// <summary>
-        /// Registers an alert channel with the service.
-        /// </summary>
-        public void RegisterChannel(IAlertChannel channel, FixedString64Bytes correlationId = default)
-        {
-            if (channel == null) return;
-
-            try
-            {
-                if (_channelService != null)
+                try
                 {
-                    // Use integrated channel service
-                    _channelService.RegisterChannelAsync(channel, null, correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "RegisterChannel") : Guid.Parse(correlationId.ToString())).Forget();
+                    return _stateManagementService.GetAlertHistory(period);
                 }
-                else
+                catch (Exception ex)
                 {
-                    // Fallback to local collection
-                    lock (_syncLock)
-                    {
-                        if (!_channels.AsValueEnumerable().Any(c => c.Name.ToString() == channel.Name.ToString()))
-                        {
-                            _channels.Add(channel);
-                        }
-                    }
-                }
-                
-                LogInfo($"Alert channel registered: {channel.Name}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "ChannelRegistered") : Guid.Parse(correlationId.ToString()));
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to register channel {channel.Name}: {ex.Message}", correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString()));
-            }
-        }
-
-        /// <summary>
-        /// Unregisters an alert channel from the service.
-        /// </summary>
-        public bool UnregisterChannel(FixedString64Bytes channelName, FixedString64Bytes correlationId = default)
-        {
-            try
-            {
-                if (_channelService != null)
-                {
-                    // Use integrated channel service
-                    var result = _channelService.UnregisterChannelAsync(channelName, correlationId == default ? Guid.NewGuid() : Guid.Parse(correlationId.ToString())).GetAwaiter().GetResult();
-                    LogInfo($"Alert channel unregistered: {channelName}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "ChannelUnregistered") : Guid.Parse(correlationId.ToString()));
-                    return result;
-                }
-                else
-                {
-                    // Fallback to local collection
-                    var nameStr = channelName.ToString();
-                    lock (_syncLock)
-                    {
-                        var channel = _channels.AsValueEnumerable().FirstOrDefault(c => c.Name.ToString() == nameStr);
-                        if (channel != null)
-                        {
-                            _channels.Remove(channel);
-                            LogInfo($"Alert channel unregistered: {channelName}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "ChannelUnregistered") : Guid.Parse(correlationId.ToString()));
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to unregister channel {channelName}: {ex.Message}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "ChannelUnregisterFailed") : Guid.Parse(correlationId.ToString()));
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Gets all registered alert channels.
-        /// </summary>
-        public IReadOnlyCollection<IAlertChannel> GetRegisteredChannels()
-        {
-            try
-            {
-                if (_channelService != null)
-                {
-                    return _channelService.GetAllChannels();
-                }
-                else
-                {
-                    // Fallback to local collection
-                    lock (_syncLock)
-                    {
-                        return _channels.AsValueEnumerable().ToList();
-                    }
+                    var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertService.GetAlertHistory", period.ToString());
+                    _loggingService?.LogError(ex, "Failed to get alert history: {ErrorMessage}", ex.Message, correlationId: correlationId);
+                    return Array.Empty<Alert>();
                 }
             }
-            catch (Exception ex)
-            {
-                LogError($"Failed to get registered channels: {ex.Message}", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "GetRegisteredChannelsFailed"));
-                return new List<IAlertChannel>();
-            }
         }
 
-        #endregion
-
-        #region Filtering and Suppression
-
         /// <summary>
-        /// Adds an alert filter for advanced filtering.
+        /// Acknowledges an alert, marking it as handled.
         /// </summary>
-        public void AddFilter(IAlertFilter filter, FixedString64Bytes correlationId = default)
+        public void AcknowledgeAlert(Guid alertId, string acknowledgedBy, Guid correlationId = default)
         {
-            if (filter == null) return;
+            using (_profilerService?.BeginScope("AlertService.AcknowledgeAlert"))
+            {
+                if (!IsEnabled) return;
 
-            try
-            {
-                if (_filterService != null)
+                var finalCorrelationId = correlationId == default
+                    ? DeterministicIdGenerator.GenerateCorrelationId("AlertService.AcknowledgeAlert", alertId.ToString())
+                    : correlationId;
+
+                try
                 {
-                    // Use integrated filter service
-                    _filterService.RegisterFilter(filter, null, correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "RegisterFilter") : Guid.Parse(correlationId.ToString()));
+                    _stateManagementService.AcknowledgeAlertAsync(alertId, acknowledgedBy, finalCorrelationId).Forget();
+
+                    _loggingService?.LogInfo(
+                        "Alert {AlertId} acknowledged by {AcknowledgedBy}",
+                        alertId,
+                        acknowledgedBy,
+                        correlationId: finalCorrelationId);
                 }
-                else
+                catch (Exception ex)
                 {
-                    // Fallback to local collection
-                    lock (_syncLock)
-                    {
-                        if (!_filters.AsValueEnumerable().Any(f => f.Name.ToString() == filter.Name.ToString()))
-                        {
-                            _filters.Add(filter);
-                            _filters.Sort((x, y) => x.Priority.CompareTo(y.Priority));
-                        }
-                    }
+                    _loggingService?.LogError(
+                        ex,
+                        "Failed to acknowledge alert {AlertId}: {ErrorMessage}",
+                        alertId,
+                        ex.Message,
+                        correlationId: finalCorrelationId);
                 }
-                
-                LogInfo($"Alert filter added: {filter.Name}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "FilterAdded") : Guid.Parse(correlationId.ToString()));
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to add filter {filter.Name}: {ex.Message}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "AddFilterFailed") : Guid.Parse(correlationId.ToString()));
             }
         }
 
         /// <summary>
-        /// Removes an alert filter.
+        /// Resolves an alert, marking it as resolved.
         /// </summary>
-        public bool RemoveFilter(FixedString64Bytes filterName, FixedString64Bytes correlationId = default)
+        public void ResolveAlert(Guid alertId, string resolvedBy, string resolution = null, Guid correlationId = default)
         {
-            try
+            using (_profilerService?.BeginScope("AlertService.ResolveAlert"))
             {
-                var nameStr = filterName.ToString();
-                
-                if (_filterService != null)
+                if (!IsEnabled) return;
+
+                var finalCorrelationId = correlationId == default
+                    ? DeterministicIdGenerator.GenerateCorrelationId("AlertService.ResolveAlert", alertId.ToString())
+                    : correlationId;
+
+                try
                 {
-                    // Use integrated filter service
-                    var result = _filterService.UnregisterFilter(nameStr, correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "UnregisterFilter") : Guid.Parse(correlationId.ToString()));
-                    if (result)
-                    {
-                        LogInfo($"Alert filter removed: {filterName}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "FilterRemoved") : Guid.Parse(correlationId.ToString()));
-                    }
-                    return result;
+                    _stateManagementService.ResolveAlertAsync(alertId, resolvedBy, resolution, finalCorrelationId).Forget();
+
+                    _loggingService?.LogInfo(
+                        "Alert {AlertId} resolved by {ResolvedBy}",
+                        alertId,
+                        resolvedBy,
+                        correlationId: finalCorrelationId);
                 }
-                else
+                catch (Exception ex)
                 {
-                    // Fallback to local collection
-                    lock (_syncLock)
-                    {
-                        var filter = _filters.AsValueEnumerable().FirstOrDefault(f => f.Name.ToString() == nameStr);
-                        if (filter != null)
-                        {
-                            _filters.Remove(filter);
-                            LogInfo($"Alert filter removed: {filterName}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "FilterRemoved") : Guid.Parse(correlationId.ToString()));
-                            return true;
-                        }
-                    }
+                    _loggingService?.LogError(
+                        ex,
+                        "Failed to resolve alert {AlertId}: {ErrorMessage}",
+                        alertId,
+                        ex.Message,
+                        correlationId: finalCorrelationId);
                 }
-                return false;
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to remove filter {filterName}: {ex.Message}", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "RemoveFilterFailed") : Guid.Parse(correlationId.ToString()));
-                return false;
             }
         }
 
-
-        #endregion
-
-        #region Statistics and Monitoring
-
         /// <summary>
-        /// Gets current alerting statistics for monitoring.
+        /// Gets service statistics.
         /// </summary>
         public AlertStatistics GetStatistics()
         {
-            return _statistics;
-        }
-
-        /// <summary>
-        /// Validates alerting configuration and channels.
-        /// </summary>
-        public ValidationResult ValidateConfiguration(FixedString64Bytes correlationId = default)
-        {
-            var issues = new List<string>();
-
-            try
+            using (_profilerService?.BeginScope("AlertService.GetStatistics"))
             {
-                // Check channels
-                var channels = GetRegisteredChannels();
-                if (channels.Count == 0)
-                    issues.Add("No alert channels registered");
+                if (!IsEnabled) return AlertStatistics.Empty;
 
-                foreach (var channel in channels)
-                {
-                    if (!channel.IsHealthy)
-                        issues.Add($"Channel {channel.Name} is unhealthy");
-                }
-
-                // Check filters
-                var filterCount = 0;
-                if (_filterService != null)
-                {
-                    filterCount = _filterService.FilterCount;
-                }
-                else
-                {
-                    lock (_syncLock)
-                    {
-                        filterCount = _filters.Count;
-                    }
-                }
-
-                if (filterCount == 0)
-                    issues.Add("No alert filters configured");
-            }
-            catch (Exception ex)
-            {
-                issues.Add($"Validation error: {ex.Message}");
-            }
-
-            return issues.Count > 0 
-                ? ValidationResult.Failure(issues.AsValueEnumerable().Select(i => new ValidationError(i)).ToList(), "AlertService")
-                : ValidationResult.Success("AlertService");
-        }
-
-        /// <summary>
-        /// Performs maintenance operations on the alert system.
-        /// </summary>
-        public void PerformMaintenance(FixedString64Bytes correlationId = default)
-        {
-            if (DateTime.UtcNow - _lastMaintenanceRun < _maintenanceInterval)
-                return;
-
-            _lastMaintenanceRun = DateTime.UtcNow;
-
-            lock (_syncLock)
-            {
-                // Clean up resolved alerts older than 24 hours
-                var cutoff = DateTime.UtcNow.AddHours(-24);
-                var toRemove = _activeAlerts.Values.AsValueEnumerable()
-                    .Where(a => a.IsResolved && a.ResolvedTimestamp < cutoff)
-                    .Select(a => a.Id)
-                    .ToList();
-
-                foreach (var id in toRemove)
-                {
-                    _activeAlerts.Remove(id);
-                }
-
-                LogDebug($"Maintenance completed: {toRemove.Count} old alerts cleaned up", correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "MaintenanceCompleted") : Guid.Parse(correlationId.ToString()));
-            }
-        }
-
-        /// <summary>
-        /// Flushes all buffered alerts to channels.
-        /// </summary>
-        public async UniTask FlushAsync(FixedString64Bytes correlationId = default)
-        {
-            var channels = GetRegisteredChannels();
-            var correlationGuid = correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertService", "InitializeAlertPooling") : Guid.Parse(correlationId.ToString());
-            var flushTasks = channels.AsValueEnumerable().Select(c => c.FlushAsync(correlationGuid)).ToList();
-            
-            await UniTask.WhenAll(flushTasks);
-            LogDebug("All channels flushed", correlationGuid);
-        }
-
-        #endregion
-
-        #region Pooling Management
-
-        /// <summary>
-        /// Initializes alert pooling if the pooling service is available.
-        /// </summary>
-        private void InitializeAlertPooling()
-        {
-            if (_poolingService == null)
-            {
-                LogInfo("No pooling service provided - using direct alert creation", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "NoPoolingService"));
-                return;
-            }
-
-            try
-            {
-                // Check if pool is already registered
-                if (_poolingService.IsPoolRegistered<PooledAlertContainer>())
-                {
-                    LogInfo("Alert pool already registered", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "PoolAlreadyRegistered"));
-                    return;
-                }
-
-                // Create high-performance configuration for alert pooling
-                var config = AlertPoolConfigBuilder
-                    .CreateHighPerformance("AlertContainerPool")
-                    .WithCapacity(50, 1000)  // Start with 50, max 1000 containers
-                    .WithPerformance(500, true, 0.05f)  // Aggressive performance settings
-                    .WithExpansionTrigger(AlertSeverity.High)  // Expand on high severity alerts
-                    .Build();
-
-                // Register the pool with the pooling service
-                _poolingService.RegisterPool<PooledAlertContainer>(config);
-                
-                LogInfo($"Alert pool registered with {config.InitialCapacity} initial capacity", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "PoolRegistered"));
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to initialize alert pooling: {ex.Message}", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "InitializePoolingFailed"));
-            }
-        }
-
-        /// <summary>
-        /// Gets pooling statistics for monitoring and diagnostics.
-        /// </summary>
-        public PoolStatistics GetPoolingStatistics()
-        {
-            if (_poolingService == null || !_poolingService.IsPoolRegistered<PooledAlertContainer>())
-                return null;
-
-            try
-            {
-                return _poolingService.GetPoolStatistics<PooledAlertContainer>();
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to get pooling statistics: {ex.Message}", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "GetPoolingStatsFailed"));
-                return null;
-            }
-        }
-
-        #endregion
-
-        #region Private Methods
-
-        /// <summary>
-        /// Creates a new Alert using the pooling service for efficient memory management.
-        /// </summary>
-        private Alert CreateAlert(string message, AlertSeverity severity, FixedString64Bytes source, 
-            FixedString32Bytes tag = default, Guid correlationId = default, Guid operationId = default, 
-            AlertContext context = default)
-        {
-            if (_poolingService != null && _poolingService.IsPoolRegistered<PooledAlertContainer>())
-            {
                 try
                 {
-                    // Get a pooled container and create the alert through it
-                    var container = _poolingService.Get<PooledAlertContainer>();
-                    var alert = container.CreateAlert(message, severity, source, tag, correlationId, operationId, context);
-                    
-                    // Return the container to the pool after creating the alert
-                    // The alert itself is immutable and independent of the container
-                    _poolingService.Return(container);
-                    
-                    return alert;
+                    var stateStats = _stateManagementService.GetStatistics();
+                    var healthStats = _healthMonitoringService.GetStatistics();
+
+                    // Combine statistics from decomposed services
+                    return new AlertStatistics
+                    {
+                        TotalAlertsRaised = stateStats.TotalResolved + stateStats.TotalAcknowledged + stateStats.ActiveAlertCount,
+                        ActiveAlerts = stateStats.ActiveAlertCount,
+                        AcknowledgedAlerts = stateStats.TotalAcknowledged,
+                        ResolvedAlerts = stateStats.TotalResolved,
+                        AlertsInHistory = stateStats.HistoryCount,
+                        AverageProcessingTime = TimeSpan.Zero, // Would need to be tracked separately
+                        LastUpdated = DateTime.UtcNow
+                    };
                 }
                 catch (Exception ex)
                 {
-                    LogError($"Failed to create alert using pooling service: {ex.Message}", correlationId);
-                    // Fall back to direct creation
+                    var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertService.GetStatistics", "Error");
+                    _loggingService?.LogError(ex, "Failed to get statistics: {ErrorMessage}", ex.Message, correlationId: correlationId);
+                    return AlertStatistics.Empty;
                 }
             }
-            
-            // Fallback to direct Alert creation if pooling service is not available or fails
-            return Alert.Create(message, severity, source, tag, correlationId, operationId, context);
         }
 
         /// <summary>
-        /// Creates a new Alert using Unity.Collections types.
+        /// Starts the alert service operations.
         /// </summary>
-        private Alert CreateAlert(FixedString512Bytes message, AlertSeverity severity, FixedString64Bytes source, 
-            FixedString32Bytes tag = default, Guid correlationId = default, Guid operationId = default, 
-            AlertContext context = default)
+        public async UniTask StartAsync()
         {
-            if (_poolingService != null && _poolingService.IsPoolRegistered<PooledAlertContainer>())
+            using (_profilerService?.BeginScope("AlertService.StartAsync"))
             {
+                if (_isStarted || _isDisposed) return;
+
+                var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertService.StartAsync", "ServiceStartup");
+
                 try
                 {
-                    // Get a pooled container and create the alert through it
-                    var container = _poolingService.Get<PooledAlertContainer>();
-                    var alert = container.CreateAlert(message, severity, source, tag, correlationId, operationId, context);
-                    
-                    // Return the container to the pool after creating the alert
-                    _poolingService.Return(container);
-                    
-                    return alert;
+                    _loggingService?.LogInfo("Starting AlertService with decomposed architecture", correlationId: correlationId);
+
+                    // Start all decomposed services
+                    await _healthMonitoringService.StartAsync();
+
+                    _isStarted = true;
+                    _isEnabled = true;
+
+                    _loggingService?.LogInfo("AlertService started successfully", correlationId: correlationId);
                 }
                 catch (Exception ex)
                 {
-                    LogError($"Failed to create alert using pooling service: {ex.Message}", correlationId);
-                    // Fall back to direct creation
+                    _loggingService?.LogError(ex, "Failed to start AlertService: {ErrorMessage}", ex.Message, correlationId: correlationId);
+                    throw;
                 }
             }
-            
-            // Fallback to direct Alert creation if pooling service is not available or fails
-            return Alert.Create(message, severity, source, tag, correlationId, operationId, context);
         }
 
-        private Alert ApplyFilters(Alert alert)
+        /// <summary>
+        /// Stops the alert service operations.
+        /// </summary>
+        public async UniTask StopAsync()
         {
-            using (_filterMarker.Auto())
+            using (_profilerService?.BeginScope("AlertService.StopAsync"))
             {
-                var currentAlert = alert;
-                var context = FilterContext.WithCorrelation(alert.CorrelationId);
+                if (!_isStarted || _isDisposed) return;
 
-                lock (_syncLock)
+                var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertService.StopAsync", "ServiceShutdown");
+
+                try
                 {
-                    foreach (var filter in _filters.AsValueEnumerable())
-                    {
-                        if (!filter.IsEnabled || !filter.CanHandle(currentAlert))
-                            continue;
+                    _loggingService?.LogInfo("Stopping AlertService", correlationId: correlationId);
 
-                        var result = filter.Evaluate(currentAlert, context);
-                        
-                        switch (result.Decision)
-                        {
-                            case FilterDecision.Allow:
-                                continue;
-                            case FilterDecision.Suppress:
-                                return null; // Alert suppressed
-                            case FilterDecision.Modify:
-                                currentAlert = result.ModifiedAlert ?? currentAlert;
-                                break;
-                            case FilterDecision.Defer:
-                                // For now, treat defer as allow
-                                continue;
-                        }
-                    }
+                    _isEnabled = false;
+
+                    // Stop all decomposed services
+                    await _healthMonitoringService.StopAsync();
+
+                    _isStarted = false;
+
+                    _loggingService?.LogInfo("AlertService stopped successfully", correlationId: correlationId);
                 }
-
-                return currentAlert;
-            }
-        }
-
-        private Alert ApplySuppressionRules(Alert alert)
-        {
-            // Suppression is now handled by the filter system
-            // This method is kept for backward compatibility but simply returns the alert unchanged
-
-            return alert;
-        }
-
-        private async UniTask DeliverAlertToChannelsAsync(Alert alert)
-        {
-            using (_deliveryMarker.Auto())
-            {
-                var channels = GetRegisteredChannels();
-                var deliveryTasks = new List<UniTask>();
-
-                foreach (var channel in channels)
+                catch (Exception ex)
                 {
-                    if (channel.IsEnabled && channel.IsHealthy && alert.Severity >= channel.MinimumSeverity)
-                    {
-                        deliveryTasks.Add(channel.SendAlertAsync(alert, alert.CorrelationId));
-                    }
+                    _loggingService?.LogError(ex, "Failed to stop AlertService: {ErrorMessage}", ex.Message, correlationId: correlationId);
+                    throw;
                 }
-
-                await UniTask.WhenAll(deliveryTasks);
-            }
-        }
-
-        private void PublishAlertRaisedMessage(Alert alert)
-        {
-            try
-            {
-                var message = AlertRaisedMessage.Create(alert, "AlertService", alert.CorrelationId);
-                _messageBusService?.PublishMessageAsync(message).Forget();
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to publish AlertRaisedMessage: {ex.Message}", alert.CorrelationId);
-            }
-        }
-
-        private void PublishAlertAcknowledgedMessage(Alert alert)
-        {
-            try
-            {
-                var message = AlertAcknowledgedMessage.Create(alert, "AlertService", alert.CorrelationId);
-                _messageBusService?.PublishMessageAsync(message).Forget();
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to publish AlertAcknowledgedMessage: {ex.Message}", alert.CorrelationId);
-            }
-        }
-
-        private void PublishAlertResolvedMessage(Alert alert)
-        {
-            try
-            {
-                var message = AlertResolvedMessage.Create(alert, "AlertService", alert.CorrelationId);
-                _messageBusService?.PublishMessageAsync(message).Forget();
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to publish AlertResolvedMessage: {ex.Message}", alert.CorrelationId);
-            }
-        }
-
-        private void UpdateStatistics(bool success, TimeSpan duration)
-        {
-            // Implementation would update comprehensive statistics
-            // For brevity, this is simplified
-        }
-
-        private void LogDebug(string message, Guid correlationId)
-        {
-            _loggingService?.LogDebug($"[AlertService] {message}", correlationId.ToString(), "AlertService");
-        }
-
-        private void LogInfo(string message, Guid correlationId)
-        {
-            _loggingService?.LogInfo($"[AlertService] {message}", correlationId.ToString(), "AlertService");
-        }
-
-        private void LogError(string message, Guid correlationId)
-        {
-            _loggingService?.LogError($"[AlertService] {message}", correlationId.ToString(), "AlertService");
-        }
-
-        #endregion
-
-        #region Bulk Operations
-        
-        /// <summary>
-        /// Raises multiple alerts in a single batch operation for performance.
-        /// </summary>
-        public async UniTask RaiseAlertsAsync(IEnumerable<Alert> alerts, Guid correlationId = default)
-        {
-            using (_bulkOperationMarker.Auto())
-            {
-                if (!IsEnabled || alerts == null) return;
-
-                var alertList = alerts.AsValueEnumerable().ToList();
-                LogInfo($"Processing bulk alert operation with {alertList.Count} alerts", correlationId);
-
-                var tasks = alertList.AsValueEnumerable().Select(alert => RaiseAlertAsync(alert)).ToList();
-                await UniTask.WhenAll(tasks);
-            }
-        }
-        
-        /// <summary>
-        /// Acknowledges multiple alerts by their IDs.
-        /// </summary>
-        public async UniTask AcknowledgeAlertsAsync(IEnumerable<Guid> alertIds, Guid correlationId = default)
-        {
-            using (_bulkOperationMarker.Auto())
-            {
-                if (!IsEnabled || alertIds == null) return;
-
-                await UniTask.RunOnThreadPool(() =>
-                {
-                    foreach (var alertId in alertIds.AsValueEnumerable())
-                    {
-                        AcknowledgeAlert(alertId, correlationId.ToString());
-                    }
-                });
-            }
-        }
-        
-        /// <summary>
-        /// Resolves multiple alerts by their IDs.
-        /// </summary>
-        public async UniTask ResolveAlertsAsync(IEnumerable<Guid> alertIds, Guid correlationId = default)
-        {
-            using (_bulkOperationMarker.Auto())
-            {
-                if (!IsEnabled || alertIds == null) return;
-
-                await UniTask.RunOnThreadPool(() =>
-                {
-                    foreach (var alertId in alertIds.AsValueEnumerable())
-                    {
-                        ResolveAlert(alertId, correlationId.ToString());
-                    }
-                });
             }
         }
 
         #endregion
 
-        #region Configuration Management
-        
-        /// <summary>
-        /// Updates the service configuration with hot-reload capability.
-        /// </summary>
-        public async UniTask<bool> UpdateConfigurationAsync(AlertServiceConfiguration configuration, Guid correlationId = default)
-        {
-            try
-            {
-                if (configuration == null)
-                    throw new ArgumentNullException(nameof(configuration));
+        #region Legacy Compatibility Methods
 
-                // Validate configuration
-                configuration.Validate();
-                
-                _configuration = configuration;
-                
-                // Apply new settings
-                _globalMinimumSeverity = configuration.AlertConfig.MinimumSeverity;
-                
-                LogInfo("Configuration updated successfully", correlationId);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to update configuration: {ex.Message}", correlationId);
-                return false;
-            }
-        }
-        
         /// <summary>
-        /// Reloads configuration from the original source.
+        /// Adds a channel to the service (legacy compatibility).
         /// </summary>
-        public async UniTask ReloadConfigurationAsync(Guid correlationId = default)
+        public void AddChannel(IAlertChannel channel)
         {
-            try
-            {
-                var defaultConfig = GetDefaultConfiguration();
-                await UpdateConfigurationAsync(defaultConfig, correlationId);
-                LogInfo("Configuration reloaded from defaults", correlationId);
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to reload configuration: {ex.Message}", correlationId);
-            }
+            if (channel == null) return;
+
+            _legacyChannels.Add(channel);
+            _channelService?.RegisterChannel(channel);
+
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertService.AddChannel", channel.GetType().Name);
+            _loggingService?.LogInfo("Legacy channel {ChannelType} added", channel.GetType().Name, correlationId: correlationId);
         }
-        
+
         /// <summary>
-        /// Gets the default configuration for the current environment.
+        /// Removes a channel from the service (legacy compatibility).
         /// </summary>
-        public AlertServiceConfiguration GetDefaultConfiguration()
+        public void RemoveChannel(IAlertChannel channel)
         {
-            return new AlertConfigBuilder().ForProduction().BuildServiceConfiguration();
+            if (channel == null) return;
+
+            _legacyChannels.Remove(channel);
+            _channelService?.UnregisterChannel(channel);
+
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertService.RemoveChannel", channel.GetType().Name);
+            _loggingService?.LogInfo("Legacy channel {ChannelType} removed", channel.GetType().Name, correlationId: correlationId);
+        }
+
+        /// <summary>
+        /// Adds a filter to the service (legacy compatibility).
+        /// </summary>
+        public void AddFilter(IAlertFilter filter)
+        {
+            if (filter == null) return;
+
+            _legacyFilters.Add(filter);
+            // Legacy filters would need to be wrapped for new architecture
+
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertService.AddFilter", filter.GetType().Name);
+            _loggingService?.LogInfo("Legacy filter {FilterType} added", filter.GetType().Name, correlationId: correlationId);
+        }
+
+        /// <summary>
+        /// Removes a filter from the service (legacy compatibility).
+        /// </summary>
+        public void RemoveFilter(IAlertFilter filter)
+        {
+            if (filter == null) return;
+
+            _legacyFilters.Remove(filter);
+            // Legacy filters would need to be unwrapped from new architecture
+
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertService.RemoveFilter", filter.GetType().Name);
+            _loggingService?.LogInfo("Legacy filter {FilterType} removed", filter.GetType().Name, correlationId: correlationId);
         }
 
         #endregion
 
-        #region Health Monitoring and Diagnostics
-        
-        /// <summary>
-        /// Performs a comprehensive health check of the alerting system.
-        /// </summary>
-        public async UniTask<AlertSystemHealthReport> PerformHealthCheckAsync(Guid correlationId = default)
-        {
-            using (_healthCheckMarker.Auto())
-            {
-                // Check subsystem health first
-                bool channelServiceHealth = false;
-                int healthyChannelCount = 0;
-                
-                if (_channelService != null)
-                {
-                    await _channelService.PerformHealthChecksAsync(correlationId);
-                    channelServiceHealth = _channelService.IsEnabled;
-                    healthyChannelCount = _channelService.HealthyChannelCount;
-                }
+        #region Private Helper Methods
 
-                // Create report with all properties in initializer
-                var report = new AlertSystemHealthReport
-                {
-                    Timestamp = DateTime.UtcNow,
-                    OverallHealth = IsHealthy,
-                    ServiceEnabled = IsEnabled,
-                    EmergencyModeActive = IsEmergencyModeActive,
-                    ConsecutiveFailures = _consecutiveFailures,
-                    LastHealthCheck = _lastHealthCheck,
-                    ChannelServiceHealth = channelServiceHealth,
-                    HealthyChannelCount = healthyChannelCount
-                };
-
-                _lastHealthCheck = DateTime.UtcNow;
-                LogInfo($"Health check completed - Overall: {report.OverallHealth}", correlationId);
-                
-                return report;
-            }
-        }
-        
         /// <summary>
-        /// Gets detailed diagnostic information about the alerting system.
+        /// Creates an alert with proper correlation ID generation.
         /// </summary>
-        public AlertSystemDiagnostics GetDiagnostics(Guid correlationId = default)
+        private Alert CreateAlert(string message, AlertSeverity severity, FixedString64Bytes source,
+            FixedString32Bytes tag = default, Guid correlationId = default)
         {
-            return new AlertSystemDiagnostics
+            var finalCorrelationId = correlationId == default
+                ? DeterministicIdGenerator.GenerateCorrelationId("AlertService.CreateAlert", message)
+                : correlationId;
+
+            var alertId = DeterministicIdGenerator.GenerateAlertId(message, source.ToString(), finalCorrelationId);
+
+            return new Alert
             {
-                ServiceVersion = "2.0.0",
-                IsEnabled = IsEnabled,
-                IsHealthy = IsHealthy,
-                IsStarted = _isStarted,
-                EmergencyModeActive = IsEmergencyModeActive,
-                EmergencyModeReason = _emergencyModeReason,
-                ActiveAlertCount = _activeAlerts.Count,
-                HistoryCount = _alertHistory.Count,
-                ConsecutiveFailures = _consecutiveFailures,
-                LastMaintenanceRun = _lastMaintenanceRun,
-                LastHealthCheck = _lastHealthCheck,
-                ConfigurationSummary = _configuration?.ToString(),
-                SubsystemStatuses = new Dictionary<string, bool>
-                {
-                    ["ChannelService"] = _channelService?.IsEnabled ?? false,
-                    ["FilterService"] = _filterService?.IsEnabled ?? false,
-                    ["SuppressionService"] = _suppressionService?.IsEnabled ?? false
-                }
+                Id = alertId,
+                Message = message,
+                Severity = severity,
+                Source = source,
+                Tag = tag,
+                Timestamp = DateTime.UtcNow,
+                CorrelationId = finalCorrelationId,
+                State = AlertState.Active,
+                Count = 1
             };
         }
-        
-        /// <summary>
-        /// Gets performance metrics for all subsystems.
-        /// </summary>
-        public AlertSystemPerformanceMetrics GetPerformanceMetrics()
-        {
-            return _performanceMetrics;
-        }
-        
-        /// <summary>
-        /// Resets all performance metrics and statistics.
-        /// </summary>
-        public void ResetMetrics(Guid correlationId = default)
-        {
-            _performanceMetrics = AlertSystemPerformanceMetrics.Create();
-            _channelService?.ResetMetrics(correlationId);
-            _filterService?.ResetPerformanceMetrics(correlationId);
-            _suppressionService?.ResetStatistics();
-            LogInfo("Performance metrics reset", correlationId);
-        }
 
         #endregion
 
-        #region Emergency Operations
-        
-        /// <summary>
-        /// Enables emergency mode, bypassing filters and suppression for critical alerts.
-        /// </summary>
-        public void EnableEmergencyMode(string reason, Guid correlationId = default)
-        {
-            _emergencyMode = true;
-            _emergencyModeReason = reason ?? "Emergency mode enabled";
-            LogInfo($"Emergency mode enabled: {_emergencyModeReason}", correlationId);
-        }
-        
-        /// <summary>
-        /// Disables emergency mode and restores normal operations.
-        /// </summary>
-        public void DisableEmergencyMode(Guid correlationId = default)
-        {
-            _emergencyMode = false;
-            _emergencyModeReason = null;
-            LogInfo("Emergency mode disabled", correlationId);
-        }
-        
-        /// <summary>
-        /// Performs emergency escalation for failed alert delivery.
-        /// </summary>
-        public async UniTask PerformEmergencyEscalationAsync(Alert alert, Guid correlationId = default)
-        {
-            try
-            {
-                // Try emergency channels
-                var emergencyChannels = _channelService?.GetAllChannels()
-                    ?.AsValueEnumerable()
-                    .Where(c => c.Name.ToString().Contains("Emergency") || c.MinimumSeverity <= AlertSeverity.Critical)
-                    .ToList() ?? new List<IAlertChannel>();
-
-                foreach (var channel in emergencyChannels)
-                {
-                    await channel.SendAlertAsync(alert, correlationId);
-                }
-                
-                LogInfo($"Emergency escalation completed for alert {alert.Id}", correlationId);
-            }
-            catch (Exception ex)
-            {
-                LogError($"Emergency escalation failed: {ex.Message}", correlationId);
-            }
-        }
-
-        #endregion
-
-        #region Service Control
-        
-        /// <summary>
-        /// Starts the alerting service and all subsystems.
-        /// </summary>
-        public async UniTask StartAsync(Guid correlationId = default)
-        {
-            try
-            {
-                if (_isStarted) return;
-
-                _isEnabled = true;
-                _isStarted = true;
-                
-                LogInfo("Alert service started", correlationId);
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to start alert service: {ex.Message}", correlationId);
-                throw;
-            }
-        }
-        
-        /// <summary>
-        /// Stops the alerting service and all subsystems gracefully.
-        /// </summary>
-        public async UniTask StopAsync(Guid correlationId = default)
-        {
-            try
-            {
-                _isEnabled = false;
-                
-                // Flush pending alerts
-                await FlushAsync(correlationId.ToString());
-                
-                _isStarted = false;
-                LogInfo("Alert service stopped", correlationId);
-            }
-            catch (Exception ex)
-            {
-                LogError($"Error during service stop: {ex.Message}", correlationId);
-            }
-        }
-        
-        /// <summary>
-        /// Restarts the alerting service with current configuration.
-        /// </summary>
-        public async UniTask RestartAsync(Guid correlationId = default)
-        {
-            await StopAsync(correlationId);
-            await StartAsync(correlationId);
-            LogInfo("Alert service restarted", correlationId);
-        }
-
-        #endregion
-
-        #region IDisposable
+        #region IDisposable Implementation
 
         /// <summary>
-        /// Disposes of the alert service resources.
+        /// Disposes the service and releases all resources.
         /// </summary>
         public void Dispose()
         {
-            if (_isDisposed)
-                return;
+            if (_isDisposed) return;
 
-            _isEnabled = false;
-            _isDisposed = true;
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertService.Dispose", "ServiceDisposal");
 
             try
             {
-                // Dispose subsystem services
-                _channelService?.Dispose();
-                _filterService?.Dispose();
-                _suppressionService?.Dispose();
+                _loggingService?.LogInfo("AlertService disposing", correlationId: correlationId);
 
-                lock (_syncLock)
-                {
-                    _activeAlerts.Clear();
-                    _alertHistory.Clear();
-                    _sourceMinimumSeverities.Clear();
-                }
+                _isEnabled = false;
 
-                LogInfo("Alert service disposed", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "Disposed"));
+                // Dispose decomposed services
+                if (_orchestrationService is IDisposable orchestrationDisposable)
+                    orchestrationDisposable.Dispose();
+
+                if (_stateManagementService is IDisposable stateDisposable)
+                    stateDisposable.Dispose();
+
+                if (_healthMonitoringService is IDisposable healthDisposable)
+                    healthDisposable.Dispose();
             }
             catch (Exception ex)
             {
-                LogError($"Error during disposal: {ex.Message}", DeterministicIdGenerator.GenerateCorrelationId("AlertService", "DisposalError"));
+                // Ignore exceptions during disposal
+                _loggingService?.LogWarning("Exception during AlertService disposal: {ErrorMessage}", ex.Message, correlationId: correlationId);
+            }
+            finally
+            {
+                _isDisposed = true;
             }
         }
 

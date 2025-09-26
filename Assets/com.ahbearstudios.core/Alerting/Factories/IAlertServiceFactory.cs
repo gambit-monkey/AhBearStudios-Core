@@ -15,22 +15,16 @@ using AhBearStudios.Core.Serialization;
 namespace AhBearStudios.Core.Alerting.Factories
 {
     /// <summary>
-    /// Factory interface for creating and configuring AlertService instances.
+    /// Factory interface for creating and configuring AlertService instances with decomposed service architecture.
     /// Provides abstraction for dependency injection and testing scenarios.
     /// Designed for Unity game development with support for different deployment configurations.
+    /// Uses the new decomposed services architecture with AlertOrchestrationService, AlertStateManagementService, and AlertHealthMonitoringService.
     /// </summary>
     public interface IAlertServiceFactory
     {
         /// <summary>
-        /// Creates a new AlertService instance with default configuration.
-        /// </summary>
-        /// <param name="messageBusService">Message bus service for publishing events</param>
-        /// <param name="loggingService">Logging service for internal logging</param>
-        /// <returns>Configured AlertService instance</returns>
-        IAlertService CreateAlertService(IMessageBusService messageBusService = null, ILoggingService loggingService = null);
-
-        /// <summary>
-        /// Creates a new AlertService instance with specific configuration.
+        /// Creates a new AlertService instance with specific configuration using decomposed services.
+        /// This is the primary method for creating AlertService instances with the new architecture.
         /// </summary>
         /// <param name="configuration">Alert service configuration</param>
         /// <param name="correlationId">Correlation ID for tracking</param>
@@ -56,29 +50,12 @@ namespace AhBearStudios.Core.Alerting.Factories
         UniTask<IAlertService> CreateProductionAlertServiceAsync(ILoggingService loggingService, IMessageBusService messageBusService);
 
         /// <summary>
-        /// Creates a minimal AlertService for testing scenarios.
+        /// Creates a minimal AlertService for testing scenarios with decomposed services.
         /// Uses in-memory channels and minimal filtering.
         /// </summary>
         /// <param name="messageBusService">Message bus service for testing</param>
         /// <returns>Test-configured AlertService</returns>
-        IAlertService CreateTestAlertService(IMessageBusService messageBusService = null);
-
-        /// <summary>
-        /// Creates an AlertService with custom channels and filters.
-        /// </summary>
-        /// <param name="channels">Collection of channels to register</param>
-        /// <param name="filters">Collection of filters to register</param>
-        /// <param name="messageBusService">Message bus service</param>
-        /// <param name="loggingService">Logging service</param>
-        /// <param name="correlationId">Correlation ID for tracking</param>
-        /// <returns>UniTask with custom-configured AlertService</returns>
-        UniTask<IAlertService> CreateCustomAlertServiceAsync(
-            IEnumerable<IAlertChannel> channels,
-            IEnumerable<IAlertFilter> filters,
-            IMessageBusService messageBusService = null,
-            ILoggingService loggingService = null,
-            Guid correlationId = default);
-
+        UniTask<IAlertService> CreateTestAlertServiceAsync(IMessageBusService messageBusService = null);
 
         /// <summary>
         /// Gets the default configuration for alert services.

@@ -33,7 +33,7 @@ namespace AhBearStudios.Core.Alerting.Models
         /// <param name="source">Source component</param>
         protected AlertEventArgsBase(Guid correlationId = default, FixedString64Bytes source = default)
         {
-            CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId;
+            CorrelationId = correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("AlertEventArgs", source.ToString()) : correlationId;
             Source = source.IsEmpty ? "AlertSystem" : source;
         }
     }

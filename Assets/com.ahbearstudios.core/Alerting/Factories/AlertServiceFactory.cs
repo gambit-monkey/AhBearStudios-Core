@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using ZLinq;
 using Unity.Collections;
-using Unity.Profiling;
 using Cysharp.Threading.Tasks;
 using AhBearStudios.Core.Alerting.Services;
 using AhBearStudios.Core.Alerting.Channels;
@@ -14,105 +13,157 @@ using AhBearStudios.Core.Messaging;
 using AhBearStudios.Core.Logging;
 using AhBearStudios.Core.Serialization;
 using AhBearStudios.Core.Pooling;
+using AhBearStudios.Core.HealthCheck;
+using AhBearStudios.Core.Profiling;
+using AhBearStudios.Core.Common.Utilities;
 
 namespace AhBearStudios.Core.Alerting.Factories
 {
     /// <summary>
-    /// Simple factory for creating AlertService instances following CLAUDE.md guidelines.
+    /// Refactored factory for creating AlertService instances with decomposed service architecture.
+    /// Creates and coordinates AlertOrchestrationService, AlertStateManagementService, and
+    /// AlertHealthMonitoringService according to CLAUDE.md guidelines.
     /// Factory focuses on creation only - complexity is handled by builders, validation by validators.
     /// Does not manage object lifecycle - caller responsibility.
     /// </summary>
     public sealed class AlertServiceFactory : IAlertServiceFactory
     {
+        #region Dependencies
+
         private readonly ILoggingService _loggingService;
         private readonly ISerializationService _serializationService;
         private readonly IPoolingService _poolingService;
+        private readonly IMessageBusService _messageBusService;
+        private readonly IHealthCheckService _healthCheckService;
+        private readonly IProfilerService _profilerService;
+
+        // New service factories for decomposed architecture
+        private readonly AlertStateManagementServiceFactory _stateManagementServiceFactory;
+        private readonly AlertHealthMonitoringServiceFactory _healthMonitoringServiceFactory;
+        private readonly AlertOrchestrationServiceFactory _orchestrationServiceFactory;
+
         private readonly Dictionary<string, object> _defaultSettings;
 
+        #endregion
+
+        #region Constructor
+
         /// <summary>
-        /// Initializes a new instance of the AlertServiceFactory class.
+        /// Initializes a new instance of the AlertServiceFactory with all required dependencies.
         /// </summary>
-        /// <param name="loggingService">Optional logging service for factory operations</param>
-        /// <param name="serializationService">Optional serialization service for alert data serialization</param>
-        /// <param name="poolingService">Optional pooling service for temporary allocations</param>
-        public AlertServiceFactory(ILoggingService loggingService = null, ISerializationService serializationService = null, IPoolingService poolingService = null)
+        /// <param name="loggingService">Logging service for factory operations</param>
+        /// <param name="messageBusService">Message bus service for service communication</param>
+        /// <param name="serializationService">Serialization service for alert data serialization</param>
+        /// <param name="poolingService">Pooling service for temporary allocations</param>
+        /// <param name="healthCheckService">Health check service for monitoring</param>
+        /// <param name="profilerService">Profiling service for performance monitoring</param>
+        public AlertServiceFactory(
+            ILoggingService loggingService = null,
+            IMessageBusService messageBusService = null,
+            ISerializationService serializationService = null,
+            IPoolingService poolingService = null,
+            IHealthCheckService healthCheckService = null,
+            IProfilerService profilerService = null)
         {
             _loggingService = loggingService;
+            _messageBusService = messageBusService;
             _serializationService = serializationService;
             _poolingService = poolingService;
+            _healthCheckService = healthCheckService;
+            _profilerService = profilerService;
+
+            // Create service factories for decomposed architecture
+            _stateManagementServiceFactory = new AlertStateManagementServiceFactory(
+                _loggingService,
+                _messageBusService,
+                _poolingService,
+                _serializationService,
+                _profilerService);
+
+            _healthMonitoringServiceFactory = new AlertHealthMonitoringServiceFactory(
+                _loggingService,
+                _messageBusService,
+                _healthCheckService,
+                _profilerService);
+
+            _orchestrationServiceFactory = new AlertOrchestrationServiceFactory(
+                _loggingService,
+                _messageBusService,
+                _profilerService);
+
             _defaultSettings = CreateDefaultSettings();
         }
 
+        #endregion
+
         #region IAlertServiceFactory Implementation
 
-        /// <summary>
-        /// Creates a new AlertService instance with default configuration.
-        /// </summary>
-        public IAlertService CreateAlertService(IMessageBusService messageBusService = null, ILoggingService loggingService = null)
-        {
-            try
-            {
-                var alertService = new AlertService(messageBusService, loggingService ?? _loggingService, _serializationService);
-                
-                // Add default logging channel
-                var logChannel = new LogAlertChannel(loggingService ?? _loggingService, messageBusService);
-                alertService.RegisterChannel(logChannel);
-
-                LogInfo("Created AlertService with default configuration");
-                return alertService;
-            }
-            catch (Exception ex)
-            {
-                LogError($"Failed to create AlertService: {ex.Message}");
-                throw;
-            }
-        }
 
         /// <summary>
-        /// Creates a new AlertService instance with specific configuration.
-        /// Simple creation only - assumes configuration is pre-validated by builder.
+        /// Creates a new AlertService instance with specific configuration using decomposed services.
         /// </summary>
         public async UniTask<IAlertService> CreateAlertServiceAsync(AlertServiceConfiguration configuration, Guid correlationId = default)
         {
-            if (configuration == null)
-                throw new ArgumentNullException(nameof(configuration));
+            using (_profilerService?.BeginScope("AlertServiceFactory.CreateAlertServiceAsync"))
+            {
+                if (configuration == null)
+                    throw new ArgumentNullException(nameof(configuration));
 
-            var alertService = new AlertService(null, _loggingService, _serializationService);
-            alertService.SetMinimumSeverity(configuration.AlertConfig.MinimumSeverity);
-            await CreateAndRegisterChannels(alertService, configuration.AlertConfig.Channels, correlationId);
-            
-            LogInfo($"Created AlertService with {configuration.Environment} configuration", correlationId);
-            return alertService;
-        }
+                var finalCorrelationId = correlationId == default
+                    ? DeterministicIdGenerator.GenerateCorrelationId("AlertServiceFactory.CreateAlertServiceAsync", configuration.Environment.ToString())
+                    : correlationId;
 
+                try
+                {
+                    _loggingService?.LogInfo(
+                        "Creating AlertService with decomposed architecture for {Environment} environment",
+                        configuration.Environment,
+                        correlationId: finalCorrelationId);
 
-        /// <summary>
-        /// Creates an AlertService with custom channels and filters.
-        /// Simple creation only - assumes channels and filters are pre-configured.
-        /// </summary>
-        public async UniTask<IAlertService> CreateCustomAlertServiceAsync(
-            IEnumerable<IAlertChannel> channels,
-            IEnumerable<IAlertFilter> filters,
-            IMessageBusService messageBusService = null,
-            ILoggingService loggingService = null,
-            Guid correlationId = default)
-        {
-            if (channels == null)
-                throw new ArgumentNullException(nameof(channels));
-            if (filters == null)
-                throw new ArgumentNullException(nameof(filters));
+                    // Create decomposed services
+                    var stateManagementService = await _stateManagementServiceFactory.CreateAlertStateManagementServiceAsync(configuration.AlertConfig);
+                    var healthMonitoringService = await _healthMonitoringServiceFactory.CreateAlertHealthMonitoringServiceAsync(configuration.AlertConfig);
+                    var orchestrationService = await _orchestrationServiceFactory.CreateAlertOrchestrationServiceAsync(
+                        stateManagementService,
+                        healthMonitoringService,
+                        configuration.AlertConfig);
 
-            var alertService = new AlertService(messageBusService, loggingService ?? _loggingService, _serializationService);
-            var correlationIdString = correlationId == default ? default(FixedString64Bytes) : new FixedString64Bytes(correlationId.ToString());
+                    // Create subsystem services (legacy compatibility)
+                    var channelService = await CreateChannelServiceAsync(configuration.AlertConfig, finalCorrelationId);
+                    var filterService = CreateFilterService(configuration.AlertConfig, finalCorrelationId);
+                    var suppressionService = CreateSuppressionService(configuration.AlertConfig, finalCorrelationId);
 
-            foreach (var channel in channels)
-                alertService.RegisterChannel(channel, correlationIdString);
+                    // Create main AlertService with decomposed services
+                    var alertService = new AlertService(
+                        orchestrationService,
+                        stateManagementService,
+                        healthMonitoringService,
+                        channelService,
+                        filterService,
+                        suppressionService,
+                        configuration,
+                        _messageBusService,
+                        _loggingService,
+                        _serializationService,
+                        _poolingService,
+                        _profilerService);
 
-            foreach (var filter in filters)
-                alertService.AddFilter(filter, correlationIdString);
+                    _loggingService?.LogInfo(
+                        "AlertService created successfully with decomposed architecture",
+                        correlationId: finalCorrelationId);
 
-            LogInfo("Created custom AlertService configuration", correlationId);
-            return alertService;
+                    return alertService;
+                }
+                catch (Exception ex)
+                {
+                    _loggingService?.LogError(
+                        ex,
+                        "Failed to create AlertService: {ErrorMessage}",
+                        ex.Message,
+                        correlationId: finalCorrelationId);
+                    throw;
+                }
+            }
         }
 
 
@@ -121,17 +172,31 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// </summary>
         public AlertServiceConfiguration GetDefaultConfiguration()
         {
-            return new AlertServiceConfiguration();
+            return new AlertServiceConfiguration
+            {
+                Environment = AlertEnvironmentType.Production,
+                EnableUnityIntegration = true,
+                EnableMetrics = true,
+                EnableTelemetry = true,
+                MaxConcurrentOperations = 50,
+                MaxQueuedAlerts = 1000,
+                StartupTimeout = TimeSpan.FromSeconds(30),
+                ShutdownTimeout = TimeSpan.FromSeconds(10),
+                HealthCheckInterval = TimeSpan.FromMinutes(1),
+                MetricsInterval = TimeSpan.FromSeconds(30),
+                MaxMemoryUsageMB = 100,
+                AlertConfig = CreateDefaultAlertConfig()
+            };
         }
-
 
         /// <summary>
         /// Creates a pre-configured AlertService for development environments.
         /// </summary>
         public async UniTask<IAlertService> CreateDevelopmentAlertServiceAsync(ILoggingService loggingService, IMessageBusService messageBusService = null)
         {
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertServiceFactory.CreateDevelopmentAlertServiceAsync", "Development");
             var config = GetDevelopmentConfiguration();
-            return await CreateAlertServiceAsync(config, Guid.NewGuid());
+            return await CreateAlertServiceAsync(config, correlationId);
         }
 
         /// <summary>
@@ -139,16 +204,19 @@ namespace AhBearStudios.Core.Alerting.Factories
         /// </summary>
         public async UniTask<IAlertService> CreateProductionAlertServiceAsync(ILoggingService loggingService, IMessageBusService messageBusService)
         {
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertServiceFactory.CreateProductionAlertServiceAsync", "Production");
             var config = GetProductionConfiguration();
-            return await CreateAlertServiceAsync(config, Guid.NewGuid());
+            return await CreateAlertServiceAsync(config, correlationId);
         }
 
         /// <summary>
         /// Creates a minimal AlertService for testing scenarios.
         /// </summary>
-        public IAlertService CreateTestAlertService(IMessageBusService messageBusService = null)
+        public async UniTask<IAlertService> CreateTestAlertServiceAsync(IMessageBusService messageBusService = null)
         {
-            return CreateAlertService(messageBusService);
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertServiceFactory.CreateTestAlertServiceAsync", "Test");
+            var config = GetTestConfiguration();
+            return await CreateAlertServiceAsync(config, correlationId);
         }
 
         /// <summary>
@@ -169,24 +237,7 @@ namespace AhBearStudios.Core.Alerting.Factories
                 HealthCheckInterval = TimeSpan.FromMinutes(1),
                 MetricsInterval = TimeSpan.FromSeconds(30),
                 MaxMemoryUsageMB = 50,
-                AlertConfig = new AlertConfig
-                {
-                    MinimumSeverity = AlertSeverity.Debug,
-                    EnableSuppression = true,
-                    SuppressionWindow = TimeSpan.FromMinutes(2),
-                    EnableAsyncProcessing = false,
-                    MaxConcurrentAlerts = 50,
-                    ProcessingTimeout = TimeSpan.FromSeconds(10),
-                    EnableHistory = true,
-                    HistoryRetention = TimeSpan.FromHours(8),
-                    MaxHistoryEntries = 5000,
-                    EnableAggregation = false,
-                    EnableCorrelationTracking = true,
-                    AlertBufferSize = 500,
-                    EnableUnityIntegration = true,
-                    EnableMetrics = true,
-                    EnableCircuitBreakerIntegration = false
-                }
+                AlertConfig = CreateDevelopmentAlertConfig()
             };
         }
 
@@ -208,48 +259,24 @@ namespace AhBearStudios.Core.Alerting.Factories
                 HealthCheckInterval = TimeSpan.FromMinutes(1),
                 MetricsInterval = TimeSpan.FromSeconds(30),
                 MaxMemoryUsageMB = 200,
-                AlertConfig = new AlertConfig
-                {
-                    MinimumSeverity = AlertSeverity.Warning,
-                    EnableSuppression = true,
-                    SuppressionWindow = TimeSpan.FromMinutes(5),
-                    EnableAsyncProcessing = true,
-                    MaxConcurrentAlerts = 200,
-                    ProcessingTimeout = TimeSpan.FromSeconds(30),
-                    EnableHistory = true,
-                    HistoryRetention = TimeSpan.FromHours(48),
-                    MaxHistoryEntries = 20000,
-                    EnableAggregation = true,
-                    AggregationWindow = TimeSpan.FromMinutes(2),
-                    MaxAggregationSize = 100,
-                    EnableCorrelationTracking = true,
-                    AlertBufferSize = 2000,
-                    EnableUnityIntegration = false,
-                    EnableMetrics = true,
-                    EnableCircuitBreakerIntegration = true
-                }
+                AlertConfig = CreateProductionAlertConfig()
             };
         }
 
         /// <summary>
         /// Creates configuration from a dictionary of settings.
-        /// Simple creation only - assumes settings are pre-validated.
         /// </summary>
         public AlertServiceConfiguration CreateConfigurationFromSettings(Dictionary<string, object> settings)
         {
             if (settings == null)
                 throw new ArgumentNullException(nameof(settings));
 
-            // Start with default settings
             var configBuilder = new Dictionary<string, object>(_defaultSettings);
-            
-            // Override with provided settings
             foreach (var setting in settings)
             {
                 configBuilder[setting.Key] = setting.Value;
             }
 
-            // Build configuration using safe type conversion
             var config = new AlertServiceConfiguration
             {
                 Environment = GetValueOrDefault<AlertEnvironmentType>(configBuilder, "Environment", AlertEnvironmentType.Production),
@@ -262,52 +289,162 @@ namespace AhBearStudios.Core.Alerting.Factories
                 StartupTimeout = GetValueOrDefault<TimeSpan>(configBuilder, "StartupTimeout", TimeSpan.FromSeconds(30)),
                 ShutdownTimeout = GetValueOrDefault<TimeSpan>(configBuilder, "ShutdownTimeout", TimeSpan.FromSeconds(10)),
                 HealthCheckInterval = GetValueOrDefault<TimeSpan>(configBuilder, "HealthCheckInterval", TimeSpan.FromMinutes(1)),
-                MetricsInterval = GetValueOrDefault<TimeSpan>(configBuilder, "MetricsInterval", TimeSpan.FromSeconds(30))
+                MetricsInterval = GetValueOrDefault<TimeSpan>(configBuilder, "MetricsInterval", TimeSpan.FromSeconds(30)),
+                AlertConfig = CreateDefaultAlertConfig()
             };
 
-            LogInfo("Created configuration from settings");
+            var correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertServiceFactory.CreateConfigurationFromSettings", "ConfigFromSettings");
+            _loggingService?.LogInfo("Created configuration from settings", correlationId: correlationId);
             return config;
         }
 
-        private T GetValueOrDefault<T>(Dictionary<string, object> settings, string key, T defaultValue)
-        {
-            if (settings.TryGetValue(key, out var value) && value is T typedValue)
-                return typedValue;
-            return defaultValue;
-        }
-
-
         #endregion
+
 
         #region Private Helper Methods
 
-        private async UniTask CreateAndRegisterChannels(IAlertService alertService, IReadOnlyList<ChannelConfig> channelConfigs, Guid correlationId)
+        /// <summary>
+        /// Creates a channel service for the alert system.
+        /// </summary>
+        private async UniTask<IAlertChannelService> CreateChannelServiceAsync(AlertConfig config, Guid correlationId)
         {
-            // Convert Guid correlationId to FixedString64Bytes for interface compatibility
-            var correlationIdString = correlationId == default ? default(FixedString64Bytes) : new FixedString64Bytes(correlationId.ToString());
-
-            foreach (var channelConfig in channelConfigs)
+            var channelServiceConfig = new AlertChannelServiceConfig
             {
-                if (!channelConfig.IsEnabled)
-                    continue;
+                MaxChannels = 10,
+                EnableMetrics = config.EnableMetrics,
+                DefaultTimeout = TimeSpan.FromSeconds(30)
+            };
 
-                IAlertChannel channel = channelConfig.ChannelType switch
-                {
-                    AlertChannelType.Log => new LogAlertChannel(_loggingService, null),
-                    AlertChannelType.Console => new ConsoleAlertChannel(null),
-                    AlertChannelType.Memory => new MemoryAlertChannel(null, 1000),
-                    _ => throw new NotSupportedException($"Channel type '{channelConfig.ChannelType}' is not supported")
-                };
-
-                // The channelConfig is already a ChannelConfig, so use it directly
-                var config = channelConfig;
-
-                await channel.InitializeAsync(config, correlationId);
-                alertService.RegisterChannel(channel, correlationIdString);
-            }
+            return new AlertChannelService(channelServiceConfig, _loggingService, _messageBusService);
         }
 
+        /// <summary>
+        /// Creates a filter service for the alert system.
+        /// </summary>
+        private IAlertFilterService CreateFilterService(AlertConfig config, Guid correlationId)
+        {
+            return new AlertFilterService(_loggingService);
+        }
 
+        /// <summary>
+        /// Creates a suppression service for the alert system.
+        /// </summary>
+        private IAlertSuppressionService CreateSuppressionService(AlertConfig config, Guid correlationId)
+        {
+            return new AlertSuppressionService(_loggingService);
+        }
+
+        /// <summary>
+        /// Creates default alert configuration.
+        /// </summary>
+        private AlertConfig CreateDefaultAlertConfig()
+        {
+            return new AlertConfig
+            {
+                MinimumSeverity = AlertSeverity.Info,
+                EnableSuppression = true,
+                SuppressionWindow = TimeSpan.FromMinutes(1),
+                EnableAsyncProcessing = true,
+                MaxConcurrentAlerts = 50,
+                ProcessingTimeout = TimeSpan.FromSeconds(30),
+                EnableHistory = true,
+                HistoryRetentionHours = 24,
+                MaxHistoryEntries = 10000,
+                EnableAggregation = false,
+                EnableCorrelationTracking = true,
+                AlertBufferSize = 1000,
+                EnableUnityIntegration = true,
+                EnableMetrics = true,
+                EnableCircuitBreakerIntegration = true,
+                HealthCheckInterval = TimeSpan.FromMinutes(1),
+                HealthCheckTimeout = TimeSpan.FromSeconds(10),
+                CircuitBreakerFailureThreshold = 5,
+                CircuitBreakerRecoveryTimeout = TimeSpan.FromMinutes(1),
+                EmergencyModeThreshold = 10,
+                StatisticsUpdateInterval = TimeSpan.FromMinutes(1),
+                Channels = new List<ChannelConfig>(),
+                Filters = new List<FilterConfig>()
+            };
+        }
+
+        /// <summary>
+        /// Creates alert configuration optimized for development.
+        /// </summary>
+        private AlertConfig CreateDevelopmentAlertConfig()
+        {
+            var config = CreateDefaultAlertConfig();
+            config.MinimumSeverity = AlertSeverity.Debug;
+            config.EnableAsyncProcessing = false;
+            config.ProcessingTimeout = TimeSpan.FromSeconds(10);
+            config.HistoryRetentionHours = 8;
+            config.MaxHistoryEntries = 5000;
+            config.AlertBufferSize = 500;
+            config.EnableCircuitBreakerIntegration = false;
+            return config;
+        }
+
+        /// <summary>
+        /// Creates alert configuration optimized for production.
+        /// </summary>
+        private AlertConfig CreateProductionAlertConfig()
+        {
+            var config = CreateDefaultAlertConfig();
+            config.MinimumSeverity = AlertSeverity.Warning;
+            config.SuppressionWindow = TimeSpan.FromMinutes(5);
+            config.MaxConcurrentAlerts = 200;
+            config.ProcessingTimeout = TimeSpan.FromSeconds(30);
+            config.HistoryRetentionHours = 48;
+            config.MaxHistoryEntries = 20000;
+            config.EnableAggregation = true;
+            config.AlertBufferSize = 2000;
+            config.EnableUnityIntegration = false;
+            return config;
+        }
+
+        /// <summary>
+        /// Creates alert configuration optimized for testing.
+        /// </summary>
+        private AlertConfig CreateTestAlertConfig()
+        {
+            var config = CreateDefaultAlertConfig();
+            config.MinimumSeverity = AlertSeverity.Debug;
+            config.EnableSuppression = false;
+            config.EnableAsyncProcessing = false;
+            config.ProcessingTimeout = TimeSpan.FromSeconds(5);
+            config.EnableHistory = false;
+            config.MaxHistoryEntries = 100;
+            config.EnableAggregation = false;
+            config.AlertBufferSize = 50;
+            config.EnableCircuitBreakerIntegration = false;
+            config.EmergencyModeThreshold = 50; // Higher threshold for tests
+            return config;
+        }
+
+        /// <summary>
+        /// Gets test-specific configuration.
+        /// </summary>
+        private AlertServiceConfiguration GetTestConfiguration()
+        {
+            return new AlertServiceConfiguration
+            {
+                Environment = AlertEnvironmentType.Testing,
+                EnableUnityIntegration = false,
+                EnableMetrics = false,
+                EnableTelemetry = false,
+                MaxConcurrentOperations = 10,
+                MaxQueuedAlerts = 100,
+                StartupTimeout = TimeSpan.FromSeconds(5),
+                ShutdownTimeout = TimeSpan.FromSeconds(2),
+                HealthCheckInterval = TimeSpan.FromMinutes(5),
+                MetricsInterval = TimeSpan.FromMinutes(1),
+                MaxMemoryUsageMB = 10,
+                AlertConfig = CreateTestAlertConfig()
+            };
+        }
+
+        /// <summary>
+        /// Creates default settings dictionary.
+        /// </summary>
         private Dictionary<string, object> CreateDefaultSettings()
         {
             return new Dictionary<string, object>
@@ -322,17 +459,16 @@ namespace AhBearStudios.Core.Alerting.Factories
             };
         }
 
-        private void LogInfo(string message, Guid correlationId = default)
+        /// <summary>
+        /// Gets a value from settings dictionary with type safety and defaults.
+        /// </summary>
+        private T GetValueOrDefault<T>(Dictionary<string, object> settings, string key, T defaultValue)
         {
-            _loggingService?.LogInfo($"[AlertServiceFactory] {message}", correlationId.ToString(), "AlertServiceFactory");
-        }
-
-        private void LogError(string message, Guid correlationId = default)
-        {
-            _loggingService?.LogError($"[AlertServiceFactory] {message}", correlationId.ToString(), "AlertServiceFactory");
+            if (settings.TryGetValue(key, out var value) && value is T typedValue)
+                return typedValue;
+            return defaultValue;
         }
 
         #endregion
     }
-
 }

@@ -617,18 +617,6 @@ namespace AhBearStudios.Core.Logging
 - ❌ **Hardcoded profiler tags**: Use ProfilerTag.CreateMethodTag() or ProfilerTag.CreateSystemTag() for consistent naming
 - ❌ **Bypassing IProfilerService**: Use dependency injection instead of direct ProfilerMarker instantiation
 
-## Testing Strategy
-
-### Test Organization
-- Edit Mode Tests: Unit tests for POCO systems
-- Play Mode Tests: Integration tests requiring Unity runtime
-- Performance Tests: Profiler-based benchmarks
-
-### Test Naming
-```csharp
-[Test]
-public void MethodName_StateUnderTest_ExpectedBehavior()
-```
 
 ## Unity Integration
 
@@ -730,6 +718,57 @@ public void ProcessData()
 - Provides additional capabilities: custom metrics, thresholds, production monitoring
 - Supports runtime enable/disable and sampling rate control
 - Integrates with health checking and alerting systems
+
+## Testing Strategy
+
+### **ALWAYS Follow CLAUDETESTS.md Guidelines**
+
+For comprehensive testing guidelines, patterns, and TDD best practices, **refer to [CLAUDETESTS.md](CLAUDETESTS.md)**. This document covers:
+
+- **TDD Test Double Patterns**: Proper use of Stubs, Spies, Fakes, and Null Objects
+- **Performance Testing**: Frame budget compliance and zero-allocation validation
+- **Unity Test Runner**: Edit Mode and Play Mode test compatibility
+- **Message Testing**: IMessage validation and correlation tracking
+- **Integration Testing**: End-to-end workflow and service interaction testing
+
+### Quick Testing Principles
+
+```csharp
+// ✅ CORRECT: Use shared test doubles from CLAUDETESTS.md guidelines
+public class MyServiceTests : BaseServiceTest
+{
+    [Test]
+    public void MyMethod_WithValidInput_ProducesExpectedResult()
+    {
+        // Arrange
+        var correlationId = CreateTestCorrelationId();
+        var testData = CreateValidTestData();
+
+        // Act
+        var result = await ExecuteWithPerformanceMeasurementAsync(
+            () => _service.ProcessDataAsync(testData, correlationId),
+            "ProcessData",
+            TestConstants.FrameBudget);
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.True);
+        AssertMessagePublished<DataProcessedMessage>();
+        AssertLogContains("Data processed successfully");
+        AssertNoErrors();
+    }
+}
+```
+
+### Test Organization
+- Edit Mode Tests: Unit tests for POCO systems
+- Play Mode Tests: Integration tests requiring Unity runtime
+- Performance Tests: Profiler-based benchmarks
+
+### Test Naming
+```csharp
+[Test]
+public void MethodName_StateUnderTest_ExpectedBehavior()
+```
 
 ## Remember
 

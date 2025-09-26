@@ -41,7 +41,7 @@ namespace AhBearStudios.Core.Alerting.Builders
         private bool _logErrors = true;
         private bool _escalateCriticalErrors = true;
         private bool _autoDisposeOnShutdown = true;
-        private Guid _correlationId = Guid.NewGuid();
+        private Guid _correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertServiceConfigurationBuilder", "Initialization");
 
         #endregion
 
@@ -425,7 +425,7 @@ namespace AhBearStudios.Core.Alerting.Builders
             _logErrors = true;
             _escalateCriticalErrors = true;
             _autoDisposeOnShutdown = true;
-            _correlationId = Guid.NewGuid();
+            _correlationId = DeterministicIdGenerator.GenerateCorrelationId("AlertServiceConfigurationBuilder.Reset", "Reset");
 
             return this;
         }

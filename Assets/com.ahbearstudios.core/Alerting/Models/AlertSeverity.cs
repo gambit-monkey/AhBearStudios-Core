@@ -33,23 +33,29 @@ public enum AlertSeverity : byte
     Critical = 4,
 
     /// <summary>
+    /// Error severity alert.
+    /// Indicates an error condition that requires attention but is not immediately critical.
+    /// </summary>
+    Error = 5,
+
+    /// <summary>
     /// Debug-level alert severity.
     /// Typically used for development or diagnostic purposes where no
     /// immediate action is required.
     /// </summary>
-    Debug = 5,
+    Debug = 6,
 
     /// <summary>
     /// Informational alert severity.
     /// Used to convey general information or updates that do not indicate an issue
     /// and do not require any action.
     /// </summary>
-    Info = 6,
+    Info = 7,
 
     /// <summary>
     /// Emergency-level alert severity.
     /// Indicates a critical and life-threatening situation that necessitates
     /// immediate and decisive action.
     /// </summary>
-    Emergency = 7
+    Emergency = 8
 }

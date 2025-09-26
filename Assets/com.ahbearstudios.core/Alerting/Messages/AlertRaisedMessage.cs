@@ -227,11 +227,15 @@ namespace AhBearStudios.Core.Alerting.Messages
         {
             return severity switch
             {
-                AlertSeverity.Emergency => MessagePriority.Critical,
-                AlertSeverity.Critical => MessagePriority.High,
-                AlertSeverity.Warning => MessagePriority.Normal,
-                AlertSeverity.Info => MessagePriority.Low,
-                AlertSeverity.Debug => MessagePriority.VeryLow,
+                AlertSeverity.Emergency => MessagePriority.Critical,   // Highest priority
+                AlertSeverity.Critical => MessagePriority.Critical,    // Critical severity gets critical priority
+                AlertSeverity.Error => MessagePriority.High,           // Error conditions need high attention
+                AlertSeverity.High => MessagePriority.High,            // High severity gets high priority
+                AlertSeverity.Warning => MessagePriority.Normal,       // Warning level is normal priority
+                AlertSeverity.Medium => MessagePriority.Normal,        // Medium severity gets normal priority
+                AlertSeverity.Low => MessagePriority.Low,              // Low severity gets low priority
+                AlertSeverity.Info => MessagePriority.Low,             // Informational is low priority
+                AlertSeverity.Debug => MessagePriority.VeryLow,        // Debug is lowest priority
                 _ => MessagePriority.Normal
             };
         }

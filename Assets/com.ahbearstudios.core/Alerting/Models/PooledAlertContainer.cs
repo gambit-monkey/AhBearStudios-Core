@@ -178,13 +178,13 @@ namespace AhBearStudios.Core.Alerting.Models
                 {
                     _currentAlert = new Alert
                     {
-                        Id = Guid.NewGuid(),
+                        Id = DeterministicIdGenerator.GenerateAlertId(message, source.ToString(), correlationId),
                         Message = message,
                         Severity = severity,
                         Source = source,
                         Tag = tag,
                         TimestampTicks = DateTime.UtcNow.Ticks,
-                        CorrelationId = correlationId == default ? Guid.NewGuid() : correlationId,
+                        CorrelationId = correlationId == default ? DeterministicIdGenerator.GenerateCorrelationId("PooledAlert", message) : correlationId,
                         OperationId = operationId,
                         Context = context,
                         State = AlertState.Active

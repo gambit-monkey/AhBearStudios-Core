@@ -107,6 +107,7 @@ namespace AhBearStudios.Core.Alerting.Messages
 
         #region Static Factory Methods
 
+
         /// <summary>
         /// Creates a new AlertDeliveryFailedMessage with proper validation and defaults.
         /// </summary>

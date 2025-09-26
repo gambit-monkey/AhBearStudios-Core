@@ -164,7 +164,7 @@ namespace AhBearStudios.Core.Alerting.Configs
         /// Gets the correlation ID for tracking this service instance across distributed operations.
         /// Used for debugging and tracing service interactions.
         /// </summary>
-        public Guid CorrelationId { get; init; } = Guid.NewGuid();
+        public Guid CorrelationId { get; init; } = DeterministicIdGenerator.GenerateCorrelationId("AlertServiceConfiguration", "Default");
 
         /// <summary>
         /// Validates the service configuration for correctness and consistency.

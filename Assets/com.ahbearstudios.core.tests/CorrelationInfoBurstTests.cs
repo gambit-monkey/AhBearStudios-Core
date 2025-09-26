@@ -24,13 +24,16 @@ namespace AhBearStudios.Core.Tests
             {
                 // Create a Burst-compatible CorrelationInfo
                 var correlationId = new FixedString128Bytes();
-                correlationId.Append("test-correlation-id");
+                // Build string manually for Burst compatibility
+                correlationId.Append((byte)'t'); correlationId.Append((byte)'e'); correlationId.Append((byte)'s'); correlationId.Append((byte)'t');
+                correlationId.Append((byte)'-'); correlationId.Append((byte)'i'); correlationId.Append((byte)'d');
 
                 var operation = new FixedString128Bytes();
-                operation.Append("TestOperation");
+                operation.Append((byte)'T'); operation.Append((byte)'e'); operation.Append((byte)'s'); operation.Append((byte)'t');
+                operation.Append((byte)'O'); operation.Append((byte)'p');
 
                 var serviceName = new FixedString64Bytes();
-                serviceName.Append("TestService");
+                serviceName.Append((byte)'T'); serviceName.Append((byte)'e'); serviceName.Append((byte)'s'); serviceName.Append((byte)'t');
 
                 // Use the Burst-compatible constructor with minimal parameters
                 var correlationInfo = new CorrelationInfo(
@@ -80,7 +83,9 @@ namespace AhBearStudios.Core.Tests
                 // Generate a correlation ID using existing functionality
                 // Since we're in Burst context, we'll create a simple deterministic ID
                 var generatedId = new FixedString128Bytes();
-                generatedId.Append("burst-generated-123456");
+                // Manually build string to avoid managed string operations
+                generatedId.Append((byte)'b'); generatedId.Append((byte)'u'); generatedId.Append((byte)'r'); generatedId.Append((byte)'s'); generatedId.Append((byte)'t');
+                generatedId.Append((byte)'-'); generatedId.Append((byte)'1'); generatedId.Append((byte)'2'); generatedId.Append((byte)'3');
 
                 // Store results for verification
                 Results[0] = isRoot ? 1u : 0u;
@@ -125,13 +130,15 @@ namespace AhBearStudios.Core.Tests
         {
             // This test verifies the CreateNative method works correctly
             var correlationId = new FixedString128Bytes();
-            correlationId.Append("native-test-id");
+            // Build string manually for Burst compatibility
+            correlationId.Append((byte)'n'); correlationId.Append((byte)'a'); correlationId.Append((byte)'t'); correlationId.Append((byte)'i'); correlationId.Append((byte)'v'); correlationId.Append((byte)'e');
+            correlationId.Append((byte)'-'); correlationId.Append((byte)'i'); correlationId.Append((byte)'d');
 
             var operation = new FixedString128Bytes();
-            operation.Append("NativeOp");
+            operation.Append((byte)'N'); operation.Append((byte)'a'); operation.Append((byte)'t'); operation.Append((byte)'i'); operation.Append((byte)'v'); operation.Append((byte)'e');
 
             var serviceName = new FixedString64Bytes();
-            serviceName.Append("NativeService");
+            serviceName.Append((byte)'N'); serviceName.Append((byte)'a'); serviceName.Append((byte)'t'); serviceName.Append((byte)'i'); serviceName.Append((byte)'v'); serviceName.Append((byte)'e');
 
             // Act
             var correlationInfo = CorrelationInfo.CreateNative(
@@ -190,14 +197,15 @@ namespace AhBearStudios.Core.Tests
             public void Execute(int index)
             {
                 var operation = new FixedString128Bytes();
-                operation.Append("Op-");
+                // Build string manually for Burst compatibility
+                operation.Append((byte)'O'); operation.Append((byte)'p'); operation.Append((byte)'-');
                 operation.Append(index); // FixedString can append int directly
 
                 // Generate correlation ID in Burst context
                 var correlationId = new FixedString128Bytes();
-                correlationId.Append("parallel-");
+                correlationId.Append((byte)'p'); correlationId.Append((byte)'a'); correlationId.Append((byte)'r'); correlationId.Append((byte)'a'); correlationId.Append((byte)'l'); correlationId.Append((byte)'l'); correlationId.Append((byte)'e'); correlationId.Append((byte)'l'); correlationId.Append((byte)'-');
                 correlationId.Append(index); // FixedString can append int directly
-                correlationId.Append("-seed");
+                correlationId.Append((byte)'-'); correlationId.Append((byte)'s'); correlationId.Append((byte)'e'); correlationId.Append((byte)'e'); correlationId.Append((byte)'d');
 
                 var info = new CorrelationInfo(
                     correlationId: correlationId,

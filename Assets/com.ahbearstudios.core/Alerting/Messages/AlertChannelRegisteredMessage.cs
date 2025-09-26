@@ -4,6 +4,7 @@ using AhBearStudios.Core.Common.Utilities;
 using AhBearStudios.Core.Messaging.Messages;
 using AhBearStudios.Core.Messaging.Models;
 using AhBearStudios.Core.Alerting.Configs;
+using AhBearStudios.Core.Alerting.Models;
 
 namespace AhBearStudios.Core.Alerting.Messages
 {
@@ -62,16 +63,22 @@ namespace AhBearStudios.Core.Alerting.Messages
 
         #endregion
 
-        #region Helper Properties
+        #region Computed Properties
 
         /// <summary>
         /// Gets the DateTime representation of the message timestamp.
         /// </summary>
         public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
 
+        /// <summary>
+        /// Gets the channel type from the configuration.
+        /// </summary>
+        public AlertChannelType ChannelType => Configuration?.ChannelType ?? AlertChannelType.Log;
+
         #endregion
 
         #region Static Factory Methods
+
 
         /// <summary>
         /// Creates a new AlertChannelRegisteredMessage with proper validation and defaults.

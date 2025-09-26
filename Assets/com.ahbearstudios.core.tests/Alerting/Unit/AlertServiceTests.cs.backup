@@ -1,0 +1,878 @@
+using System;
+using System.Linq;
+using System.Threading;
+using NUnit.Framework;
+using Unity.Collections;
+using ZLinq;
+using Cysharp.Threading.Tasks;
+using AhBearStudios.Core.Alerting;
+using AhBearStudios.Core.Alerting.Models;
+using AhBearStudios.Core.Alerting.Messages;
+using AhBearStudios.Core.Alerting.Configs;
+using AhBearStudios.Core.Alerting.Builders;
+using AhBearStudios.Core.Alerting.Services;
+using AhBearStudios.Core.Alerting.Channels;
+using AhBearStudios.Core.Alerting.Filters;
+using AhBearStudios.Core.Tests.Shared.Base;
+using AhBearStudios.Core.Tests.Shared.Utilities;
+using AhBearStudios.Core.Tests.Shared.Channels;
+
+namespace AhBearStudios.Core.Tests.Alerting.Unit
+{
+    /// <summary>
+    /// Comprehensive unit tests for AlertService functionality following CLAUDETESTS.md guidelines.
+    /// Tests service lifecycle, alert raising, filtering, channel management, and production readiness.
+    /// Enhanced with performance testing, frame budget compliance, and TDD test double patterns.
+    /// Validates zero-allocation patterns and correlation tracking for Unity game development.
+    /// </summary>
+    [TestFixture]
+    public class AlertServiceTests : BaseServiceTest
+    {
+        private AlertService _alertService;
+        private AlertServiceConfiguration _configuration;
+        private IAlertChannelService _channelService;
+        private IAlertFilterService _filterService;
+        private IAlertSuppressionService _suppressionService;
+
+        [SetUp]
+        public override void Setup()
+        {
+            // Initialize shared test doubles from BaseServiceTest
+            base.Setup();
+
+            // Create test configuration using AlertConfigBuilder (no dependencies required)
+            _configuration = new AlertConfigBuilder()
+                .ForProduction()
+                .WithMinimumSeverity(AlertSeverity.Info)
+                .BuildServiceConfiguration();
+
+            // Create integrated services using shared test doubles (CLAUDETESTS.md compliance)
+            _channelService = new AlertChannelService(
+                new AlertChannelServiceConfig(),
+                StubLogging,           // Shared stub from BaseServiceTest
+                SpyMessageBus);        // Shared spy from BaseServiceTest
+
+            _filterService = new AlertFilterService(StubLogging);        // Shared stub
+            _suppressionService = new AlertSuppressionService(StubLogging); // Shared stub
+
+            // Create AlertService using all shared test doubles
+            _alertService = new AlertService(
+                _configuration,
+                _channelService,
+                _filterService,
+                _suppressionService,
+                SpyMessageBus,         // Shared spy for message publishing
+                StubLogging,           // Shared stub for logging
+                FakeSerialization,     // Shared fake for serialization
+                FakePooling);          // Shared fake for pooling operations
+        }
+
+        [TearDown]
+        public override void TearDown()
+        {
+            _alertService?.Dispose();
+            _channelService?.Dispose();
+            _filterService?.Dispose();
+            _suppressionService?.Dispose();
+
+            base.TearDown();
+        }
+
+        #region Service Lifecycle Tests
+
+        [Test]
+        public void Constructor_WithValidConfiguration_InitializesCorrectly()
+        {
+            // Arrange & Act done in Setup
+
+            // Assert
+            Assert.That(_alertService.IsEnabled, Is.True);
+            Assert.That(_alertService.Configuration, Is.Not.Null);
+            Assert.That(_alertService.ChannelService, Is.Not.Null);
+            Assert.That(_alertService.FilterService, Is.Not.Null);
+            Assert.That(_alertService.SuppressionService, Is.Not.Null);
+
+            AssertLogContains("Alert service initialized with integrated subsystems");
+        }
+
+        [Test]
+        public void Constructor_WithNullConfiguration_ThrowsArgumentNullException()
+        {
+            // Arrange, Act & Assert
+            Assert.Throws<ArgumentNullException>(() =>
+                new AlertService(null, _channelService, _filterService, _suppressionService));
+        }
+
+        [Test]
+        public void Constructor_WithNullChannelService_ThrowsArgumentNullException()
+        {
+            // Arrange, Act & Assert
+            Assert.Throws<ArgumentNullException>(() =>
+                new AlertService(_configuration, null, _filterService, _suppressionService));
+        }
+
+        [Test]
+        public async UniTask StartAsync_WhenNotStarted_StartsServiceSuccessfully()
+        {
+            // Arrange
+            var correlationId = CreateTestCorrelationId();
+
+            // Act - Validate service startup performance
+            await AssertFrameBudgetComplianceAsync(async () =>
+            {
+                await _alertService.StartAsync(correlationId);
+            }, "ServiceStartup");
+
+            // Assert - Service state
+            Assert.That(_alertService.IsEnabled, Is.True);
+
+            // Assert - Logging and correlation tracking
+            AssertLogContains("Alert service started");
+            AssertCorrelationTrackingMaintained(correlationId);
+
+            // Assert - Service health after startup
+            AssertAllServicesHealthy();
+        }
+
+        [Test]
+        public async UniTask StopAsync_WhenStarted_StopsServiceGracefully()
+        {
+            // Arrange
+            var correlationId = CreateTestCorrelationId();
+            await _alertService.StartAsync(correlationId);
+
+            // Act
+            await _alertService.StopAsync(correlationId);
+
+            // Assert
+            Assert.That(_alertService.IsEnabled, Is.False);
+            AssertLogContains("Alert service stopped");
+        }
+
+        [Test]
+        public async UniTask RestartAsync_WhenRunning_RestartsServiceSuccessfully()
+        {
+            // Arrange
+            var correlationId = CreateTestCorrelationId();
+            await _alertService.StartAsync(correlationId);
+
+            // Act
+            await _alertService.RestartAsync(correlationId);
+
+            // Assert
+            Assert.That(_alertService.IsEnabled, Is.True);
+            AssertLogContains("Alert service restarted");
+        }
+
+        [Test]
+        public void Dispose_WhenCalled_DisposesServiceCleanly()
+        {
+            // Arrange
+            var alertService = new AlertService(
+                _configuration,
+                _channelService,
+                _filterService,
+                _suppressionService,
+                SpyMessageBus,
+                StubLogging);
+
+            // Act
+            alertService.Dispose();
+
+            // Assert
+            Assert.That(alertService.IsEnabled, Is.False);
+            AssertLogContains("Alert service disposed");
+        }
+
+        #endregion
+
+        #region Alert Raising Tests
+
+        [Test]
+        public async UniTask RaiseAlert_WithValidStringMessage_RaisesAlertSuccessfully()
+        {
+            // Arrange
+            var message = TestConstants.SampleAlertMessage;
+            var severity = AlertSeverity.Warning;
+            var source = TestConstants.TestSource;
+            var correlationId = CreateTestCorrelationId();
+
+            // Act - Validate frame budget compliance for alert raising (critical operation)
+            await AssertFrameBudgetComplianceAsync(async () =>
+            {
+                _alertService.RaiseAlert(message, severity, source, correlationId: correlationId);
+                await UniTask.CompletedTask; // Ensure async compatibility
+            }, "RaiseAlert_StringMessage");
+
+            // Assert - Basic functionality
+            var activeAlerts = _alertService.GetActiveAlerts();
+            Assert.That(activeAlerts, Is.Not.Empty);
+            Assert.That(activeAlerts.First().Severity, Is.EqualTo(severity));
+            Assert.That(activeAlerts.First().Message.ToString(), Is.EqualTo(message));
+
+            // Assert - Message bus integration with shared spy
+            AssertMessagePublished<AlertRaisedMessage>();
+            var publishedMessage = GetLastMessage<AlertRaisedMessage>();
+            Assert.That(publishedMessage.CorrelationId, Is.EqualTo(correlationId));
+
+            // Assert - Logging integration with shared stub
+            AssertLogContains($"Alert raised: {severity}");
+            AssertCorrelationTrackingMaintained(correlationId);
+
+            // Assert - All services remain healthy
+            AssertAllServicesHealthy();
+        }
+
+        [Test]
+        public async UniTask RaiseAlert_WithFixedStringMessage_RaisesAlertSuccessfully()
+        {
+            // Arrange
+            var message = new FixedString512Bytes(TestConstants.SampleAlertMessage);
+            var severity = AlertSeverity.Error;
+            var source = new FixedString64Bytes(TestConstants.TestSource);
+            var correlationId = CreateTestCorrelationId();
+
+            // Act - Validate zero allocations for Unity Collections usage (critical for performance)
+            await AssertZeroAllocationsAsync(async () =>
+            {
+                _alertService.RaiseAlert(message, severity, source, correlationId: correlationId);
+                await UniTask.CompletedTask;
+            }, "RaiseAlert_FixedStringMessage");
+
+            // Assert - Basic functionality
+            var activeAlerts = _alertService.GetActiveAlerts();
+            Assert.That(activeAlerts, Is.Not.Empty);
+            Assert.That(activeAlerts.First().Severity, Is.EqualTo(severity));
+
+            // Assert - Message publishing and correlation tracking
+            AssertMessagePublished<AlertRaisedMessage>();
+            AssertMessageFlowCompleted<AlertRaisedMessage>(correlationId);
+
+            // Assert - Service health and integration
+            AssertAllServicesHealthy();
+        }
+
+        [Test]
+        public void RaiseAlert_WithPreconstructedAlert_RaisesAlertSuccessfully()
+        {
+            // Arrange
+            var alert = Alert.Create(
+                TestConstants.SampleAlertMessage,
+                AlertSeverity.Critical,
+                TestConstants.TestSource,
+                correlationId: CreateTestCorrelationId());
+
+            // Act
+            _alertService.RaiseAlert(alert);
+
+            // Assert
+            var activeAlerts = _alertService.GetActiveAlerts();
+            Assert.That(activeAlerts, Is.Not.Empty);
+            Assert.That(activeAlerts.First().Id, Is.EqualTo(alert.Id));
+
+            AssertMessagePublished<AlertRaisedMessage>();
+        }
+
+        [Test]
+        public void RaiseAlert_WhenServiceDisabled_DoesNotRaiseAlert()
+        {
+            // Arrange
+            _alertService.Dispose(); // Disable service
+            var alert = Alert.Create(TestConstants.SampleAlertMessage, AlertSeverity.Info, TestConstants.TestSource);
+
+            // Act
+            _alertService.RaiseAlert(alert);
+
+            // Assert
+            var activeAlerts = _alertService.GetActiveAlerts();
+            Assert.That(activeAlerts, Is.Empty);
+            AssertMessageCount(0);
+        }
+
+        [Test]
+        public void RaiseAlert_WithSeverityBelowMinimum_DoesNotRaiseAlert()
+        {
+            // Arrange
+            _alertService.SetMinimumSeverity(AlertSeverity.Warning);
+            var alert = Alert.Create(TestConstants.SampleAlertMessage, AlertSeverity.Info, TestConstants.TestSource);
+
+            // Act
+            _alertService.RaiseAlert(alert);
+
+            // Assert
+            var activeAlerts = _alertService.GetActiveAlerts();
+            Assert.That(activeAlerts, Is.Empty);
+        }
+
+        [Test]
+        public async UniTask RaiseAlertAsync_WithValidAlert_RaisesAlertAsynchronously()
+        {
+            // Arrange
+            var alert = Alert.Create(
+                TestConstants.SampleAlertMessage,
+                AlertSeverity.High,
+                TestConstants.TestSource,
+                correlationId: CreateTestCorrelationId());
+
+            // Act
+            await _alertService.RaiseAlertAsync(alert);
+
+            // Assert
+            var activeAlerts = _alertService.GetActiveAlerts();
+            Assert.That(activeAlerts, Is.Not.Empty);
+            AssertMessagePublished<AlertRaisedMessage>();
+        }
+
+        [Test]
+        public async UniTask RaiseAlertAsync_WithCancellation_HandlescancellationGracefully()
+        {
+            // Arrange
+            var alert = Alert.Create(TestConstants.SampleAlertMessage, AlertSeverity.Info, TestConstants.TestSource);
+            var cancellationToken = new CancellationTokenSource(TimeSpan.FromMilliseconds(1)).Token;
+
+            // Act & Assert
+            await UniTask.Delay(10); // Ensure cancellation token is triggered
+            await _alertService.RaiseAlertAsync(alert, cancellationToken);
+
+            // Should complete without throwing (cancellation is handled internally)
+        }
+
+        [Test]
+        public async UniTask RaiseAlert_BulkStressTest_MaintainsFrameBudgetAndPerformance()
+        {
+            // Arrange - Create realistic game scenario with 100 alerts per frame
+            var alertCount = 100;
+            var alerts = new Alert[alertCount];
+            var correlationId = CreateTestCorrelationId();
+
+            for (int i = 0; i < alertCount; i++)
+            {
+                alerts[i] = Alert.Create(
+                    $"Stress test alert {i}",
+                    AlertSeverity.Warning,
+                    TestConstants.TestSource,
+                    correlationId: correlationId);
+            }
+
+            // Act - Validate complete bulk operation stays within frame budget
+            var performanceResult = await ExecuteWithPerformanceMeasurementAsync(async () =>
+            {
+                foreach (var alert in alerts)
+                {
+                    _alertService.RaiseAlert(alert);
+                }
+                await UniTask.CompletedTask;
+            }, "BulkAlertRaising", TestConstants.FrameBudget);
+
+            // Assert - Performance requirements
+            Assert.That(performanceResult.Duration, Is.LessThan(TestConstants.FrameBudget),
+                $"Bulk alert raising should complete within frame budget but took {performanceResult.Duration.TotalMilliseconds}ms");
+
+            // Assert - All alerts were processed
+            var activeAlerts = _alertService.GetActiveAlerts();
+            Assert.That(activeAlerts.Count(), Is.EqualTo(alertCount));
+
+            // Assert - Message bus handled bulk publishing
+            Assert.That(SpyMessageBus.GetPublishCount<AlertRaisedMessage>(), Is.EqualTo(alertCount));
+
+            // Assert - Service remains healthy under load
+            AssertAllServicesHealthy();
+
+            // Log performance metrics for analysis
+            LogPerformanceMetrics(performanceResult);
+        }
+
+        #endregion
+
+        #region Alert Management Tests
+
+        [Test]
+        public void GetActiveAlerts_WithMultipleAlerts_ReturnsActiveAlertsOnly()
+        {
+            // Arrange
+            var alert1 = Alert.Create("Alert 1", AlertSeverity.Warning, TestConstants.TestSource);
+            var alert2 = Alert.Create("Alert 2", AlertSeverity.Error, TestConstants.TestSource);
+            var alert3 = Alert.Create("Alert 3", AlertSeverity.Info, TestConstants.TestSource);
+
+            _alertService.RaiseAlert(alert1);
+            _alertService.RaiseAlert(alert2);
+            _alertService.RaiseAlert(alert3);
+
+            // Acknowledge one alert
+            _alertService.AcknowledgeAlert(alert2.Id);
+
+            // Act
+            var activeAlerts = _alertService.GetActiveAlerts();
+
+            // Assert
+            Assert.That(activeAlerts.Count(), Is.EqualTo(2)); // Only alert1 and alert3 should be active
+            Assert.That(activeAlerts.All(a => a.IsActive), Is.True);
+        }
+
+        [Test]
+        public void AcknowledgeAlert_WithValidId_AcknowledgesAlert()
+        {
+            // Arrange
+            var alert = Alert.Create(TestConstants.SampleAlertMessage, AlertSeverity.Warning, TestConstants.TestSource);
+            _alertService.RaiseAlert(alert);
+            var correlationId = CreateTestCorrelationId();
+
+            // Act
+            _alertService.AcknowledgeAlert(alert.Id, correlationId.ToString());
+
+            // Assert
+            var activeAlerts = _alertService.GetActiveAlerts();
+            var acknowledgedAlert = activeAlerts.FirstOrDefault(a => a.Id == alert.Id);
+
+            Assert.That(acknowledgedAlert?.IsAcknowledged, Is.True);
+            AssertMessagePublished<AlertAcknowledgedMessage>();
+            AssertLogContains($"Alert acknowledged: {alert.Id}");
+        }
+
+        [Test]
+        public void ResolveAlert_WithValidId_ResolvesAlert()
+        {
+            // Arrange
+            var alert = Alert.Create(TestConstants.SampleAlertMessage, AlertSeverity.Error, TestConstants.TestSource);
+            _alertService.RaiseAlert(alert);
+            var correlationId = CreateTestCorrelationId();
+
+            // Act
+            _alertService.ResolveAlert(alert.Id, correlationId.ToString());
+
+            // Assert
+            var activeAlerts = _alertService.GetActiveAlerts();
+            var resolvedAlert = activeAlerts.FirstOrDefault(a => a.Id == alert.Id);
+
+            Assert.That(resolvedAlert?.IsResolved, Is.True);
+            AssertMessagePublished<AlertResolvedMessage>();
+            AssertLogContains($"Alert resolved: {alert.Id}");
+        }
+
+        [Test]
+        public void GetAlertHistory_WithTimeSpan_ReturnsAlertsInTimeframe()
+        {
+            // Arrange
+            var alert1 = Alert.Create("Recent Alert", AlertSeverity.Warning, TestConstants.TestSource);
+            _alertService.RaiseAlert(alert1);
+
+            var timePeriod = TimeSpan.FromMinutes(5);
+
+            // Act
+            var history = _alertService.GetAlertHistory(timePeriod);
+
+            // Assert
+            Assert.That(history, Is.Not.Empty);
+            Assert.That(history.Any(a => a.Id == alert1.Id), Is.True);
+        }
+
+        #endregion
+
+        #region Severity Management Tests
+
+        [Test]
+        public void SetMinimumSeverity_WithValidSeverity_UpdatesGlobalMinimum()
+        {
+            // Arrange
+            var newMinimum = AlertSeverity.Warning;
+
+            // Act
+            _alertService.SetMinimumSeverity(newMinimum);
+
+            // Assert
+            Assert.That(_alertService.GetMinimumSeverity(), Is.EqualTo(newMinimum));
+            AssertLogContains($"Global minimum severity set to {newMinimum}");
+        }
+
+        [Test]
+        public void SetMinimumSeverity_WithSourceSpecific_UpdatesSourceMinimum()
+        {
+            // Arrange
+            var source = new FixedString64Bytes("SpecificSource");
+            var sourceSeverity = AlertSeverity.Error;
+
+            // Act
+            _alertService.SetMinimumSeverity(source, sourceSeverity);
+
+            // Assert
+            Assert.That(_alertService.GetMinimumSeverity(source), Is.EqualTo(sourceSeverity));
+            AssertLogContains($"Minimum severity for {source} set to {sourceSeverity}");
+        }
+
+        [Test]
+        public void GetMinimumSeverity_WithUnknownSource_ReturnsGlobalMinimum()
+        {
+            // Arrange
+            var globalMinimum = AlertSeverity.Warning;
+            _alertService.SetMinimumSeverity(globalMinimum);
+            var unknownSource = new FixedString64Bytes("UnknownSource");
+
+            // Act
+            var result = _alertService.GetMinimumSeverity(unknownSource);
+
+            // Assert
+            Assert.That(result, Is.EqualTo(globalMinimum));
+        }
+
+        #endregion
+
+        #region Channel Management Tests
+
+        [Test]
+        public void RegisterChannel_WithValidChannel_RegistersSuccessfully()
+        {
+            // Arrange
+            var channel = new TestAlertChannel("TestChannel");
+            var correlationId = CreateTestCorrelationId();
+
+            // Act
+            _alertService.RegisterChannel(channel, correlationId.ToString());
+
+            // Assert
+            var channels = _alertService.GetRegisteredChannels();
+            Assert.That(channels.Any(c => c.Name.ToString() == "TestChannel"), Is.True);
+            AssertLogContains("Alert channel registered: TestChannel");
+        }
+
+        [Test]
+        public void UnregisterChannel_WithValidName_UnregistersSuccessfully()
+        {
+            // Arrange
+            var channel = new TestAlertChannel("TestChannel");
+            _alertService.RegisterChannel(channel);
+            var correlationId = CreateTestCorrelationId();
+
+            // Act
+            var result = _alertService.UnregisterChannel("TestChannel", correlationId.ToString());
+
+            // Assert
+            Assert.That(result, Is.True);
+            var channels = _alertService.GetRegisteredChannels();
+            Assert.That(channels.Any(c => c.Name.ToString() == "TestChannel"), Is.False);
+            AssertLogContains("Alert channel unregistered: TestChannel");
+        }
+
+        [Test]
+        public void GetRegisteredChannels_WithMultipleChannels_ReturnsAllChannels()
+        {
+            // Arrange
+            var channel1 = new TestAlertChannel("Channel1");
+            var channel2 = new TestAlertChannel("Channel2");
+
+            _alertService.RegisterChannel(channel1);
+            _alertService.RegisterChannel(channel2);
+
+            // Act
+            var channels = _alertService.GetRegisteredChannels();
+
+            // Assert
+            Assert.That(channels.Count, Is.EqualTo(2));
+            Assert.That(channels.Any(c => c.Name.ToString() == "Channel1"), Is.True);
+            Assert.That(channels.Any(c => c.Name.ToString() == "Channel2"), Is.True);
+        }
+
+        #endregion
+
+        #region Health and Diagnostics Tests
+
+        [Test]
+        public void IsHealthy_WithHealthyService_ReturnsTrue()
+        {
+            // Arrange & Act
+            var isHealthy = _alertService.IsHealthy;
+
+            // Assert
+            Assert.That(isHealthy, Is.True);
+        }
+
+        [Test]
+        public async UniTask PerformHealthCheckAsync_WhenHealthy_ReturnsHealthyReport()
+        {
+            // Arrange
+            var correlationId = CreateTestCorrelationId();
+
+            // Act - Validate health check completes within performance budget
+            var healthReport = default(AhBearStudios.Core.Alerting.Models.AlertSystemHealthReport);
+            await AssertFrameBudgetComplianceAsync(async () =>
+            {
+                healthReport = await _alertService.PerformHealthCheckAsync(correlationId);
+            }, "HealthCheck");
+
+            // Assert - Health report structure
+            Assert.That(healthReport, Is.Not.Null);
+            Assert.That(healthReport.OverallHealth, Is.True);
+            Assert.That(healthReport.ServiceEnabled, Is.True);
+
+            // Assert - Logging and correlation
+            AssertLogContains("Health check completed - Overall: True");
+            AssertCorrelationTrackingMaintained(correlationId);
+
+            // Assert - Service integration patterns
+            AssertServiceInteractionPattern(
+                expectedLogEntries: 2, // Setup + health check
+                expectedMessages: 0);  // Health checks don't typically publish messages
+
+            // Assert - All services remain healthy
+            AssertAllServicesHealthy();
+        }
+
+        [Test]
+        public void GetDiagnostics_Always_ReturnsCompleteDiagnostics()
+        {
+            // Arrange
+            var correlationId = CreateTestCorrelationId();
+
+            // Act
+            var diagnostics = _alertService.GetDiagnostics(correlationId);
+
+            // Assert
+            Assert.That(diagnostics, Is.Not.Null);
+            Assert.That(diagnostics.ServiceVersion, Is.Not.Null);
+            Assert.That(diagnostics.IsEnabled, Is.True);
+            Assert.That(diagnostics.SubsystemStatuses, Is.Not.Null);
+        }
+
+        [Test]
+        public void ValidateConfiguration_WithValidConfiguration_ReturnsSuccess()
+        {
+            // Arrange
+            var correlationId = CreateTestCorrelationId();
+
+            // Act
+            var result = _alertService.ValidateConfiguration(correlationId.ToString());
+
+            // Assert
+            Assert.That(result.IsValid, Is.True);
+            Assert.That(result.Component, Is.EqualTo("AlertService"));
+        }
+
+        #endregion
+
+        #region Performance and Maintenance Tests
+
+        [Test]
+        public void PerformMaintenance_WhenCalled_CleansUpOldAlerts()
+        {
+            // Arrange
+            var correlationId = CreateTestCorrelationId();
+
+            // Act
+            _alertService.PerformMaintenance(correlationId.ToString());
+
+            // Assert
+            AssertLogContains("Maintenance completed:");
+        }
+
+        [Test]
+        public async UniTask FlushAsync_WhenCalled_FlushesAllChannels()
+        {
+            // Arrange
+            var channel = new TestAlertChannel("TestChannel");
+            _alertService.RegisterChannel(channel);
+            var correlationId = CreateTestCorrelationId();
+
+            // Act
+            await _alertService.FlushAsync(correlationId.ToString());
+
+            // Assert
+            AssertLogContains("All channels flushed");
+        }
+
+        [Test]
+        public void GetStatistics_Always_ReturnsValidStatistics()
+        {
+            // Arrange & Act
+            var statistics = _alertService.GetStatistics();
+
+            // Assert
+            Assert.That(statistics, Is.Not.Null);
+        }
+
+        #endregion
+
+        #region Error Handling Tests
+
+        [Test]
+        public void RaiseAlert_WithNullAlert_DoesNotThrow()
+        {
+            // Arrange
+            Alert nullAlert = null;
+
+            // Act & Assert
+            Assert.DoesNotThrow(() => _alertService.RaiseAlert(nullAlert));
+        }
+
+        [Test]
+        public void RegisterChannel_WithNullChannel_DoesNotThrow()
+        {
+            // Arrange
+            IAlertChannel nullChannel = null;
+
+            // Act & Assert
+            Assert.DoesNotThrow(() => _alertService.RegisterChannel(nullChannel));
+        }
+
+        [Test]
+        public void AcknowledgeAlert_WithNonExistentId_DoesNotThrow()
+        {
+            // Arrange
+            var nonExistentId = Guid.NewGuid();
+
+            // Act & Assert
+            Assert.DoesNotThrow(() => _alertService.AcknowledgeAlert(nonExistentId));
+        }
+
+        #endregion
+
+        #region CLAUDETESTS.md Compliance - Comprehensive Integration Tests
+
+        /// <summary>
+        /// Comprehensive end-to-end test demonstrating complete CLAUDETESTS.md compliance.
+        /// Tests complete alert lifecycle with performance validation, correlation tracking,
+        /// zero-allocation patterns, and service integration using TDD test doubles.
+        /// This test validates production readiness under realistic game conditions.
+        /// </summary>
+        [Test]
+        public async UniTask AlertServiceCompleteWorkflow_WithProductionScenario_MaintainsPerformanceAndIntegrity()
+        {
+            // Arrange - Setup realistic game scenario
+            var correlationId = CreateTestCorrelationId("CompleteWorkflow");
+            var testChannel = new TestAlertChannel("ProductionChannel");
+
+            // Start the service with performance measurement
+            await AssertFrameBudgetComplianceAsync(async () =>
+            {
+                await _alertService.StartAsync(correlationId);
+            }, "ServiceStart");
+
+            // Register channel with zero allocation validation
+            await AssertZeroAllocationsAsync(async () =>
+            {
+                _alertService.RegisterChannel(testChannel, correlationId.ToString());
+                await UniTask.CompletedTask;
+            }, "ChannelRegistration");
+
+            // Act - Execute complete alert workflow
+            var alert1 = Alert.Create("Critical System Error", AlertSeverity.Critical, "GameSystem", correlationId: correlationId);
+            var alert2 = Alert.Create("Performance Warning", AlertSeverity.Warning, "RenderSystem", correlationId: correlationId);
+
+            // Test bulk operations under frame budget
+            var bulkOperationResult = await ExecuteWithPerformanceMeasurementAsync(async () =>
+            {
+                // Raise multiple alerts
+                _alertService.RaiseAlert(alert1);
+                _alertService.RaiseAlert(alert2);
+
+                // Acknowledge first alert
+                _alertService.AcknowledgeAlert(alert1.Id, correlationId.ToString());
+
+                // Resolve second alert
+                _alertService.ResolveAlert(alert2.Id, correlationId.ToString());
+
+                // Perform maintenance
+                _alertService.PerformMaintenance(correlationId.ToString());
+
+                await UniTask.CompletedTask;
+            }, "CompleteWorkflow", TestConstants.FrameBudget);
+
+            // Assert - Performance Requirements (CLAUDETESTS.md compliance)
+            Assert.That(bulkOperationResult.Duration, Is.LessThan(TestConstants.FrameBudget),
+                "Complete workflow must stay within Unity frame budget");
+
+            // Assert - Functional Requirements
+            var activeAlerts = _alertService.GetActiveAlerts();
+            Assert.That(activeAlerts.Count(), Is.EqualTo(2), "Both alerts should be tracked");
+
+            var acknowledgedAlert = activeAlerts.FirstOrDefault(a => a.Id == alert1.Id);
+            var resolvedAlert = activeAlerts.FirstOrDefault(a => a.Id == alert2.Id);
+
+            Assert.That(acknowledgedAlert?.IsAcknowledged, Is.True, "Alert1 should be acknowledged");
+            Assert.That(resolvedAlert?.IsResolved, Is.True, "Alert2 should be resolved");
+
+            // Assert - Message Bus Integration (TDD Spy Pattern)
+            AssertMessageCount<AlertRaisedMessage>(2);
+            AssertMessageCount<AlertAcknowledgedMessage>(1);
+            AssertMessageCount<AlertResolvedMessage>(1);
+
+            // Assert - Correlation Tracking Throughout Workflow
+            AssertCorrelationTrackingMaintained(correlationId);
+
+            // Assert - Service Integration Pattern
+            AssertServiceInteractionPattern(
+                expectedLogEntries: 8,  // Start, 2 raises, acknowledge, resolve, maintenance, health
+                expectedMessages: 4,    // 2 raised, 1 acknowledged, 1 resolved
+                expectedPoolingOperations: 0); // Alerts don't use pooling
+
+            // Assert - Channel Integration
+            var registeredChannels = _alertService.GetRegisteredChannels();
+            Assert.That(registeredChannels.Any(c => c.Name.ToString() == "ProductionChannel"), Is.True);
+
+            // Assert - Health and Diagnostics
+            var diagnostics = _alertService.GetDiagnostics(correlationId);
+            Assert.That(diagnostics.IsEnabled, Is.True);
+            Assert.That(diagnostics.IsHealthy, Is.True);
+
+            // Assert - Service Statistics
+            var statistics = _alertService.GetStatistics();
+            Assert.That(statistics, Is.Not.Null);
+
+            // Assert - All Services Remain Healthy Under Load
+            AssertAllServicesHealthy();
+
+            // Act - Graceful Shutdown with Performance Validation
+            await AssertFrameBudgetComplianceAsync(async () =>
+            {
+                await _alertService.StopAsync(correlationId);
+            }, "ServiceShutdown");
+
+            // Assert - Clean shutdown
+            Assert.That(_alertService.IsEnabled, Is.False);
+
+            // Log comprehensive performance metrics for analysis
+            LogPerformanceMetrics(bulkOperationResult);
+            StubLogging.LogInfo($"Integration Test Completed: {bulkOperationResult.Duration.TotalMilliseconds:F2}ms total", new FixedString64Bytes(correlationId.ToString()), sourceContext: null, properties: null);
+        }
+
+        /// <summary>
+        /// Tests service resilience under failure conditions following CLAUDETESTS.md patterns.
+        /// Validates graceful failure handling and recovery mechanisms.
+        /// </summary>
+        [Test]
+        public async UniTask AlertService_UnderFailureConditions_HandlesGracefully()
+        {
+            // Arrange - Setup failure scenarios
+            var correlationId = CreateTestCorrelationId("FailureResilience");
+            await _alertService.StartAsync(correlationId);
+
+            // Act & Assert - Test graceful handling of various failure scenarios
+            await AssertGracefulFailureHandlingAsync(async () =>
+            {
+                // Simulate message bus failure
+                SpyMessageBus.IsEnabled = false;
+                _alertService.RaiseAlert("Test during message bus failure", AlertSeverity.Error, "TestSystem");
+                SpyMessageBus.IsEnabled = true;
+
+                // Simulate null alert handling
+                _alertService.RaiseAlert((Alert)null);
+
+                // Simulate invalid operations
+                _alertService.AcknowledgeAlert(Guid.NewGuid()); // Non-existent ID
+                _alertService.ResolveAlert(Guid.Empty);         // Empty ID
+
+                await UniTask.CompletedTask;
+            });
+
+            // Assert - Service remains operational despite failures
+            Assert.That(_alertService.IsEnabled, Is.True);
+            Assert.That(_alertService.IsHealthy, Is.True);
+
+            // Assert - Error handling was logged appropriately
+            AssertLogContains("Alert service");
+
+            // Assert - All services recovered and remain healthy
+            AssertAllServicesHealthy();
+        }
+
+        #endregion
+    }
+}

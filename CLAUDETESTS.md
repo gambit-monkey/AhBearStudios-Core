@@ -4,13 +4,38 @@ This document provides comprehensive testing guidelines for the AhBearStudios Co
 
 ## Testing Philosophy
 
-AhBearStudios Core testing prioritizes **game development requirements** over enterprise testing patterns:
+AhBearStudios Core testing prioritizes **game development requirements** over enterprise testing patterns and follows **strict TDD principles**:
 
 - **Frame Budget Compliance**: All operations must complete within 16.67ms (60 FPS)
 - **Zero-Allocation Patterns**: Validate Unity.Collections usage and memory efficiency
 - **Production Readiness**: Test real-world game scenarios, not just happy paths
 - **Performance Critical**: Benchmark operations under load with realistic data volumes
 - **Cross-Platform Compatibility**: Ensure tests work across Unity's target platforms
+- **True TDD Compliance**: Use lightweight test doubles that test production code, not mock implementations
+
+### TDD Test Double Approach
+
+We follow **proper Test-Driven Development principles** by using lightweight test doubles instead of heavy mock implementations:
+
+#### Why Test Doubles Over Full Mocks
+- **Tests Production Code**: Validates actual production services, not mock business logic
+- **Minimal Overhead**: Lightweight implementations with minimal performance impact
+- **Clear Intent**: Each test double type has a specific purpose (Stub, Spy, Fake, Null Object)
+- **Easier Maintenance**: Simple implementations that don't require sync with production changes
+- **Faster Test Execution**: Reduced complexity leads to faster test runs
+
+#### Test Double Pattern Types
+- **Stub**: Returns canned responses without logic (e.g., `StubLoggingService`)
+- **Spy**: Records interactions for verification (e.g., `SpyMessageBusService`)
+- **Fake**: Simplified working implementation (e.g., `FakePoolingService`)
+- **Null Object**: No-op implementation for zero overhead (e.g., `NullProfilerService`)
+
+#### Benefits Over Heavy Mock Implementations
+- **No False Positives**: Eliminates bugs that only exist in mock implementations
+- **Better Coverage**: Tests exercise production code paths completely
+- **Reduced Complexity**: Simple test doubles vs. 400+ line mock implementations
+- **Performance**: Minimal allocation and processing overhead
+- **Unity Compatibility**: Optimized for Unity Test Runner in both Edit and Play modes
 
 ## Test Organization Structure
 
@@ -22,7 +47,11 @@ Tests are organized into two main assemblies matching the core package structure
 Assets/com.ahbearstudios.core.tests/
 ├── AhBearStudios.Core.Tests.asmdef        // Test assembly definition
 ├── Shared/                                 // Shared test infrastructure
-│   ├── Mocks/                             // Mock service implementations
+│   ├── TestDoubles/                       // TDD-compliant test doubles
+│   │   ├── Stubs/                         // Stub implementations (canned responses)
+│   │   ├── Spies/                         // Spy implementations (interaction recording)
+│   │   ├── Fakes/                         // Fake implementations (simplified logic)
+│   │   └── TestDoubleVerificationTests.cs // Verification tests for test doubles
 │   ├── Base/                              // Base test classes
 │   ├── Utilities/                         // Test utilities and helpers
 │   └── Builders/                          // Test data builders
@@ -59,39 +88,48 @@ Assets/com.ahbearstudios.core.tests/
 
 ## Shared Test Infrastructure
 
-### **ALWAYS Use Shared Mock Services**
+### **ALWAYS Use Shared Test Doubles**
 
-**Never create system-specific mocks** - use the shared infrastructure in `Assets/com.ahbearstudios.core.tests/Shared/Mocks/`:
+**Never create system-specific test doubles** - use the shared TDD-compliant infrastructure in `Assets/com.ahbearstudios.core.tests/Shared/TestDoubles/`:
 
 ```csharp
-// ✅ CORRECT: Use shared mock services
+// ✅ CORRECT: Use shared test doubles
 public class MySystemTests : BaseServiceTest
 {
     [SetUp]
     public override void Setup()
     {
-        base.Setup(); // Initializes all shared mocks
+        base.Setup(); // Initializes all shared test doubles
 
-        // MockLogging, MockMessageBus, MockSerialization, etc. are ready
-        var myService = new MyService(MockLogging, MockMessageBus);
+        // StubLogging, SpyMessageBus, FakeSerialization, etc. are ready
+        var myService = new MyService(StubLogging, SpyMessageBus);
     }
 }
 
-// ❌ AVOID: Creating system-specific mocks
+// ❌ AVOID: Creating system-specific test doubles
 public class MySystemTests
 {
-    private IMockLoggingService _customMockLogging; // Don't do this
+    private ILoggingService _customStub; // Don't do this
 }
 ```
 
-### Available Shared Mock Services
+### Available Shared Test Doubles
 
-- **`MockLoggingService`** - Captures log calls with verification helpers
-- **`MockMessageBusService`** - Records published messages, simulates subscriptions
-- **`MockSerializationService`** - Configurable serialization for testing
-- **`MockPoolingService`** - Simulates object pooling without actual pooling
-- **`MockProfilerService`** - Records profiling calls for performance testing
-- **`MockHealthCheckService`** - Simulates health check operations
+Following proper TDD patterns, we provide lightweight test doubles instead of heavy mock implementations:
+
+#### Stubs (Canned Responses)
+- **`StubLoggingService`** - Records log entries without processing logic
+- **`StubHealthCheckService`** - Returns configurable health check results
+
+#### Spies (Interaction Recording)
+- **`SpyMessageBusService`** - Records published messages, subscriptions, and unsubscriptions for verification
+
+#### Fakes (Simplified Implementations)
+- **`FakeSerializationService`** - Simple in-memory storage without actual serialization
+- **`FakePoolingService`** - Creates new instances without actual pooling logic
+
+#### Null Objects (Zero Overhead)
+- **`NullProfilerService`** - Singleton no-op implementation for zero overhead testing
 
 ### Base Test Classes Hierarchy
 
@@ -101,7 +139,7 @@ public class MySystemTests
 // Unit tests for individual services/components
 public class MyServiceTests : BaseServiceTest
 {
-    // Provides: All mock services, correlation helpers, assertion helpers
+    // Provides: All test doubles, correlation helpers, assertion helpers
 }
 
 // Integration tests testing multiple services together
@@ -275,7 +313,7 @@ public class AlertBuilderTests : BaseServiceTest
     public void FluentChain_WithMultipleOperations_BuildsCorrectConfiguration()
     {
         // Act - Test complete fluent chain
-        var config = new AlertConfigBuilder(MockPooling)
+        var config = new AlertConfigBuilder(FakePooling)
             .ForProduction()
             .WithMinimumSeverity(AlertSeverity.Warning)
             .WithHistorySize(500)
@@ -487,7 +525,7 @@ public class MyIntegrationTests : BaseIntegrationTest
 
         // Verify logging with correlation
         AssertLogContains("Data processed");
-        Assert.That(MockLogging.LogEntries.Any(log => log.CorrelationId == correlationId), Is.True);
+        Assert.That(StubLogging.RecordedLogs.Any(log => log.CorrelationId == correlationId), Is.True);
     }
 }
 ```
@@ -501,7 +539,7 @@ public class MyIntegrationTests : BaseIntegrationTest
 public async Task ServiceIntegration_WithFailoverScenarios_HandlesGracefully()
 {
     // Arrange
-    MockMessageBus.ShouldThrowOnPublish = true;
+    SpyMessageBus.ShouldThrowOnPublish = true;
     var data = CreateTestData();
 
     // Act & Assert - Should handle message bus failure gracefully
@@ -516,7 +554,7 @@ public async Task ServiceIntegration_WithFailoverScenarios_HandlesGracefully()
     Assert.That(results, Is.Not.Empty);
 
     // Reset mock
-    MockMessageBus.ShouldThrowOnPublish = false;
+    SpyMessageBus.ShouldThrowOnPublish = false;
 }
 ```
 
@@ -589,11 +627,11 @@ public void CorrelationTracking_AcrossEntireLifecycle_MaintainsCorrelation()
     _service.CompleteOperation(correlationId);
 
     // Assert - All messages should have the same correlation ID
-    var messages = MockMessageBus.PublishedMessages;
+    var messages = SpyMessageBus.PublishedMessages;
     Assert.That(messages.All(m => m.CorrelationId == correlationId), Is.True);
 
     // Verify correlation in log entries
-    Assert.That(MockLogging.LogEntries.Any(log => log.CorrelationId == correlationId), Is.True);
+    Assert.That(StubLogging.RecordedLogs.Any(log => log.CorrelationId == correlationId), Is.True);
 }
 
 [Test]
@@ -609,7 +647,7 @@ public void CorrelationTracking_WithRelatedOperations_MaintainsRelationships()
     }
 
     // Assert - All related messages should be trackable
-    var messages = MockMessageBus.PublishedMessages;
+    var messages = SpyMessageBus.PublishedMessages;
     foreach (var relatedId in relatedIds)
     {
         Assert.That(messages.Any(m => m.CorrelationId == relatedId), Is.True);
@@ -635,7 +673,7 @@ public void ErrorHandling_WithInvalidInput_HandlesGracefully()
 
     // Verify appropriate error logging
     AssertLogContains("Invalid data");
-    Assert.That(MockLogging.HasErrorLogs(), Is.True);
+    Assert.That(StubLogging.HasErrorLogs(), Is.True);
 }
 
 [Test]
@@ -798,8 +836,8 @@ public void SerializationHandling_CrossPlatform_WorksCorrectly()
     var data = CreateComplexTestData();
 
     // Act - Test serialization/deserialization
-    var serialized = MockSerialization.Serialize(data);
-    var deserialized = MockSerialization.Deserialize<TestData>(serialized);
+    var serialized = FakeSerialization.Serialize(data);
+    var deserialized = FakeSerialization.Deserialize<TestData>(serialized);
 
     // Assert - Should work on all Unity target platforms
     Assert.That(deserialized.Id, Is.EqualTo(data.Id));

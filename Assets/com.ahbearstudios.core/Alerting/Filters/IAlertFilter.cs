@@ -253,7 +253,7 @@ namespace AhBearStudios.Core.Alerting.Filters
         /// <returns>Empty context</returns>
         public static FilterContext Empty => new FilterContext
         {
-            CorrelationId = Guid.NewGuid(),
+            CorrelationId = DeterministicIdGenerator.GenerateCorrelationId("FilterContext", "Empty"),
             FilteringStartTime = DateTime.UtcNow,
             Properties = new Dictionary<string, object>(),
             RecentAlerts = Array.Empty<Alert>()

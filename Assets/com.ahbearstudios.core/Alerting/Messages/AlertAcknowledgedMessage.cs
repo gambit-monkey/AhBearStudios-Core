@@ -109,6 +109,11 @@ namespace AhBearStudios.Core.Alerting.Messages
         #region Computed Properties
 
         /// <summary>
+        /// Gets the DateTime representation of the message timestamp.
+        /// </summary>
+        public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
+
+        /// <summary>
         /// Gets the DateTime representation of the acknowledgment timestamp.
         /// </summary>
         public DateTime AcknowledgedTimestamp => new DateTime(AcknowledgedTimestampTicks, DateTimeKind.Utc);
@@ -257,6 +262,7 @@ namespace AhBearStudios.Core.Alerting.Messages
             {
                 AlertSeverity.Emergency => MessagePriority.Critical,   // Highest priority
                 AlertSeverity.Critical => MessagePriority.High,        // Lower than original Critical
+                AlertSeverity.Error => MessagePriority.Normal,         // Error conditions need attention
                 AlertSeverity.High => MessagePriority.Normal,          // Lower than original High
                 AlertSeverity.Warning => MessagePriority.Low,          // Lower than original Normal
                 AlertSeverity.Medium => MessagePriority.Low,           // Lower priority

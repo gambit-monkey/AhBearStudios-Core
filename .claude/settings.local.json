@@ -18,7 +18,14 @@
       "Bash(csc:*)",
       "Bash(/mnt/c/Program Files/Unity/Hub/Editor/2022.3.25f1/Editor/Unity.exe -batchmode -projectPath . -executeMethod UnityEditor.TestTools.TestRunner.Api.ScriptingRuntimeApiUpdater.RunTests -runTests -testMode EditMode -testFilter \"CorrelationInfoBurstTests\" -logFile - -quit)",
       "Read(//mnt/c/**)",
-      "Bash(dotnet --version)"
+      "Bash(dotnet --version)",
+      "Bash(do touch \"/mnt/d/Unity/AhBearStudios_Dev2/Assets/com.ahbearstudios.core.tests/Shared/Mocks/$file.cs.meta\")",
+      "Bash(done)",
+      "Bash(/mnt/c/Program Files/Unity/Hub/Editor/2022.3.25f1/Editor/Unity.exe -batchmode -projectPath . -runTests -testMode EditMode -testFilter \"AlertIntegrationTests.BulkAcknowledgment_WithManyAlerts_ProcessesEfficiently\" -logFile - -quit)",
+      "Bash(./TestServiceRegistrationFix.exe)",
+      "Bash(dotnet script:*)",
+      "Bash(/mnt/c/Program Files/Unity/Hub/Editor/2022.3.25f1/Editor/Unity.exe -batchmode -projectPath . -runTests -testMode EditMode -testFilter \"AlertIntegrationTests.ServiceIntegration_WithAllDependencies_IntegratesCorrectly\" -logFile - -quit)",
+      "Bash(\"/mnt/c/Program Files/Unity/Hub/Editor/6000.2.5f1/Editor/Unity.exe\" -batchmode -projectPath . -runTests -testMode EditMode -testFilter \"AlertIntegrationTests.ServiceIntegration_WithAllDependencies_IntegratesCorrectly\" -logFile - -quit)"
     ],
     "deny": [],
     "ask": []

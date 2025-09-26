@@ -124,6 +124,11 @@ namespace AhBearStudios.Core.Alerting.Messages
         #region Computed Properties
 
         /// <summary>
+        /// Gets the DateTime representation of the message timestamp.
+        /// </summary>
+        public DateTime Timestamp => new DateTime(TimestampTicks, DateTimeKind.Utc);
+
+        /// <summary>
         /// Gets whether the alert was acknowledged before being resolved.
         /// </summary>
         public bool WasAcknowledged => AcknowledgedTimestampTicks.HasValue;
@@ -308,11 +313,15 @@ namespace AhBearStudios.Core.Alerting.Messages
         {
             return severity switch
             {
-                AlertSeverity.Emergency => MessagePriority.Normal,   // Much lower than original Critical
-                AlertSeverity.Critical => MessagePriority.Low,        // Lower than original High
-                AlertSeverity.Warning => MessagePriority.VeryLow,  // Lower than original Normal
-                AlertSeverity.Info => MessagePriority.VeryLow,
-                AlertSeverity.Debug => MessagePriority.VeryLow,
+                AlertSeverity.Emergency => MessagePriority.Normal,     // Much lower than original Critical
+                AlertSeverity.Critical => MessagePriority.Low,         // Lower than original High
+                AlertSeverity.Error => MessagePriority.Low,            // Error resolutions get low priority
+                AlertSeverity.High => MessagePriority.Low,             // Lower than original High
+                AlertSeverity.Warning => MessagePriority.VeryLow,      // Lower than original Normal
+                AlertSeverity.Medium => MessagePriority.VeryLow,       // Lower priority
+                AlertSeverity.Low => MessagePriority.VeryLow,          // Lowest priority
+                AlertSeverity.Info => MessagePriority.VeryLow,         // Informational resolution
+                AlertSeverity.Debug => MessagePriority.VeryLow,        // Debug resolution
                 _ => MessagePriority.VeryLow
             };
         }
